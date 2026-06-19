@@ -62,7 +62,10 @@ jobs:
             --exclude='openwrt-sdk-*.tar.*' \
             ./ ./sdk/package/${PACKAGE_NAME}/
 
-          find ./sdk/package ./sdk/feeds -type d -name sing-box -prune -exec rm -rf {} +
+          find ./sdk/package -type d -name sing-box -prune -exec rm -rf {} +
+          if [ -d ./sdk/feeds ]; then
+            find ./sdk/feeds -type d -name sing-box -prune -exec rm -rf {} +
+          fi
           mkdir -p ./sdk/package/sing-box
           rsync -a ./.github/openwrt-packages/sing-box/ ./sdk/package/sing-box/
 
@@ -73,7 +76,9 @@ jobs:
 
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          find ./package/feeds -type d -name sing-box -prune -exec rm -rf {} +
+          if [ -d ./package/feeds ]; then
+            find ./package/feeds -type d -name sing-box -prune -exec rm -rf {} +
+          fi
 
       - name: Compile IPK packages
         working-directory: sdk
