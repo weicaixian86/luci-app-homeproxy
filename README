@@ -3,6 +3,7 @@
 
 ## 安装说明
 上传 zip 到 OpenWrt /tmp后解压并执行：
+
 ```sh
 cd /tmp
 unzip homeproxy-v2.0.1-x86_64.zip
