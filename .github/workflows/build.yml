@@ -90,6 +90,8 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=m" >> .config
+          echo "CONFIG_LUCI_LANG_zh_Hans=m" >> .config
           make defconfig
           make package/sing-box/compile V=s -j"$(nproc)"
           make package/${PACKAGE_NAME}/compile V=s -j"$(nproc)"
@@ -97,6 +99,7 @@ jobs:
           mkdir -p ../artifacts
           HOMEPROXY_IPK="$(find bin/packages -type f -name "${PACKAGE_NAME}_*.ipk" | head -n1)"
           SING_BOX_IPK="$(find bin/packages -type f -name "sing-box_${SING_BOX_VERSION}-*.ipk" | head -n1)"
+          I18N_IPK="$(find bin/packages -type f -name "luci-i18n-homeproxy-zh-cn_*.ipk" | head -n1)"
 
           if [ -z "$HOMEPROXY_IPK" ]; then
             echo "No luci-app-homeproxy IPK file produced."
@@ -106,9 +109,14 @@ jobs:
             echo "No sing-box IPK file produced."
             exit 1
           fi
+          if [ -z "$I18N_IPK" ]; then
+            echo "No luci-i18n-homeproxy-zh-cn IPK file produced."
+            exit 1
+          fi
 
           cp "$HOMEPROXY_IPK" "../artifacts/${PACKAGE_NAME}_${{ inputs.release_tag }}.ipk"
           cp "$SING_BOX_IPK" "../artifacts/sing-box_${SING_BOX_VERSION}_x86_64.ipk"
+          cp "$I18N_IPK" "../artifacts/luci-i18n-homeproxy-zh-cn_${{ inputs.release_tag }}.ipk"
 
       - name: Download dependency.ipk
         run: |
@@ -202,7 +210,8 @@ jobs:
             ucode-mod-fs \
             ucode-mod-math \
             ucode-mod-ubus \
-            ucode-mod-uci; do
+            ucode-mod-uci \
+            luci-i18n-base-zh-cn; do
             download_package "$package"
           done
 
@@ -217,6 +226,7 @@ jobs:
           mkdir -p "$BUNDLE_DIR/packages/deps"
 
           cp artifacts/${PACKAGE_NAME}_${RELEASE_VERSION}.ipk "$BUNDLE_DIR/packages/"
+          cp artifacts/luci-i18n-homeproxy-zh-cn_${RELEASE_VERSION}.ipk "$BUNDLE_DIR/packages/"
           cp artifacts/sing-box_${SING_BOX_VERSION}_x86_64.ipk "$BUNDLE_DIR/packages/"
           if compgen -G "artifacts/deps/*.ipk" >/dev/null; then
             cp artifacts/deps/*.ipk "$BUNDLE_DIR/packages/deps/"
@@ -238,8 +248,14 @@ jobs:
             echo ''
             echo 'echo "Installing luci-app-homeproxy..."'
             echo 'opkg install packages/luci-app-homeproxy_*.ipk'
+            echo 'opkg install packages/luci-i18n-homeproxy-zh-cn_*.ipk'
+            echo ''
+            echo 'echo "Setting LuCI language to Simplified Chinese..."'
+            echo "uci set luci.main.lang='zh_cn'"
+            echo 'uci commit luci'
             echo ''
             echo '/etc/init.d/rpcd restart 2>/dev/null || true'
+            echo '/etc/init.d/uhttpd restart 2>/dev/null || true'
             echo ''
             echo 'echo "Done."'
           } > "$BUNDLE_DIR/install.sh"
