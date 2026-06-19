@@ -13,7 +13,12 @@
 
 ## GitHub Actions
 
-项目提供 `.github/workflows/build.yml` 工作流，可手动输入版本号并编译发布安装包。
+项目提供 `.github/workflows/build.yml` 工作流，可手动输入 `Release tag` 和 `Release description` 并编译发布安装包。
+
+手动运行界面仅包含：
+
+- `Release tag`
+- `Release description`
 
 示例版本号：
 
