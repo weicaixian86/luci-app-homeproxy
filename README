@@ -1,58 +1,19 @@
 # luci-app-homeproxy
-
 适用于 OpenWrt 24.10 的 HomeProxy LuCI 管理界面，已按 `sing-box 1.13.13` 配置结构进行适配。
 
-## 功能简介
-
-- 支持 HomeProxy 客户端与服务端配置管理。
-- 支持代理节点、路由规则、DNS 分流和规则集配置。
-- 支持资源列表、订阅节点和运行状态管理。
-- 支持 OpenWrt 24.10 `firewall4` / nftables 环境。
-- 支持 GitHub Actions 在线编译 x86_64 架构 `.ipk` 安装包。
-- 支持自动发布包含 `.ipk` 的 GitHub Releases。
-
-## GitHub Actions
-
-项目提供 `.github/workflows/build.yml` 工作流，可手动输入 `Release tag` 和 `Release description` 并编译发布安装包。
-
-手动运行界面仅包含：
-
-- `Release tag`
-- `Release description`
-
-示例版本号：
-
-```text
-2.0.1
-```
-
-Release 只发布 1 个文件：
-
-```text
-homeproxy-2.0.1-x86_64.zip
-```
-
-压缩包内包含 `luci-app-homeproxy_2.0.1.ipk`、`sing-box_1.13.13_x86_64.ipk`、`dependency.ipk` 和 `install.sh`。
-
-Release 正文仅包含编译时间和手动输入的 Release description。
-
 ## 安装说明
-
-上传 zip 到 OpenWrt 后解压并执行：
-
-```sh
-unzip homeproxy-2.0.1-x86_64.zip
-cd homeproxy-2.0.1-x86_64
+上传 zip 到 OpenWrt /tmp后解压并执行：
+```cd /tmp
+unzip homeproxy-v2.0.1-x86_64.zip
+cd homeproxy-v2.0.1-x86_64
 sh install.sh
 ```
 
 ## 维护工作流
-
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 
 ## 适配版本
-
 - OpenWrt：24.10
 - 架构：x86_64
 - sing-box：1.13.13
