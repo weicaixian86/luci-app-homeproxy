@@ -27,7 +27,17 @@ log() {
 	echo -e "$(date "+%Y-%m-%d %H:%M:%S") [DAEMON] $*" >> "$LOG_PATH"
 }
 
+init_logs() {
+	mkdir -p "$RUN_DIR"
+	mkdir -p "$HP_DIR/run/ui"
+	touch "$LOG_PATH" "$RUN_DIR/sing-box-c.log" "$RUN_DIR/sing-box-s.log"
+	chown -R sing-box:sing-box "$RUN_DIR" 2>"/dev/null"
+	chown -R sing-box:sing-box "$HP_DIR/run" 2>"/dev/null"
+}
+
 start_service() {
+	init_logs
+
 	config_load "$CONF"
 
 	local routing_mode proxy_mode
@@ -47,8 +57,6 @@ start_service() {
 	if [ "$outbound_node" = "nil" ] && [ "$server_enabled" = "0" ]; then
 		return 1
 	fi
-
-	mkdir -p "$RUN_DIR"
 
 	if [ "$outbound_node" != "nil" ]; then
 		# Generate/Validate client config
@@ -156,7 +164,8 @@ start_service() {
 			procd_add_jail "sing-box-c" log procfs
 			procd_add_jail_mount "$RUN_DIR/sing-box-c.json"
 			procd_add_jail_mount_rw "$RUN_DIR/sing-box-c.log"
-			[ "$routing_mode" != "bypass_mainland_china" ] || procd_add_jail_mount_rw "$RUN_DIR/cache.db"
+			procd_add_jail_mount_rw "$RUN_DIR/cache.db"
+			procd_add_jail_mount_rw "$HP_DIR/run/"
 			procd_add_jail_mount "$HP_DIR/certs/"
 			procd_add_jail_mount "/etc/ssl/"
 			procd_add_jail_mount "/etc/localtime"
@@ -225,20 +234,19 @@ start_service() {
 	procd_set_param respawn
 	procd_close_instance
 
+	# Prepare cache db
+	[ -e "$RUN_DIR/cache.db" ] || touch "$RUN_DIR/cache.db"
+
 	case "$routing_mode" in
-	"bypass_mainland_china")
-		# Prepare cache db
-		[ -e "$RUN_DIR/cache.db" ] || touch "$RUN_DIR/cache.db"
-		;;
 	"custom")
 		# Prepare ruleset directory
 		[ -d "$HP_DIR/ruleset" ] || mkdir -p "$HP_DIR/ruleset"
 		;;
 	esac
 
-	[ "$outbound_node" = "nil" ] || echo > "$RUN_DIR/sing-box-c.log"
+	[ "$outbound_node" = "nil" ] || : > "$RUN_DIR/sing-box-c.log"
 	if [ "$server_enabled" = "1" ]; then
-		echo > "$RUN_DIR/sing-box-s.log"
+		: > "$RUN_DIR/sing-box-s.log"
 		mkdir -p "$HP_DIR/certs"
 	fi
 
@@ -308,8 +316,8 @@ stop_service() {
 	rm -rf "$DNSMASQ_DIR/../dnsmasq-homeproxy.conf" "$DNSMASQ_DIR"
 	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
 
-	rm -f "$RUN_DIR/sing-box-c.json" "$RUN_DIR/sing-box-c.log" \
-		"$RUN_DIR/sing-box-s.json" "$RUN_DIR/sing-box-s.log"
+	rm -f "$RUN_DIR/sing-box-c.json" "$RUN_DIR/sing-box-s.json"
+	init_logs
 
 	log "Service stopped."
 }

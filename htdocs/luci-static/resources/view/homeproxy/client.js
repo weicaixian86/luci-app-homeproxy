@@ -10,6 +10,7 @@
 'require poll';
 'require rpc';
 'require uci';
+'require ui';
 'require validation';
 'require view';
 
@@ -21,6 +22,13 @@ const callServiceList = rpc.declare({
 	object: 'service',
 	method: 'list',
 	params: ['name'],
+	expect: { '': {} }
+});
+
+const callRCInit = rpc.declare({
+	object: 'rc',
+	method: 'init',
+	params: ['name', 'action'],
 	expect: { '': {} }
 });
 
@@ -44,6 +52,51 @@ const callCurrentNode = rpc.declare({
 	expect: { '': {} }
 });
 
+const callPackageVersion = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'package_get_version',
+	expect: { '': {} }
+});
+
+const statusCss = `
+#homeproxy_status_panel {
+	margin-bottom: 1rem;
+}
+#homeproxy_status_panel .homeproxy-status-grid {
+	display: grid;
+	grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(120px, .65fr) repeat(4, max-content);
+	gap: 14px;
+	align-items: end;
+}
+#homeproxy_status_panel .homeproxy-status-label {
+	font-weight: 600;
+	text-align: center;
+	margin-bottom: 8px;
+}
+#homeproxy_status_panel input {
+	width: 100%;
+	min-width: 0;
+}
+#homeproxy_status_panel .homeproxy-core-status {
+	border: unset;
+	font-style: italic;
+	font-weight: 700;
+}
+#homeproxy_status_panel .homeproxy-status-actions {
+	display: contents;
+}
+@media (max-width: 900px) {
+	#homeproxy_status_panel .homeproxy-status-grid {
+		grid-template-columns: 1fr 1fr;
+	}
+	#homeproxy_status_panel .homeproxy-status-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px;
+		grid-column: 1 / -1;
+	}
+}`;
+
 function getServiceStatus() {
 	return L.resolveDefault(callServiceList('homeproxy'), {}).then((res) => {
 		let isRunning = false;
@@ -54,20 +107,62 @@ function getServiceStatus() {
 	});
 }
 
-function renderStatus(isRunning, version, currentNode) {
-	let spanTemp = '<em><span style="color:%s"><strong>%s (sing-box v%s) %s</strong></span></em>';
-	let renderHTML;
-	let statusColor = isRunning ? 'green' : 'red';
-	let nodeColor = '#1e90ff';
-	if (isRunning)
-		renderHTML = spanTemp.format(statusColor, _('HomeProxy'), version, _('RUNNING'));
-	else
-		renderHTML = spanTemp.format(statusColor, _('HomeProxy'), version, _('NOT RUNNING'));
+function updateCoreStatus(isRunning, currentNode) {
+	let status = document.getElementById('homeproxy_core_status');
+	if (!status)
+		return;
 
-	if (currentNode)
-		renderHTML += '<div><em><span style="color:%s"><strong>%s</strong></span></em></div>'.format(nodeColor, currentNode);
+	status.style.color = isRunning ? 'green' : 'red';
+	status.value = currentNode ? _('Running: %s').format(currentNode) : (isRunning ? _('Running') : _('Not Running'));
+}
 
-	return renderHTML;
+function parseControllerPort(externalController) {
+	let value = externalController || '127.0.0.1:9090';
+	let idx = value.lastIndexOf(':');
+	return (idx >= 0) ? value.substring(idx + 1) : '9090';
+}
+
+function getClashApiInfo() {
+	let port = parseControllerPort(uci.get('homeproxy', 'clash_api', 'external_controller')),
+	    secret = uci.get('homeproxy', 'clash_api', 'secret') || '';
+
+	return {
+		port,
+		secret,
+		baseUrl: 'http://' + window.location.hostname + ':' + port
+	};
+}
+
+function updateDashboard() {
+	let api = getClashApiInfo(),
+	    headers = {};
+
+	if (api.secret)
+		headers.Authorization = 'Bearer ' + api.secret;
+
+	return fetch(api.baseUrl + '/upgrade/ui', {
+		method: 'POST',
+		headers
+	}).then((res) => {
+		if (!res.ok)
+			throw new Error(_('Update failed.'));
+		ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
+	}).catch((err) => {
+		ui.addNotification(null, E('p', err.message || err), 'danger');
+	});
+}
+
+function openDashboard() {
+	let api = getClashApiInfo();
+	let query = new URLSearchParams({
+		host: window.location.hostname,
+		hostname: window.location.hostname,
+		port: api.port,
+		secret: api.secret
+	}).toString();
+
+	window.open(api.baseUrl + '/ui/?' + query, '_blank');
+	return Promise.resolve();
 }
 
 let stubValidator = {
@@ -88,7 +183,8 @@ return view.extend({
 		return Promise.all([
 			uci.load('homeproxy'),
 			hp.getBuiltinFeatures(),
-			network.getHostHints()
+			network.getHostHints(),
+			L.resolveDefault(callPackageVersion(), {})
 		]);
 	},
 
@@ -96,7 +192,9 @@ return view.extend({
 		let m, s, o, ss, so;
 
 		let features = data[1],
-		    hosts = data[2]?.hosts;
+		    hosts = data[2]?.hosts,
+		    packageVersion = data[3]?.version || '-',
+		    routingMode = uci.get(data[0], 'config', 'routing_mode');
 
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
@@ -130,13 +228,57 @@ return view.extend({
 						current_label = _('URLTest: %s').format(nodeName);
 					}
 
-					let view = document.getElementById('service_status');
-					view.innerHTML = renderStatus(isRunning, features.version, current_label);
+					updateCoreStatus(isRunning, current_label);
 					});
 				});
 
-			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
-				E('p', { id: 'service_status' }, _('Collecting data...'))
+			let actions = [
+				E('button', {
+					'class': 'btn cbi-button cbi-button-action',
+					'click': ui.createHandlerFn(this, () => callRCInit('homeproxy', 'reload'))
+				}, [ _('Reload Service') ]),
+				E('button', {
+					'class': 'btn cbi-button cbi-button-negative',
+					'click': ui.createHandlerFn(this, () => callRCInit('homeproxy', 'restart'))
+				}, [ _('Restart Service') ])
+			];
+
+			if (routingMode === 'custom') {
+				actions.push(
+					E('button', {
+						'class': 'btn cbi-button cbi-button-positive',
+						'click': ui.createHandlerFn(this, updateDashboard)
+					}, [ _('Update Panel') ]),
+					E('button', {
+						'class': 'btn cbi-button',
+						'click': ui.createHandlerFn(this, openDashboard)
+					}, [ _('Open Panel') ])
+				);
+			}
+
+			return E('div', { class: 'cbi-section', id: 'homeproxy_status_panel' }, [
+				E('style', [ statusCss ]),
+				E('h3', _('Status')),
+				E('div', { class: 'homeproxy-status-grid' }, [
+					E('div', {}, [
+						E('div', { class: 'homeproxy-status-label' }, _('Plugin Version')),
+						E('input', { class: 'cbi-input-text', readonly: '', value: packageVersion })
+					]),
+					E('div', {}, [
+						E('div', { class: 'homeproxy-status-label' }, _('Core Version')),
+						E('input', { class: 'cbi-input-text', readonly: '', value: features.version || '-' })
+					]),
+					E('div', {}, [
+						E('div', { class: 'homeproxy-status-label' }, _('Core Status')),
+						E('input', {
+							id: 'homeproxy_core_status',
+							class: 'cbi-input-text homeproxy-core-status',
+							readonly: '',
+							value: _('Collecting data...')
+						})
+					]),
+					E('div', { class: 'homeproxy-status-actions' }, actions)
+				])
 			]);
 		}
 
@@ -1411,6 +1553,61 @@ return view.extend({
 		so.depends('type', 'remote');
 		/* Rule set settings end */
 
+		/* NTP settings start */
+		s.tab('ntp', _('NTP Settings'));
+		o = s.taboption('ntp', form.SectionValue, '_ntp', form.NamedSection, 'ntp', 'homeproxy');
+		o.depends('routing_mode', 'custom');
+		ss = o.subsection;
+
+		so = ss.option(form.Flag, 'enabled', _('Enable NTP'));
+		so.default = so.disabled;
+		so.rmempty = false;
+
+		so = ss.option(form.Value, 'server', _('NTP server address'));
+		so.placeholder = 'time.apple.com';
+		so.depends('enabled', '1');
+
+		so = ss.option(form.Value, 'server_port', _('NTP server port'));
+		so.placeholder = '123';
+		so.datatype = 'port';
+		so.depends('enabled', '1');
+
+		so = ss.option(form.Value, 'interval', _('NTP time synchronization interval'));
+		so.placeholder = '30m';
+		so.depends('enabled', '1');
+		/* NTP settings end */
+
+		/* Cache settings start */
+		s.tab('cache', _('Cache Settings'));
+		o = s.taboption('cache', form.SectionValue, '_cache', form.NamedSection, 'cache', 'homeproxy');
+		o.depends('routing_mode', 'custom');
+		ss = o.subsection;
+
+		so = ss.option(form.ListValue, 'enabled', _('Enable cache'));
+		so.value('1', _('Enable'));
+		so.value('0', _('Disable'));
+		so.default = '1';
+		so.rmempty = false;
+
+		so = ss.option(form.Value, 'path', _('Cache file path'));
+		so.placeholder = '/var/run/homeproxy/cache.db';
+		so.depends('enabled', '1');
+
+		so = ss.option(form.ListValue, 'store_fakeip', _('Cache FakeIP'));
+		so.value('1', _('Enable'));
+		so.value('0', _('Disable'));
+		so.default = '1';
+		so.rmempty = false;
+		so.depends('enabled', '1');
+
+		so = ss.option(form.ListValue, 'store_rdrc', _('Cache RDRC'));
+		so.value('1', _('Enable'));
+		so.value('0', _('Disable'));
+		so.default = '1';
+		so.rmempty = false;
+		so.depends('enabled', '1');
+		/* Cache settings end */
+
 		/* ACL settings start */
 		s.tab('control', _('Access Control'));
 
@@ -1558,6 +1755,51 @@ return view.extend({
 		}
 		/* Direct domain list end */
 		/* ACL settings end */
+
+		/* Panel settings start */
+		s.tab('panel', _('Panel Settings'));
+		o = s.taboption('panel', form.SectionValue, '_clash_api', form.NamedSection, 'clash_api', 'homeproxy');
+		o.depends('routing_mode', 'custom');
+		ss = o.subsection;
+
+		so = ss.option(form.Value, 'external_ui', _('UI path'));
+		so.placeholder = '/etc/homeproxy/run/ui';
+		so.default = '/etc/homeproxy/run/ui';
+
+		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard');
+		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
+		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
+		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
+		so.value('', _('Disable'));
+		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+
+		so = ss.option(form.ListValue, 'external_ui_download_detour', _('UI download detour'));
+		so.value('', _('Default'));
+		so.value('direct-out', _('Direct'));
+		uci.sections(data[0], 'routing_node', (res) => {
+			if (res.enabled === '1')
+				so.value(res['.name'], res.label);
+		});
+		so.default = 'direct-out';
+
+		so = ss.option(form.Value, 'external_controller', _('API listen'));
+		so.placeholder = '0.0.0.0:9095';
+		so.default = '0.0.0.0:9095';
+		so.datatype = 'ipaddrport(1)';
+		so.rmempty = false;
+
+		so = ss.option(form.Value, 'secret', _('API password'));
+		so.password = true;
+
+		so = ss.option(form.ListValue, 'default_mode', _('Default mode'));
+		so.value('rule', _('Rule'));
+		so.value('global', _('Global'));
+		so.value('direct', _('Direct'));
+		so.default = 'rule';
+		so.rmempty = false;
+		/* Panel settings end */
 
 		return m.render();
 	}

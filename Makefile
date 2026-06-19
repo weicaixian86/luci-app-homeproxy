@@ -4,7 +4,7 @@
 
 include $(TOPDIR)/rules.mk
 
-LUCI_TITLE:=The modern ImmortalWrt proxy platform for ARM64/AMD64
+LUCI_TITLE:=Sing-box proxy management platform for OpenWrt
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	+sing-box \

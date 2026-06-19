@@ -1020,6 +1020,10 @@ const methods = {
 			const filestat = lstat(`${RUN_DIR}/${req.args?.type}.log`);
 			if (filestat)
 				writefile(`${RUN_DIR}/${req.args?.type}.log`, '');
+			else {
+				system(`mkdir -p ${RUN_DIR}`);
+				writefile(`${RUN_DIR}/${req.args?.type}.log`, '');
+			}
 			return { result: true };
 		}
 	},
@@ -1098,6 +1102,27 @@ const methods = {
 			features.hp_has_tun = hasKernelModule('tun.ko') || access('/etc/modules.d/30-tun');
 
 			return features;
+		}
+	},
+
+	package_get_version: {
+		call: function() {
+			let version = '-';
+
+			const fd = popen('/usr/bin/opkg status luci-app-homeproxy 2>/dev/null');
+			if (fd) {
+				for (let line = fd.read('line'); length(line); line = fd.read('line')) {
+					let matched = match(trim(line), /^Version: (.*)/);
+					if (matched) {
+						version = matched[1];
+						break;
+					}
+				}
+
+				fd.close();
+			}
+
+			return { version };
 		}
 	},
 

@@ -506,12 +506,233 @@ function parse_mihomo_proxy(proxy) {
 	return config;
 }
 
+function apply_sing_box_tls(config, outbound) {
+	const tls = outbound.tls;
+	if (type(tls) !== 'object')
+		return;
+
+	config.tls = (tls.enabled === false) ? '0' : '1';
+	config.tls_sni = tls.server_name;
+	config.tls_insecure = bool_to_uci(tls.insecure);
+	config.tls_alpn = normalize_alpn(tls.alpn);
+	config.tls_utls = sing_features.with_utls ? tls.utls?.fingerprint : null;
+	config.tls_reality = tls.reality ? '1' : '0';
+	config.tls_reality_public_key = tls.reality?.public_key;
+	config.tls_reality_short_id = tls.reality?.short_id;
+}
+
+function apply_sing_box_transport(config, outbound) {
+	const transport = outbound.transport;
+	if (type(transport) !== 'object')
+		return;
+
+	config.transport = transport.type;
+	switch (transport.type) {
+	case 'ws':
+		config.ws_path = transport.path;
+		config.ws_host = get_header_host(transport.headers);
+		config.websocket_early_data = to_string(transport.max_early_data);
+		config.websocket_early_data_header = transport.early_data_header_name;
+		break;
+	case 'grpc':
+		config.grpc_servicename = transport.service_name;
+		break;
+	case 'http':
+		config.http_path = normalize_first(transport.path);
+		config.http_host = normalize_host_list(get_header_host(transport.headers) || transport.host);
+		config.http_method = transport.method;
+		break;
+	case 'httpupgrade':
+		config.httpupgrade_host = get_header_host(transport.headers) || transport.host;
+		config.http_path = normalize_first(transport.path);
+		break;
+	}
+}
+
+function parse_sing_box_outbound(outbound) {
+	if (type(outbound) !== 'object')
+		return null;
+
+	let config;
+	const port = to_string(outbound.server_port || outbound.port);
+
+	switch (outbound.type) {
+	case 'anytls':
+		config = {
+			label: outbound.tag,
+			type: 'anytls',
+			address: outbound.server,
+			port,
+			password: outbound.password,
+			tls: '1'
+		};
+		break;
+	case 'vmess':
+		config = {
+			label: outbound.tag,
+			type: 'vmess',
+			address: outbound.server,
+			port,
+			uuid: outbound.uuid,
+			vmess_alterid: to_string(outbound.alter_id),
+			vmess_encrypt: outbound.security,
+			packet_encoding: outbound.packet_encoding
+		};
+		break;
+	case 'vless':
+		config = {
+			label: outbound.tag,
+			type: 'vless',
+			address: outbound.server,
+			port,
+			uuid: outbound.uuid,
+			vless_flow: outbound.flow,
+			packet_encoding: outbound.packet_encoding
+		};
+		break;
+	case 'trojan':
+		config = {
+			label: outbound.tag,
+			type: 'trojan',
+			address: outbound.server,
+			port,
+			password: outbound.password,
+			tls: '1'
+		};
+		break;
+	case 'shadowsocks':
+		config = {
+			label: outbound.tag,
+			type: 'shadowsocks',
+			address: outbound.server,
+			port,
+			shadowsocks_encrypt_method: outbound.method,
+			password: outbound.password,
+			shadowsocks_plugin: outbound.plugin,
+			shadowsocks_plugin_opts: outbound.plugin_opts
+		};
+		break;
+	case 'hysteria':
+		config = {
+			label: outbound.tag,
+			type: 'hysteria',
+			address: outbound.server,
+			port,
+			hysteria_hopping_port: outbound.server_ports,
+			hysteria_auth_type: outbound.auth_str ? 'string' : (outbound.auth ? 'base64' : null),
+			hysteria_auth_payload: outbound.auth_str || outbound.auth,
+			hysteria_obfs_password: outbound.obfs,
+			hysteria_down_mbps: to_string(outbound.down_mbps),
+			hysteria_up_mbps: to_string(outbound.up_mbps),
+			tls: '1'
+		};
+		break;
+	case 'hysteria2':
+		config = {
+			label: outbound.tag,
+			type: 'hysteria2',
+			address: outbound.server,
+			port,
+			password: outbound.password,
+			hysteria_hopping_port: outbound.server_ports,
+			hysteria_down_mbps: to_string(outbound.down_mbps),
+			hysteria_up_mbps: to_string(outbound.up_mbps),
+			hysteria_obfs_type: outbound.obfs?.type,
+			hysteria_obfs_password: outbound.obfs?.password,
+			tls: '1'
+		};
+		break;
+	case 'tuic':
+		config = {
+			label: outbound.tag,
+			type: 'tuic',
+			address: outbound.server,
+			port,
+			uuid: outbound.uuid,
+			password: outbound.password,
+			tuic_congestion_control: outbound.congestion_control,
+			tuic_udp_relay_mode: outbound.udp_relay_mode,
+			tuic_udp_over_stream: bool_to_uci(outbound.udp_over_stream),
+			tuic_enable_zero_rtt: bool_to_uci(outbound.zero_rtt_handshake),
+			tuic_heartbeat: to_string(outbound.heartbeat),
+			tls: '1'
+		};
+		break;
+	case 'socks':
+		config = {
+			label: outbound.tag,
+			type: 'socks',
+			address: outbound.server,
+			port,
+			username: outbound.username,
+			password: outbound.password,
+			socks_version: outbound.version || '5'
+		};
+		break;
+	case 'http':
+		config = {
+			label: outbound.tag,
+			type: 'http',
+			address: outbound.server,
+			port,
+			username: outbound.username,
+			password: outbound.password
+		};
+		break;
+	case 'ssh':
+		config = {
+			label: outbound.tag,
+			type: 'ssh',
+			address: outbound.server,
+			port,
+			username: outbound.user || outbound.username,
+			password: outbound.password,
+			ssh_client_version: outbound.client_version,
+			ssh_host_key: normalize_list(outbound.host_key),
+			ssh_host_key_algo: normalize_list(outbound.host_key_algorithms),
+			ssh_priv_key: normalize_list(outbound.private_key),
+			ssh_priv_key_pp: outbound.private_key_passphrase
+		};
+		break;
+	case 'wireguard':
+		config = {
+			label: outbound.tag,
+			type: 'wireguard',
+			address: outbound.server,
+			port,
+			wireguard_local_address: normalize_list(outbound.local_address || outbound.address),
+			wireguard_private_key: outbound.private_key,
+			wireguard_peer_public_key: outbound.peer_public_key,
+			wireguard_pre_shared_key: outbound.pre_shared_key,
+			wireguard_reserved: normalize_list(outbound.reserved),
+			wireguard_mtu: to_string(outbound.mtu),
+			wireguard_persistent_keepalive_interval: to_string(outbound.persistent_keepalive_interval)
+		};
+		break;
+	default:
+		return null;
+	}
+
+	if (!isEmpty(config)) {
+		apply_sing_box_tls(config, outbound);
+		apply_sing_box_transport(config, outbound);
+		config.tcp_fast_open = bool_to_uci(outbound.tcp_fast_open);
+		config.tcp_multi_path = bool_to_uci(outbound.tcp_multi_path);
+		config.udp_fragment = bool_to_uci(outbound.udp_fragment);
+	}
+
+	return config;
+}
+
 function parse_uri(uri) {
 	let config, url, params;
 
 	if (type(uri) === 'object') {
 		if (uri.nodetype === 'mihomo') {
 			return parse_mihomo_proxy(uri);
+		}
+		if (uri.nodetype === 'sing-box') {
+			return parse_sing_box_outbound(uri);
 		}
 		if (uri.nodetype === 'sip008') {
 			/* https://shadowsocks.org/guide/sip008.html */
@@ -913,14 +1134,127 @@ function parse_uri(uri) {
 	return config;
 }
 
+function split_top_level(str, separator) {
+	let items = [], current = '', quote = null, depth = 0;
+
+	for (let i = 0; i < length(str); i++) {
+		const ch = substr(str, i, 1);
+
+		if (quote) {
+			current += ch;
+			if (ch === quote)
+				quote = null;
+			continue;
+		}
+
+		if (ch === '"' || ch === "'") {
+			quote = ch;
+			current += ch;
+			continue;
+		}
+
+		if (ch === '[' || ch === '{')
+			depth++;
+		else if (ch === ']' || ch === '}')
+			depth--;
+
+		if (ch === separator && depth === 0) {
+			push(items, trim(current));
+			current = '';
+		} else {
+			current += ch;
+		}
+	}
+
+	if (length(trim(current)))
+		push(items, trim(current));
+
+	return items;
+}
+
+function strip_yaml_quotes(value) {
+	value = trim(value);
+	if ((match(value, /^".*"$/) || match(value, /^'.*'$/)) && length(value) >= 2)
+		return substr(value, 1, length(value) - 2);
+
+	return value;
+}
+
+function parse_yaml_value(value) {
+	value = trim(value || '');
+	if (value === '' || value === 'null' || value === '~')
+		return null;
+
+	if (match(value, /^\[.*\]$/)) {
+		let arr = [];
+		const inner = substr(value, 1, length(value) - 2);
+		for (let item in split_top_level(inner, ','))
+			push(arr, parse_yaml_value(item));
+		return arr;
+	}
+
+	if (match(value, /^\{.*\}$/))
+		return parse_yaml_inline_object(value);
+
+	value = strip_yaml_quotes(value);
+	if (value === 'true')
+		return true;
+	if (value === 'false')
+		return false;
+
+	return value;
+}
+
+function parse_yaml_key_value(line) {
+	const m = match(line, /^([^:]+):\s*(.*)$/);
+	if (!m)
+		return null;
+
+	return {
+		key: strip_yaml_quotes(trim(m[1])),
+		value: m[2]
+	};
+}
+
+function parse_yaml_inline_object(text) {
+	let obj = {};
+	text = trim(text);
+	text = substr(text, 1, length(text) - 2);
+
+	for (let part in split_top_level(text, ',')) {
+		const kv = parse_yaml_key_value(part);
+		if (kv)
+			obj[kv.key] = parse_yaml_value(kv.value);
+	}
+
+	return obj;
+}
+
+function yaml_indent(line) {
+	const m = match(line, /^(\s*)/);
+	return m ? length(m[1]) : 0;
+}
+
+function stack_pop(stack) {
+	let next = [];
+	for (let i = 0; i < length(stack) - 1; i++)
+		push(next, stack[i]);
+	return next;
+}
+
 function parse_mihomo_yaml(text) {
 	if (isEmpty(text) || type(text) !== 'string')
 		return null;
 
-	let in_proxies = false;
-	let proxies = [];
-	for (let line in split(text, '\n')) {
-		line = trim(line);
+	let in_proxies = false, proxies = [], current = null, stack = [];
+
+	for (let raw_line in split(text, '\n')) {
+		raw_line = replace(raw_line, /\r$/, '');
+		let line = trim(raw_line);
+
+		if (!line || match(line, /^#/))
+			continue;
+
 		if (line === 'proxies:' || match(line, /^proxies:\s*$/)) {
 			in_proxies = true;
 			continue;
@@ -928,27 +1262,53 @@ function parse_mihomo_yaml(text) {
 		if (!in_proxies)
 			continue;
 
-		if (!line)
-			continue;
-
-		if (match(line, /^\w+:\s*$/) && line !== '-')
+		if (yaml_indent(raw_line) === 0 && match(line, /^[A-Za-z0-9_-]+:\s*$/))
 			break;
 
-		const m = match(line, /^-\s*(\{.*\})\s*$/);
-		if (!m)
+		if (match(line, /^-\s*/)) {
+			if (current)
+				push(proxies, current);
+
+			current = {};
+			stack = [{ indent: yaml_indent(raw_line), obj: current }];
+			line = replace(line, /^-\s*/, '');
+
+			if (!line)
+				continue;
+
+			if (match(line, /^\{.*\}$/)) {
+				current = parse_yaml_inline_object(line);
+				current.nodetype = 'mihomo';
+				stack = [{ indent: yaml_indent(raw_line), obj: current }];
+				continue;
+			}
+		}
+
+		if (!current)
 			continue;
 
-		let obj;
-		try {
-			obj = json(m[1]);
-		} catch(e) {
-			obj = null;
-		}
-		if (obj) {
-			obj.nodetype = 'mihomo';
-			push(proxies, obj);
+		const kv = parse_yaml_key_value(line);
+		if (!kv)
+			continue;
+
+		const indent = yaml_indent(raw_line);
+		while (length(stack) > 1 && indent <= stack[length(stack) - 1].indent)
+			stack = stack_pop(stack);
+
+		const parent = stack[length(stack) - 1].obj;
+		if (trim(kv.value) === '') {
+			parent[kv.key] = {};
+			push(stack, { indent, obj: parent[kv.key] });
+		} else {
+			parent[kv.key] = parse_yaml_value(kv.value);
 		}
 	}
+
+	if (current)
+		push(proxies, current);
+
+	for (let proxy in proxies)
+		proxy.nodetype = 'mihomo';
 
 	return length(proxies) ? proxies : null;
 }
@@ -972,11 +1332,28 @@ function main() {
 
 		let nodes;
 		try {
-			nodes = json(res).servers || json(res);
+			const parsed = json(res);
+			if (type(parsed?.servers) === 'array') {
+				nodes = parsed.servers;
 
-			/* Shadowsocks SIP008 format */
-			if (nodes[0].server && nodes[0].method)
-				map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
+				/* Shadowsocks SIP008 format */
+				if (nodes[0].server && nodes[0].method)
+					map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
+			} else if (type(parsed?.proxies) === 'array') {
+				nodes = parsed.proxies;
+				map(nodes, (_, i) => nodes[i].nodetype = 'mihomo');
+			} else if (type(parsed?.outbounds) === 'array') {
+				nodes = parsed.outbounds;
+				map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
+			} else if (type(parsed) === 'array') {
+				nodes = parsed;
+				if (nodes[0]?.server && nodes[0]?.method)
+					map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
+				else if (nodes[0]?.type && nodes[0]?.server)
+					map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
+			} else {
+				nodes = [];
+			}
 		} catch(e) {
 			nodes = parse_mihomo_yaml(res);
 			if (isEmpty(nodes)) {

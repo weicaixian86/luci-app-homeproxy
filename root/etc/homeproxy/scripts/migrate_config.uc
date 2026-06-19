@@ -25,6 +25,9 @@ const uciinfra = 'infra',
       ucirouting = 'routing',
       uciroutingnode = 'routing_node',
       uciroutingrule = 'routing_rule',
+      uciclashapi = 'clash_api',
+      ucintp = 'ntp',
+      ucicache = 'cache',
       uciserver = 'server';
 
 /* chinadns-ng has been removed */
@@ -64,6 +67,61 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 	if (cfg.type === 'direct' && !isEmpty(cfg.proxy_protocol))
 		uci.delete(uciconfig, cfg['.name'], 'proxy_protocol');
 });
+
+/* clash api panel options were introduced */
+if (!uci.get(uciconfig, uciclashapi))
+	uci.set(uciconfig, uciclashapi, uciconfig);
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui')))
+	uci.set(uciconfig, uciclashapi, 'external_ui', '/etc/homeproxy/run/ui');
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_url')))
+	uci.set(uciconfig, uciclashapi, 'external_ui_download_url', 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip');
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')))
+	uci.set(uciconfig, uciclashapi, 'external_ui_download_detour', 'direct-out');
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_controller')))
+	uci.set(uciconfig, uciclashapi, 'external_controller', '0.0.0.0:9095');
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'default_mode')))
+	uci.set(uciconfig, uciclashapi, 'default_mode', 'rule');
+
+/* ntp options were moved into a dedicated section */
+if (!uci.get(uciconfig, ucintp))
+	uci.set(uciconfig, ucintp, uciconfig);
+
+const legacy_ntp_server = uci.get(uciconfig, uciinfra, 'ntp_server');
+if (isEmpty(uci.get(uciconfig, ucintp, 'enabled')))
+	uci.set(uciconfig, ucintp, 'enabled', !isEmpty(legacy_ntp_server) ? '1' : '0');
+
+if (isEmpty(uci.get(uciconfig, ucintp, 'server')))
+	uci.set(uciconfig, ucintp, 'server', !isEmpty(legacy_ntp_server) ? legacy_ntp_server : 'time.apple.com');
+
+if (isEmpty(uci.get(uciconfig, ucintp, 'server_port')))
+	uci.set(uciconfig, ucintp, 'server_port', '123');
+
+if (isEmpty(uci.get(uciconfig, ucintp, 'interval')))
+	uci.set(uciconfig, ucintp, 'interval', '30m');
+
+/* cache file options were moved into a dedicated section */
+if (!uci.get(uciconfig, ucicache))
+	uci.set(uciconfig, ucicache, uciconfig);
+
+if (isEmpty(uci.get(uciconfig, ucicache, 'enabled')))
+	uci.set(uciconfig, ucicache, 'enabled', '1');
+
+if (isEmpty(uci.get(uciconfig, ucicache, 'path')))
+	uci.set(uciconfig, ucicache, 'path', '/var/run/homeproxy/cache.db');
+
+if (isEmpty(uci.get(uciconfig, ucicache, 'store_fakeip')))
+	uci.set(uciconfig, ucicache, 'store_fakeip', '1');
+
+if (isEmpty(uci.get(uciconfig, ucicache, 'store_rdrc')))
+	uci.set(uciconfig, ucicache, 'store_rdrc', isEmpty(uci.get(uciconfig, ucidns, 'cache_file_store_rdrc')) ? '1' : uci.get(uciconfig, ucidns, 'cache_file_store_rdrc'));
+
+if (isEmpty(uci.get(uciconfig, ucicache, 'rdrc_timeout')) && !isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
+	uci.set(uciconfig, ucicache, 'rdrc_timeout', uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout'));
 
 /* create migration section */
 if (!uci.get(uciconfig, ucimigration))

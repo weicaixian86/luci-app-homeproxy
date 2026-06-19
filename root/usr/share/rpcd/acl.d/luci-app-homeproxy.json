@@ -9,6 +9,7 @@
 				"/var/run/homeproxy/sing-box-s.log": [ "read" ]
 			},
 			"ubus": {
+				"rc": [ "*" ],
 				"service": [ "list" ],
 				"luci.homeproxy": [ "*" ]
 			},

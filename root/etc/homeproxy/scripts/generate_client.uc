@@ -29,7 +29,10 @@ uci.load(uciconfig);
 
 const uciinfra = 'infra',
       ucimain = 'config',
-      ucicontrol = 'control';
+      ucicontrol = 'control',
+      uciclashapi = 'clash_api',
+      ucintp = 'ntp',
+      ucicache = 'cache';
 
 const ucidnssetting = 'dns',
       ucidnsserver = 'dns_server',
@@ -58,14 +61,24 @@ if (!wan_dns)
 
 const dns_port = uci.get(uciconfig, uciinfra, 'dns_port') || '5333';
 
-const ntp_server = uci.get(uciconfig, uciinfra, 'ntp_server') || 'time.apple.com';
+let ntp_enabled = uci.get(uciconfig, ucintp, 'enabled'),
+    ntp_server = uci.get(uciconfig, ucintp, 'server'),
+    ntp_server_port = uci.get(uciconfig, ucintp, 'server_port'),
+    ntp_interval = uci.get(uciconfig, ucintp, 'interval');
+
+if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
+	ntp_server = uci.get(uciconfig, uciinfra, 'ntp_server');
+	ntp_enabled = !isEmpty(ntp_server) ? '1' : '0';
+}
 
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
-let main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
+let cache_file_enabled, cache_file_path, cache_file_store_fakeip,
+    cache_file_store_rdrc, cache_file_rdrc_timeout,
+    main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
     dns_default_server, dns_disable_cache, dns_disable_cache_expire, dns_independent_cache,
-    dns_client_subnet, cache_file_store_rdrc, cache_file_rdrc_timeout, direct_domain_list,
+    dns_client_subnet, direct_domain_list,
     proxy_domain_list;
 
 if (routing_mode !== 'custom') {
@@ -101,8 +114,6 @@ if (routing_mode !== 'custom') {
 	dns_disable_cache_expire = uci.get(uciconfig, ucidnssetting, 'disable_cache_expire');
 	dns_independent_cache = uci.get(uciconfig, ucidnssetting, 'independent_cache');
 	dns_client_subnet = uci.get(uciconfig, ucidnssetting, 'client_subnet');
-	cache_file_store_rdrc = uci.get(uciconfig, ucidnssetting, 'cache_file_store_rdrc'),
-	cache_file_rdrc_timeout = uci.get(uciconfig, ucidnssetting, 'cache_file_rdrc_timeout');
 
 	/* Routing settings */
 	default_outbound = uci.get(uciconfig, uciroutingsetting, 'default_outbound') || 'nil';
@@ -143,6 +154,27 @@ if (match(proxy_mode, /tun/)) {
 }
 
 const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
+
+cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
+cache_file_path = uci.get(uciconfig, ucicache, 'path');
+cache_file_store_fakeip = uci.get(uciconfig, ucicache, 'store_fakeip');
+cache_file_store_rdrc = uci.get(uciconfig, ucicache, 'store_rdrc');
+cache_file_rdrc_timeout = uci.get(uciconfig, ucicache, 'rdrc_timeout');
+
+if (isEmpty(cache_file_store_rdrc))
+	cache_file_store_rdrc = uci.get(uciconfig, ucidnssetting, 'cache_file_store_rdrc');
+
+if (isEmpty(cache_file_rdrc_timeout))
+	cache_file_rdrc_timeout = uci.get(uciconfig, ucidnssetting, 'cache_file_rdrc_timeout');
+
+let clash_api = {
+	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
+	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
+	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
+	external_ui_download_detour: uci.get(uciconfig, uciclashapi, 'external_ui_download_detour'),
+	secret: uci.get(uciconfig, uciclashapi, 'secret'),
+	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
+};
 /* UCI config end */
 
 /* Config helper start */
@@ -422,8 +454,10 @@ config.log = {
 /* NTP */
 if (!isEmpty(ntp_server))
 	config.ntp = {
-		enabled: true,
+		enabled: ntp_enabled === '1',
 		server: ntp_server,
+		server_port: strToInt(ntp_server_port),
+		interval: ntp_interval,
 		detour: 'direct-out',
 		domain_resolver: 'default-dns',
 	};
@@ -1014,12 +1048,11 @@ if (!isEmpty(main_node)) {
 /* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
 	config.experimental = {
-		clash_api: {
-			external_controller: '127.0.0.1:9090'
-		},
+		clash_api,
 		cache_file: {
-			enabled: true,
-			path: RUN_DIR + '/cache.db',
+			enabled: cache_file_enabled !== '0',
+			path: cache_file_path || (RUN_DIR + '/cache.db'),
+			store_fakeip: strToBool(cache_file_store_fakeip),
 			store_rdrc: strToBool(cache_file_store_rdrc),
 			rdrc_timeout: strToTime(cache_file_rdrc_timeout),
 		}

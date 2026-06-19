@@ -2692,7 +2692,7 @@ msgstr "可接受的最低 TLS 版本。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:113
 #: htdocs/luci-static/resources/view/homeproxy/server.js:130
 msgid "The modern ImmortalWrt proxy platform for ARM64/AMD64."
-msgstr "为 ARM64/AMD64 设计的现代 ImmortalWrt 代理平台。"
+msgstr "为Openwrt设计的Sing-box代理管理平台。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:477
 #: htdocs/luci-static/resources/view/homeproxy/server.js:875
@@ -3222,6 +3222,118 @@ msgstr "有效端口值"
 #: htdocs/luci-static/resources/homeproxy.js:328
 msgid "valid uuid"
 msgstr "有效 uuid"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Panel Settings"
+msgstr "面版设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "UI path"
+msgstr "UI 路径"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "UI download URL"
+msgstr "UI 下载地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "UI download detour"
+msgstr "UI 下载节点"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "API listen"
+msgstr "API 监听"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "API password"
+msgstr "API 密码"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Default mode"
+msgstr "默认模式"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "NTP Settings"
+msgstr "NTP 设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Enable NTP"
+msgstr "启用 NTP"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "NTP server address"
+msgstr "NTP 服务地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "NTP server port"
+msgstr "NTP 服务端口"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "NTP time synchronization interval"
+msgstr "NTP 时间同步间隔"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache Settings"
+msgstr "缓存设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Enable cache"
+msgstr "启用缓存"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache file path"
+msgstr "缓存文件路径"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache FakeIP"
+msgstr "缓存 FakeIP"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache RDRC"
+msgstr "缓存 RDRC"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Status"
+msgstr "状态"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Plugin Version"
+msgstr "插件版本"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Core Version"
+msgstr "核心版本"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Core Status"
+msgstr "核心状态"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Running"
+msgstr "运行中"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Running: %s"
+msgstr "运行中：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Not Running"
+msgstr "未运行"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Reload Service"
+msgstr "重载服务"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Restart Service"
+msgstr "重启服务"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Update Panel"
+msgstr "更新面版"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Open Panel"
+msgstr "打开面版"
 
 #~ msgid "Real Proxy"
 #~ msgstr "Real Proxy"
