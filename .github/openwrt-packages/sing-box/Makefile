@@ -6,10 +6,10 @@ PKG_NAME:=sing-box
 PKG_VERSION:=1.13.13
 PKG_RELEASE:=1
 
-PKG_SOURCE:=sing-box-$(PKG_VERSION)-linux-amd64.tar.gz
-PKG_SOURCE_URL:=https://github.com/SagerNet/sing-box/releases/download/v$(PKG_VERSION)
+PKG_SOURCE:=v$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/SagerNet/sing-box/archive/refs/tags
 PKG_HASH:=skip
-PKG_BUILD_DIR:=$(BUILD_DIR)/sing-box-$(PKG_VERSION)-linux-amd64
+PKG_BUILD_DIR:=$(BUILD_DIR)/sing-box-$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -22,10 +22,19 @@ define Package/sing-box
 endef
 
 define Package/sing-box/description
-  sing-box $(PKG_VERSION) binary package for x86_64 OpenWrt.
+  sing-box $(PKG_VERSION) source-built static package for x86_64 OpenWrt.
 endef
 
 define Build/Compile
+	cd $(PKG_BUILD_DIR) && \
+		GOTOOLCHAIN=local \
+		CGO_ENABLED=0 \
+		GOOS=linux \
+		GOARCH=amd64 \
+		go build -v -trimpath \
+			-tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,badlinkname,tfogo_checklinkname0" \
+			-ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(PKG_VERSION)' -s -w -buildid=" \
+			-o sing-box ./cmd/sing-box
 endef
 
 define Package/sing-box/install
