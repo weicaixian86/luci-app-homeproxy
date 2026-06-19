@@ -923,15 +923,6 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	}
 	o.modalonly = true;
 
-	/* Direct config */
-	o = s.option(form.ListValue, 'proxy_protocol', _('Proxy protocol'),
-		_('Write proxy protocol in the connection header.'));
-	o.value('', _('Disable'));
-	o.value('1', _('v1'));
-	o.value('2', _('v2'));
-	o.depends('type', 'direct');
-	o.modalonly = true;
-
 	/* AnyTLS config start */
 	o = s.option(form.Value, 'anytls_idle_session_check_interval', _('Idle session check interval'),
 		_('Interval checking for idle sessions, in seconds.'));

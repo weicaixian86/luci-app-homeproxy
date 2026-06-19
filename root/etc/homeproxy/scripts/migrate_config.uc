@@ -55,6 +55,16 @@ if (!uci.get(uciconfig, uciinfra, 'ntp_server'))
 if (!isEmpty(uci.get(uciconfig, uciinfra, 'tun_gso')))
 	uci.delete(uciconfig, uciinfra, 'tun_gso');
 
+/* endpoint_independent_nat was removed in sing-box 1.13 */
+if (!isEmpty(uci.get(uciconfig, ucirouting, 'endpoint_independent_nat')))
+	uci.delete(uciconfig, ucirouting, 'endpoint_independent_nat');
+
+/* direct outbound proxy_protocol was removed in sing-box 1.13 */
+uci.foreach(uciconfig, ucinode, (cfg) => {
+	if (cfg.type === 'direct' && !isEmpty(cfg.proxy_protocol))
+		uci.delete(uciconfig, cfg['.name'], 'proxy_protocol');
+});
+
 /* create migration section */
 if (!uci.get(uciconfig, ucimigration))
 	uci.set(uciconfig, ucimigration, uciconfig);

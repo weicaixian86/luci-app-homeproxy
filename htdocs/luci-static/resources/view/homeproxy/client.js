@@ -348,13 +348,6 @@ return view.extend({
 				desc.innerHTML = _('Less compatibility and sometimes better performance.');
 		}
 
-		so = ss.option(form.Flag, 'endpoint_independent_nat', _('Enable endpoint-independent NAT'),
-			_('Performance may degrade slightly, so it is not recommended to enable on when it is not needed.'));
-		so.default = so.enabled;
-		so.depends('tcpip_stack', 'mixed');
-		so.depends('tcpip_stack', 'gvisor');
-		so.rmempty = false;
-
 		so = ss.option(form.Value, 'udp_timeout', _('UDP NAT expiration time'),
 			_('In seconds.'));
 		so.datatype = 'uinteger';

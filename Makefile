@@ -9,8 +9,19 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	+sing-box \
 	+firewall4 \
+	+dnsmasq-full \
+	+ip-full \
+	+kmod-tun \
 	+kmod-nft-tproxy \
-	+ucode-mod-digest
+	+ca-bundle \
+	+curl \
+	+jsonfilter \
+	+flock \
+	+ucode-mod-digest \
+	+ucode-mod-fs \
+	+ucode-mod-math \
+	+ucode-mod-ubus \
+	+ucode-mod-uci
 
 PKG_NAME:=luci-app-homeproxy
 

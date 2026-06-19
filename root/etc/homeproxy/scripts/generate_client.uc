@@ -118,7 +118,7 @@ const mixed_port = uci.get(uciconfig, uciinfra, 'mixed_port') || '5330';
 
 let self_mark, redirect_port, tproxy_port, tun_name,
     tun_addr4, tun_addr6, tun_mtu, tcpip_stack,
-    endpoint_independent_nat, udp_timeout;
+    udp_timeout;
 
 if (routing_mode === 'custom')
 	udp_timeout = uci.get(uciconfig, uciroutingsetting, 'udp_timeout');
@@ -129,19 +129,17 @@ if (match(proxy_mode, /redirect/)) {
 	self_mark = uci.get(uciconfig, 'infra', 'self_mark') || '100';
 	redirect_port = uci.get(uciconfig, 'infra', 'redirect_port') || '5331';
 }
-if (match(proxy_mode), /tproxy/)
+if (match(proxy_mode, /tproxy/))
 	if (main_udp_node !== 'nil' || routing_mode === 'custom')
 		tproxy_port = uci.get(uciconfig, 'infra', 'tproxy_port') || '5332';
-if (match(proxy_mode), /tun/) {
+if (match(proxy_mode, /tun/)) {
 	tun_name = uci.get(uciconfig, uciinfra, 'tun_name') || 'singtun0';
 	tun_addr4 = uci.get(uciconfig, uciinfra, 'tun_addr4') || '172.19.0.1/30';
 	tun_addr6 = uci.get(uciconfig, uciinfra, 'tun_addr6') || 'fdfe:dcba:9876::1/126';
 	tun_mtu = uci.get(uciconfig, uciinfra, 'tun_mtu') || '9000';
 	tcpip_stack = 'system';
-	if (routing_mode === 'custom') {
+	if (routing_mode === 'custom')
 		tcpip_stack = uci.get(uciconfig, uciroutingsetting, 'tcpip_stack') || 'system';
-		endpoint_independent_nat = uci.get(uciconfig, uciroutingsetting, 'endpoint_independent_nat');
-	}
 }
 
 const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
@@ -241,8 +239,8 @@ function generate_outbound(node) {
 		tag: 'cfg-' + node['.name'] + '-out',
 		routing_mark: strToInt(self_mark),
 
-		server: node.address,
-		server_port: strToInt(node.port),
+		server: (node.type !== 'direct') ? node.address : null,
+		server_port: (node.type !== 'direct') ? strToInt(node.port) : null,
 		/* Hysteria(2) */
 		server_ports: node.hysteria_hopping_port,
 
@@ -250,10 +248,6 @@ function generate_outbound(node) {
 		user: (node.type === 'ssh') ? node.username : null,
 		password: node.password,
 
-		/* Direct */
-		override_address: node.override_address,
-		override_port: strToInt(node.override_port),
-		proxy_protocol: strToInt(node.proxy_protocol),
 		/* AnyTLS */
 		idle_session_check_interval: strToTime(node.anytls_idle_session_check_interval),
 		idle_session_timeout: strToTime(node.anytls_idle_session_timeout),
@@ -654,7 +648,6 @@ if (match(proxy_mode, /tun/))
 		address: (ipv6_support === '1') ? [tun_addr4, tun_addr6] : [tun_addr4],
 		mtu: strToInt(tun_mtu),
 		auto_route: false,
-		endpoint_independent_nat: strToBool(endpoint_independent_nat),
 		udp_timeout: strToTime(udp_timeout),
 		stack: tcpip_stack
 	});
@@ -979,15 +972,22 @@ if (!isEmpty(main_node)) {
 			rule_set_ip_cidr_accept_empty: strToBool(cfg.rule_set_ip_cidr_accept_empty),
 			invert: strToBool(cfg.invert),
 			action: cfg.action,
-			outbound: get_outbound(cfg.outbound),
-			override_address: cfg.override_address,
-			override_port: strToInt(cfg.override_port),
-			udp_disable_domain_unmapping: strToBool(cfg.udp_disable_domain_unmapping),
-			udp_connect: strToBool(cfg.udp_connect),
-			udp_timeout: strToTime(cfg.udp_timeout),
-			tls_fragment: strToBool(cfg.tls_fragment),
-			tls_fragment_fallback_delay: strToTime(cfg.tls_fragment_fallback_delay),
-			tls_record_fragment: strToBool(cfg.tls_record_fragment)
+			outbound: (cfg.action === 'route') ? get_outbound(cfg.outbound) : null,
+			server: (cfg.action === 'resolve') ? get_resolver(cfg.resolve_server) : null,
+			strategy: (cfg.action === 'resolve') ? cfg.resolve_strategy : null,
+			disable_cache: (cfg.action === 'resolve') ? strToBool(cfg.resolve_disable_cache) : null,
+			rewrite_ttl: (cfg.action === 'resolve') ? strToInt(cfg.resolve_rewrite_ttl) : null,
+			client_subnet: (cfg.action === 'resolve') ? cfg.resolve_client_subnet : null,
+			override_address: (cfg.action in ['route', 'route-options']) ? cfg.override_address : null,
+			override_port: (cfg.action in ['route', 'route-options']) ? strToInt(cfg.override_port) : null,
+			udp_disable_domain_unmapping: (cfg.action in ['route', 'route-options']) ? strToBool(cfg.udp_disable_domain_unmapping) : null,
+			udp_connect: (cfg.action in ['route', 'route-options']) ? strToBool(cfg.udp_connect) : null,
+			udp_timeout: (cfg.action in ['route', 'route-options']) ? strToTime(cfg.udp_timeout) : null,
+			tls_fragment: (cfg.action in ['route', 'route-options']) ? strToBool(cfg.tls_fragment) : null,
+			tls_fragment_fallback_delay: (cfg.action in ['route', 'route-options']) ? strToTime(cfg.tls_fragment_fallback_delay) : null,
+			tls_record_fragment: (cfg.action in ['route', 'route-options']) ? strToBool(cfg.tls_record_fragment) : null,
+			method: (cfg.action === 'reject') ? cfg.reject_method : null,
+			no_drop: (cfg.action === 'reject') ? strToBool(cfg.reject_no_drop) : null
 		});
 	});
 

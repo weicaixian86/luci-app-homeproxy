@@ -327,17 +327,14 @@ const methods = {
 					type: node_cfg.type,
 					tag: 'cfg-' + node_cfg['.name'] + '-out',
 
-					server: node_cfg.address,
-					server_port: strToInt(node_cfg.port),
+					server: (node_cfg.type !== 'direct') ? node_cfg.address : null,
+					server_port: (node_cfg.type !== 'direct') ? strToInt(node_cfg.port) : null,
 					server_ports: node_cfg.hysteria_hopping_port,
 
 					username: (node_cfg.type !== 'ssh') ? node_cfg.username : null,
 					user: (node_cfg.type === 'ssh') ? node_cfg.username : null,
 					password: node_cfg.password,
 
-					override_address: node_cfg.override_address,
-					override_port: strToInt(node_cfg.override_port),
-					proxy_protocol: strToInt(node_cfg.proxy_protocol),
 					idle_session_check_interval: strToTime(node_cfg.anytls_idle_session_check_interval),
 					idle_session_timeout: strToTime(node_cfg.anytls_idle_session_timeout),
 					min_idle_session: strToInt(node_cfg.anytls_min_idle_session),
