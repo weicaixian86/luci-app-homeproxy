@@ -23,16 +23,28 @@
 示例版本号：
 
 ```text
-v2.0.1
+2.0.1
 ```
 
-生成的安装包文件名：
+Release 只发布 1 个文件：
 
 ```text
-luci-app-homeproxy_v2.0.1.ipk
+homeproxy-2.0.1-x86_64.zip
 ```
 
+压缩包内包含 `luci-app-homeproxy_2.0.1.ipk`、`sing-box_1.13.13_x86_64.ipk`、`dependency.ipk` 和 `install.sh`。
+
 Release 正文仅包含编译时间和手动输入的 Release description。
+
+## 安装说明
+
+上传 zip 到 OpenWrt 后解压并执行：
+
+```sh
+unzip homeproxy-2.0.1-x86_64.zip
+cd homeproxy-2.0.1-x86_64
+sh install.sh
+```
 
 ## 维护工作流
 

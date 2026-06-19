@@ -28,8 +28,7 @@ check_list_update() {
 	local LOCK_FILE="$RUN_DIR/update_resources-$LIST_FILE.lock"
 	local GITHUB_TOKEN="$(uci -q get homeproxy.config.github_token)"
 
-	exec 200>"$LOCK_FILE"
-	if ! flock -n 200 &> "/dev/null"; then
+	if ! lock -n "$LOCK_FILE" 2>"/dev/null"; then
 		log "[$(to_upper "$LIST_FILE")] A task is already running."
 		return 2
 	fi

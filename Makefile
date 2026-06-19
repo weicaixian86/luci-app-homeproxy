@@ -16,7 +16,6 @@ LUCI_DEPENDS:= \
 	+ca-bundle \
 	+curl \
 	+jsonfilter \
-	+flock \
 	+ucode-mod-digest \
 	+ucode-mod-fs \
 	+ucode-mod-math \
