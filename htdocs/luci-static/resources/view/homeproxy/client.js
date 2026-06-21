@@ -1556,7 +1556,7 @@ return view.extend({
 		/* NTP settings start */
 		s.tab('ntp', _('NTP Settings'));
 		o = s.taboption('ntp', form.SectionValue, '_ntp', form.NamedSection, 'ntp', 'homeproxy');
-		o.depends('routing_mode', 'custom');
+		o.depends('homeproxy.config.routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.Flag, 'enabled', _('Enable NTP'));
@@ -1580,7 +1580,7 @@ return view.extend({
 		/* Cache settings start */
 		s.tab('cache', _('Cache Settings'));
 		o = s.taboption('cache', form.SectionValue, '_cache', form.NamedSection, 'cache', 'homeproxy');
-		o.depends('routing_mode', 'custom');
+		o.depends('homeproxy.config.routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.ListValue, 'enabled', _('Enable cache'));
@@ -1759,7 +1759,7 @@ return view.extend({
 		/* Panel settings start */
 		s.tab('panel', _('Panel Settings'));
 		o = s.taboption('panel', form.SectionValue, '_clash_api', form.NamedSection, 'clash_api', 'homeproxy');
-		o.depends('routing_mode', 'custom');
+		o.depends('homeproxy.config.routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.Value, 'external_ui', _('UI path'));
