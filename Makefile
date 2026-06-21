@@ -4,6 +4,10 @@
 
 include $(TOPDIR)/rules.mk
 
+PKG_NAME:=luci-app-homeproxy
+PKG_VERSION:=2.0.0
+PKG_RELEASE:=1
+
 LUCI_TITLE:=Sing-box proxy management platform for OpenWrt
 LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
@@ -21,8 +25,6 @@ LUCI_DEPENDS:= \
 	+ucode-mod-math \
 	+ucode-mod-ubus \
 	+ucode-mod-uci
-
-PKG_NAME:=luci-app-homeproxy
 
 define Package/luci-app-homeproxy/conffiles
 /etc/config/homeproxy

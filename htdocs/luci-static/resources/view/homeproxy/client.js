@@ -64,7 +64,7 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-status-grid {
 	display: grid;
-	grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr) minmax(120px, .65fr) repeat(4, max-content);
+	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 	gap: 14px;
 	align-items: end;
 }
@@ -83,16 +83,20 @@ const statusCss = `
 	font-weight: 700;
 }
 #homeproxy_status_panel .homeproxy-status-actions {
-	display: contents;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+	align-items: end;
+}
+#homeproxy_status_panel .homeproxy-status-actions .btn {
+	flex: 1 1 120px;
+	white-space: nowrap;
 }
 @media (max-width: 900px) {
 	#homeproxy_status_panel .homeproxy-status-grid {
-		grid-template-columns: 1fr 1fr;
+		grid-template-columns: 1fr;
 	}
 	#homeproxy_status_panel .homeproxy-status-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 10px;
 		grid-column: 1 / -1;
 	}
 }`;
@@ -1553,6 +1557,8 @@ return view.extend({
 		so.depends('type', 'remote');
 		/* Rule set settings end */
 
+		s.tab('control', _('Access Control'));
+
 		/* NTP settings start */
 		s.tab('ntp', _('NTP Settings'));
 		o = s.taboption('ntp', form.SectionValue, '_ntp', form.NamedSection, 'ntp', 'homeproxy');
@@ -1609,8 +1615,6 @@ return view.extend({
 		/* Cache settings end */
 
 		/* ACL settings start */
-		s.tab('control', _('Access Control'));
-
 		o = s.taboption('control', form.SectionValue, '_control', form.NamedSection, 'control', 'homeproxy');
 		ss = o.subsection;
 

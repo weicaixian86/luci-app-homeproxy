@@ -13,19 +13,8 @@ env:
 permissions: write-all
 
 jobs:
-  cleanup:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Delete old Releases and Workflows
-        uses: ophub/delete-releases-workflows@main
-        with:
-          gh_token: ${{secrets.GITHUB_TOKEN}}
-          delete_workflows: true
-          workflows_keep_day: 0
-
   scan:
     runs-on: ubuntu-22.04
-    needs: cleanup
     steps:
       - name: Checkout source tree
         uses: actions/checkout@main

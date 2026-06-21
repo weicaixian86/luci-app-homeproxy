@@ -1107,22 +1107,55 @@ const methods = {
 
 	package_get_version: {
 		call: function() {
-			let version = '-';
+			let version = trim(readfile('/usr/share/homeproxy/version') || '');
 
-			const fd = popen('/usr/bin/opkg status luci-app-homeproxy 2>/dev/null');
-			if (fd) {
-				for (let line = fd.read('line'); length(line); line = fd.read('line')) {
-					let matched = match(trim(line), /^Version: (.*)/);
-					if (matched) {
-						version = matched[1];
-						break;
+			if (!version) {
+				const status = readfile('/usr/lib/opkg/status');
+				let in_package = false;
+
+				if (status) {
+					const lines = split(status, '\n');
+					for (let i = 0; i < length(lines); i++) {
+						let line = lines[i];
+						line = trim(line);
+
+						if (!line) {
+							in_package = false;
+							continue;
+						}
+
+						if (line == 'Package: luci-app-homeproxy') {
+							in_package = true;
+							continue;
+						}
+
+						if (in_package) {
+							let matched = match(line, /^Version: (.*)/);
+							if (matched) {
+								version = matched[1];
+								break;
+							}
+						}
 					}
 				}
-
-				fd.close();
 			}
 
-			return { version };
+			if (!version) {
+				const fd = popen('/usr/bin/opkg status luci-app-homeproxy 2>/dev/null');
+				if (fd) {
+					for (let line = fd.read('line'); length(line); line = fd.read('line')) {
+						let matched = match(trim(line), /^Version: (.*)/);
+						if (matched) {
+							version = matched[1];
+							break;
+						}
+					}
+
+					fd.close();
+				}
+			}
+
+			return { version: version || '-' };
 		}
 	},
 
