@@ -91,7 +91,7 @@ msgstr "新增节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:428
 msgid "Add a routing node"
-msgstr "新增路由节点"
+msgstr "新增策略组"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:599
 msgid "Add a routing rule"
@@ -2147,7 +2147,7 @@ msgstr "路由选项"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:419
 msgid "Routing Nodes"
-msgstr "路由节点"
+msgstr "策略组"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:590
 msgid "Routing Rules"
@@ -2163,7 +2163,7 @@ msgstr "路由模式"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:428
 msgid "Routing node"
-msgstr "路由节点"
+msgstr "策略组"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:287
 msgid "Routing ports"

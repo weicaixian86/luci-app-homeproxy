@@ -7,6 +7,7 @@
 
 'use strict';
 
+import { popen } from 'fs';
 import { cursor } from 'uci';
 import { isEmpty, parseURL } from 'homeproxy';
 
@@ -14,6 +15,25 @@ const uci = cursor();
 
 const uciconfig = 'homeproxy';
 uci.load(uciconfig);
+
+function random_secret() {
+	const fd = popen('tr -dc "A-Za-z0-9" < /dev/urandom 2>/dev/null | head -c 16');
+	let random = '';
+	if (fd) {
+		random = trim(fd.read('all') || '');
+		fd.close();
+	}
+
+	if (isEmpty(random)) {
+		const fallback = popen('awk \'BEGIN{srand(); printf "%06d", int(rand() * 1000000)}\'');
+		if (fallback) {
+			random = trim(fallback.read('all') || '');
+			fallback.close();
+		}
+	}
+
+	return random;
+}
 
 const uciinfra = 'infra',
       ucimigration = 'migration',
@@ -83,6 +103,12 @@ if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')))
 
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_controller')))
 	uci.set(uciconfig, uciclashapi, 'external_controller', '0.0.0.0:9095');
+
+if (isEmpty(uci.get(uciconfig, uciclashapi, 'secret')) || uci.get(uciconfig, uciclashapi, 'secret') === 'homeproxy') {
+	let random = random_secret();
+	if (!isEmpty(random))
+		uci.set(uciconfig, uciclashapi, 'secret', random);
+}
 
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'default_mode')))
 	uci.set(uciconfig, uciclashapi, 'default_mode', 'rule');

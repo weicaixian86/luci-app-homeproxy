@@ -6,6 +6,14 @@
 uci -q set luci.main.lang='zh_cn'
 uci -q commit luci
 
+api_secret="$(uci -q get homeproxy.clash_api.secret)"
+if [ -z "$api_secret" ] || [ "$api_secret" = "homeproxy" ]; then
+	api_secret="$(tr -dc 'A-Za-z0-9' < /dev/urandom 2>"/dev/null" | head -c 16)"
+	[ -n "$api_secret" ] || api_secret="$(awk 'BEGIN{srand(); printf "%06d", int(rand() * 1000000)}')"
+	uci -q set homeproxy.clash_api.secret="$api_secret"
+	uci -q commit homeproxy
+fi
+
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>"/dev/null"
 
 mkdir -p /var/run/homeproxy

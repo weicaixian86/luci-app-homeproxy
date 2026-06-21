@@ -54,7 +54,7 @@ config homeproxy 'clash_api'
 	option external_ui_download_url 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip'
 	option external_ui_download_detour 'direct-out'
 	option external_controller '0.0.0.0:9095'
-	option secret ''
+	option secret 'homeproxy'
 	option default_mode 'rule'
 
 config homeproxy 'ntp'
