@@ -222,24 +222,77 @@ return baseclass.extend({
 		return label ? title + ' » ' + label : addtitle;
 	},
 
+	normalizeSectionId(label, prefix) {
+		let section_id = (label || '').trim().replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+		return (prefix || 'cfg') + '_' + (section_id || 'section');
+	},
+
 	renderSectionAdd(section, extra_class) {
 		let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
-			nameEl = el.querySelector('.cbi-section-create-name');
-		ui.addValidator(nameEl, 'uciname', true, (v) => {
-			let button = el.querySelector('.cbi-section-create > .cbi-button-add');
-			let uciconfig = section.uciconfig || section.map.config;
+			nameEl = el.querySelector('.cbi-section-create-name'),
+			button = el.querySelector('.cbi-section-create > .cbi-button-add'),
+			uciconfig = section.uciconfig || section.map.config,
+			sectiontype = section.sectiontype,
+			labelEl = E('input', {
+				'type': 'text',
+				'class': nameEl.className
+			}),
+			hintEl = E('div', { 'class': 'cbi-value-description' });
 
-			if (!v) {
+		nameEl.style.display = 'none';
+		nameEl.parentNode.insertBefore(labelEl, nameEl);
+		nameEl.parentNode.appendChild(hintEl);
+		button.disabled = true;
+
+		const syncSectionName = () => {
+			let label = (labelEl.value || '').trim();
+			hintEl.textContent = '';
+
+			if (!label) {
+				nameEl.value = '';
 				button.disabled = true;
-				return true;
-			} else if (uci.get(uciconfig, v)) {
-				button.disabled = true;
-				return _('Expecting: %s').format(_('unique UCI identifier'));
-			} else {
-				button.disabled = null;
-				return true;
+				return;
 			}
-		}, 'blur', 'keyup');
+
+			let duplicate = false;
+			uci.sections(uciconfig, sectiontype, (res) => {
+				if ((res.label || res['.name']) === label)
+					duplicate = true;
+			});
+
+			if (duplicate) {
+				nameEl.value = '';
+				button.disabled = true;
+				hintEl.textContent = _('Expecting: %s').format(_('unique value'));
+				return;
+			}
+
+			let normalized = (label || '').trim().replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '') || 'section',
+			    section_id = (sectiontype || 'cfg') + '_' + normalized,
+			    suffix = 1;
+			while (uci.get(uciconfig, section_id))
+				section_id = (sectiontype || 'cfg') + '_' + normalized + '_' + suffix++;
+
+			nameEl.value = section_id;
+			nameEl.dataset.sectionId = section_id;
+			nameEl.dataset.sectionLabel = label;
+			button.disabled = null;
+		};
+
+		labelEl.addEventListener('input', syncSectionName);
+		labelEl.addEventListener('blur', syncSectionName);
+
+		button.addEventListener('click', () => {
+			syncSectionName();
+
+			let label = nameEl.dataset.sectionLabel,
+			    section_id = nameEl.dataset.sectionId;
+
+			window.setTimeout(() => {
+				if (label && section_id && uci.get(uciconfig, section_id))
+					uci.set(uciconfig, section_id, 'label', label);
+			}, 0);
+		});
 
 		return el;
 	},

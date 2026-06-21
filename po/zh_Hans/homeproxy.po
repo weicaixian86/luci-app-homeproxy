@@ -2188,6 +2188,33 @@ msgstr "规则集"
 msgid "Rule set IP CIDR as source IP"
 msgstr "规则集 IP CIDR 作为源 IP"
 
+msgid "Tag"
+msgstr "标签"
+
+msgid "Tag used in sing-box rule sets. For example: <code>geosite-cn</code>."
+msgstr "用于 sing-box 规则集的标签。例如：<code>geosite-cn</code>。"
+
+msgid "valid tag"
+msgstr "有效标签"
+
+msgid "Manual select"
+msgstr "手动选择"
+
+msgid "Subscriptions"
+msgstr "订阅"
+
+msgid "Custom nodes"
+msgstr "自选节点"
+
+msgid "List of custom nodes."
+msgstr "自选节点列表。"
+
+msgid "Subscription nodes"
+msgstr "订阅节点"
+
+msgid "List of nodes from subscriptions."
+msgstr "订阅节点列表。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1376
 msgid "Rule set URL"
 msgstr "规则集 URL"

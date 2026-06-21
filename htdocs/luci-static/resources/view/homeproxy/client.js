@@ -166,6 +166,92 @@ function openDashboard() {
 	return Promise.resolve();
 }
 
+function normalizeRuleSetSectionId(tag) {
+	return 'ruleset_' + tag.replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
+}
+
+function renderRuleSetAdd(section, extra_class) {
+	let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
+	    nameEl = el.querySelector('.cbi-section-create-name'),
+	    button = el.querySelector('.cbi-section-create > .cbi-button-add'),
+	    uciconfig = section.uciconfig || section.map.config;
+
+	let tagEl = E('input', {
+		'type': 'text',
+		'class': nameEl.className,
+		'placeholder': 'geosite-cn'
+	});
+	let hintEl = E('div', { 'class': 'cbi-value-description' });
+
+	nameEl.style.display = 'none';
+	nameEl.parentNode.insertBefore(tagEl, nameEl);
+	nameEl.parentNode.appendChild(hintEl);
+	button.disabled = true;
+
+	let syncSectionName = () => {
+		let tag = (tagEl.value || '').trim();
+		hintEl.textContent = '';
+
+		if (!tag) {
+			nameEl.value = '';
+			button.disabled = true;
+			return;
+		}
+
+		if (!tag.match(/^[A-Za-z0-9_.-]+$/)) {
+			nameEl.value = '';
+			button.disabled = true;
+			hintEl.textContent = _('Expecting: %s').format(_('valid tag'));
+			return;
+		}
+
+		let duplicate = false;
+		uci.sections(uciconfig, 'ruleset', (res) => {
+			if ((res.tag || ('cfg-' + res['.name'] + '-rule')) === tag)
+				duplicate = true;
+		});
+
+		if (duplicate) {
+			nameEl.value = '';
+			button.disabled = true;
+			hintEl.textContent = _('Expecting: %s').format(_('unique value'));
+			return;
+		}
+
+		let section_id = normalizeRuleSetSectionId(tag),
+		    suffix = 1;
+		while (uci.get(uciconfig, section_id))
+			section_id = normalizeRuleSetSectionId(tag) + '_' + suffix++;
+
+		nameEl.value = section_id;
+		nameEl.dataset.sectionId = section_id;
+		nameEl.dataset.ruleSetTag = tag;
+		button.disabled = null;
+	};
+
+	tagEl.addEventListener('input', syncSectionName);
+	tagEl.addEventListener('blur', syncSectionName);
+
+	button.addEventListener('click', () => {
+		syncSectionName();
+
+		let tag = nameEl.dataset.ruleSetTag,
+		    section_id = nameEl.dataset.sectionId;
+
+		window.setTimeout(() => {
+			if (tag && section_id && uci.get(uciconfig, section_id)) {
+				uci.set(uciconfig, section_id, 'tag', tag);
+				uci.set(uciconfig, section_id, 'label', tag);
+				uci.set(uciconfig, section_id, 'enabled', '1');
+				uci.set(uciconfig, section_id, 'type', 'remote');
+				uci.set(uciconfig, section_id, 'format', 'binary');
+			}
+		}, 0);
+	});
+
+	return el;
+}
+
 let stubValidator = {
 	factory: validation,
 	apply(type, value, args) {
@@ -199,6 +285,7 @@ return view.extend({
 
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
+		let subscription_groups = {};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
@@ -207,6 +294,13 @@ return view.extend({
 				String.format('[%s] %s', res.type, res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
 					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport));
 		});
+		for (let suburl of (uci.get(data[0], 'subscription', 'subscription_url') || [])) {
+			let parts = suburl.split(',', 2),
+			    title = parts[0],
+			    url = parts[1] || parts[0];
+
+			subscription_groups[hp.calcStringMD5(url)] = title;
+		}
 
 		m = new form.Map('homeproxy', _('HomeProxy'),
 			_('The modern ImmortalWrt proxy platform for ARM64/AMD64.'));
@@ -578,6 +672,7 @@ return view.extend({
 		so = ss.option(form.ListValue, 'node', _('Node'),
 			_('Outbound node'));
 		so.value('urltest', _('URLTest'));
+		so.value('selector', _('Manual select'));
 		for (let i in proxy_nodes)
 			so.value(i, proxy_nodes[i]);
 		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'routing_node', 'node');
@@ -600,6 +695,7 @@ return view.extend({
 			return this.super('load', section_id);
 		}
 		so.depends({'node': 'urltest', '!reverse': true});
+		so.depends({'node': 'selector', '!reverse': true});
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'domain_strategy', _('Domain strategy'),
@@ -607,13 +703,14 @@ return view.extend({
 		for (let i in hp.dns_strategy)
 			so.value(i, hp.dns_strategy[i]);
 		so.depends({'node': 'urltest', '!reverse': true});
+		so.depends({'node': 'selector', '!reverse': true});
 		so.modalonly = true;
 
 		so = ss.option(widgets.DeviceSelect, 'bind_interface', _('Bind interface'),
 			_('The network interface to bind to.'));
 		so.multiple = false;
 		so.noaliases = true;
-		so.depends({'outbound': '', 'node': /^((?!urltest$).)+$/});
+		so.depends({'outbound': '', 'node': /^((?!(urltest|selector)$).)+$/});
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'outbound', _('Outbound'),
@@ -641,6 +738,12 @@ return view.extend({
 							conflict = true;
 						else if (res.node === 'urltest' && res.urltest_nodes?.includes(node) && res['.name'] == value)
 							conflict = true;
+						else if (res.node === 'urltest' && res.subscription_nodes?.includes(node) && res['.name'] == value)
+							conflict = true;
+						else if (res.node === 'selector' && res.selected_nodes?.includes(node) && res['.name'] == value)
+							conflict = true;
+						else if (res.node === 'selector' && res.subscription_nodes?.includes(node) && res['.name'] == value)
+							conflict = true;
 					}
 				});
 				if (conflict)
@@ -650,7 +753,45 @@ return view.extend({
 			return true;
 		}
 		so.depends({'node': 'urltest', '!reverse': true});
+		so.depends({'node': 'selector', '!reverse': true});
 		so.editable = true;
+
+		so = ss.option(form.MultiValue, 'subscription_groups', _('Subscriptions'));
+		for (let hash in subscription_groups)
+			so.value(hash, subscription_groups[hash]);
+		so.depends('node', 'urltest');
+		so.depends('node', 'selector');
+		so.validate = function(section_id) {
+			let node = this.section.formvalue(section_id, 'node'),
+			    groups = this.section.formvalue(section_id, 'subscription_groups') || [],
+			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
+			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+			if (section_id && node === 'selector' && !groups.length && !subscription_nodes.length && !selected.length)
+				return _('Expecting: %s').format(_('non-empty value'));
+
+			return true;
+		}
+		so.modalonly = true;
+
+		so = ss.option(hp.CBIStaticList, 'subscription_nodes', _('Subscription nodes'),
+			_('List of nodes from subscriptions.'));
+		uci.sections(data[0], 'node', (res) => {
+			if (res.grouphash)
+				so.value(res['.name'], String.format('%s / %s', subscription_groups[res.grouphash] || _('Subscriptions'), proxy_nodes[res['.name']]));
+		});
+		so.depends('node', 'urltest');
+		so.depends('node', 'selector');
+		so.modalonly = true;
+
+		so = ss.option(hp.CBIStaticList, 'selected_nodes', _('Custom nodes'),
+			_('List of custom nodes.'));
+		uci.sections(data[0], 'node', (res) => {
+			if (!res.grouphash)
+				so.value(res['.name'], proxy_nodes[res['.name']]);
+		});
+		so.depends('node', 'urltest');
+		so.depends('node', 'selector');
+		so.modalonly = true;
 
 		so = ss.option(hp.CBIStaticList, 'urltest_nodes', _('URLTest nodes'),
 			_('List of nodes to test.'));
@@ -658,12 +799,34 @@ return view.extend({
 			so.value(i, proxy_nodes[i]);
 		so.depends('node', 'urltest');
 		so.validate = function(section_id) {
-			let value = this.section.formvalue(section_id, 'urltest_nodes');
-			if (section_id && !value.length)
+			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
+			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
+			    selected = this.section.formvalue(section_id, 'selected_nodes') || [],
+			    value = this.section.formvalue(section_id, 'urltest_nodes') || [];
+			if (section_id && !groups.length && !subscription_nodes.length && !selected.length && !value.length)
 				return _('Expecting: %s').format(_('non-empty value'));
 
 			return true;
 		}
+		so.modalonly = true;
+
+		so = ss.option(form.ListValue, 'selector_default', _('Default'));
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+
+			this.value('', _('Default'));
+			for (let i in proxy_nodes)
+				this.value(i, proxy_nodes[i]);
+
+			return this.super('load', section_id);
+		}
+		so.depends('node', 'selector');
+		so.modalonly = true;
+
+		so = ss.option(form.Flag, 'selector_interrupt_exist_connections', _('Interrupt existing connections'),
+			_('Interrupt existing connections when the selected outbound has changed.'));
+		so.depends('node', 'selector');
 		so.modalonly = true;
 
 		so = ss.option(form.Value, 'urltest_url', _('Test URL'),
@@ -810,7 +973,7 @@ return view.extend({
 
 			uci.sections(data[0], 'ruleset', (res) => {
 				if (res.enabled === '1')
-					this.value(res['.name'], res.label);
+					this.value(res['.name'], res.tag || res.label);
 			});
 
 			return this.super('load', section_id);
@@ -1283,7 +1446,7 @@ return view.extend({
 
 			uci.sections(data[0], 'ruleset', (res) => {
 				if (res.enabled === '1')
-					this.value(res['.name'], res.label);
+					this.value(res['.name'], res.tag || res.label);
 			});
 
 			return this.super('load', section_id);
@@ -1478,11 +1641,36 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Rule set'), _('Add a rule set'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
+		ss.renderSectionAdd = L.bind(renderRuleSetAdd, this, ss);
 
 		so = ss.option(form.Value, 'label', _('Label'));
 		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
 		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'ruleset', 'label');
+		so.modalonly = true;
+
+		so = ss.option(form.Value, 'tag', _('Tag'),
+			_('Tag used in sing-box rule sets. For example: <code>geosite-cn</code>.'));
+		so.placeholder = 'geosite-cn';
+		so.rmempty = false;
+		so.validate = function(section_id, value) {
+			if (section_id) {
+				if (!value)
+					return _('Expecting: %s').format(_('non-empty value'));
+				if (!value.match(/^[A-Za-z0-9_.-]+$/))
+					return _('Expecting: %s').format(_('valid tag'));
+
+				let duplicate = false;
+				uci.sections(data[0], 'ruleset', (res) => {
+					if (res['.name'] !== section_id)
+						if ((res.tag || ('cfg-' + res['.name'] + '-rule')) === value)
+							duplicate = true;
+				});
+				if (duplicate)
+					return _('Expecting: %s').format(_('unique value'));
+			}
+
+			return true;
+		}
 		so.modalonly = true;
 
 		so = ss.option(form.Flag, 'enabled', _('Enable'));

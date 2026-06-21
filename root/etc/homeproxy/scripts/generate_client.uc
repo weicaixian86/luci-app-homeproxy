@@ -228,6 +228,30 @@ function filter_existing_nodes(nodes) {
 	});
 }
 
+function collect_group_nodes(groups, subscription_nodes, nodes, legacy_nodes) {
+	let result = [];
+
+	for (let group in normalize_list(groups))
+		uci.foreach(uciconfig, ucinode, (cfg) => {
+			if (cfg.grouphash === group && !~index(result, cfg['.name']))
+				push(result, cfg['.name']);
+		});
+
+	for (let node in filter_existing_nodes(normalize_list(subscription_nodes)))
+		if (!~index(result, node))
+			push(result, node);
+
+	for (let node in filter_existing_nodes(normalize_list(nodes)))
+		if (!~index(result, node))
+			push(result, node);
+
+	for (let node in filter_existing_nodes(normalize_list(legacy_nodes)))
+		if (!~index(result, node))
+			push(result, node);
+
+	return result;
+}
+
 function generate_endpoint(node) {
 	if (type(node) !== 'object' || isEmpty(node))
 		return null;
@@ -435,8 +459,15 @@ function get_ruleset(cfg) {
 		return null;
 
 	let rules = [];
-	for (let i in cfg)
-		push(rules, isEmpty(i) ? null : 'cfg-' + i + '-rule');
+	for (let i in cfg) {
+		if (isEmpty(i)) {
+			push(rules, null);
+			continue;
+		}
+
+		const ruleset = uci.get_all(uciconfig, i);
+		push(rules, !isEmpty(ruleset?.tag) ? ruleset.tag : ('cfg-' + i + '-rule'));
+	}
 	return rules;
 }
 /* Config helper end */
@@ -801,7 +832,7 @@ if (!isEmpty(main_node)) {
 			return;
 
 		if (cfg.node === 'urltest') {
-			const urltest_list = filter_existing_nodes(normalize_list(cfg.urltest_nodes));
+			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, cfg.urltest_nodes);
 			push(config.outbounds, {
 				type: 'urltest',
 				tag: 'cfg-' + cfg['.name'] + '-out',
@@ -813,6 +844,17 @@ if (!isEmpty(main_node)) {
 				interrupt_exist_connections: strToBool(cfg.urltest_interrupt_exist_connections)
 			});
 			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
+		} else if (cfg.node === 'selector') {
+			const selector_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null);
+			const selector_default = (!isEmpty(cfg.selector_default) && ~index(selector_list, cfg.selector_default)) ? cfg.selector_default : null;
+			push(config.outbounds, {
+				type: 'selector',
+				tag: 'cfg-' + cfg['.name'] + '-out',
+				outbounds: map(selector_list, (k) => `cfg-${k}-out`),
+				default: selector_default ? `cfg-${selector_default}-out` : null,
+				interrupt_exist_connections: strToBool(cfg.selector_interrupt_exist_connections)
+			});
+			urltest_nodes = [...urltest_nodes, ...filter(selector_list, (l) => !~index(urltest_nodes, l))];
 		} else {
 			const outbound = uci.get_all(uciconfig, cfg.node) || {};
 			if (isEmpty(outbound))
@@ -1034,7 +1076,7 @@ if (!isEmpty(main_node)) {
 
 		push(config.route.rule_set, {
 			type: cfg.type,
-			tag: 'cfg-' + cfg['.name'] + '-rule',
+			tag: !isEmpty(cfg.tag) ? cfg.tag : ('cfg-' + cfg['.name'] + '-rule'),
 			format: cfg.format,
 			path: cfg.path,
 			url: cfg.url,

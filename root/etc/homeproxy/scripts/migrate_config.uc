@@ -331,6 +331,37 @@ uci.foreach(uciconfig, uciroutingrule, (cfg) => {
 	}
 });
 
+/* routing node options */
+uci.foreach(uciconfig, uciroutingnode, (cfg) => {
+	if (cfg.node === 'urltest' && !isEmpty(cfg.urltest_nodes)) {
+		let custom_nodes = [],
+		    subscription_nodes = [];
+
+		for (let node in (type(cfg.urltest_nodes) === 'array' ? cfg.urltest_nodes : [ cfg.urltest_nodes ])) {
+			let node_cfg = uci.get_all(uciconfig, node);
+			if (isEmpty(node_cfg))
+				continue;
+
+			if (!isEmpty(node_cfg.grouphash))
+				push(subscription_nodes, node);
+			else
+				push(custom_nodes, node);
+		}
+
+		if (isEmpty(cfg.selected_nodes) && !isEmpty(custom_nodes))
+			uci.set(uciconfig, cfg['.name'], 'selected_nodes', custom_nodes);
+
+		if (isEmpty(cfg.subscription_nodes) && !isEmpty(subscription_nodes))
+			uci.set(uciconfig, cfg['.name'], 'subscription_nodes', subscription_nodes);
+	}
+});
+
+/* rule set options */
+uci.foreach(uciconfig, uciruleset, (cfg) => {
+	if (isEmpty(cfg.tag))
+		uci.set(uciconfig, cfg['.name'], 'tag', 'cfg-' + cfg['.name'] + '-rule');
+});
+
 /* server options */
 /* auto_firewall was moved into server options */
 const auto_firewall = uci.get(uciconfig, uciserver, 'auto_firewall');

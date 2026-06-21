@@ -2152,6 +2152,33 @@ msgstr ""
 msgid "Rule set"
 msgstr ""
 
+msgid "Tag"
+msgstr ""
+
+msgid "Tag used in sing-box rule sets. For example: <code>geosite-cn</code>."
+msgstr ""
+
+msgid "valid tag"
+msgstr ""
+
+msgid "Manual select"
+msgstr ""
+
+msgid "Subscriptions"
+msgstr ""
+
+msgid "Custom nodes"
+msgstr ""
+
+msgid "List of custom nodes."
+msgstr ""
+
+msgid "Subscription nodes"
+msgstr ""
+
+msgid "List of nodes from subscriptions."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:684
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1157
 msgid "Rule set IP CIDR as source IP"
