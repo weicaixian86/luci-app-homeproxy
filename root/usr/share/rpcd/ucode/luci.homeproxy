@@ -22,6 +22,38 @@ function hasKernelModule(kmod) {
 const HP_DIR = '/etc/homeproxy';
 const RUN_DIR = '/var/run/homeproxy';
 
+function getClashAPIConfig(uci) {
+	const external_controller = trim(uci.get('homeproxy', 'clash_api', 'external_controller') || '127.0.0.1:9090');
+	const secret = trim(uci.get('homeproxy', 'clash_api', 'secret') || '');
+	const matched = match(external_controller, /:(\d+)$/);
+	const port = matched ? matched[1] : '9090';
+
+	return {
+		base_url: `http://127.0.0.1:${port}`,
+		secret
+	};
+}
+
+function readProcess(fd) {
+	let payload = '', line;
+	for (line = fd.read('line'); length(line); line = fd.read('line'))
+		payload += line;
+	fd.close();
+
+	return payload;
+}
+
+function clashAPIRequest(api, method, path, timeout) {
+	const auth = api.secret ? `--header ${shellquote(`Authorization: Bearer ${api.secret}`)} ` : '';
+	const post = (method === 'POST') ? "--post-data='' " : '';
+	const fd = popen(`/usr/bin/wget -qO- -T ${timeout || 10} ${auth}${post}${shellquote(api.base_url + path)} 2>"/dev/null"`);
+
+	if (!fd)
+		return null;
+
+	return readProcess(fd);
+}
+
 const methods = {
 	acllist_read: {
 		args: { type: 'type' },
@@ -173,18 +205,13 @@ const methods = {
 					error: null
 				};
 
-			const fd = popen('/usr/bin/wget -qO- http://127.0.0.1:9090/proxies/main-out 2>"/dev/null"');
-			if (!fd)
+			const payload = clashAPIRequest(getClashAPIConfig(uci), 'GET', '/proxies/main-out', 3);
+			if (payload === null)
 				return {
 					mode: 'urltest',
 					active: { id: 'urltest', label: 'URLTest', type: 'urltest' },
 					error: 'clash_api_unavailable'
 				};
-
-			let payload = '', line;
-			for (line = fd.read('line'); length(line); line = fd.read('line'))
-				payload += line;
-			fd.close();
 
 			let data = null;
 			try {
@@ -206,6 +233,29 @@ const methods = {
 				mode: 'urltest',
 				active: formatNode(section_id, tag),
 				error: null
+			};
+		}
+	},
+	clash_api_update_panel: {
+		call: function() {
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const payload = clashAPIRequest(getClashAPIConfig(uci), 'POST', '/upgrade/ui', 120);
+			if (payload === null)
+				return { result: false, error: 'clash_api_unavailable' };
+
+			let data = null;
+			try {
+				data = json(payload);
+			} catch (e) {}
+
+			if (data?.status === 'ok')
+				return { result: true };
+
+			return {
+				result: false,
+				error: data?.message || data?.error || 'update_panel_failed'
 			};
 		}
 	},

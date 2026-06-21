@@ -505,8 +505,8 @@ msgid "Default DNS strategy"
 msgstr "默认 DNS 解析策略"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:380
-msgid "Default outbound"
-msgstr "默认出站"
+msgid "Default outbound (fallback)"
+msgstr "默认出站（漏网之鱼）"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:399
 msgid "Default outbound DNS"

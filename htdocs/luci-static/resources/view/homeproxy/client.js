@@ -58,6 +58,12 @@ const callPackageVersion = rpc.declare({
 	expect: { '': {} }
 });
 
+const callUpdatePanel = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'clash_api_update_panel',
+	expect: { '': {} }
+});
+
 const statusCss = `
 #homeproxy_status_panel {
 	margin-bottom: 1rem;
@@ -138,18 +144,9 @@ function getClashApiInfo() {
 }
 
 function updateDashboard() {
-	let api = getClashApiInfo(),
-	    headers = {};
-
-	if (api.secret)
-		headers.Authorization = 'Bearer ' + api.secret;
-
-	return fetch(api.baseUrl + '/upgrade/ui', {
-		method: 'POST',
-		headers
-	}).then((res) => {
-		if (!res.ok)
-			throw new Error(_('Update failed.'));
+	return callUpdatePanel().then((res) => {
+		if (!res?.result)
+			throw new Error(res?.error || _('Update failed.'));
 		ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
 	}).catch((err) => {
 		ui.addNotification(null, E('p', err.message || err), 'danger');
@@ -516,7 +513,7 @@ return view.extend({
 		so.default = so.enabled;
 		so.rmempty = false;
 
-		so = ss.option(form.ListValue, 'default_outbound', _('Default outbound'),
+		so = ss.option(form.ListValue, 'default_outbound', _('Default outbound (fallback)'),
 			_('Default outbound for connections not matched by any routing rules.'));
 		so.load = function(section_id) {
 			delete this.keylist;
@@ -1562,7 +1559,7 @@ return view.extend({
 		/* NTP settings start */
 		s.tab('ntp', _('NTP Settings'));
 		o = s.taboption('ntp', form.SectionValue, '_ntp', form.NamedSection, 'ntp', 'homeproxy');
-		o.depends('homeproxy.config.routing_mode', 'custom');
+		o.depends('routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.Flag, 'enabled', _('Enable NTP'));
@@ -1586,7 +1583,7 @@ return view.extend({
 		/* Cache settings start */
 		s.tab('cache', _('Cache Settings'));
 		o = s.taboption('cache', form.SectionValue, '_cache', form.NamedSection, 'cache', 'homeproxy');
-		o.depends('homeproxy.config.routing_mode', 'custom');
+		o.depends('routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.ListValue, 'enabled', _('Enable cache'));
@@ -1763,7 +1760,7 @@ return view.extend({
 		/* Panel settings start */
 		s.tab('panel', _('Panel Settings'));
 		o = s.taboption('panel', form.SectionValue, '_clash_api', form.NamedSection, 'clash_api', 'homeproxy');
-		o.depends('homeproxy.config.routing_mode', 'custom');
+		o.depends('routing_mode', 'custom');
 		ss = o.subsection;
 
 		so = ss.option(form.Value, 'external_ui', _('UI path'));

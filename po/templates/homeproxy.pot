@@ -494,7 +494,7 @@ msgid "Default DNS strategy"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:380
-msgid "Default outbound"
+msgid "Default outbound (fallback)"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:399
