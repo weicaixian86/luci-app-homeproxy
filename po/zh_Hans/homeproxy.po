@@ -2200,9 +2200,6 @@ msgstr "有效标签"
 msgid "Manual select"
 msgstr "手动选择"
 
-msgid "Subscriptions"
-msgstr "订阅"
-
 msgid "Custom nodes"
 msgstr "自选节点"
 

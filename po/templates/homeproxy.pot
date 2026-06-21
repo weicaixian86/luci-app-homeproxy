@@ -2164,9 +2164,6 @@ msgstr ""
 msgid "Manual select"
 msgstr ""
 
-msgid "Subscriptions"
-msgstr ""
-
 msgid "Custom nodes"
 msgstr ""
 
