@@ -3359,6 +3359,14 @@ msgid "Update Panel"
 msgstr "更新面版"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Update panel failed."
+msgstr "更新面版失败"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Clash API unavailable."
+msgstr "Clash API 不可用"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Open Panel"
 msgstr "打开面版"
 

@@ -145,8 +145,15 @@ function getClashApiInfo() {
 
 function updateDashboard() {
 	return callUpdatePanel().then((res) => {
-		if (!res?.result)
-			throw new Error(res?.error || _('Update failed.'));
+		if (!res?.result) {
+			let message = res?.error;
+			if (message === 'update_panel_failed')
+				message = _('Update panel failed.');
+			else if (message === 'clash_api_unavailable')
+				message = _('Clash API unavailable.');
+
+			throw new Error(message || _('Update failed.'));
+		}
 		ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
 	}).catch((err) => {
 		ui.addNotification(null, E('p', err.message || err), 'danger');
