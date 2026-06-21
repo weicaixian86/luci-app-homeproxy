@@ -13,20 +13,25 @@ sh install.sh
 ## 卸载
 ```sh
 /etc/init.d/homeproxy stop 2>/dev/null || true
-opkg remove luci-app-homeproxy sing-box
-/etc/init.d/rpcd restart
-/etc/init.d/uhttpd restart
-```
+/etc/init.d/homeproxy disable 2>/dev/null || true
 
-如果还想顺手清理配置文件：
-```sh
-rm -f /etc/config/homeproxy
+opkg remove luci-i18n-homeproxy-zh-cn 2>/dev/null || true
+opkg remove luci-app-homeproxy 2>/dev/null || true
+
+rm -rf /etc/config/homeproxy
 rm -rf /etc/homeproxy
 rm -rf /usr/share/homeproxy
+rm -rf /www/luci-static/resources/view/homeproxy
+rm -f /www/luci-static/resources/homeproxy.js
+rm -f /usr/share/luci/menu.d/luci-app-homeproxy.json
+rm -f /usr/share/rpcd/acl.d/luci-app-homeproxy.json
+rm -f /usr/share/rpcd/ucode/luci.homeproxy
+rm -f /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache/*
+
 /etc/init.d/rpcd restart
 /etc/init.d/uhttpd restart
 ```
-不建议直接批量卸载所有依赖包，因为像 curl、ca-bundle、firewall4、dnsmasq-full、ip-full、ucode-* 可能被系统或其他插件共用。
 
 ## 维护工作流
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
