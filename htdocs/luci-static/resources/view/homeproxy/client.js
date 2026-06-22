@@ -742,7 +742,22 @@ return view.extend({
 			so.value(i, proxy_nodes[i]);
 		so.default = 'selector';
 		so.rmempty = false;
-		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'routing_node', 'node');
+		so.validate = function(section_id, value) {
+			let result = hp.validateUniqueValue(data[0], 'routing_node', 'node', section_id, value);
+			if (result !== true)
+				return result;
+
+			if (section_id && (value === 'urltest' || value === 'selector')) {
+				let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
+				    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
+				    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
+
+				if (!groups.length && !subscription_nodes.length && !selected.length)
+					return _('Expecting: %s').format(_('non-empty value'));
+			}
+
+			return true;
+		}
 		so.editable = true;
 
 		so = ss.option(form.ListValue, 'domain_resolver', _('Domain resolver'),
@@ -803,15 +818,15 @@ return view.extend({
 					if (res['.name'] !== section_id) {
 						if (res.outbound === section_id && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && res.urltest_nodes?.includes(node) && res['.name'] == value)
+						else if (res.node === 'urltest' && normalizeFormList(res.urltest_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && res.subscription_nodes?.includes(node) && res['.name'] == value)
+						else if (res.node === 'urltest' && normalizeFormList(res.subscription_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && res.selected_nodes?.includes(node) && res['.name'] == value)
+						else if (res.node === 'urltest' && normalizeFormList(res.selected_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'selector' && res.selected_nodes?.includes(node) && res['.name'] == value)
+						else if (res.node === 'selector' && normalizeFormList(res.selected_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'selector' && res.subscription_nodes?.includes(node) && res['.name'] == value)
+						else if (res.node === 'selector' && normalizeFormList(res.subscription_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
 					}
 				});
@@ -825,24 +840,25 @@ return view.extend({
 		so.depends({'node': 'selector', '!reverse': true});
 		so.editable = true;
 
-		so = ss.option(form.MultiValue, 'subscription_groups', _('Subscriptions'));
+		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscriptions'));
 		for (let hash in subscription_groups)
 			so.value(hash, subscription_groups[hash]);
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
 		so.validate = function(section_id) {
 			let node = this.section.formvalue(section_id, 'node'),
-			    groups = this.section.formvalue(section_id, 'subscription_groups') || [],
-			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
-			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+			    groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
+			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
+			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
 			if (section_id && (node === 'urltest' || node === 'selector') && !groups.length && !subscription_nodes.length && !selected.length)
 				return _('Expecting: %s').format(_('non-empty value'));
 
 			return true;
 		}
+		so.rmempty = true;
 		so.modalonly = true;
 
-		so = ss.option(form.MultiValue, 'subscription_nodes', _('Subscription nodes'),
+		so = ss.option(hp.CBIMultiValue, 'subscription_nodes', _('Subscription nodes'),
 			_('List of nodes from subscriptions.'));
 		uci.sections(data[0], 'node', (res) => {
 			if (res.grouphash)
@@ -850,15 +866,17 @@ return view.extend({
 		});
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
+		so.rmempty = true;
 		so.modalonly = true;
 
-		so = ss.option(form.MultiValue, 'selected_nodes', _('Custom nodes'));
+		so = ss.option(hp.CBIMultiValue, 'selected_nodes', _('Custom nodes'));
 		uci.sections(data[0], 'node', (res) => {
 			if (!res.grouphash)
 				so.value(res['.name'], proxy_nodes[res['.name']]);
 		});
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
+		so.rmempty = true;
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'selector_default', _('Default node'));
@@ -866,9 +884,9 @@ return view.extend({
 			delete this.keylist;
 			delete this.vallist;
 
-			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
-			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
-			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
+			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
+			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
 
 			this.value('', _('Default'));
 			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected))
@@ -880,9 +898,9 @@ return view.extend({
 			if (!value)
 				return true;
 
-			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
-			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
-			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
+			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
+			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
 
 			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected).includes(value))
 				return _('Invalid node');

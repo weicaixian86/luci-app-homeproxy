@@ -86,6 +86,29 @@ return baseclass.extend({
 		}
 	}),
 
+	CBIMultiValue: form.MultiValue.extend({
+		__name__: 'CBI.HomeProxyMultiValue',
+
+		renderWidget(section_id, _option_index, cfgvalue) {
+			let value = (cfgvalue != null) ? cfgvalue : this.default,
+			    choices = this.transformChoices() || {},
+			    widget = new ui.Dropdown(L.toArray(value), choices, {
+				id: this.cbid(section_id),
+				sort: this.keylist,
+				multiple: true,
+				optional: this.optional || this.rmempty,
+				select_placeholder: this.placeholder,
+				create: this.create,
+				display_items: this.display_size ?? this.size ?? 3,
+				dropdown_items: this.dropdown_size ?? this.size ?? -1,
+				validate: this.getValidator(section_id),
+				disabled: (this.readonly != null) ? this.readonly : this.map.readonly
+			});
+
+			return widget.render();
+		}
+	}),
+
 	calcStringMD5(e) {
 		/* Thanks to https://stackoverflow.com/a/41602636 */
 		let h = (a, b) => {
