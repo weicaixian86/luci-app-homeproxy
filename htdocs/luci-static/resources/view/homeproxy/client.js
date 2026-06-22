@@ -308,6 +308,28 @@ return view.extend({
 
 			subscription_groups[hp.calcStringMD5(url)] = title;
 		}
+		let normalizeFormList = function(value) {
+			return Array.isArray(value) ? value : (value ? [value] : []);
+		};
+		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes) {
+			let nodes = [];
+			groups = normalizeFormList(groups);
+			subscription_nodes = normalizeFormList(subscription_nodes);
+			selected_nodes = normalizeFormList(selected_nodes);
+
+			uci.sections(data[0], 'node', (res) => {
+				if (res.grouphash && groups.includes(res.grouphash) && !nodes.includes(res['.name']))
+					nodes.push(res['.name']);
+			});
+			for (let node of subscription_nodes)
+				if (proxy_nodes[node] && !nodes.includes(node))
+					nodes.push(node);
+			for (let node of selected_nodes)
+				if (proxy_nodes[node] && !nodes.includes(node))
+					nodes.push(node);
+
+			return nodes;
+		};
 
 		m = new form.Map('homeproxy', _('HomeProxy'),
 			_('The modern ImmortalWrt proxy platform for ARM64/AMD64.'));
@@ -678,7 +700,7 @@ return view.extend({
 
 		so = ss.option(form.ListValue, 'node', _('Node'),
 			_('Outbound node'));
-		so.value('urltest', _('URLTest'));
+		so.value('urltest', _('Auto select'));
 		so.value('selector', _('Manual select'));
 		for (let i in proxy_nodes)
 			so.value(i, proxy_nodes[i]);
@@ -747,6 +769,8 @@ return view.extend({
 							conflict = true;
 						else if (res.node === 'urltest' && res.subscription_nodes?.includes(node) && res['.name'] == value)
 							conflict = true;
+						else if (res.node === 'urltest' && res.selected_nodes?.includes(node) && res['.name'] == value)
+							conflict = true;
 						else if (res.node === 'selector' && res.selected_nodes?.includes(node) && res['.name'] == value)
 							conflict = true;
 						else if (res.node === 'selector' && res.subscription_nodes?.includes(node) && res['.name'] == value)
@@ -773,14 +797,14 @@ return view.extend({
 			    groups = this.section.formvalue(section_id, 'subscription_groups') || [],
 			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
 			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
-			if (section_id && node === 'selector' && !groups.length && !subscription_nodes.length && !selected.length)
+			if (section_id && (node === 'urltest' || node === 'selector') && !groups.length && !subscription_nodes.length && !selected.length)
 				return _('Expecting: %s').format(_('non-empty value'));
 
 			return true;
 		}
 		so.modalonly = true;
 
-		so = ss.option(hp.CBIStaticList, 'subscription_nodes', _('Subscription nodes'),
+		so = ss.option(form.MultiValue, 'subscription_nodes', _('Subscription nodes'),
 			_('List of nodes from subscriptions.'));
 		uci.sections(data[0], 'node', (res) => {
 			if (res.grouphash)
@@ -790,8 +814,7 @@ return view.extend({
 		so.depends('node', 'selector');
 		so.modalonly = true;
 
-		so = ss.option(hp.CBIStaticList, 'selected_nodes', _('Custom nodes'),
-			_('List of custom nodes.'));
+		so = ss.option(form.MultiValue, 'selected_nodes', _('Custom nodes'));
 		uci.sections(data[0], 'node', (res) => {
 			if (!res.grouphash)
 				so.value(res['.name'], proxy_nodes[res['.name']]);
@@ -800,33 +823,33 @@ return view.extend({
 		so.depends('node', 'selector');
 		so.modalonly = true;
 
-		so = ss.option(hp.CBIStaticList, 'urltest_nodes', _('URLTest nodes'),
-			_('List of nodes to test.'));
-		for (let i in proxy_nodes)
-			so.value(i, proxy_nodes[i]);
-		so.depends('node', 'urltest');
-		so.validate = function(section_id) {
-			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
-			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
-			    selected = this.section.formvalue(section_id, 'selected_nodes') || [],
-			    value = this.section.formvalue(section_id, 'urltest_nodes') || [];
-			if (section_id && !groups.length && !subscription_nodes.length && !selected.length && !value.length)
-				return _('Expecting: %s').format(_('non-empty value'));
-
-			return true;
-		}
-		so.modalonly = true;
-
-		so = ss.option(form.ListValue, 'selector_default', _('Default'));
+		so = ss.option(form.ListValue, 'selector_default', _('Default node'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
 
+			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
+			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
+			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+
 			this.value('', _('Default'));
-			for (let i in proxy_nodes)
-				this.value(i, proxy_nodes[i]);
+			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected))
+				this.value(node, proxy_nodes[node]);
 
 			return this.super('load', section_id);
+		}
+		so.validate = function(section_id, value) {
+			if (!value)
+				return true;
+
+			let groups = this.section.formvalue(section_id, 'subscription_groups') || [],
+			    subscription_nodes = this.section.formvalue(section_id, 'subscription_nodes') || [],
+			    selected = this.section.formvalue(section_id, 'selected_nodes') || [];
+
+			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected).includes(value))
+				return _('Invalid node');
+
+			return true;
 		}
 		so.depends('node', 'selector');
 		so.modalonly = true;
@@ -1239,14 +1262,6 @@ return view.extend({
 			'If value is an IP address instead of prefix, <code>/32</code> or <code>/128</code> will be appended automatically.'));
 		so.datatype = 'or(cidr, ipaddr)';
 
-		so = ss.option(form.Flag, 'cache_file_store_rdrc', _('Store RDRC'),
-			_('Store rejected DNS response cache.<br/>' +
-			'The check results of <code>Address filter DNS rule items</code> will be cached until expiration.'));
-
-		so = ss.option(form.Value, 'cache_file_rdrc_timeout', _('RDRC timeout'),
-			_('Timeout of rejected DNS response cache in seconds. <code>604800 (7d)</code> is used by default.'));
-		so.datatype = 'uinteger';
-		so.depends('cache_file_store_rdrc', '1');
 		/* DNS settings end */
 
 		/* DNS servers start */
@@ -1804,6 +1819,11 @@ return view.extend({
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
+
+		so = ss.option(form.Value, 'rdrc_timeout', _('RDRC timeout'),
+			_('Timeout of rejected DNS response cache in seconds. <code>604800 (7d)</code> is used by default.'));
+		so.datatype = 'uinteger';
+		so.depends({'enabled': '1', 'store_rdrc': '1'});
 		/* Cache settings end */
 
 		/* ACL settings start */

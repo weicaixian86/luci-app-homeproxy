@@ -229,6 +229,10 @@ msgstr ""
 msgid "Authentication type"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:703
+msgid "Auto select"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1768
 msgid "Auto update"
 msgstr ""
@@ -470,6 +474,9 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1404
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1140
 msgid "Default"
+msgstr ""
+
+msgid "Default node"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:405
@@ -2167,9 +2174,6 @@ msgstr ""
 msgid "Custom nodes"
 msgstr ""
 
-msgid "List of custom nodes."
-msgstr ""
-
 msgid "Subscription nodes"
 msgstr ""
 
@@ -2352,16 +2356,6 @@ msgstr ""
 msgid ""
 "Specify target ports to be proxied. Multiple ports must be separated by "
 "commas."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:936
-msgid "Store RDRC"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:937
-msgid ""
-"Store rejected DNS response cache.<br/>The check results of <code>Address "
-"filter DNS rule items</code> will be cached until expiration."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:987

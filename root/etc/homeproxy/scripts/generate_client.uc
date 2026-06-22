@@ -74,7 +74,7 @@ if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
 let cache_file_enabled, cache_file_path, cache_file_store_fakeip,
-    cache_file_store_rdrc, cache_file_rdrc_timeout,
+    cache_store_rdrc, cache_rdrc_timeout,
     main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
     dns_default_server, dns_disable_cache, dns_disable_cache_expire, dns_independent_cache,
@@ -158,14 +158,8 @@ const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');
 cache_file_store_fakeip = uci.get(uciconfig, ucicache, 'store_fakeip');
-cache_file_store_rdrc = uci.get(uciconfig, ucicache, 'store_rdrc');
-cache_file_rdrc_timeout = uci.get(uciconfig, ucicache, 'rdrc_timeout');
-
-if (isEmpty(cache_file_store_rdrc))
-	cache_file_store_rdrc = uci.get(uciconfig, ucidnssetting, 'cache_file_store_rdrc');
-
-if (isEmpty(cache_file_rdrc_timeout))
-	cache_file_rdrc_timeout = uci.get(uciconfig, ucidnssetting, 'cache_file_rdrc_timeout');
+cache_store_rdrc = uci.get(uciconfig, ucicache, 'store_rdrc');
+cache_rdrc_timeout = uci.get(uciconfig, ucicache, 'rdrc_timeout');
 
 let clash_api = {
 	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
@@ -832,7 +826,8 @@ if (!isEmpty(main_node)) {
 			return;
 
 		if (cfg.node === 'urltest') {
-			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, cfg.urltest_nodes);
+			const legacy_nodes = (isEmpty(cfg.subscription_groups) && isEmpty(cfg.subscription_nodes) && isEmpty(cfg.selected_nodes)) ? cfg.urltest_nodes : null;
+			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes);
 			push(config.outbounds, {
 				type: 'urltest',
 				tag: 'cfg-' + cfg['.name'] + '-out',
@@ -1095,8 +1090,8 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 			enabled: cache_file_enabled !== '0',
 			path: cache_file_path || (RUN_DIR + '/cache.db'),
 			store_fakeip: strToBool(cache_file_store_fakeip),
-			store_rdrc: strToBool(cache_file_store_rdrc),
-			rdrc_timeout: strToTime(cache_file_rdrc_timeout),
+			store_rdrc: strToBool(cache_store_rdrc),
+			rdrc_timeout: strToTime(cache_rdrc_timeout),
 		}
 	};
 }

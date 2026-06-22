@@ -240,6 +240,10 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:703
+msgid "Auto select"
+msgstr "自动选择"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1768
 msgid "Auto update"
 msgstr "自动更新"
@@ -327,7 +331,7 @@ msgstr "CUBIC"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1672
 msgid "Cancel"
-msgstr "取消"
+msgstr "关闭"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1507
 #: htdocs/luci-static/resources/view/homeproxy/server.js:756
@@ -482,6 +486,9 @@ msgstr "调试"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1140
 msgid "Default"
 msgstr "默认"
+
+msgid "Default node"
+msgstr "默认节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:405
 #: htdocs/luci-static/resources/view/homeproxy/client.js:457
@@ -2203,9 +2210,6 @@ msgstr "手动选择"
 msgid "Custom nodes"
 msgstr "自选节点"
 
-msgid "List of custom nodes."
-msgstr "自选节点列表。"
-
 msgid "Subscription nodes"
 msgstr "订阅节点"
 
@@ -2393,18 +2397,6 @@ msgid ""
 "Specify target ports to be proxied. Multiple ports must be separated by "
 "commas."
 msgstr "指定需要被代理的目标端口。多个端口必须用逗号隔开。"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:936
-msgid "Store RDRC"
-msgstr "存储 RDRC"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:937
-msgid ""
-"Store rejected DNS response cache.<br/>The check results of <code>Address "
-"filter DNS rule items</code> will be cached until expiration."
-msgstr ""
-"存储被拒绝的 DNS 响应缓存。<br/><code>地址过滤 DNS 规则</code> 的检查结果将被"
-"缓存直到过期。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:987
 #: htdocs/luci-static/resources/view/homeproxy/server.js:278

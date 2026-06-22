@@ -149,6 +149,12 @@ if (isEmpty(uci.get(uciconfig, ucicache, 'store_rdrc')))
 if (isEmpty(uci.get(uciconfig, ucicache, 'rdrc_timeout')) && !isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
 	uci.set(uciconfig, ucicache, 'rdrc_timeout', uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout'));
 
+if (!isEmpty(uci.get(uciconfig, ucidns, 'cache_file_store_rdrc')))
+	uci.delete(uciconfig, ucidns, 'cache_file_store_rdrc');
+
+if (!isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
+	uci.delete(uciconfig, ucidns, 'cache_file_rdrc_timeout');
+
 /* create migration section */
 if (!uci.get(uciconfig, ucimigration))
 	uci.set(uciconfig, ucimigration, uciconfig);
@@ -353,6 +359,8 @@ uci.foreach(uciconfig, uciroutingnode, (cfg) => {
 
 		if (isEmpty(cfg.subscription_nodes) && !isEmpty(subscription_nodes))
 			uci.set(uciconfig, cfg['.name'], 'subscription_nodes', subscription_nodes);
+
+		uci.delete(uciconfig, cfg['.name'], 'urltest_nodes');
 	}
 });
 
@@ -369,6 +377,13 @@ if (!isEmpty(auto_firewall))
 	uci.delete(uciconfig, uciserver, 'auto_firewall');
 
 uci.foreach(uciconfig, uciserver, (cfg) => {
+	if (!isEmpty(cfg.hysteria_revc_window_client) && isEmpty(cfg.hysteria_recv_window_client)) {
+		uci.set(uciconfig, cfg['.name'], 'hysteria_recv_window_client', cfg.hysteria_revc_window_client);
+	}
+
+	if (!isEmpty(cfg.hysteria_revc_window_client))
+		uci.delete(uciconfig, cfg['.name'], 'hysteria_revc_window_client');
+
 	/* auto_firewall was moved into server options */
 	if (auto_firewall === '1')
 		uci.set(uciconfig, cfg['.name'], 'firewall' , '1');
