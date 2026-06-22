@@ -577,6 +577,21 @@ msgstr ""
 msgid "Disable DNS cache in this query."
 msgstr ""
 
+msgid "Disable DNS memory cache"
+msgstr ""
+
+msgid "Disable DNS memory cache in this query."
+msgstr ""
+
+msgid "Disable DNS memory cache expiration"
+msgstr ""
+
+msgid "Independent DNS memory cache per server"
+msgstr ""
+
+msgid "Make each DNS server's memory cache independent for special purposes. If enabled, will slightly degrade performance."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:670
 msgid "Disable HTTP challenge"
 msgstr ""
@@ -596,6 +611,9 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1205
 msgid "Disable cache and save cache in this query."
+msgstr ""
+
+msgid "Disable DNS memory cache and persistent cache in this query."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:924
@@ -2178,6 +2196,12 @@ msgstr ""
 msgid "Custom nodes"
 msgstr ""
 
+msgid "Policy nodes"
+msgstr ""
+
+msgid "List of policy groups."
+msgstr ""
+
 msgid "Subscription nodes"
 msgstr ""
 
@@ -3240,7 +3264,15 @@ msgid "Cache Settings"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persistent Cache Settings"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Enable cache"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Enable cache file"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
@@ -3248,11 +3280,23 @@ msgid "Cache file path"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persistent cache file path"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache FakeIP"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist FakeIP cache"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache RDRC"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist RDRC cache"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js

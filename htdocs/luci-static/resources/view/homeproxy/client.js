@@ -329,6 +329,7 @@ return view.extend({
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
 		let subscription_groups = {};
+		let routing_groups = {};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
@@ -344,14 +345,18 @@ return view.extend({
 
 			subscription_groups[hp.calcStringMD5(url)] = title;
 		}
+		uci.sections(data[0], 'routing_node', (res) => {
+			routing_groups[res['.name']] = res.label || res['.name'];
+		});
 		let normalizeFormList = function(value) {
 			return Array.isArray(value) ? value : (value ? [value] : []);
 		};
-		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes) {
+		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes, policy_nodes, section_id) {
 			let nodes = [];
 			groups = normalizeFormList(groups);
 			subscription_nodes = normalizeFormList(subscription_nodes);
 			selected_nodes = normalizeFormList(selected_nodes);
+			policy_nodes = normalizeFormList(policy_nodes);
 
 			uci.sections(data[0], 'node', (res) => {
 				if (res.grouphash && groups.includes(res.grouphash) && !nodes.includes(res['.name']))
@@ -362,6 +367,9 @@ return view.extend({
 					nodes.push(node);
 			for (let node of selected_nodes)
 				if (proxy_nodes[node] && !nodes.includes(node))
+					nodes.push(node);
+			for (let node of policy_nodes)
+				if (node !== section_id && routing_groups[node] && !nodes.includes(node))
 					nodes.push(node);
 
 			return nodes;
@@ -771,9 +779,10 @@ return view.extend({
 			if (section_id && (value === 'urltest' || value === 'selector')) {
 				let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
 				    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
-				    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
+				    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
+				    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
 
-				if (!groups.length && !subscription_nodes.length && !selected.length)
+				if (!groups.length && !subscription_nodes.length && !selected.length && !policy_nodes.length)
 					return _('Expecting: %s').format(_('non-empty value'));
 			}
 
@@ -796,16 +805,14 @@ return view.extend({
 
 			return this.super('load', section_id);
 		}
-		so.depends({'node': 'urltest', '!reverse': true});
-		so.depends({'node': 'selector', '!reverse': true});
+		so.depends('node', /^((?!(urltest|selector)$).)+$/);
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'domain_strategy', _('Domain strategy'),
 			_('The domain strategy for resolving the domain name in the address.'));
 		for (let i in hp.dns_strategy)
 			so.value(i, hp.dns_strategy[i]);
-		so.depends({'node': 'urltest', '!reverse': true});
-		so.depends({'node': 'selector', '!reverse': true});
+		so.depends('node', /^((?!(urltest|selector)$).)+$/);
 		so.modalonly = true;
 
 		so = ss.option(widgets.DeviceSelect, 'bind_interface', _('Bind interface'),
@@ -856,8 +863,7 @@ return view.extend({
 
 			return true;
 		}
-		so.depends({'node': 'urltest', '!reverse': true});
-		so.depends({'node': 'selector', '!reverse': true});
+		so.depends('node', /^((?!(urltest|selector)$).)+$/);
 		so.editable = true;
 
 		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscriptions'));
@@ -889,6 +895,29 @@ return view.extend({
 		so.rmempty = true;
 		so.modalonly = true;
 
+		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
+			_('List of policy groups.'));
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+
+			uci.sections(data[0], 'routing_node', (res) => {
+				if (res['.name'] !== section_id && res.enabled === '1')
+					this.value(res['.name'], res.label || res['.name']);
+			});
+
+			return this.super('load', section_id);
+		}
+		so.validate = function(section_id, value) {
+			if (normalizeFormList(value).includes(section_id))
+				return _('Recursive outbound detected!');
+
+			return true;
+		}
+		so.depends('node', 'selector');
+		so.rmempty = true;
+		so.modalonly = true;
+
 		so = ss.option(form.ListValue, 'selector_default', _('Default node'));
 		so.load = function(section_id) {
 			delete this.keylist;
@@ -896,11 +925,12 @@ return view.extend({
 
 			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
 			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
-			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
+			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
+			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
 
 			this.value('', _('Default'));
-			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected))
-				this.value(node, proxy_nodes[node]);
+			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id))
+				this.value(node, proxy_nodes[node] || routing_groups[node]);
 
 			return this.super('load', section_id);
 		}
@@ -910,9 +940,10 @@ return view.extend({
 
 			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
 			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
-			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
+			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
+			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
 
-			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected).includes(value))
+			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id).includes(value))
 				return _('Invalid node');
 
 			return true;
@@ -1202,8 +1233,8 @@ return view.extend({
 		so.depends('action', 'resolve');
 		so.modalonly = true;
 
-		so = ss.taboption('field_other', form.Flag, 'resolve_disable_cache', _('Disable DNS cache'),
-			_('Disable DNS cache in this query.'));
+		so = ss.taboption('field_other', form.Flag, 'resolve_disable_cache', _('Disable DNS memory cache'),
+			_('Disable DNS memory cache in this query.'));
 		so.depends('action', 'resolve');
 		so.modalonly = true;
 
@@ -1314,13 +1345,13 @@ return view.extend({
 		so.default = 'default-dns';
 		so.rmempty = false;
 
-		so = ss.option(form.Flag, 'disable_cache', _('Disable DNS cache'));
+		so = ss.option(form.Flag, 'disable_cache', _('Disable DNS memory cache'));
 
-		so = ss.option(form.Flag, 'disable_cache_expire', _('Disable cache expire'));
+		so = ss.option(form.Flag, 'disable_cache_expire', _('Disable DNS memory cache expiration'));
 		so.depends('disable_cache', '0');
 
-		so = ss.option(form.Flag, 'independent_cache', _('Independent cache per server'),
-			_('Make each DNS server\'s cache independent for special purposes. If enabled, will slightly degrade performance.'));
+		so = ss.option(form.Flag, 'independent_cache', _('Independent DNS memory cache per server'),
+			_('Make each DNS server\'s memory cache independent for special purposes. If enabled, will slightly degrade performance.'));
 		so.depends('disable_cache', '0');
 
 		so = ss.option(form.Value, 'client_subnet', _('EDNS Client subnet'),
@@ -1588,8 +1619,8 @@ return view.extend({
 		so.depends('action', 'route');
 		so.modalonly = true;
 
-		so = ss.taboption('field_other', form.Flag, 'dns_disable_cache', _('Disable dns cache'),
-			_('Disable cache and save cache in this query.'));
+		so = ss.taboption('field_other', form.Flag, 'dns_disable_cache', _('Disable DNS memory cache'),
+			_('Disable DNS memory cache and persistent cache in this query.'));
 		so.depends('action', 'route');
 		so.depends('action', 'route-options');
 		so.modalonly = true;
@@ -1857,29 +1888,29 @@ return view.extend({
 		/* NTP settings end */
 
 		/* Cache settings start */
-		s.tab('cache', _('Cache Settings'));
+		s.tab('cache', _('Persistent Cache Settings'));
 		o = s.taboption('cache', form.SectionValue, '_cache', form.NamedSection, 'cache', 'homeproxy');
 		o.depends('routing_mode', 'custom');
 		ss = o.subsection;
 
-		so = ss.option(form.ListValue, 'enabled', _('Enable cache'));
+		so = ss.option(form.ListValue, 'enabled', _('Enable cache file'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));
 		so.default = '1';
 		so.rmempty = false;
 
-		so = ss.option(form.Value, 'path', _('Cache file path'));
+		so = ss.option(form.Value, 'path', _('Persistent cache file path'));
 		so.placeholder = '/var/run/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
-		so = ss.option(form.ListValue, 'store_fakeip', _('Cache FakeIP'));
+		so = ss.option(form.ListValue, 'store_fakeip', _('Persist FakeIP cache'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
 
-		so = ss.option(form.ListValue, 'store_rdrc', _('Cache RDRC'));
+		so = ss.option(form.ListValue, 'store_rdrc', _('Persist RDRC cache'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));
 		so.default = '1';

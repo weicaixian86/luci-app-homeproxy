@@ -588,6 +588,21 @@ msgstr "禁用 DNS 缓存"
 msgid "Disable DNS cache in this query."
 msgstr "在本次查询中禁用 DNS 缓存。"
 
+msgid "Disable DNS memory cache"
+msgstr "禁用 DNS 内存缓存"
+
+msgid "Disable DNS memory cache in this query."
+msgstr "在本次查询中禁用 DNS 内存缓存。"
+
+msgid "Disable DNS memory cache expiration"
+msgstr "禁用 DNS 内存缓存过期"
+
+msgid "Independent DNS memory cache per server"
+msgstr "每个 DNS 服务器独立内存缓存"
+
+msgid "Make each DNS server's memory cache independent for special purposes. If enabled, will slightly degrade performance."
+msgstr "让每个 DNS 服务器使用独立内存缓存。启用后性能会略微下降。"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:670
 msgid "Disable HTTP challenge"
 msgstr "禁用 HTTP 验证"
@@ -608,6 +623,9 @@ msgstr "禁用 UDP 域名映射"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1205
 msgid "Disable cache and save cache in this query."
 msgstr "在本次查询中禁用缓存。"
+
+msgid "Disable DNS memory cache and persistent cache in this query."
+msgstr "在本次查询中禁用 DNS 内存缓存和持久化缓存。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:924
 msgid "Disable cache expire"
@@ -2214,6 +2232,12 @@ msgstr "手动选择"
 msgid "Custom nodes"
 msgstr "自选节点"
 
+msgid "Policy nodes"
+msgstr "策略节点"
+
+msgid "List of policy groups."
+msgstr "策略组列表。"
+
 msgid "Subscription nodes"
 msgstr "订阅节点"
 
@@ -3308,20 +3332,40 @@ msgid "Cache Settings"
 msgstr "缓存设置"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persistent Cache Settings"
+msgstr "持久化缓存设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Enable cache"
 msgstr "启用缓存"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Enable cache file"
+msgstr "启用缓存文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache file path"
 msgstr "缓存文件路径"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persistent cache file path"
+msgstr "持久化缓存文件路径"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache FakeIP"
 msgstr "缓存 FakeIP"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist FakeIP cache"
+msgstr "持久化 FakeIP 缓存"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache RDRC"
 msgstr "缓存 RDRC"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist RDRC cache"
+msgstr "持久化 RDRC 缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
