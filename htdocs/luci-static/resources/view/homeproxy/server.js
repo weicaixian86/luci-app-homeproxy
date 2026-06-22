@@ -126,6 +126,8 @@ return view.extend({
 		let m, s, o;
 		let features = data[1];
 
+		hp.installCloseButtonText();
+
 		m = new form.Map('homeproxy', _('HomeProxy Server'),
 			_('The modern ImmortalWrt proxy platform for ARM64/AMD64.'));
 

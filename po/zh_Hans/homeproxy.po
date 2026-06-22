@@ -8,6 +8,10 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+#: htdocs/luci-static/resources/homeproxy.js:321
+msgid "Close"
+msgstr "关闭"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:206
 msgid "%s log"
 msgstr "%s 日志"
@@ -2858,6 +2862,18 @@ msgstr "Tun TCP/UDP"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:175
 msgid "Type"
 msgstr "类型"
+
+msgid "Type error"
+msgstr "类型错误"
+
+msgid "TypeError"
+msgstr "类型错误"
+
+msgid "Cannot convert null to object."
+msgstr "无法将 null 转换为对象。"
+
+msgid "can't convert null to object"
+msgstr "无法将 null 转换为对象"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:662
 #: htdocs/luci-static/resources/view/homeproxy/client.js:971

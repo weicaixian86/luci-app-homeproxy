@@ -1622,6 +1622,8 @@ return view.extend({
 		let features = data[1];
 		let node_latency_row_state = createNodeLatencyRowStateModel();
 
+		hp.installCloseButtonText();
+
 		this.node_latency_row_state = node_latency_row_state;
 
 		/* Cache subscription information, it will be called multiple times */

@@ -208,6 +208,9 @@ return baseclass.extend({
 	},
 
 	loadDefaultLabel(uciconfig, ucisection) {
+		if (!ucisection)
+			return '';
+
 		let label = uci.get(uciconfig, ucisection, 'label');
 		if (label) {
 			return label;
@@ -218,6 +221,9 @@ return baseclass.extend({
 	},
 
 	loadModalTitle(title, addtitle, uciconfig, ucisection) {
+		if (!ucisection)
+			return addtitle;
+
 		let label = uci.get(uciconfig, ucisection, 'label');
 		return label ? title + ' » ' + label : addtitle;
 	},
@@ -295,6 +301,45 @@ return baseclass.extend({
 		});
 
 		return el;
+	},
+
+	installCloseButtonText() {
+		if (window.__homeproxyCloseButtonText)
+			return;
+
+		window.__homeproxyCloseButtonText = true;
+
+		let fix = (root) => {
+			for (let el of (root || document).querySelectorAll('button, .btn, input[type="button"], input[type="submit"]')) {
+				let text = (el.textContent || el.value || '').trim();
+				if (text !== 'Dismiss' && text !== '\u5ffd\u7565')
+					continue;
+
+				if ('value' in el && !el.textContent.trim())
+					el.value = _('Close');
+				else
+					el.textContent = _('Close');
+			}
+		};
+
+		let observe = () => {
+			if (!document.body)
+				return;
+
+			fix(document);
+			new MutationObserver((mutations) => {
+				for (let mutation of mutations)
+					for (let node of mutation.addedNodes)
+						if (node.nodeType === 1)
+							fix(node);
+				fix(document);
+			}).observe(document.body, { childList: true, subtree: true });
+		};
+
+		if (document.body)
+			observe();
+		else
+			document.addEventListener('DOMContentLoaded', observe, { once: true });
 	},
 
 	uploadCertificate(_option, type, filename, ev) {

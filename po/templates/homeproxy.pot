@@ -1,6 +1,10 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
+#: htdocs/luci-static/resources/homeproxy.js:321
+msgid "Close"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:206
 msgid "%s log"
 msgstr ""
@@ -2790,6 +2794,18 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:857
 #: htdocs/luci-static/resources/view/homeproxy/server.js:175
 msgid "Type"
+msgstr ""
+
+msgid "Type error"
+msgstr ""
+
+msgid "TypeError"
+msgstr ""
+
+msgid "Cannot convert null to object."
+msgstr ""
+
+msgid "can't convert null to object"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:662

@@ -177,6 +177,39 @@ function normalizeRuleSetSectionId(tag) {
 	return 'ruleset_' + tag.replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
 }
 
+function translateKnownError(error) {
+	let name = error?.name || '',
+	    message = error?.message || error || '';
+
+	if (name === 'TypeError' && String(message).match(/can't convert null to object|Cannot convert undefined or null to object/i))
+		return _('Type error') + '\n' + _('Cannot convert null to object.');
+
+	return null;
+}
+
+function installKnownErrorTranslator() {
+	if (window.__homeproxyKnownErrorTranslator)
+		return;
+
+	window.__homeproxyKnownErrorTranslator = true;
+
+	window.addEventListener('error', (ev) => {
+		let message = translateKnownError(ev.error || ev.message);
+		if (message) {
+			ev.preventDefault();
+			ui.addNotification(null, E('p', message), 'danger');
+		}
+	}, true);
+
+	window.addEventListener('unhandledrejection', (ev) => {
+		let message = translateKnownError(ev.reason);
+		if (message) {
+			ev.preventDefault();
+			ui.addNotification(null, E('p', message), 'danger');
+		}
+	}, true);
+}
+
 function renderRuleSetAdd(section, extra_class) {
 	let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
 	    nameEl = el.querySelector('.cbi-section-create-name'),
@@ -284,6 +317,9 @@ return view.extend({
 
 	render(data) {
 		let m, s, o, ss, so;
+
+		installKnownErrorTranslator();
+		hp.installCloseButtonText();
 
 		let features = data[1],
 		    hosts = data[2]?.hosts,

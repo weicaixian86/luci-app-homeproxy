@@ -14,6 +14,8 @@
 'require ui';
 'require view';
 
+'require homeproxy as hp';
+
 /* Thanks to luci-app-aria2 */
 const css = '				\
 #log_textarea {				\
@@ -226,6 +228,8 @@ function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
 return view.extend({
 	render() {
 		let m, s, o;
+
+		hp.installCloseButtonText();
 
 		m = new form.Map('homeproxy');
 
