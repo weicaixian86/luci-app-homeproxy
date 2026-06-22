@@ -88,6 +88,10 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 		uci.delete(uciconfig, cfg['.name'], 'proxy_protocol');
 });
 
+const old_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+const old_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+const default_panel_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+
 /* clash api panel options were introduced */
 if (!uci.get(uciconfig, uciclashapi))
 	uci.set(uciconfig, uciclashapi, uciconfig);
@@ -95,8 +99,9 @@ if (!uci.get(uciconfig, uciclashapi))
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui')))
 	uci.set(uciconfig, uciclashapi, 'external_ui', '/etc/homeproxy/run/ui');
 
-if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_url')))
-	uci.set(uciconfig, uciclashapi, 'external_ui_download_url', 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip');
+const panel_url = uci.get(uciconfig, uciclashapi, 'external_ui_download_url');
+if (isEmpty(panel_url) || panel_url === old_panel_url || panel_url === old_panel_proxy_url)
+	uci.set(uciconfig, uciclashapi, 'external_ui_download_url', default_panel_url);
 
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')))
 	uci.set(uciconfig, uciclashapi, 'external_ui_download_detour', 'direct-out');
@@ -137,8 +142,11 @@ if (!uci.get(uciconfig, ucicache))
 if (isEmpty(uci.get(uciconfig, ucicache, 'enabled')))
 	uci.set(uciconfig, ucicache, 'enabled', '1');
 
-if (isEmpty(uci.get(uciconfig, ucicache, 'path')))
-	uci.set(uciconfig, ucicache, 'path', '/var/run/homeproxy/cache.db');
+const old_cache_path = '/var/run/homeproxy/cache.db';
+const default_cache_path = '/etc/homeproxy/cache.db';
+const cache_path = uci.get(uciconfig, ucicache, 'path');
+if (isEmpty(cache_path) || cache_path === old_cache_path)
+	uci.set(uciconfig, ucicache, 'path', default_cache_path);
 
 if (isEmpty(uci.get(uciconfig, ucicache, 'store_fakeip')))
 	uci.set(uciconfig, ucicache, 'store_fakeip', '1');

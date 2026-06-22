@@ -2015,7 +2015,7 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'path', _('Persistent cache file path'));
-		so.placeholder = '/var/run/homeproxy/cache.db';
+		so.placeholder = '/etc/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
 		so = ss.option(form.ListValue, 'store_fakeip', _('Persist FakeIP cache'));
@@ -2195,15 +2195,14 @@ return view.extend({
 		so.default = '/etc/homeproxy/run/ui';
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts)');
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts, gh-proxy)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard');
+		so.value('', _('Disable'));
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard (gh-proxy)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
-		so.value('', _('Disable'));
-		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 		so.editable = true;
 
 		so = ss.option(form.ListValue, 'external_ui_download_detour', _('UI download detour'));

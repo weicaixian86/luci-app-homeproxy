@@ -44,6 +44,12 @@ start_service() {
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
 	config_get proxy_mode "config" "proxy_mode" "redirect_tproxy"
 
+	local cache_path
+	config_get cache_path "cache" "path" "$HP_DIR/cache.db"
+	mkdir -p "$(dirname "$cache_path")"
+	[ -e "$cache_path" ] || touch "$cache_path"
+	chown sing-box:sing-box "$cache_path" 2>"/dev/null"
+
 	local outbound_node
 	if [ "$routing_mode" != "custom" ]; then
 		config_get outbound_node "config" "main_node" "nil"
@@ -162,7 +168,7 @@ start_service() {
 			procd_add_jail "sing-box-c" log procfs
 			procd_add_jail_mount "$RUN_DIR/sing-box-c.json"
 			procd_add_jail_mount_rw "$RUN_DIR/sing-box-c.log"
-			procd_add_jail_mount_rw "$RUN_DIR/cache.db"
+			procd_add_jail_mount_rw "$cache_path"
 			procd_add_jail_mount_rw "$HP_DIR/run/"
 			procd_add_jail_mount "$HP_DIR/certs/"
 			procd_add_jail_mount "/etc/ssl/"
@@ -231,9 +237,6 @@ start_service() {
 	procd_set_param command "$HP_DIR/scripts/clean_log.sh"
 	procd_set_param respawn
 	procd_close_instance
-
-	# Prepare cache db
-	[ -e "$RUN_DIR/cache.db" ] || touch "$RUN_DIR/cache.db"
 
 	case "$routing_mode" in
 	"custom")

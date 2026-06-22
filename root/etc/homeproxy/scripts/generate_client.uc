@@ -161,14 +161,7 @@ cache_file_store_fakeip = uci.get(uciconfig, ucicache, 'store_fakeip');
 cache_store_rdrc = uci.get(uciconfig, ucicache, 'store_rdrc');
 cache_rdrc_timeout = uci.get(uciconfig, ucicache, 'rdrc_timeout');
 
-let clash_api = {
-	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
-	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
-	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
-	external_ui_download_detour: uci.get(uciconfig, uciclashapi, 'external_ui_download_detour'),
-	secret: uci.get(uciconfig, uciclashapi, 'secret'),
-	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
-};
+let clash_api = null;
 /* UCI config end */
 
 /* Config helper start */
@@ -504,6 +497,15 @@ function get_ruleset(cfg) {
 	}
 	return rules;
 }
+
+clash_api = {
+	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
+	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
+	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
+	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
+	secret: uci.get(uciconfig, uciclashapi, 'secret'),
+	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
+};
 /* Config helper end */
 
 const config = {};
@@ -1127,7 +1129,7 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 		clash_api,
 		cache_file: {
 			enabled: cache_file_enabled !== '0',
-			path: cache_file_path || (RUN_DIR + '/cache.db'),
+			path: cache_file_path || (HP_DIR + '/cache.db'),
 			store_fakeip: strToBool(cache_file_store_fakeip),
 			store_rdrc: strToBool(cache_store_rdrc),
 			rdrc_timeout: strToTime(cache_rdrc_timeout),
