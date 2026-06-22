@@ -177,6 +177,63 @@ function normalizeRuleSetSectionId(tag) {
 	return 'ruleset_' + tag.replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
 }
 
+function getDnsServerDefaultPort(type) {
+	switch (type) {
+	case 'udp':
+	case 'tcp':
+		return '53';
+	case 'tls':
+	case 'quic':
+		return '853';
+	case 'https':
+	case 'h3':
+		return '443';
+	default:
+		return 'auto';
+	}
+}
+
+function getDnsServerAddressPlaceholder(type) {
+	switch (type) {
+	case 'https':
+	case 'h3':
+		return 'https://dns.alidns.com/dns-query';
+	case 'tls':
+	case 'quic':
+		return 'dns.alidns.com';
+	default:
+		return '223.5.5.5';
+	}
+}
+
+function validateDnsServerAddress(type, value) {
+	if (!value)
+		return false;
+
+	if (value.includes('://')) {
+		if (!['https', 'h3'].includes(type))
+			return false;
+
+		try {
+			let url = new URL(value);
+			if (url.protocol !== 'https:')
+				return false;
+
+			value = url.hostname;
+		} catch (e) {
+			return false;
+		}
+	}
+
+	return stubValidator.apply('hostname', value) ||
+		stubValidator.apply('ip4addr', value) ||
+		stubValidator.apply('ip6addr', value.match(/^\[(.+)\]$/)?.[1] || value);
+}
+
+function validateDuration(value) {
+	return !value || /^[1-9]\d*(ms|s|m|h|d)$/.test(value);
+}
+
 function translateKnownError(error) {
 	let name = error?.name || '',
 	    message = error?.message || error || '';
@@ -878,7 +935,7 @@ return view.extend({
 			_('List of nodes from subscriptions.'));
 		uci.sections(data[0], 'node', (res) => {
 			if (res.grouphash)
-				so.value(res['.name'], String.format('%s / %s', subscription_groups[res.grouphash] || _('Subscriptions'), proxy_nodes[res['.name']]));
+				so.value(res['.name'], proxy_nodes[res['.name']]);
 		});
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
@@ -902,7 +959,7 @@ return view.extend({
 			delete this.vallist;
 
 			uci.sections(data[0], 'routing_node', (res) => {
-				if (res['.name'] !== section_id && res.enabled === '1')
+				if (res['.name'] !== section_id && res.enabled === '1' && ['urltest', 'selector'].includes(res.node))
 					this.value(res['.name'], res.label || res['.name']);
 			});
 
@@ -1328,7 +1385,8 @@ return view.extend({
 		for (let i in hp.dns_strategy)
 			so.value(i, hp.dns_strategy[i]);
 
-		so = ss.option(form.ListValue, 'default_server', _('Default DNS server'));
+		so = ss.option(form.ListValue, 'default_server', _('Default DNS server'),
+			_('Daily domain name resolution for clients. Choose an overseas DNS if DNS leak protection is required.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
@@ -1396,21 +1454,72 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('Address'),
-			_('The address of the dns server.'));
-		so.datatype = 'or(hostname, ipaddr)';
+			_('Full URL, e.g. https://dns.alidns.com/dns-query'));
+		so.placeholder = '223.5.5.5';
+		so.validate = function(section_id, value) {
+			let type = this.section.formvalue(section_id, 'type') ||
+				uci.get(data[0], section_id, 'type') ||
+				'udp';
+
+			if (!validateDnsServerAddress(type, value))
+				return _('Expecting: %s').format(_('valid DNS server address'));
+
+			return true;
+		}
+		so.renderWidget = function(section_id, option_index, cfgvalue) {
+			let node = form.Value.prototype.renderWidget.apply(this, arguments),
+			    input = node.querySelector('input'),
+			    update = () => {
+				let type = this.section.formvalue(section_id, 'type') ||
+					uci.get(data[0], section_id, 'type') ||
+					'udp';
+				if (input)
+					input.placeholder = getDnsServerAddressPlaceholder(type);
+			};
+
+			update();
+			requestAnimationFrame(() => {
+				let type_input = document.getElementById(this.cbid(section_id).replace(/\.server$/, '.type'));
+				if (type_input) {
+					type_input.addEventListener('change', update);
+					update();
+				}
+			});
+
+			return node;
+		}
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server_port', _('Port'),
-			_('The port of the DNS server.'));
-		so.placeholder = 'auto';
+			_('Leave empty to use the default port.'));
+		so.placeholder = '53';
 		so.datatype = 'port';
+		so.renderWidget = function(section_id, option_index, cfgvalue) {
+			let node = form.Value.prototype.renderWidget.apply(this, arguments),
+			    input = node.querySelector('input'),
+			    update = () => {
+				let type = this.section.formvalue(section_id, 'type') ||
+					uci.get(data[0], section_id, 'type') ||
+					'udp';
+				if (input)
+					input.placeholder = getDnsServerDefaultPort(type);
+			};
 
-		so = ss.option(form.Value, 'path', _('Path'),
-			_('The path of the DNS server.'));
-		so.placeholder = '/dns-query';
-		so.depends('type', 'https');
-		so.depends('type', 'h3');
-		so.modalonly = true;
+			update();
+			requestAnimationFrame(() => {
+				let type_input = document.getElementById(this.cbid(section_id).replace(/\.server_port$/, '.type'));
+				if (type_input) {
+					type_input.addEventListener('change', update);
+					update();
+				}
+			});
+
+			return node;
+		}
+		so.depends('type', 'udp');
+		so.depends('type', 'tcp');
+		so.depends('type', 'tls');
+		so.depends('type', 'quic');
 
 		so = ss.option(form.DynamicList, 'headers', _('Headers'),
 			_('Additional headers to be sent to the DNS server.'));
@@ -1427,7 +1536,7 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'address_resolver', _('Address resolver'),
-			_('Tag of a another server to resolve the domain name in the address. Required if address contains domain.'));
+			_('Used to resolve DNS server addresses in domain form. IP addresses do not require it.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
@@ -1856,8 +1965,14 @@ return view.extend({
 		so.depends('type', 'remote');
 
 		so = ss.option(form.Value, 'update_interval', _('Update interval'),
-			_('Update interval of rule set.'));
+			_('Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day.'));
 		so.placeholder = '1d';
+		so.validate = function(section_id, value) {
+			if (!validateDuration(value))
+				return _('Expecting: %s').format(_('valid duration'));
+
+			return true;
+		}
 		so.depends('type', 'remote');
 		/* Rule set settings end */
 
@@ -2081,12 +2196,15 @@ return view.extend({
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts)');
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts, gh-proxy)');
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard');
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
 		so.value('', _('Disable'));
 		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+		so.editable = true;
 
 		so = ss.option(form.ListValue, 'external_ui_download_detour', _('UI download detour'));
 		so.value('', _('Default'));
@@ -2097,7 +2215,8 @@ return view.extend({
 		});
 		so.default = 'direct-out';
 
-		so = ss.option(form.Value, 'external_controller', _('API listen'));
+		so = ss.option(form.Value, 'external_controller', _('API listen'),
+			_('Use 0.0.0.0:port to open the panel from your browser.'));
 		so.placeholder = '0.0.0.0:9095';
 		so.default = '0.0.0.0:9095';
 		so.datatype = 'ipaddrport(1)';

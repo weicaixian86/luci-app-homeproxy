@@ -507,9 +507,13 @@ msgstr "默认 DNS（由 WAN 下发）"
 msgid "Default DNS server"
 msgstr "默认 DNS 服务器"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1332
+msgid "Daily domain name resolution for clients. Choose an overseas DNS if DNS leak protection is required."
+msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:400
 msgid "Default DNS server for resolving domain name in the server address."
-msgstr "用于解析服务器地址中的域名的默认 DNS 服务器。"
+msgstr "填写国内DNS，Sing-box在连接这个代理节点前，需要先解析节点域名，这里就决定用哪个DNS去解析这个“代理服务器域名”，不要选走代理的国外 DNS，否则可能出现“代理还没连上，却要先通过代理解析代理服务器”的循环问题。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:900
 msgid "Default DNS strategy"
@@ -2226,6 +2230,9 @@ msgstr "用于 sing-box 规则集的标签。例如：<code>geosite-cn</code>。
 msgid "valid tag"
 msgstr "有效标签"
 
+msgid "valid duration"
+msgstr "有效时间格式"
+
 msgid "Manual select"
 msgstr "手动选择"
 
@@ -2536,12 +2543,8 @@ msgid "TLS record fragment"
 msgstr "TLS 记录分片"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1012
-msgid ""
-"Tag of a another server to resolve the domain name in the address. Required "
-"if address contains domain."
-msgstr ""
-"用于解析本 DNS 服务器的域名的另一个 DNS 服务器的标签。如果服务器地址包括域名"
-"则必须。"
+msgid "Used to resolve DNS server addresses in domain form. IP addresses do not require it."
+msgstr "用于解析域名形式的DNS，如：https://dns.alidns.com/dns-query，数字形式则不需要如：https://223.5.5.5/dns-query"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1051
 msgid "Tag of an outbound for connecting to the dns server."
@@ -2630,8 +2633,8 @@ msgid "The URL to test."
 msgstr "用于测试的 URL。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:981
-msgid "The address of the dns server."
-msgstr "DNS 服务器的地址。"
+msgid "Full URL, e.g. https://dns.alidns.com/dns-query"
+msgstr "完整路径 如：https://dns.alidns.com/dns-query"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:679
 msgid ""
@@ -2743,10 +2746,6 @@ msgstr "为Openwrt设计的Sing-box代理管理平台。"
 msgid "The network interface to bind to."
 msgstr "绑定到的网络接口。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:991
-msgid "The path of the DNS server."
-msgstr "DNS 服务器的路径。"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1529
 msgid ""
 "The path to the ECH config, in PEM format. If empty, load from DNS will be "
@@ -2762,8 +2761,8 @@ msgid "The port must be unique."
 msgstr "必须是唯一端口。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:986
-msgid "The port of the DNS server."
-msgstr "DNS 服务器的端口。"
+msgid "Leave empty to use the default port."
+msgstr "留空则表示使用默认端口。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1239
 msgid "The response code."
@@ -2982,8 +2981,8 @@ msgid "Update interval"
 msgstr "更新间隔"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1416
-msgid "Update interval of rule set."
-msgstr "规则集更新间隔。"
+msgid "Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day."
+msgstr "规则集更新间隔。示例：1m = 1分钟，1h = 1小时，1d = 1天。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1844
 msgid "Update nodes from subscriptions"
@@ -3298,6 +3297,10 @@ msgstr "UI 下载节点"
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "API listen"
 msgstr "API 监听"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Use 0.0.0.0:port to open the panel from your browser."
+msgstr "使用 0.0.0.0:端口 才能从浏览器打开面板。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "API password"

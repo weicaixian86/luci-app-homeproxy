@@ -496,6 +496,10 @@ msgstr ""
 msgid "Default DNS server"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1332
+msgid "Daily domain name resolution for clients. Choose an overseas DNS if DNS leak protection is required."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:400
 msgid "Default DNS server for resolving domain name in the server address."
 msgstr ""
@@ -2190,6 +2194,9 @@ msgstr ""
 msgid "valid tag"
 msgstr ""
 
+msgid "valid duration"
+msgstr ""
+
 msgid "Manual select"
 msgstr ""
 
@@ -2494,9 +2501,7 @@ msgid "TLS record fragment"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1012
-msgid ""
-"Tag of a another server to resolve the domain name in the address. Required "
-"if address contains domain."
+msgid "Used to resolve DNS server addresses in domain form. IP addresses do not require it."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1051
@@ -2586,7 +2591,7 @@ msgid "The URL to test."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:981
-msgid "The address of the dns server."
+msgid "Full URL, e.g. https://dns.alidns.com/dns-query"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:679
@@ -2685,10 +2690,6 @@ msgstr ""
 msgid "The network interface to bind to."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:991
-msgid "The path of the DNS server."
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1529
 msgid ""
 "The path to the ECH config, in PEM format. If empty, load from DNS will be "
@@ -2704,7 +2705,7 @@ msgid "The port must be unique."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:986
-msgid "The port of the DNS server."
+msgid "Leave empty to use the default port."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1239
@@ -2915,7 +2916,7 @@ msgid "Update interval"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1416
-msgid "Update interval of rule set."
+msgid "Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1844
@@ -3229,6 +3230,10 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "API listen"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Use 0.0.0.0:port to open the panel from your browser."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js

@@ -1168,7 +1168,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	o.modalonly = true;
 
 	o = s.option(form.ListValue, 'vmess_encrypt', _('Encrypt method'));
-	o.value('auto');
+	o.value('auto', _('Default'));
 	o.value('none');
 	o.value('zero');
 	o.value('aes-128-gcm');

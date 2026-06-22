@@ -200,6 +200,31 @@ function parse_dnsserver(server_addr, default_protocol) {
 	}
 }
 
+function parse_custom_dnsserver(cfg) {
+	let server = cfg.server,
+	    server_port = (cfg.type in ['https', 'h3']) ? null : strToInt(cfg.server_port),
+	    path = cfg.path;
+
+	if (!isEmpty(server) && match(server, /:\/\//)) {
+		const server_url = parseURL(server);
+
+		server = server_url.hostname;
+		if (isEmpty(server_port))
+			server_port = strToInt(server_url.port);
+		if ((cfg.type in ['https', 'h3']) && isEmpty(path) && server_url.pathname !== '/')
+			path = server_url.pathname;
+	}
+	if ((cfg.type in ['https', 'h3']) && isEmpty(path))
+		path = '/dns-query';
+
+	return {
+		type: cfg.type,
+		server,
+		server_port,
+		path
+	};
+}
+
 function parse_dnsquery(strquery) {
 	if (type(strquery) !== 'array' || isEmpty(strquery))
 		return null;
@@ -254,7 +279,7 @@ function collect_policy_nodes(nodes, current) {
 			continue;
 
 		const outbound = uci.get_all(uciconfig, node) || {};
-		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && outbound.enabled === '1')
+		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && outbound.enabled === '1' && outbound.node in ['urltest', 'selector'])
 			push(result, node);
 	}
 
@@ -442,7 +467,7 @@ function get_outbound(cfg) {
 			const node = uci.get(uciconfig, cfg, 'node');
 			if (isEmpty(node))
 				die(sprintf("%s's node is missing, please check your configuration.", cfg));
-			else if (node === 'urltest')
+			else if (node in ['urltest', 'selector'])
 				return 'cfg-' + cfg + '-out';
 			else
 				return 'cfg-' + node + '-out';
@@ -607,10 +632,7 @@ if (!isEmpty(main_node)) {
 
 		push(config.dns.servers, {
 			tag: 'cfg-' + cfg['.name'] + '-dns',
-			type: cfg.type,
-			server: cfg.server,
-			server_port: strToInt(cfg.server_port),
-			path: cfg.path,
+			...parse_custom_dnsserver(cfg),
 			headers: cfg.headers,
 			tls: cfg.tls_sni ? {
 				enabled: true,
