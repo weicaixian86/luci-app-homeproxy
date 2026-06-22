@@ -742,7 +742,28 @@ return view.extend({
 			so.value(i, proxy_nodes[i]);
 		so.default = 'selector';
 		so.rmempty = false;
+		so.formvalue = function(section_id) {
+			let widget = this.getUIElement(section_id),
+			    cbid = this.cbid(section_id),
+			    overlay = document.getElementById('modal_overlay'),
+			    input = null;
+
+			if (overlay)
+				for (let el of overlay.querySelectorAll('input, select'))
+					if (el.id === cbid || el.name === cbid) {
+						input = el;
+						break;
+					}
+
+			return widget?.getValue() ||
+				input?.value ||
+				uci.get(data[0], section_id, 'node') ||
+				this.default ||
+				'selector';
+		}
 		so.validate = function(section_id, value) {
+			value = value || this.formvalue(section_id);
+
 			let result = hp.validateUniqueValue(data[0], 'routing_node', 'node', section_id, value);
 			if (result !== true)
 				return result;
@@ -758,7 +779,6 @@ return view.extend({
 
 			return true;
 		}
-		so.editable = true;
 
 		so = ss.option(form.ListValue, 'domain_resolver', _('Domain resolver'),
 			_('For resolving domain name in the server address.'));
@@ -845,16 +865,6 @@ return view.extend({
 			so.value(hash, subscription_groups[hash]);
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
-		so.validate = function(section_id) {
-			let node = this.section.formvalue(section_id, 'node'),
-			    groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
-			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
-			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes'));
-			if (section_id && (node === 'urltest' || node === 'selector') && !groups.length && !subscription_nodes.length && !selected.length)
-				return _('Expecting: %s').format(_('non-empty value'));
-
-			return true;
-		}
 		so.rmempty = true;
 		so.modalonly = true;
 
