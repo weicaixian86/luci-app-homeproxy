@@ -188,6 +188,7 @@ return view.extend({
 			o.value('tuic', _('Tuic'));
 		o.value('vless', _('VLESS'));
 		o.value('vmess', _('VMess'));
+		o.default = 'mixed';
 		o.rmempty = false;
 
 		o = s.option(form.Value, 'address', _('Listen address'));

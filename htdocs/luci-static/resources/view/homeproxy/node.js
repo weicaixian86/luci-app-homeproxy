@@ -873,6 +873,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		o.value('wireguard', _('WireGuard'));
 	o.value('vless', _('VLESS'));
 	o.value('vmess', _('VMess'));
+	o.default = 'direct';
 	o.rmempty = false;
 
 	o = s.option(form.Value, 'address', _('Address'));

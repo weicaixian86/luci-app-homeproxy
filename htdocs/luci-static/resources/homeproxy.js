@@ -357,7 +357,7 @@ return baseclass.extend({
 		if (section_id) {
 			if (!value)
 				return _('Expecting: %s').format(_('non-empty value'));
-			if (ucioption === 'node' && value === 'urltest')
+			if (ucioption === 'node' && (value === 'urltest' || value === 'selector'))
 				return true;
 
 			let duplicate = false;

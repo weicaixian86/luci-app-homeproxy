@@ -704,6 +704,8 @@ return view.extend({
 		so.value('selector', _('Manual select'));
 		for (let i in proxy_nodes)
 			so.value(i, proxy_nodes[i]);
+		so.default = 'selector';
+		so.rmempty = false;
 		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'routing_node', 'node');
 		so.editable = true;
 
