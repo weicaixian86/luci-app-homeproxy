@@ -10,6 +10,14 @@ cd homeproxy-2.0.1-x86_64
 sh install.sh
 ```
 
+## 安装新包后如果页面仍显示旧文字，建议清浏览器缓存，或执行：
+```sh
+rm -f /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache/*
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+```
+
 ## 卸载
 ```sh
 /etc/init.d/homeproxy stop 2>/dev/null || true
