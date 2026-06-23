@@ -29,6 +29,50 @@ const css = '				\
 }					\
 .description {				\
 	background-color: #33ccff;	\
+}					\
+.homeproxy-connect-grid {		\
+	display: grid;			\
+	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));\
+	gap: 14px;			\
+}					\
+.homeproxy-connect-card {		\
+	display: grid;			\
+	grid-template-columns: 54px 1fr;	\
+	gap: 14px;			\
+	align-items: center;		\
+	min-height: 78px;		\
+	padding: 14px;			\
+	border-radius: 6px;		\
+	background: #fff;		\
+	box-shadow: 0 1px 4px rgba(0, 0, 0, .08);\
+}					\
+.homeproxy-connect-icon {		\
+	display: flex;			\
+	align-items: center;		\
+	justify-content: center;		\
+	width: 44px;			\
+	height: 44px;			\
+	border-radius: 50%;		\
+	color: #fff;			\
+	font-weight: 700;		\
+	font-size: 18px;		\
+}					\
+.homeproxy-connect-info {		\
+	min-height: 48px;		\
+	padding: 10px 16px;		\
+	border-radius: 8px;		\
+	background: #e9edf2;		\
+}					\
+.homeproxy-connect-title {		\
+	color: #7d8aa0;			\
+	font-weight: 700;		\
+	line-height: 1.2;		\
+}					\
+.homeproxy-connect-result {		\
+	margin-top: 3px;		\
+	color: #ff4d35;			\
+	font-weight: 700;		\
+	cursor: pointer;		\
 }';
 
 const hp_dir = '/var/run/homeproxy';
@@ -60,6 +104,53 @@ function getConnStat(o, site) {
 		' ',
 		E('strong', { 'style': 'color:gray' }, _('unchecked')),
 	]);
+}
+
+function renderConnCards() {
+	const callConnStat = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'connection_check',
+		params: ['site'],
+		expect: { '': {} }
+	});
+
+	const items = [
+		{ site: 'baidu', title: _('Baidu Connection'), icon: 'B', color: '#ff7a00' },
+		{ site: 'google', title: _('Google Connection'), icon: 'G', color: '#4285f4' },
+		{ site: 'github', title: _('GitHub Connection'), icon: 'GH', color: '#7b3bb3' },
+		{ site: 'youtube', title: _('YouTube Connection'), icon: 'YT', color: '#ff0033' }
+	];
+
+	return E('div', { 'class': 'homeproxy-connect-grid' }, items.map((item) => {
+		let result = E('div', {
+			'class': 'homeproxy-connect-result',
+			'click': ui.createHandlerFn(this, () => {
+				result.textContent = _('Checking...');
+				result.style.setProperty('color', '#f0ad4e');
+
+				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
+					if (ret.result) {
+						result.style.setProperty('color', 'green');
+						result.textContent = _('passed');
+					} else {
+						result.style.setProperty('color', '#ff4d35');
+						result.textContent = _('failed');
+					}
+				});
+			})
+		}, [ _('Click to check') ]);
+
+		return E('div', { 'class': 'homeproxy-connect-card' }, [
+			E('div', {
+				'class': 'homeproxy-connect-icon',
+				'style': 'background:%s'.format(item.color)
+			}, [ item.icon ]),
+			E('div', { 'class': 'homeproxy-connect-info' }, [
+				E('div', { 'class': 'homeproxy-connect-title' }, [ item.title ]),
+				result
+			])
+		]);
+	}));
 }
 
 function getResVersion(o, type) {
@@ -236,11 +327,9 @@ return view.extend({
 		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Connection check'));
 		s.anonymous = true;
 
-		o = s.option(form.DummyValue, '_check_baidu', _('BaiDu'));
-		o.cfgvalue = L.bind(getConnStat, this, o, 'baidu');
-
-		o = s.option(form.DummyValue, '_check_google', _('Google'));
-		o.cfgvalue = L.bind(getConnStat, this, o, 'google');
+		o = s.option(form.DummyValue, '_connection_check');
+		o.rawhtml = true;
+		o.render = renderConnCards;
 
 		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Resources management'));
 		s.anonymous = true;

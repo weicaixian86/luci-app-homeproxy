@@ -3427,3 +3427,20 @@ msgstr "打开面版"
 
 #~ msgid "HTTP3"
 #~ msgstr "HTTP3"
+msgid "Baidu Connection"
+msgstr "百度连接"
+
+msgid "Google Connection"
+msgstr "谷歌连接"
+
+msgid "GitHub Connection"
+msgstr "GitHub 连接"
+
+msgid "YouTube Connection"
+msgstr "YouTube 连接"
+
+msgid "Click to check"
+msgstr "点击检测"
+
+msgid "Checking..."
+msgstr "检测中..."

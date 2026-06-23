@@ -165,6 +165,12 @@ const methods = {
 			case 'google':
 				url = 'https://www.google.com';
 				break;
+			case 'github':
+				url = 'https://github.com';
+				break;
+			case 'youtube':
+				url = 'https://www.youtube.com';
+				break;
 			default:
 				return { result: false, error: 'illegal site' };
 				break;

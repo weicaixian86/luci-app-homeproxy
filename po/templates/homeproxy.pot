@@ -3355,3 +3355,20 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Open Panel"
 msgstr ""
+msgid "Baidu Connection"
+msgstr ""
+
+msgid "Google Connection"
+msgstr ""
+
+msgid "GitHub Connection"
+msgstr ""
+
+msgid "YouTube Connection"
+msgstr ""
+
+msgid "Click to check"
+msgstr ""
+
+msgid "Checking..."
+msgstr ""
