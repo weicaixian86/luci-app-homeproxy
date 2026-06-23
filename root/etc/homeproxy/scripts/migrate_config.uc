@@ -126,10 +126,10 @@ if (!uci.get(uciconfig, ucintp))
 
 const legacy_ntp_server = uci.get(uciconfig, uciinfra, 'ntp_server');
 if (isEmpty(uci.get(uciconfig, ucintp, 'enabled')))
-	uci.set(uciconfig, ucintp, 'enabled', !isEmpty(legacy_ntp_server) ? '1' : '0');
+	uci.set(uciconfig, ucintp, 'enabled', '1');
 
 if (isEmpty(uci.get(uciconfig, ucintp, 'server')))
-	uci.set(uciconfig, ucintp, 'server', !isEmpty(legacy_ntp_server) ? legacy_ntp_server : 'time.apple.com');
+	uci.set(uciconfig, ucintp, 'server', !isEmpty(legacy_ntp_server) ? legacy_ntp_server : 'ntp.ntsc.ac.cn');
 
 if (isEmpty(uci.get(uciconfig, ucintp, 'server_port')))
 	uci.set(uciconfig, ucintp, 'server_port', '123');

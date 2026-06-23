@@ -1996,20 +1996,50 @@ return view.extend({
 		ss = o.subsection;
 
 		so = ss.option(form.Flag, 'enabled', _('Enable NTP'));
-		so.default = so.disabled;
+		so.default = so.enabled;
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('NTP server address'));
-		so.placeholder = 'time.apple.com';
+		so.default = 'ntp.ntsc.ac.cn';
+		so.placeholder = 'ntp.ntsc.ac.cn';
+		so.rmempty = false;
+		so.validate = function(_section_id, value) {
+			if (!value)
+				return _('Expecting: %s').format(_('non-empty value'));
+
+			return stubValidator.apply('hostname', value) ||
+				stubValidator.apply('ip4addr', value) ||
+				stubValidator.apply('ip6addr', value);
+		};
 		so.depends('enabled', '1');
 
 		so = ss.option(form.Value, 'server_port', _('NTP server port'));
+		so.default = '123';
 		so.placeholder = '123';
 		so.datatype = 'port';
+		so.rmempty = false;
+		so.validate = function(_section_id, value) {
+			if (!value)
+				return _('Expecting: %s').format(_('non-empty value'));
+
+			return stubValidator.apply('port', value);
+		};
 		so.depends('enabled', '1');
 
-		so = ss.option(form.Value, 'interval', _('NTP time synchronization interval'));
+		so = ss.option(form.Value, 'interval', _('NTP time synchronization interval'),
+			_('NTP service always uses direct connection and mainly provides accurate time for sing-box features that depend on it, such as TLS certificate verification, VMess, Reality/uTLS and other time-sensitive connection scenarios.') + '<br />' +
+			_('Time format examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day.'));
+		so.default = '30m';
 		so.placeholder = '30m';
+		so.rmempty = false;
+		so.validate = function(_section_id, value) {
+			if (!value)
+				return _('Expecting: %s').format(_('non-empty value'));
+			if (!validateDuration(value))
+				return _('Expecting: %s').format(_('valid duration'));
+
+			return true;
+		};
 		so.depends('enabled', '1');
 		/* NTP settings end */
 

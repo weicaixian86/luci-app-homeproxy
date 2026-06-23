@@ -3371,6 +3371,14 @@ msgid "NTP time synchronization interval"
 msgstr "NTP 时间同步间隔"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "NTP service always uses direct connection and mainly provides accurate time for sing-box features that depend on it, such as TLS certificate verification, VMess, Reality/uTLS and other time-sensitive connection scenarios."
+msgstr "NTP服务固定走直连，主要提供给Sing-box某些依赖准确时间的功能使用,如：TLS证书校验、VMess、Reality/uTLS等对时间敏感的连接场景。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Time format examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day."
+msgstr "时间格式示例：1m = 1分钟，1h = 1小时，1d = 1天。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache Settings"
 msgstr "缓存设置"
 
