@@ -89,13 +89,16 @@ const statusCss = `
 	font-weight: 700;
 }
 #homeproxy_status_panel .homeproxy-status-actions {
-	display: flex;
-	flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
 	gap: 10px;
 	align-items: end;
 }
 #homeproxy_status_panel .homeproxy-status-actions .btn {
-	flex: 1 1 120px;
+	width: 100%;
+	min-width: 0;
+	padding-left: 8px;
+	padding-right: 8px;
 	white-space: nowrap;
 }
 @media (max-width: 900px) {
@@ -483,7 +486,7 @@ return view.extend({
 						'click': ui.createHandlerFn(this, (ev) => hp.uploadPanel(null, ev))
 					}, [ _('Upload Panel ZIP') ]),
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'btn cbi-button cbi-button-action',
 						'click': ui.createHandlerFn(this, openDashboard)
 					}, [ _('Open Panel') ])
 				);
@@ -2195,16 +2198,50 @@ return view.extend({
 		so.placeholder = '/etc/homeproxy/run/ui';
 		so.default = '/etc/homeproxy/run/ui';
 
+		const panelPresetUrls = {
+			'': '',
+			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard (CDN Fonts)',
+			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard (gh-proxy)',
+			'https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip': 'MetaCubeXD',
+			'https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip': 'YACD',
+			'https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip': 'Razord'
+		};
+
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
 		so.value('', _('Disable'));
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard (gh-proxy)');
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard (CDN Fonts)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard');
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
-		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
-		so.editable = true;
+		so.value('__custom__', _('Custom'));
+		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+		so.load = function(section_id) {
+			const value = uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default;
+			return (value in panelPresetUrls) ? value : '__custom__';
+		};
+		so.write = function(section_id, value) {
+			if (value === '__custom__') {
+				const customValue = trim(uci.get(data[0], section_id, 'external_ui_download_url_custom') || '');
+				uci.set(data[0], section_id, 'external_ui_download_url', customValue);
+			} else {
+				uci.set(data[0], section_id, 'external_ui_download_url', value);
+			}
+		};
+
+		so = ss.option(form.Value, 'external_ui_download_url_custom', _('Custom URL'));
+		so.placeholder = 'https://example.com/dist.zip';
+		so.depends('external_ui_download_url', '__custom__');
+		so.load = function(section_id) {
+			const value = trim(uci.get(data[0], section_id, 'external_ui_download_url') || '');
+			return (value in panelPresetUrls) ? '' : value;
+		};
+		so.write = function(section_id, value) {
+			uci.set(data[0], section_id, 'external_ui_download_url_custom', trim(value || ''));
+		};
+		so.remove = function(section_id) {
+			uci.unset(data[0], section_id, 'external_ui_download_url_custom');
+		};
 
 		so = ss.option(form.ListValue, 'external_ui_download_detour', _('UI download detour'));
 		so.value('', _('Default'));

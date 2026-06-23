@@ -925,7 +925,7 @@ msgstr "上传 %s 失败，错误：%s。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "panel ZIP package"
-msgstr "面板 ZIP 压缩包"
+msgstr "面版ZIP压缩包"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "unknown error"
@@ -934,24 +934,28 @@ msgstr "未知错误"
 #: htdocs/luci-static/resources/homeproxy.js
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Backup panel failed."
-msgstr "备份面板失败。"
+msgstr "备份面版失败。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Restore panel failed."
-msgstr "恢复面板失败。"
+msgstr "恢复面版失败。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Panel ZIP file is empty."
-msgstr "面板 ZIP 文件为空。"
+msgstr "面版 ZIP 文件为空。"
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "The unzip command is unavailable."
+msgstr "unzip 命令不可用。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Invalid panel ZIP file."
-msgstr "面板 ZIP 文件无效。"
+msgstr "面版 ZIP 文件无效。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Install panel failed."
-msgstr "安装面板失败。"
+msgstr "安装面版失败。"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:140
 msgid "Fatal"
@@ -2269,6 +2273,12 @@ msgstr "手动选择"
 msgid "Custom nodes"
 msgstr "自选节点"
 
+msgid "Custom"
+msgstr "自定义"
+
+msgid "Custom URL"
+msgstr "自定义URL"
+
 msgid "Policy nodes"
 msgstr "策略节点"
 
@@ -3446,7 +3456,7 @@ msgstr "打开面版"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Upload Panel ZIP"
-msgstr "上传面板 ZIP"
+msgstr "上传面版ZIP"
 
 #~ msgid "Real Proxy"
 #~ msgstr "Real Proxy"

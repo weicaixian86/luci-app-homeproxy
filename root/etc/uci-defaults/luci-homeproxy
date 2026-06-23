@@ -14,11 +14,13 @@ if [ -z "$api_secret" ] || [ "$api_secret" = "homeproxy" ]; then
 	uci -q commit homeproxy
 fi
 
+legacy_panel_url="https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
+legacy_panel_proxy_url="https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
 old_panel_url="https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
 old_panel_proxy_url="https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
-default_panel_url="https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip"
+default_panel_url="https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip"
 panel_url="$(uci -q get homeproxy.clash_api.external_ui_download_url)"
-if [ -z "$panel_url" ] || [ "$panel_url" = "$old_panel_url" ] || [ "$panel_url" = "$old_panel_proxy_url" ]; then
+if [ -z "$panel_url" ] || [ "$panel_url" = "$legacy_panel_url" ] || [ "$panel_url" = "$legacy_panel_proxy_url" ] || [ "$panel_url" = "$old_panel_proxy_url" ]; then
 	uci -q set homeproxy.clash_api.external_ui_download_url="$default_panel_url"
 	uci -q commit homeproxy
 fi

@@ -923,6 +923,10 @@ msgid "Panel ZIP file is empty."
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js
+msgid "The unzip command is unavailable."
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
 msgid "Invalid panel ZIP file."
 msgstr ""
 
@@ -2231,6 +2235,12 @@ msgid "Manual select"
 msgstr ""
 
 msgid "Custom nodes"
+msgstr ""
+
+msgid "Custom"
+msgstr ""
+
+msgid "Custom URL"
 msgstr ""
 
 msgid "Policy nodes"

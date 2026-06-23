@@ -400,6 +400,11 @@ const methods = {
 				return { result: false, error: 'empty_panel_zip' };
 			}
 
+			if (system('command -v unzip >/dev/null 2>&1') !== 0) {
+				system(`rm -f ${shellquote(tmpzip)}`);
+				return { result: false, error: 'unzip_unavailable' };
+			}
+
 			const panel_dir = getPanelDir(uci);
 			const backup_dir = `${panel_dir}.backup`;
 			const extract_dir = '/tmp/homeproxy_panel_extract';
@@ -409,14 +414,32 @@ const methods = {
 				rm -rf ${shellquote(extract_dir)} ${shellquote(stage_dir)}
 				mkdir -p ${shellquote(extract_dir)} ${shellquote(stage_dir)}
 				unzip -oq ${shellquote(tmpzip)} -d ${shellquote(extract_dir)} >/dev/null
-				first_entry="$(find ${shellquote(extract_dir)} -mindepth 1 -maxdepth 1 | head -n 1)"
-				entry_count="$(find ${shellquote(extract_dir)} -mindepth 1 -maxdepth 1 | wc -l)"
 				src_dir=${shellquote(extract_dir)}
-				if [ "$entry_count" -eq 1 ] && [ -d "$first_entry" ]; then
-					src_dir="$first_entry"
-				fi
-				find "$src_dir" -mindepth 1 -print -quit >/dev/null
-				cp -a "$src_dir"/. ${shellquote(stage_dir)}/
+				for depth in 1 2 3; do
+					[ -f "$src_dir/index.html" ] && break
+					first_entry=""
+					entry_count=0
+					for entry in "$src_dir"/* "$src_dir"/.[!.]* "$src_dir"/..?*; do
+						[ -e "$entry" ] || continue
+						case "$(basename "$entry")" in
+							__MACOSX|.DS_Store) continue ;;
+						esac
+						entry_count=$((entry_count + 1))
+						[ -n "$first_entry" ] || first_entry="$entry"
+					done
+					if [ "$entry_count" -eq 1 ] && [ -d "$first_entry" ]; then
+						src_dir="$first_entry"
+					else
+						break
+					fi
+				done
+				copied=0
+				for entry in "$src_dir"/* "$src_dir"/.[!.]* "$src_dir"/..?*; do
+					[ -e "$entry" ] || continue
+					cp -a "$entry" ${shellquote(stage_dir)}/
+					copied=1
+				done
+				[ "$copied" -eq 1 ]
 			`;
 
 			if (system(install_cmd) !== 0) {

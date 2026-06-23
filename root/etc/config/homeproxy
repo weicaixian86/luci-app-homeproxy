@@ -51,7 +51,7 @@ config homeproxy 'control'
 
 config homeproxy 'clash_api'
 	option external_ui '/etc/homeproxy/run/ui'
-	option external_ui_download_url 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip'
+	option external_ui_download_url 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip'
 	option external_ui_download_detour 'direct-out'
 	option external_controller '0.0.0.0:9095'
 	option secret 'homeproxy'

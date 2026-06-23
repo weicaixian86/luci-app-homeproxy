@@ -400,6 +400,8 @@ return baseclass.extend({
 				return _('Restore panel failed.');
 			case 'empty_panel_zip':
 				return _('Panel ZIP file is empty.');
+			case 'unzip_unavailable':
+				return _('The unzip command is unavailable.');
 			case 'invalid_panel_zip':
 				return _('Invalid panel ZIP file.');
 			case 'panel_install_failed':
