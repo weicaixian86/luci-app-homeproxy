@@ -204,12 +204,12 @@ function getDnsServerAddressPlaceholder(type) {
 	switch (type) {
 	case 'https':
 	case 'h3':
-		return 'https://dns.alidns.com/dns-query';
+		return '';
 	case 'tls':
 	case 'quic':
 		return 'dns.alidns.com';
 	default:
-		return '223.5.5.5';
+		return '';
 	}
 }
 
@@ -1466,7 +1466,7 @@ return view.extend({
 
 		so = ss.option(form.Value, 'server', _('Address'),
 			_('Full URL, e.g. https://dns.alidns.com/dns-query'));
-		so.placeholder = '223.5.5.5';
+		so.placeholder = '';
 		so.validate = function(section_id, value) {
 			let type = this.section.formvalue(section_id, 'type') ||
 				uci.get(data[0], section_id, 'type') ||
