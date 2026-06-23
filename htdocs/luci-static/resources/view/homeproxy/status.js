@@ -32,16 +32,16 @@ const css = '				\
 }					\
 .homeproxy-connect-grid {		\
 	display: grid;			\
-	grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));\
-	gap: 14px;			\
+	grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));\
+	gap: 12px;			\
 }					\
 .homeproxy-connect-card {		\
 	display: grid;			\
-	grid-template-columns: 54px 1fr;	\
-	gap: 14px;			\
+	grid-template-columns: 44px 1fr;	\
+	gap: 10px;			\
 	align-items: center;		\
-	min-height: 78px;		\
-	padding: 14px;			\
+	min-height: 64px;		\
+	padding: 8px 10px;		\
 	border-radius: 6px;		\
 	background: #fff;		\
 	box-shadow: 0 1px 4px rgba(0, 0, 0, .08);\
@@ -50,29 +50,32 @@ const css = '				\
 	display: flex;			\
 	align-items: center;		\
 	justify-content: center;		\
-	width: 44px;			\
-	height: 44px;			\
+	width: 38px;			\
+	height: 38px;			\
 	border-radius: 50%;		\
 	color: #fff;			\
 	font-weight: 700;		\
-	font-size: 18px;		\
+	font-size: 15px;		\
 }					\
 .homeproxy-connect-info {		\
-	min-height: 48px;		\
-	padding: 10px 16px;		\
+	min-height: 42px;		\
+	padding: 7px 12px;		\
 	border-radius: 8px;		\
 	background: #e9edf2;		\
 }					\
 .homeproxy-connect-title {		\
 	color: #7d8aa0;			\
 	font-weight: 700;		\
+	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
 .homeproxy-connect-result {		\
-	margin-top: 3px;		\
+	margin-top: 2px;		\
 	color: #ff4d35;			\
 	font-weight: 700;		\
+	font-size: 13px;		\
 	cursor: pointer;		\
+	line-height: 1.2;		\
 }';
 
 const hp_dir = '/var/run/homeproxy';
@@ -125,13 +128,17 @@ function renderConnCards() {
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
 			'click': ui.createHandlerFn(this, () => {
+				let started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+
 				result.textContent = _('Checking...');
 				result.style.setProperty('color', '#f0ad4e');
 
 				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
+					let elapsed = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - started;
+
 					if (ret.result) {
 						result.style.setProperty('color', 'green');
-						result.textContent = _('passed');
+						result.textContent = _('%s ms').format(elapsed.toFixed(2));
 					} else {
 						result.style.setProperty('color', '#ff4d35');
 						result.textContent = _('failed');
