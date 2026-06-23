@@ -2222,7 +2222,7 @@ return view.extend({
 		};
 		so.write = function(section_id, value) {
 			if (value === '__custom__') {
-				const customValue = trim(uci.get(data[0], section_id, 'external_ui_download_url_custom') || '');
+				const customValue = (this.section?.formvalue(section_id, 'external_ui_download_url_custom') || '').trim();
 				uci.set(data[0], section_id, 'external_ui_download_url', customValue);
 			} else {
 				uci.set(data[0], section_id, 'external_ui_download_url', value);
@@ -2233,11 +2233,11 @@ return view.extend({
 		so.placeholder = 'https://example.com/dist.zip';
 		so.depends('external_ui_download_url', '__custom__');
 		so.load = function(section_id) {
-			const value = trim(uci.get(data[0], section_id, 'external_ui_download_url') || '');
+			const value = (uci.get(data[0], section_id, 'external_ui_download_url') || '').trim();
 			return (value in panelPresetUrls) ? '' : value;
 		};
 		so.write = function(section_id, value) {
-			uci.set(data[0], section_id, 'external_ui_download_url_custom', trim(value || ''));
+			uci.set(data[0], section_id, 'external_ui_download_url_custom', (value || '').trim());
 		};
 		so.remove = function(section_id) {
 			uci.unset(data[0], section_id, 'external_ui_download_url_custom');
