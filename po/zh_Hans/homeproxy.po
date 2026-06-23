@@ -923,6 +923,36 @@ msgstr "生成 %s 失败，错误：%s。"
 msgid "Failed to upload %s, error: %s."
 msgstr "上传 %s 失败，错误：%s。"
 
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "panel ZIP package"
+msgstr "面板 ZIP 压缩包"
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "unknown error"
+msgstr "未知错误"
+
+#: htdocs/luci-static/resources/homeproxy.js
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Backup panel failed."
+msgstr "备份面板失败。"
+
+#: htdocs/luci-static/resources/homeproxy.js
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Restore panel failed."
+msgstr "恢复面板失败。"
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Panel ZIP file is empty."
+msgstr "面板 ZIP 文件为空。"
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Invalid panel ZIP file."
+msgstr "面板 ZIP 文件无效。"
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Install panel failed."
+msgstr "安装面板失败。"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:140
 msgid "Fatal"
 msgstr "致命"
@@ -3413,6 +3443,10 @@ msgstr "Clash API 不可用"
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Open Panel"
 msgstr "打开面版"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Upload Panel ZIP"
+msgstr "上传面板 ZIP"
 
 #~ msgid "Real Proxy"
 #~ msgstr "Real Proxy"

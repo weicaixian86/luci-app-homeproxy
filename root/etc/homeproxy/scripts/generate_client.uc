@@ -277,13 +277,100 @@ function collect_policy_nodes(nodes, current) {
 	return result;
 }
 
+const reserved_outbound_tags = {
+	'GLOBAL': true,
+	'main-out': true,
+	'main-udp-out': true,
+	'direct-out': true,
+	'block-out': true
+};
+
+let outbound_tag_map = {},
+    outbound_tag_used = {};
+
+function normalize_outbound_tag(tag) {
+	if (isEmpty(tag))
+		return null;
+
+	tag = trim(sprintf('%s', tag));
+	tag = replace(tag, /[\r\n\t]+/g, ' ');
+	tag = replace(tag, /[\/\\?#%]+/g, '-');
+	tag = replace(tag, /\s+/g, ' ');
+
+	return tag || null;
+}
+
+function section_display_name(section) {
+	if (type(section) !== 'object' || isEmpty(section))
+		return null;
+
+	let label = normalize_outbound_tag(section.label);
+	if (!isEmpty(label))
+		return label;
+
+	if (section['.type'] === ucinode) {
+		const address = trim(section.override_address || section.address || '');
+		const port = trim(section.override_port || section.port || '');
+
+		if (address && port)
+			return normalize_outbound_tag(`${address}:${port}`);
+	}
+
+	return null;
+}
+
+function register_outbound_tag(section_id, display_name) {
+	if (isEmpty(section_id))
+		return null;
+
+	let tag = outbound_tag_map[section_id];
+	if (!isEmpty(tag))
+		return tag;
+
+	const fallback_tag = `cfg-${section_id}-out`;
+	const base_tag = normalize_outbound_tag(display_name) || fallback_tag;
+
+	tag = base_tag;
+	let suffix = 2;
+	while (reserved_outbound_tags[tag] || outbound_tag_used[tag]) {
+		tag = `${base_tag} (${suffix})`;
+		suffix++;
+	}
+
+	outbound_tag_map[section_id] = tag;
+	outbound_tag_used[tag] = true;
+
+	return tag;
+}
+
+function get_section_outbound_tag(section_id) {
+	if (isEmpty(section_id))
+		return null;
+
+	let tag = outbound_tag_map[section_id];
+	if (!isEmpty(tag))
+		return tag;
+
+	const section = uci.get_all(uciconfig, section_id) || {};
+	return register_outbound_tag(section_id, section_display_name(section));
+}
+
+uci.foreach(uciconfig, ucinode, (cfg) => {
+	register_outbound_tag(cfg['.name'], section_display_name(cfg));
+});
+
+uci.foreach(uciconfig, uciroutingnode, (cfg) => {
+	if (cfg.enabled === '1')
+		register_outbound_tag(cfg['.name'], section_display_name(cfg));
+});
+
 function generate_endpoint(node) {
 	if (type(node) !== 'object' || isEmpty(node))
 		return null;
 
 	const endpoint = {
 		type: node.type,
-		tag: 'cfg-' + node['.name'] + '-out',
+		tag: get_section_outbound_tag(node['.name']),
 		address: node.wireguard_local_address,
 		mtu: strToInt(node.wireguard_mtu),
 		private_key: node.wireguard_private_key,
@@ -317,7 +404,7 @@ function generate_outbound(node) {
 	const tls_utls_value = (node.type === 'anytls' && isEmpty(node.tls_utls)) ? 'chrome' : node.tls_utls;
 	const outbound = {
 		type: node.type,
-		tag: 'cfg-' + node['.name'] + '-out',
+		tag: get_section_outbound_tag(node['.name']),
 		routing_mark: strToInt(self_mark),
 
 		server: (node.type !== 'direct') ? node.address : null,
@@ -459,9 +546,9 @@ function get_outbound(cfg) {
 			if (isEmpty(node))
 				die(sprintf("%s's node is missing, please check your configuration.", cfg));
 			else if (node in ['urltest', 'selector'])
-				return 'cfg-' + cfg + '-out';
+				return get_section_outbound_tag(cfg);
 			else
-				return 'cfg-' + node + '-out';
+				return get_section_outbound_tag(node);
 		}
 	}
 }
@@ -779,7 +866,7 @@ if (!isEmpty(main_node)) {
 		push(config.outbounds, {
 			type: 'urltest',
 			tag: 'main-out',
-			outbounds: map(main_urltest_nodes, (k) => `cfg-${k}-out`),
+			outbounds: map(main_urltest_nodes, (k) => get_section_outbound_tag(k)),
 			interval: strToTime(main_urltest_interval),
 			tolerance: strToInt(main_urltest_tolerance),
 			idle_timeout: (strToInt(main_urltest_interval) > 1800) ? `${main_urltest_interval * 2}s` : null,
@@ -812,7 +899,7 @@ if (!isEmpty(main_node)) {
 		push(config.outbounds, {
 			type: 'urltest',
 			tag: 'main-udp-out',
-			outbounds: map(main_udp_urltest_nodes, (k) => `cfg-${k}-out`),
+			outbounds: map(main_udp_urltest_nodes, (k) => get_section_outbound_tag(k)),
 			interval: strToTime(main_udp_urltest_interval),
 			tolerance: strToInt(main_udp_urltest_tolerance),
 			idle_timeout: (strToInt(main_udp_urltest_interval) > 1800) ? `${main_udp_urltest_interval * 2}s` : null,
@@ -843,13 +930,13 @@ if (!isEmpty(main_node)) {
 		if (urltest_node.type === 'wireguard') {
 			const endpoint = generate_endpoint(urltest_node);
 			if (endpoint) {
-				endpoint.tag = 'cfg-' + i + '-out';
+				endpoint.tag = get_section_outbound_tag(i);
 				push(config.endpoints, endpoint);
 			}
 		} else {
 			const outbound = generate_outbound(urltest_node);
 			if (outbound) {
-				outbound.tag = 'cfg-' + i + '-out';
+				outbound.tag = get_section_outbound_tag(i);
 				push(config.outbounds, outbound);
 			}
 		}
@@ -867,8 +954,8 @@ if (!isEmpty(main_node)) {
 			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes);
 			push(config.outbounds, {
 				type: 'urltest',
-				tag: 'cfg-' + cfg['.name'] + '-out',
-				outbounds: map(urltest_list, (k) => `cfg-${k}-out`),
+				tag: get_section_outbound_tag(cfg['.name']),
+				outbounds: map(urltest_list, (k) => get_section_outbound_tag(k)),
 				url: cfg.urltest_url,
 				interval: strToTime(cfg.urltest_interval),
 				tolerance: strToInt(cfg.urltest_tolerance),
@@ -883,9 +970,9 @@ if (!isEmpty(main_node)) {
 			const selector_default = (!isEmpty(cfg.selector_default) && ~index(selector_list, cfg.selector_default)) ? cfg.selector_default : null;
 			push(config.outbounds, {
 				type: 'selector',
-				tag: 'cfg-' + cfg['.name'] + '-out',
-				outbounds: map(selector_list, (k) => `cfg-${k}-out`),
-				default: selector_default ? `cfg-${selector_default}-out` : null,
+				tag: get_section_outbound_tag(cfg['.name']),
+				outbounds: map(selector_list, (k) => get_section_outbound_tag(k)),
+				default: selector_default ? get_section_outbound_tag(selector_default) : null,
 				interrupt_exist_connections: strToBool(cfg.selector_interrupt_exist_connections)
 			});
 			urltest_nodes = [...urltest_nodes, ...filter(selector_node_list, (l) => !~index(urltest_nodes, l))];

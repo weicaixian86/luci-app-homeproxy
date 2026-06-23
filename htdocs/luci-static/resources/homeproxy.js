@@ -385,6 +385,42 @@ return baseclass.extend({
 		.catch((e) => { ui.addNotification(null, E('p', e.message)) });
 	},
 
+	uploadPanel(_option, ev) {
+		const callInstallPanel = rpc.declare({
+			object: 'luci.homeproxy',
+			method: 'clash_api_install_panel',
+			expect: { '': {} }
+		});
+
+		const normalizeMessage = (message) => {
+			switch (message) {
+			case 'panel_backup_failed':
+				return _('Backup panel failed.');
+			case 'panel_restore_failed':
+				return _('Restore panel failed.');
+			case 'empty_panel_zip':
+				return _('Panel ZIP file is empty.');
+			case 'invalid_panel_zip':
+				return _('Invalid panel ZIP file.');
+			case 'panel_install_failed':
+				return _('Install panel failed.');
+			default:
+				return message || _('unknown error');
+			}
+		};
+
+		return ui.uploadFile('/tmp/homeproxy_panel.tmp', ev.target)
+		.then(L.bind((_btn, res) => {
+			return L.resolveDefault(callInstallPanel(), {}).then((ret) => {
+				if (ret.result === true)
+					ui.addNotification(null, E('p', _('Your %s was successfully uploaded. Size: %sB.').format(_('panel ZIP package'), res.size)), 'info');
+				else
+					ui.addNotification(null, E('p', _('Failed to upload %s, error: %s.').format(_('panel ZIP package'), normalizeMessage(ret.error))), 'danger');
+			});
+		}, this, ev.target))
+		.catch((e) => { ui.addNotification(null, E('p', e.message || e), 'danger') });
+	},
+
 	validateBase64Key(length, section_id, value) {
 		/* Thanks to luci-proto-wireguard */
 		if (section_id && value)

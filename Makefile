@@ -20,6 +20,7 @@ LUCI_DEPENDS:= \
 	+ca-bundle \
 	+curl \
 	+jsonfilter \
+	+unzip \
 	+ucode-mod-digest \
 	+ucode-mod-fs \
 	+ucode-mod-math \

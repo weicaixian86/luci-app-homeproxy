@@ -900,6 +900,36 @@ msgstr ""
 msgid "Failed to upload %s, error: %s."
 msgstr ""
 
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "panel ZIP package"
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "unknown error"
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Backup panel failed."
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Restore panel failed."
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Panel ZIP file is empty."
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Invalid panel ZIP file."
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy.js
+msgid "Install panel failed."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:140
 msgid "Fatal"
 msgstr ""
@@ -3347,6 +3377,11 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Open Panel"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Upload Panel ZIP"
+msgstr ""
+
 msgid "Baidu Connection"
 msgstr ""
 

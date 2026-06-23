@@ -17,7 +17,8 @@
 		},
 		"write": {
 			"file": {
-				"/tmp/homeproxy_certificate.tmp": [ "write" ]
+				"/tmp/homeproxy_certificate.tmp": [ "write" ],
+				"/tmp/homeproxy_panel.tmp": [ "write" ]
 			},
 			"ubus": {
 				"rc": [ "*" ]

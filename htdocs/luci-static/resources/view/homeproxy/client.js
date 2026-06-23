@@ -151,6 +151,10 @@ function updateDashboard() {
 				message = _('Update panel failed.');
 			else if (message === 'clash_api_unavailable')
 				message = _('Clash API unavailable.');
+			else if (message === 'panel_backup_failed')
+				message = _('Backup panel failed.');
+			else if (message === 'panel_restore_failed')
+				message = _('Restore panel failed.');
 
 			throw new Error(message || _('Update failed.'));
 		}
@@ -474,6 +478,10 @@ return view.extend({
 						'class': 'btn cbi-button cbi-button-positive',
 						'click': ui.createHandlerFn(this, updateDashboard)
 					}, [ _('Update Panel') ]),
+					E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': ui.createHandlerFn(this, (ev) => hp.uploadPanel(null, ev))
+					}, [ _('Upload Panel ZIP') ]),
 					E('button', {
 						'class': 'btn cbi-button',
 						'click': ui.createHandlerFn(this, openDashboard)
