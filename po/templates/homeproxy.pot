@@ -2646,25 +2646,8 @@ msgid ""
 "forward 443 to this port for challenge to succeed."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:619
-msgid ""
-"The default rule uses the following matching logic:<br/><code>(domain || "
-"domain_suffix || domain_keyword || domain_regex || ip_cidr || "
-"ip_is_private)</code> &&<br/><code>(port || port_range)</code> &&<br/"
-"><code>(source_ip_cidr || source_ip_is_private)</code> &&<br/"
-"><code>(source_port || source_port_range)</code> &&<br/><code>other fields</"
-"code>.<br/>Additionally, included rule sets can be considered merged rather "
-"than as a single rule sub-item."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1099
-msgid ""
-"The default rule uses the following matching logic:<br/><code>(domain || "
-"domain_suffix || domain_keyword || domain_regex)</code> &&<br/><code>(port "
-"|| port_range)</code> &&<br/><code>(source_ip_cidr || source_ip_is_private)</"
-"code> &&<br/><code>(source_port || source_port_range)</code> &&<br/"
-"><code>other fields</code>.<br/>Additionally, included rule sets can be "
-"considered merged rather than as a single rule sub-item."
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "In default mode, rule fields are matched by category. Any condition in the same category can match, while different categories must match at the same time. Rule sets are merged into the rule for matching and are not treated as separate sub-rules."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:242

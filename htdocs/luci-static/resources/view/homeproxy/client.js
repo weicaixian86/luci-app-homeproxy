@@ -1110,13 +1110,7 @@ return view.extend({
 		so.editable = true;
 
 		so = ss.taboption('field_other', form.ListValue, 'mode', _('Mode'),
-			_('The default rule uses the following matching logic:<br/>' +
-			'<code>(domain || domain_suffix || domain_keyword || domain_regex || ip_cidr || ip_is_private)</code> &&<br/>' +
-			'<code>(port || port_range)</code> &&<br/>' +
-			'<code>(source_ip_cidr || source_ip_is_private)</code> &&<br/>' +
-			'<code>(source_port || source_port_range)</code> &&<br/>' +
-			'<code>other fields</code>.<br/>' +
-			'Additionally, included rule sets can be considered merged rather than as a single rule sub-item.'));
+			_('In default mode, rule fields are matched by category. Any condition in the same category can match, while different categories must match at the same time. Rule sets are merged into the rule for matching and are not treated as separate sub-rules.'));
 		so.value('default', _('Default'));
 		so.default = 'default';
 		so.rmempty = false;
@@ -1634,13 +1628,7 @@ return view.extend({
 		so.editable = true;
 
 		so = ss.taboption('field_other', form.ListValue, 'mode', _('Mode'),
-			_('The default rule uses the following matching logic:<br/>' +
-			'<code>(domain || domain_suffix || domain_keyword || domain_regex)</code> &&<br/>' +
-			'<code>(port || port_range)</code> &&<br/>' +
-			'<code>(source_ip_cidr || source_ip_is_private)</code> &&<br/>' +
-			'<code>(source_port || source_port_range)</code> &&<br/>' +
-			'<code>other fields</code>.<br/>' +
-			'Additionally, included rule sets can be considered merged rather than as a single rule sub-item.'));
+			_('In default mode, rule fields are matched by category. Any condition in the same category can match, while different categories must match at the same time. Rule sets are merged into the rule for matching and are not treated as separate sub-rules.'));
 		so.value('default', _('Default'));
 		so.default = 'default';
 		so.rmempty = false;
