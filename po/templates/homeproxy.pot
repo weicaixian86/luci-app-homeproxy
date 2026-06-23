@@ -2682,7 +2682,7 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:113
 #: htdocs/luci-static/resources/view/homeproxy/server.js:130
-msgid "The modern ImmortalWrt proxy platform for ARM64/AMD64."
+msgid "OpenWrt-designed Sing-box proxy management platform. It is recommended to disable Dnsmasq DNS redirection."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:477

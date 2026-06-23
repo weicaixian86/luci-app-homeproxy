@@ -433,7 +433,7 @@ return view.extend({
 		};
 
 		m = new form.Map('homeproxy', _('HomeProxy'),
-			_('The modern ImmortalWrt proxy platform for ARM64/AMD64.'));
+			_('OpenWrt-designed Sing-box proxy management platform. It is recommended to disable Dnsmasq DNS redirection.'));
 
 		s = m.section(form.TypedSection);
 		s.render = function () {

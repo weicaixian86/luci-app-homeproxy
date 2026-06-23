@@ -35,18 +35,6 @@ init_logs() {
 	chown -R sing-box:sing-box "$HP_DIR/run" 2>"/dev/null"
 }
 
-set_dnsmasq_dns_redirect() {
-	local value="$1"
-	local dnsmasq_section="${DNSMASQ_UCI_CONFIG:-@dnsmasq[0]}"
-	local current
-
-	current="$(uci -q get "dhcp.$dnsmasq_section.dns_redirect")"
-	[ "$current" = "$value" ] && return 0
-
-	uci -q set "dhcp.$dnsmasq_section.dns_redirect=$value"
-	uci -q commit dhcp
-}
-
 start_service() {
 	init_logs
 
@@ -267,7 +255,6 @@ start_service() {
 	chown -R sing-box:sing-box "$RUN_DIR"
 
 	# Setup firewall
-	[ "$outbound_node" = "nil" ] || set_dnsmasq_dns_redirect "0"
 	ucode "$HP_DIR/scripts/firewall_pre.uc"
 	[ "$outbound_node" = "nil" ] || utpl -S "$HP_DIR/scripts/firewall_post.ut" > "$RUN_DIR/fw4_post.nft"
 	fw4 reload >"/dev/null" 2>&1
@@ -328,7 +315,6 @@ stop_service() {
 	fw4 reload >"/dev/null" 2>&1
 
 	# Remove DNS hijack
-	set_dnsmasq_dns_redirect "1"
 	rm -rf "$DNSMASQ_DIR/../dnsmasq-homeproxy.conf" "$DNSMASQ_DIR"
 	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
 

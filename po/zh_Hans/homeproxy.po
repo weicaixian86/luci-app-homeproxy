@@ -2738,8 +2738,8 @@ msgstr "可接受的最低 TLS 版本。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:113
 #: htdocs/luci-static/resources/view/homeproxy/server.js:130
-msgid "The modern ImmortalWrt proxy platform for ARM64/AMD64."
-msgstr "为Openwrt设计的Sing-box代理管理平台。"
+msgid "OpenWrt-designed Sing-box proxy management platform. It is recommended to disable Dnsmasq DNS redirection."
+msgstr "Openwrt设计的Sing-box代理管理平台，建议Dnsmasq的DNS重定向去勾。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:477
 #: htdocs/luci-static/resources/view/homeproxy/server.js:875
