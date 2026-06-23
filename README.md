@@ -49,3 +49,10 @@ rm -rf /tmp/luci-modulecache/*
 - OpenWrt：24.10
 - 架构：x86_64
 - sing-box：1.13.13
+
+## 感谢作者
+VIKINGYFY
+https://github.com/VIKINGYFY/homeproxy
+
+immortalwrt
+https://github.com/immortalwrt/homeproxy
