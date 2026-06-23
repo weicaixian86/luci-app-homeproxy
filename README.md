@@ -1,5 +1,5 @@
 # luci-app-homeproxy
-适用于 OpenWrt 24.10 的 HomeProxy LuCI 管理界面，已按 `sing-box 1.13.13` 配置结构进行适配。
+适用于 OpenWrt 24.10 的 HomeProxy LuCI 管理界面，已按 `官方内核sing-box 1.13.13` 配置结构进行适配。
 
 ## 安装
 上传 zip 到 OpenWrt /tmp目录后解压并执行（文件名homeproxy-2.0.1-x86_64.zip自行替换）：
