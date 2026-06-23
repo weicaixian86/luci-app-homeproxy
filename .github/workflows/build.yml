@@ -292,7 +292,8 @@ jobs:
           set -euo pipefail
 
           {
-            echo "编译时间：$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+            export TZ='Asia/Shanghai'
+            echo "编译时间：$(date '+%Y-%m-%d %H:%M:%S CST')"
             echo
             echo "Release description："
             if [ -n "$RELEASE_DESCRIPTION" ]; then

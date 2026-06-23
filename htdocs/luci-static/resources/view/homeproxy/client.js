@@ -2018,13 +2018,6 @@ return view.extend({
 		so.placeholder = '/etc/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
-		so = ss.option(form.ListValue, 'store_fakeip', _('Persist FakeIP cache'));
-		so.value('1', _('Enable'));
-		so.value('0', _('Disable'));
-		so.default = '1';
-		so.rmempty = false;
-		so.depends('enabled', '1');
-
 		so = ss.option(form.ListValue, 'store_rdrc', _('Persist RDRC cache'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));

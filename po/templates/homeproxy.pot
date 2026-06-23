@@ -3289,14 +3289,6 @@ msgid "Persistent cache file path"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Cache FakeIP"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Persist FakeIP cache"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Cache RDRC"
 msgstr ""
 

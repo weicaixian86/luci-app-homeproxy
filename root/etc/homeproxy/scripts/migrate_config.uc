@@ -148,8 +148,8 @@ const cache_path = uci.get(uciconfig, ucicache, 'path');
 if (isEmpty(cache_path) || cache_path === old_cache_path)
 	uci.set(uciconfig, ucicache, 'path', default_cache_path);
 
-if (isEmpty(uci.get(uciconfig, ucicache, 'store_fakeip')))
-	uci.set(uciconfig, ucicache, 'store_fakeip', '1');
+if (!isEmpty(uci.get(uciconfig, ucicache, 'store_fakeip')))
+	uci.delete(uciconfig, ucicache, 'store_fakeip');
 
 if (isEmpty(uci.get(uciconfig, ucicache, 'store_rdrc')))
 	uci.set(uciconfig, ucicache, 'store_rdrc', isEmpty(uci.get(uciconfig, ucidns, 'cache_file_store_rdrc')) ? '1' : uci.get(uciconfig, ucidns, 'cache_file_store_rdrc'));
