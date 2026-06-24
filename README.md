@@ -43,12 +43,12 @@ rm -rf /tmp/luci-modulecache/*
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 
 ## 面版下载解决办法
-第一种：点击更新面版手动触发面版下载。
-第二种：下载面版ZIP包，手动上传面版ZIP。
-下载地址
-镜像https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
-或者
-直连https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
+第一种：点击更新面版手动触发面版下载。  
+第二种：下载面版ZIP包，手动上传面版ZIP。  
+下载地址镜像  
+`https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip`
+或者直连
+`https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip`
 
 ## 感谢作者
 VIKINGYFY
