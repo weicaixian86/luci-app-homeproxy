@@ -2222,7 +2222,7 @@ msgstr ""
 msgid "Tag"
 msgstr ""
 
-msgid "Tag used in sing-box rule sets. For example: <code>geosite-cn</code>."
+msgid "Used by sing-box rule sets. Please fill it in yourself."
 msgstr ""
 
 msgid "valid tag"

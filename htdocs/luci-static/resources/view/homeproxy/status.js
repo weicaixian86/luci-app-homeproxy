@@ -128,17 +128,13 @@ function renderConnCards() {
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
 			'click': ui.createHandlerFn(this, () => {
-				let started = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-
 				result.textContent = _('Checking...');
 				result.style.setProperty('color', '#f0ad4e');
 
 				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
-					let elapsed = ((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - started;
-
-					if (ret.result) {
+					if (ret.result && ret.latency != null) {
 						result.style.setProperty('color', 'green');
-						result.textContent = _('%s ms').format(elapsed.toFixed(2));
+						result.textContent = _('%s ms').format(ret.latency);
 					} else {
 						result.style.setProperty('color', '#ff4d35');
 						result.textContent = _('failed');

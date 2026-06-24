@@ -197,7 +197,7 @@ const methods = {
 				url = 'https://www.baidu.com';
 				break;
 			case 'google':
-				url = 'https://www.google.com';
+				url = 'https://www.google.com/generate_204';
 				break;
 			case 'github':
 				url = 'https://github.com';
@@ -210,7 +210,28 @@ const methods = {
 				break;
 			}
 
-			return { result: (system(`/usr/bin/wget --spider -qT3 ${url} 2>"/dev/null"`, 3100) === 0) };
+			const fd = popen(`/usr/bin/curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_pretransfer}" ${shellquote(url)} 2>"/dev/null"`);
+			if (!fd)
+				return { result: false };
+
+			const output = trim(readProcess(fd) || '');
+			const parts = split(output, ':');
+			const code = int(parts[0] || 0);
+			const parsed = match(parts[1] || '', /^([0-9]+)(\.([0-9]+))?$/);
+
+			if (code > 0 && parsed) {
+				const sec = int(parsed[1]);
+				const frac = ((parsed[3] || '') + '00000');
+				const centims = sec * 100000 + int(substr(frac, 0, 5));
+
+				return {
+					result: true,
+					latency: sprintf('%d.%02d', int(centims / 100), centims % 100),
+					type: 'curl'
+				};
+			}
+
+			return { result: false };
 		}
 	},
 

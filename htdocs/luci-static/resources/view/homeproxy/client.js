@@ -282,8 +282,7 @@ function renderRuleSetAdd(section, extra_class) {
 
 	let tagEl = E('input', {
 		'type': 'text',
-		'class': nameEl.className,
-		'placeholder': 'geosite-cn'
+		'class': nameEl.className
 	});
 	let hintEl = E('div', { 'class': 'cbi-value-description' });
 
@@ -1875,10 +1874,9 @@ return view.extend({
 		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'ruleset', 'label');
 		so.modalonly = true;
 
-		so = ss.option(form.Value, 'tag', _('Tag'),
-			_('Tag used in sing-box rule sets. For example: <code>geosite-cn</code>.'));
-		so.placeholder = 'geosite-cn';
-		so.rmempty = false;
+	so = ss.option(form.Value, 'tag', _('Tag'),
+		_('Used by sing-box rule sets. Please fill it in yourself.'));
+	so.rmempty = false;
 		so.validate = function(section_id, value) {
 			if (section_id) {
 				if (!value)

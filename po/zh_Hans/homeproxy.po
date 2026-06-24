@@ -2258,8 +2258,8 @@ msgstr "规则集 IP CIDR 作为源 IP"
 msgid "Tag"
 msgstr "标签"
 
-msgid "Tag used in sing-box rule sets. For example: <code>geosite-cn</code>."
-msgstr "用于 sing-box 规则集的标签。例如：<code>geosite-cn</code>。"
+msgid "Used by sing-box rule sets. Please fill it in yourself."
+msgstr "用于 sing-box 规则集，请自行填写。"
 
 msgid "valid tag"
 msgstr "有效标签"
