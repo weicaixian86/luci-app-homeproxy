@@ -263,7 +263,7 @@ jobs:
             echo 'fi'
             echo ''
             echo 'echo "Installing sing-box 1.13.13..."'
-            echo 'opkg install packages/sing-box_1.13.13_x86_64.ipk'
+            echo 'opkg install --force-reinstall --force-overwrite packages/sing-box_1.13.13_x86_64.ipk'
             echo ''
             echo 'echo "Installing luci-app-homeproxy..."'
             echo 'opkg install --force-reinstall --force-overwrite packages/luci-app-homeproxy_*.ipk'

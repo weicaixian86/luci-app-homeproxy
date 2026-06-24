@@ -129,7 +129,7 @@ if (isEmpty(uci.get(uciconfig, ucintp, 'enabled')))
 	uci.set(uciconfig, ucintp, 'enabled', '1');
 
 if (isEmpty(uci.get(uciconfig, ucintp, 'server')))
-	uci.set(uciconfig, ucintp, 'server', !isEmpty(legacy_ntp_server) ? legacy_ntp_server : 'ntp.ntsc.ac.cn');
+	uci.set(uciconfig, ucintp, 'server', !isEmpty(legacy_ntp_server) ? legacy_ntp_server : 'ntp.aliyun.com');
 
 if (isEmpty(uci.get(uciconfig, ucintp, 'server_port')))
 	uci.set(uciconfig, ucintp, 'server_port', '123');

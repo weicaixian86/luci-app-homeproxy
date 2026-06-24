@@ -3182,6 +3182,14 @@ msgstr "gVisor"
 msgid "non-empty value"
 msgstr "非空值"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1919
+msgid "The default rule set directory is /etc/homeproxy/ruleset/."
+msgstr "规则集默认目录为 /etc/homeproxy/ruleset/。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1975
+msgid "absolute path"
+msgstr "绝对路径"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1061
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1317
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1830

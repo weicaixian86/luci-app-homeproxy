@@ -59,7 +59,7 @@ config homeproxy 'clash_api'
 
 config homeproxy 'ntp'
 	option enabled '1'
-	option server 'ntp.ntsc.ac.cn'
+	option server 'ntp.aliyun.com'
 	option server_port '123'
 	option interval '30m'
 

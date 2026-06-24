@@ -3128,6 +3128,14 @@ msgstr ""
 msgid "non-empty value"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1919
+msgid "The default rule set directory is /etc/homeproxy/ruleset/."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1975
+msgid "absolute path"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1061
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1317
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1830

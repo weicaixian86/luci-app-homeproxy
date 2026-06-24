@@ -348,6 +348,7 @@ function renderRuleSetAdd(section, extra_class) {
 				uci.set(uciconfig, section_id, 'enabled', '1');
 				uci.set(uciconfig, section_id, 'type', 'remote');
 				uci.set(uciconfig, section_id, 'format', 'binary');
+				uci.set(uciconfig, section_id, 'remote_path', '/etc/homeproxy/ruleset/');
 			}
 		}, 0);
 	});
@@ -1915,9 +1916,9 @@ return view.extend({
 		so.default = 'binary';
 		so.rmempty = false;
 
-		so = ss.option(form.Value, 'path', _('Path'));
+		so = ss.option(form.Value, 'path', _('Path'),
+			_('The default rule set directory is /etc/homeproxy/ruleset/.'));
 		so.datatype = 'file';
-		so.placeholder = '/etc/homeproxy/ruleset/example.json';
 		so.rmempty = false;
 		so.depends('type', 'local');
 		so.modalonly = true;
@@ -1961,6 +1962,21 @@ return view.extend({
 		}
 		so.depends('type', 'remote');
 
+		so = ss.option(form.Value, 'remote_path', _('Path'));
+		so.default = '/etc/homeproxy/ruleset/';
+		so.placeholder = '/etc/homeproxy/ruleset/';
+		so.validate = function(section_id, value) {
+			if (!value)
+				return _('Expecting: %s').format(_('non-empty value'));
+			if (!value.match(/^\//))
+				return _('Expecting: %s').format(_('absolute path'));
+
+			return true;
+		}
+		so.rmempty = false;
+		so.depends('type', 'remote');
+		so.modalonly = true;
+
 		so = ss.option(form.Value, 'update_interval', _('Update interval'),
 			_('Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day.'));
 		so.placeholder = '1d';
@@ -1986,8 +2002,8 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('NTP server address'));
-		so.default = 'ntp.ntsc.ac.cn';
-		so.placeholder = 'ntp.ntsc.ac.cn';
+		so.default = 'ntp.aliyun.com';
+		so.placeholder = 'ntp.aliyun.com';
 		so.rmempty = false;
 		so.validate = function(_section_id, value) {
 			if (!value)

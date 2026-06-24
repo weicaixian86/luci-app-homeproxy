@@ -44,6 +44,7 @@ const uciroutingsetting = 'routing',
 
 const ucinode = 'node';
 const uciruleset = 'ruleset';
+const RULESET_DIR = HP_DIR + '/ruleset';
 
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 
@@ -53,6 +54,28 @@ function normalize_list(value) {
 	if (type(value) === 'array')
 		return value;
 	return [value];
+}
+
+function ruleset_file_name(tag, format) {
+	let filename = replace(tag || 'ruleset', /[^A-Za-z0-9_.-]+/g, '_');
+	if (isEmpty(filename))
+		filename = 'ruleset';
+
+	return filename + ((format === 'source') ? '.json' : '.srs');
+}
+
+function ruleset_default_path(tag, format) {
+	return RULESET_DIR + '/' + ruleset_file_name(tag, format);
+}
+
+function ruleset_remote_path(path, tag, format) {
+	if (isEmpty(path))
+		return ruleset_default_path(tag, format);
+
+	if (match(path, /\/$/))
+		return path + ruleset_file_name(tag, format);
+
+	return path;
 }
 
 let wan_dns = ubus.call('network.interface', 'status', {'interface': 'wan'})?.['dns-server']?.[0];
@@ -1108,6 +1131,7 @@ if (!isEmpty(main_node)) {
 			tag: 'geoip-cn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/IPCIDR-CHINA@rule-set/cn.srs',
+			path: ruleset_default_path('geoip-cn', 'binary'),
 			download_detour: 'main-out'
 		});
 		push(config.route.rule_set, {
@@ -1115,6 +1139,7 @@ if (!isEmpty(main_node)) {
 			tag: 'geosite-cn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-cn.srs',
+			path: ruleset_default_path('geosite-cn', 'binary'),
 			download_detour: 'main-out'
 		});
 		push(config.route.rule_set, {
@@ -1122,6 +1147,7 @@ if (!isEmpty(main_node)) {
 			tag: 'geosite-noncn',
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-!cn.srs',
+			path: ruleset_default_path('geosite-noncn', 'binary'),
 			download_detour: 'main-out'
 		});
 	}
@@ -1195,12 +1221,14 @@ if (!isEmpty(main_node)) {
 		if (cfg.enabled !== '1')
 			return null;
 
+		const tag = !isEmpty(cfg.tag) ? cfg.tag : ('cfg-' + cfg['.name'] + '-rule');
+
 		push(config.route.rule_set, {
 			type: cfg.type,
-			tag: !isEmpty(cfg.tag) ? cfg.tag : ('cfg-' + cfg['.name'] + '-rule'),
+			tag: tag,
 			format: cfg.format,
-			path: cfg.path,
 			url: cfg.url,
+			path: (cfg.type === 'remote') ? ruleset_remote_path(cfg.remote_path || cfg.path, tag, cfg.format) : cfg.path,
 			download_detour: get_outbound(cfg.outbound),
 			update_interval: cfg.update_interval
 		});
@@ -1223,4 +1251,5 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 /* Experimental end */
 
 system('mkdir -p ' + RUN_DIR);
+system('mkdir -p ' + RULESET_DIR);
 writefile(RUN_DIR + '/sing-box-c.json', sprintf('%.J\n', removeBlankAttrs(config)));
