@@ -57,8 +57,9 @@ rm -rf /tmp/luci-modulecache/*
 ```
 
 ## 五、感谢作者
+immortalwrt
+https://github.com/immortalwrt/homeproxy
+
 VIKINGYFY
 https://github.com/VIKINGYFY/homeproxy
 
-immortalwrt
-https://github.com/immortalwrt/homeproxy
