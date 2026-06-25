@@ -10,14 +10,6 @@ cd homeproxy-2.0.1-x86_64
 sh install.sh
 ```
 
-## 安装新包后如果页面仍显示旧文字，建议清浏览器缓存，或执行：
-```sh
-rm -f /tmp/luci-indexcache
-rm -rf /tmp/luci-modulecache/*
-/etc/init.d/rpcd restart
-/etc/init.d/uhttpd restart
-```
-
 ## 卸载
 ```sh
 /etc/init.d/homeproxy stop 2>/dev/null || true
@@ -42,20 +34,27 @@ rm -rf /tmp/luci-modulecache/*
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 
-## 面版下载失败解决办法
-第一种：点击更新面版手动触发面版下载。  
+## 常见问题
+1、面版下载失败解决办法
+第一种：面版设置-UI下载地址，下拉选择需要的UI，点击更新面版手动触发面版下载。  
 第二种：下载面版ZIP包，手动上传面版ZIP，下载地址如下。  
 镜像  
 ```sh
 https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
 ```
-推荐默认
-```sh
-https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip
-```
 或者直连
 ```sh
-https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip
+https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
+```
+2、远程规则集是否下载成功判断
+连接SSH查看/etc/homeproxy/ruleset/目录下是否有规则集文件，有则表示下载成功，反之则没下载成功，检查规则集远程连接。
+
+3、安装新包后如果页面仍显示旧文字，建议清浏览器缓存，或执行：
+```sh
+rm -f /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache/*
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
 ```
 
 ## 感谢作者
