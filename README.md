@@ -49,9 +49,13 @@ rm -rf /tmp/luci-modulecache/*
 ```sh
 https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
 ```
+推荐默认
+```sh
+https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip
+```
 或者直连
 ```sh
-https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
+https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip
 ```
 
 ## 感谢作者

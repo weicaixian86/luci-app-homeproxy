@@ -92,7 +92,7 @@ const legacy_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest
 const legacy_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 const old_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
 const old_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-const default_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+const default_panel_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
 
 /* clash api panel options were introduced */
 if (!uci.get(uciconfig, uciclashapi))
