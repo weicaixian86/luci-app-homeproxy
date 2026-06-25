@@ -70,18 +70,31 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-status-grid {
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-	gap: 14px;
+	grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+	gap: 10px;
 	align-items: end;
+}
+#homeproxy_status_panel .homeproxy-status-field {
+	min-width: 0;
 }
 #homeproxy_status_panel .homeproxy-status-label {
 	font-weight: 600;
 	text-align: center;
-	margin-bottom: 8px;
+	margin-bottom: 6px;
 }
 #homeproxy_status_panel input {
 	width: 100%;
 	min-width: 0;
+}
+#homeproxy_status_panel .homeproxy-version-field input {
+	width: 7em;
+}
+#homeproxy_status_panel .homeproxy-core-version-field input {
+	width: 8em;
+}
+#homeproxy_status_panel .homeproxy-core-status-field input {
+	width: 14em;
+	max-width: 100%;
 }
 #homeproxy_status_panel .homeproxy-core-status {
 	border: unset;
@@ -89,24 +102,35 @@ const statusCss = `
 	font-weight: 700;
 }
 #homeproxy_status_panel .homeproxy-status-actions {
-	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
-	gap: 10px;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 6px;
 	align-items: end;
+	justify-content: end;
+	min-width: 0;
 }
 #homeproxy_status_panel .homeproxy-status-actions .btn {
-	width: 100%;
+	width: auto;
 	min-width: 0;
-	padding-left: 8px;
-	padding-right: 8px;
+	padding-left: 6px;
+	padding-right: 6px;
 	white-space: nowrap;
 }
-@media (max-width: 900px) {
+@media (max-width: 700px) {
 	#homeproxy_status_panel .homeproxy-status-grid {
 		grid-template-columns: 1fr;
 	}
 	#homeproxy_status_panel .homeproxy-status-actions {
-		grid-column: 1 / -1;
+		flex-wrap: wrap;
+		justify-content: stretch;
+	}
+	#homeproxy_status_panel .homeproxy-status-actions .btn {
+		flex: 1 1 auto;
+	}
+	#homeproxy_status_panel .homeproxy-version-field input,
+	#homeproxy_status_panel .homeproxy-core-version-field input,
+	#homeproxy_status_panel .homeproxy-core-status-field input {
+		width: 100%;
 	}
 }`;
 
@@ -496,15 +520,15 @@ return view.extend({
 				E('style', [ statusCss ]),
 				E('h3', _('Status')),
 				E('div', { class: 'homeproxy-status-grid' }, [
-					E('div', {}, [
+					E('div', { class: 'homeproxy-status-field homeproxy-version-field' }, [
 						E('div', { class: 'homeproxy-status-label' }, _('Plugin Version')),
 						E('input', { class: 'cbi-input-text', readonly: '', value: packageVersion })
 					]),
-					E('div', {}, [
+					E('div', { class: 'homeproxy-status-field homeproxy-core-version-field' }, [
 						E('div', { class: 'homeproxy-status-label' }, _('Core Version')),
 						E('input', { class: 'cbi-input-text', readonly: '', value: features.version || '-' })
 					]),
-					E('div', {}, [
+					E('div', { class: 'homeproxy-status-field homeproxy-core-status-field' }, [
 						E('div', { class: 'homeproxy-status-label' }, _('Core Status')),
 						E('input', {
 							id: 'homeproxy_core_status',
