@@ -70,9 +70,9 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-status-grid {
 	display: grid;
-	grid-template-columns: max-content max-content max-content minmax(0, 1fr);
+	grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
 	gap: 10px;
-	align-items: end;
+	align-items: center;
 }
 #homeproxy_status_panel .homeproxy-status-field {
 	min-width: 0;
@@ -87,14 +87,14 @@ const statusCss = `
 	min-width: 0;
 }
 #homeproxy_status_panel .homeproxy-version-field input {
-	width: 7em;
+	width: 100%;
 }
 #homeproxy_status_panel .homeproxy-core-version-field input {
-	width: 8em;
+	width: 100%;
 }
 #homeproxy_status_panel .homeproxy-core-status-field input {
-	width: 14em;
-	max-width: 100%;
+	width: 100%;
+	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-core-status {
 	border: unset;
@@ -105,8 +105,8 @@ const statusCss = `
 	display: flex;
 	flex-wrap: nowrap;
 	gap: 6px;
-	align-items: end;
-	justify-content: end;
+	align-items: center;
+	justify-content: flex-end;
 	min-width: 0;
 }
 #homeproxy_status_panel .homeproxy-status-actions .btn {
@@ -122,15 +122,10 @@ const statusCss = `
 	}
 	#homeproxy_status_panel .homeproxy-status-actions {
 		flex-wrap: wrap;
-		justify-content: stretch;
+		justify-content: flex-start;
 	}
 	#homeproxy_status_panel .homeproxy-status-actions .btn {
 		flex: 1 1 auto;
-	}
-	#homeproxy_status_panel .homeproxy-version-field input,
-	#homeproxy_status_panel .homeproxy-core-version-field input,
-	#homeproxy_status_panel .homeproxy-core-status-field input {
-		width: 100%;
 	}
 }`;
 
