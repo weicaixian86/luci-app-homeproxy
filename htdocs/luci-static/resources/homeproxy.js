@@ -13,7 +13,7 @@
 'require ui';
 
 function pad2(value) {
-	value = String(value || '').trim();
+	value = (value == null) ? '' : String(value).trim();
 	return value.length === 1 ? '0' + value : value;
 }
 
@@ -50,15 +50,6 @@ function buildCron(day, hour, minute) {
 		'*',
 		String(day || '*')
 	].join(' ');
-}
-
-function normalizeTimeValue(value) {
-	const matched = String(value || '').trim().match(/^(\d{1,2})\s*[:：]\s*(\d{1,2})$/) ||
-	    String(value || '').trim().match(/^(\d{1,2})(\d{2})$/);
-	if (!matched)
-		return '00:00';
-
-	return normalizeTimePart(matched[1], 0, 23) + ':' + normalizeTimePart(matched[2], 0, 59);
 }
 
 function alignCronEditorRow(wrap) {
@@ -114,27 +105,31 @@ function renderCronEditor(input) {
 	const parsed = parseCron(input.value);
 	input.type = 'hidden';
 
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'min-width: 10em;' }),
-	    time = E('input', {
-		'class': 'cbi-input-text',
-		'type': 'text',
-		'inputmode': 'numeric',
-		'placeholder': '00:00',
-		'maxlength': '5',
-		'style': 'width: 10em; text-align: center;'
-	    }),
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 34em;' }, [
-		E('div', { 'class': 'cbi-value', 'style': 'display: flex; align-items: center; gap: 1em; margin: 0 0 1em 0; padding: 0;' }, [
-			E('label', { 'class': 'cbi-value-title', 'style': 'width: 10em; flex: 0 0 10em; margin: 0;' }, _('Update time (weekly)')),
-			E('div', { 'class': 'cbi-value-field', 'style': 'flex: 1 1 auto;' }, [ day ])
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 100%; box-sizing: border-box;' }),
+	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 7em; box-sizing: border-box;' }),
+	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 7em; box-sizing: border-box;' }),
+	    rowStyle = 'display: grid; grid-template-columns: 10em 18em; column-gap: 1em; align-items: center; margin: 0 0 1em 0; padding: 0;',
+	    labelStyle = 'margin: 0; line-height: 2.4em; white-space: nowrap;',
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 29em; max-width: 100%;' }, [
+		E('div', { 'style': rowStyle }, [
+			E('label', { 'style': labelStyle }, _('Update time (weekly)')),
+			E('div', [ day ])
 		]),
-		E('div', { 'class': 'cbi-value', 'style': 'display: flex; align-items: center; gap: 1em; margin: 0; padding: 0;' }, [
-			E('label', { 'class': 'cbi-value-title', 'style': 'width: 10em; flex: 0 0 10em; margin: 0;' }, _('Update time (daily)')),
-			E('div', { 'class': 'cbi-value-field', 'style': 'flex: 1 1 auto;' }, [
-				time
+		E('div', { 'style': rowStyle.replace('margin: 0 0 1em 0;', 'margin: 0;') }, [
+			E('label', { 'style': labelStyle }, _('Update time (daily)')),
+			E('div', { 'style': 'display: flex; align-items: center; gap: .5em;' }, [
+				hour,
+				E('span', ':'),
+				minute
 			])
 		])
 	    ]);
+
+	for (let i = 0; i < 24; i++)
+		hour.appendChild(E('option', { value: pad2(i) }, pad2(i)));
+
+	for (let i = 0; i < 60; i++)
+		minute.appendChild(E('option', { value: pad2(i) }, pad2(i)));
 
 	[
 		['*', _('Every day')],
@@ -148,18 +143,17 @@ function renderCronEditor(input) {
 	].forEach(([value, label]) => day.appendChild(E('option', { value }, label)));
 
 	day.value = parsed ? parsed.day : '*';
-	time.value = parsed ? (parsed.hour + ':' + parsed.minute) : '00:00';
+	hour.value = parsed ? parsed.hour : '00';
+	minute.value = parsed ? parsed.minute : '00';
 
 	const sync = () => {
-		const parts = normalizeTimeValue(time.value).split(':');
-		time.value = parts[0] + ':' + parts[1];
-		input.value = buildCron(day.value, parts[0], parts[1]);
+		input.value = buildCron(day.value, hour.value, minute.value);
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	};
 
 	day.addEventListener('change', sync);
-	time.addEventListener('change', sync);
-	time.addEventListener('blur', sync);
+	hour.addEventListener('change', sync);
+	minute.addEventListener('change', sync);
 	wrap.appendChild(input);
 	window.setTimeout(() => {
 		sync();
