@@ -12,6 +12,46 @@
 'require uci';
 'require ui';
 
+function pad2(value) {
+	value = String(value || '').trim();
+	return value.length === 1 ? '0' + value : value;
+}
+
+function normalizeTimePart(value, min, max) {
+	value = parseInt(String(value || '').trim(), 10);
+	if (isNaN(value))
+		value = min;
+	value = Math.max(min, Math.min(max, value));
+	return pad2(value);
+}
+
+function parseCron(value) {
+	const matched = String(value || '').trim().match(/^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+([0-7*])$/);
+	if (!matched)
+		return null;
+
+	const minute = +matched[1],
+	      hour = +matched[2];
+	if (minute < 0 || minute > 59 || hour < 0 || hour > 23)
+		return null;
+
+	return {
+		minute: normalizeTimePart(matched[1], 0, 59),
+		hour: normalizeTimePart(matched[2], 0, 23),
+		day: matched[3] === '*' ? '*' : (matched[3] === '7' ? '0' : matched[3])
+	};
+}
+
+function buildCron(day, hour, minute) {
+	return [
+		normalizeTimePart(minute, 0, 59),
+		normalizeTimePart(hour, 0, 23),
+		'*',
+		'*',
+		String(day || '*')
+	].join(' ');
+}
+
 return baseclass.extend({
 	dns_strategy: {
 		'': _('Default'),
@@ -206,6 +246,81 @@ return baseclass.extend({
 		});
 
 		return L.resolveDefault(callGetSingBoxFeatures(), {});
+	},
+
+	renderCronSelector(/* ... */) {
+		let node = form.Value.prototype.renderWidget.apply(this, arguments),
+		    input = node.querySelector('input');
+
+		if (!input)
+			return node;
+
+		const parsed = parseCron(input.value);
+		input.type = 'hidden';
+
+		let day = E('select', { 'class': 'cbi-input-select', 'style': 'min-width: 10em;' }),
+		    hour = E('input', {
+			'class': 'cbi-input-text',
+			'type': 'number',
+			'min': '0',
+			'max': '23',
+			'step': '1',
+			'style': 'width: 4.5em; text-align: center;'
+		    }),
+		    minute = E('input', {
+			'class': 'cbi-input-text',
+			'type': 'number',
+			'min': '0',
+			'max': '59',
+			'step': '1',
+			'style': 'width: 4.5em; text-align: center;'
+		    }),
+		    wrap = E('div', { 'class': 'homeproxy-cron-editor' }, [
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Update time (weekly)')),
+				E('div', { 'class': 'cbi-value-field' }, [ day ])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, _('Update time (daily)')),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('span', { 'class': 'cbi-input-group-text' }, ' '),
+					hour,
+					E('span', { 'class': 'cbi-input-group-text' }, ':'),
+					minute
+				])
+			])
+		    ]);
+
+		[
+			['*', _('Every day')],
+			['1', _('Every Monday')],
+			['2', _('Every Tuesday')],
+			['3', _('Every Wednesday')],
+			['4', _('Every Thursday')],
+			['5', _('Every Friday')],
+			['6', _('Every Saturday')],
+			['0', _('Every Sunday')]
+		].forEach(([value, label]) => day.appendChild(E('option', { value }, label)));
+
+		day.value = parsed ? parsed.day : '*';
+		hour.value = parsed ? parsed.hour : '00';
+		minute.value = parsed ? parsed.minute : '00';
+
+		const sync = () => {
+			hour.value = normalizeTimePart(hour.value, 0, 23);
+			minute.value = normalizeTimePart(minute.value, 0, 59);
+			input.value = buildCron(day.value, hour.value, minute.value);
+			input.dispatchEvent(new Event('change', { bubbles: true }));
+		};
+
+		day.addEventListener('change', sync);
+		hour.addEventListener('change', sync);
+		hour.addEventListener('blur', sync);
+		minute.addEventListener('change', sync);
+		minute.addEventListener('blur', sync);
+		wrap.appendChild(input);
+		window.setTimeout(sync, 0);
+		return wrap;
 	},
 
 	generateRand(type, length) {

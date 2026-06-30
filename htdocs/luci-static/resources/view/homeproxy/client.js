@@ -260,6 +260,17 @@ function validateDuration(value) {
 	return !value || /^[1-9]\d*(ms|s|m|h|d)$/.test(value);
 }
 
+function validateUpdateCron(value) {
+	if (!value)
+		return true;
+
+	const matched = String(value).trim().match(/^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+([0-7*])$/);
+	if (!matched)
+		return false;
+
+	return +matched[1] <= 59 && +matched[2] <= 23;
+}
+
 function translateKnownError(error) {
 	let name = error?.name || '',
 	    message = error?.message || error || '';
@@ -1996,15 +2007,18 @@ return view.extend({
 		so.depends('type', 'remote');
 		so.modalonly = true;
 
-		so = ss.option(form.Value, 'update_interval', _('Update interval'),
-			_('Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day.'));
-		so.placeholder = '1d';
+		so = ss.option(form.Value, 'update_interval', _('Update time'));
+		so.renderWidget = function() {
+			return hp.renderCronSelector.apply(this, arguments);
+		};
+		so.default = '0 0 * * *';
+		so.rmempty = false;
 		so.validate = function(section_id, value) {
-			if (!validateDuration(value))
-				return _('Expecting: %s').format(_('valid duration'));
+			if (!validateUpdateCron(value))
+				return _('Expecting: %s').format(_('valid cron expression'));
 
 			return true;
-		}
+		};
 		so.depends('type', 'remote');
 		/* Rule set settings end */
 

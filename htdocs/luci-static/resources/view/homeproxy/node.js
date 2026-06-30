@@ -1746,11 +1746,19 @@ return view.extend({
 			_('Auto update subscriptions and geodata.'));
 		o.rmempty = false;
 
-		o = s.taboption('subscription', form.Value, 'auto_update_time', _('Cron expression'),
-			_('Minutes(0-59) Hours(0-23) Dates(1-31) Months(1-12) Weeks(0-6)'));
-		o.default = '0 */6 * * *';
-		o.placeholder = '0 */6 * * *';
+		o = s.taboption('subscription', form.Value, 'auto_update_time', _('Update time'));
+		o.renderWidget = function() {
+			return hp.renderCronSelector.apply(this, arguments);
+		};
+		o.default = '0 0 * * *';
 		o.rmempty = false;
+		o.validate = function(section_id, value) {
+			const matched = String(value || '').trim().match(/^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+([0-7*])$/);
+			if (!matched || +matched[1] > 59 || +matched[2] > 23)
+				return _('Expecting: %s').format(_('valid cron expression'));
+
+			return true;
+		};
 
 		o = s.taboption('subscription', form.Flag, 'update_via_proxy', _('Update via proxy'),
 			_('Update subscriptions via proxy.'));

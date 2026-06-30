@@ -1230,7 +1230,7 @@ if (!isEmpty(main_node)) {
 			url: cfg.url,
 			path: (cfg.type === 'remote') ? ruleset_remote_path(cfg.remote_path || cfg.path, tag, cfg.format) : cfg.path,
 			download_detour: get_outbound(cfg.outbound),
-			update_interval: cfg.update_interval
+			update_interval: (cfg.type === 'remote') ? '87600h' : null
 		});
 	});
 }

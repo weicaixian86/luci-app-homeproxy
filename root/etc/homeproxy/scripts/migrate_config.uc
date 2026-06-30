@@ -50,6 +50,11 @@ const uciinfra = 'infra',
       ucicache = 'cache',
       uciserver = 'server';
 
+function is_update_cron(value) {
+	let matched = match(value || '', /^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+([0-7*])$/);
+	return !isEmpty(matched) && int(matched[1]) <= 59 && int(matched[2]) <= 23;
+}
+
 /* chinadns-ng has been removed */
 if (uci.get(uciconfig, uciinfra, 'china_dns_port'))
 	uci.delete(uciconfig, uciinfra, 'china_dns_port');
@@ -182,6 +187,10 @@ if (isEmpty(uci.get(uciconfig, ucimain, 'log_level')))
 
 if (isEmpty(uci.get(uciconfig, uciserver, 'log_level')))
 	uci.set(uciconfig, uciserver, 'log_level', 'warn');
+
+if (!isEmpty(uci.get(uciconfig, 'subscription', 'auto_update_time')) &&
+    !is_update_cron(uci.get(uciconfig, 'subscription', 'auto_update_time')))
+	uci.set(uciconfig, 'subscription', 'auto_update_time', '0 0 * * *');
 
 /* empty value defaults to all ports now */
 if (uci.get(uciconfig, ucimain, 'routing_port') === 'all')
@@ -378,6 +387,9 @@ uci.foreach(uciconfig, uciroutingnode, (cfg) => {
 uci.foreach(uciconfig, uciruleset, (cfg) => {
 	if (isEmpty(cfg.tag))
 		uci.set(uciconfig, cfg['.name'], 'tag', 'cfg-' + cfg['.name'] + '-rule');
+
+	if (cfg.type === 'remote' && !is_update_cron(cfg.update_interval))
+		uci.set(uciconfig, cfg['.name'], 'update_interval', '0 0 * * *');
 });
 
 /* server options */

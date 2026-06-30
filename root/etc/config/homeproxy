@@ -85,7 +85,7 @@ config homeproxy 'subscription'
 	option latency_test_mode 'icmp'
 	option packet_encoding 'xudp'
 	option update_via_proxy '0'
-	option auto_update_time '0 */6 * * *'
+	option auto_update_time '0 0 * * *'
 	option filter_nodes 'disabled'
 
 config homeproxy 'server'

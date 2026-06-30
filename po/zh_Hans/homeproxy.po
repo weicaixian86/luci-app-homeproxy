@@ -2267,6 +2267,9 @@ msgstr "有效标签"
 msgid "valid duration"
 msgstr "有效时间格式"
 
+msgid "valid cron expression"
+msgstr "有效 cron 表达式"
+
 msgid "Manual select"
 msgstr "手动选择"
 
@@ -2989,12 +2992,48 @@ msgid "Update failed."
 msgstr "更新失败。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1415
-msgid "Update interval"
-msgstr "更新间隔"
+msgid "Update time"
+msgstr "更新时间"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1416
-msgid "Update interval of rule set. Examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day."
-msgstr "规则集更新间隔。示例：1m = 1分钟，1h = 1小时，1d = 1天。"
+msgid "Update time (daily)"
+msgstr "更新时间(每天)"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1417
+msgid "Update time (weekly)"
+msgstr "更新时间(每周)"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1418
+msgid "Every day"
+msgstr "每天"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1419
+msgid "Every Monday"
+msgstr "每周一"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1420
+msgid "Every Tuesday"
+msgstr "每周二"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1421
+msgid "Every Wednesday"
+msgstr "每周三"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1422
+msgid "Every Thursday"
+msgstr "每周四"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1423
+msgid "Every Friday"
+msgstr "每周五"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1424
+msgid "Every Saturday"
+msgstr "每周六"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1425
+msgid "Every Sunday"
+msgstr "每周日"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1844
 msgid "Update nodes from subscriptions"
