@@ -70,7 +70,16 @@ function alignCronEditorRow(wrap) {
 	if (title)
 		title.style.display = 'none';
 
-	field.style.marginTop = '0';
+	field.style.margin = '0';
+	field.style.marginLeft = '0';
+	field.style.padding = '0';
+	field.style.width = '100%';
+	field.style.maxWidth = 'none';
+	field.style.flexBasis = '100%';
+	field.style.gridColumn = '1 / -1';
+
+	row.style.display = 'block';
+	row.style.gridTemplateColumns = '1fr';
 
 	return true;
 }
@@ -97,19 +106,19 @@ function renderCronEditor(input) {
 	const parsed = parseCron(input.value);
 	input.type = 'hidden';
 
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 13em !important; min-width: 13em !important; max-width: 13em !important; box-sizing: border-box;' }),
-	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 6em !important; min-width: 6em !important; max-width: 6em !important; box-sizing: border-box;' }),
-	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 6em !important; min-width: 6em !important; max-width: 6em !important; box-sizing: border-box;' }),
-	    rowStyle = 'display: grid; grid-template-columns: 14em 13em; column-gap: 1em; align-items: center; margin: 0 0 .6em 0; padding: 0;',
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
+	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.75em !important; min-width: 4.75em !important; max-width: 4.75em !important; box-sizing: border-box;' }),
+	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.75em !important; min-width: 4.75em !important; max-width: 4.75em !important; box-sizing: border-box;' }),
+	    rowStyle = 'display: grid; grid-template-columns: 10.5em 1fr; column-gap: .75em; align-items: center; margin: 0 0 .55em 0; padding: 0;',
 	    labelStyle = 'margin: 0; line-height: 2.4em; text-align: right; white-space: nowrap;',
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 28em; max-width: 100%;' }, [
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 28em;' }, [
 		E('div', { 'style': rowStyle }, [
 			E('div', { 'style': labelStyle }, _('Update time (weekly)')),
 			day
 		]),
 		E('div', { 'style': rowStyle.replace('margin: 0 0 .6em 0;', 'margin: 0;') }, [
 			E('div', { 'style': labelStyle }, _('Update time (daily)')),
-			E('div', { 'style': 'display: flex; align-items: center; gap: .35em; width: 13em;' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: .3em; width: 10.5em;' }, [
 				hour,
 				E('span', ':'),
 				minute
@@ -137,6 +146,7 @@ function renderCronEditor(input) {
 	day.value = parsed ? parsed.day : '*';
 	hour.value = parsed ? parsed.hour : '00';
 	minute.value = parsed ? parsed.minute : '00';
+	input.value = buildCron(day.value, hour.value, minute.value);
 
 	const sync = () => {
 		input.value = buildCron(day.value, hour.value, minute.value);
@@ -147,10 +157,7 @@ function renderCronEditor(input) {
 	hour.addEventListener('change', sync);
 	minute.addEventListener('change', sync);
 	wrap.appendChild(input);
-	window.setTimeout(() => {
-		sync();
-		watchCronEditorRow(wrap);
-	}, 0);
+	window.setTimeout(() => watchCronEditorRow(wrap), 0);
 	return wrap;
 }
 

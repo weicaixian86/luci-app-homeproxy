@@ -2017,7 +2017,7 @@ return view.extend({
 
 		so = ss.option(form.Value, 'update_interval', _('Update time'));
 		so.renderWidget = function() {
-			return hp.renderCronSelectorRow.apply(this, arguments);
+			return hp.renderCronSelector.apply(this, arguments);
 		};
 		so.default = '0 0 * * *';
 		so.rmempty = false;
@@ -2274,8 +2274,8 @@ return view.extend({
 		const panelPresetUrls = {
 			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts (gh-proxy)',
 			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts',
-			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版(gh-proxy)',
-			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版',
+			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整�?gh-proxy)',
+			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整�?,
 			'https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip': 'MetaCubeXD (gh-proxy)',
 			'https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip': 'MetaCubeXD',
 			'https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip': 'YACD (gh-proxy)',
@@ -2287,8 +2287,8 @@ return view.extend({
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts');
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版(gh-proxy)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版');
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整�?gh-proxy)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整�?);
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD (gh-proxy)');
