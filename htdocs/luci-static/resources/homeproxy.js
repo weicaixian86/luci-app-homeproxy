@@ -106,19 +106,19 @@ function renderCronEditor(input) {
 	const parsed = parseCron(input.value);
 	input.type = 'hidden';
 
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
-	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.75em !important; min-width: 4.75em !important; max-width: 4.75em !important; box-sizing: border-box;' }),
-	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.75em !important; min-width: 4.75em !important; max-width: 4.75em !important; box-sizing: border-box;' }),
-	    rowStyle = 'display: grid; grid-template-columns: 10.5em 1fr; column-gap: .75em; align-items: center; margin: 0 0 .55em 0; padding: 0;',
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 9.5em !important; min-width: 9.5em !important; max-width: 9.5em !important; box-sizing: border-box;' }),
+	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
+	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
+	    rowStyle = 'display: grid; grid-template-columns: 8.5em 1fr; column-gap: .6em; align-items: center; margin: 0 0 .45em 0; padding: 0;',
 	    labelStyle = 'margin: 0; line-height: 2.4em; text-align: right; white-space: nowrap;',
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 28em;' }, [
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 24em;' }, [
 		E('div', { 'style': rowStyle }, [
 			E('div', { 'style': labelStyle }, _('Update time (weekly)')),
 			day
 		]),
-		E('div', { 'style': rowStyle.replace('margin: 0 0 .6em 0;', 'margin: 0;') }, [
+		E('div', { 'style': 'display: grid; grid-template-columns: 8.5em 1fr; column-gap: .6em; align-items: center; margin: 0; padding: 0;' }, [
 			E('div', { 'style': labelStyle }, _('Update time (daily)')),
-			E('div', { 'style': 'display: flex; align-items: center; gap: .3em; width: 10.5em;' }, [
+			E('div', { 'style': 'display: flex; align-items: center; gap: .25em; width: 9.5em;' }, [
 				hour,
 				E('span', ':'),
 				minute
