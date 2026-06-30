@@ -388,8 +388,13 @@ uci.foreach(uciconfig, uciruleset, (cfg) => {
 	if (isEmpty(cfg.tag))
 		uci.set(uciconfig, cfg['.name'], 'tag', 'cfg-' + cfg['.name'] + '-rule');
 
-	if (cfg.type === 'remote' && !is_update_cron(cfg.update_interval))
-		uci.set(uciconfig, cfg['.name'], 'update_interval', '0 0 * * *');
+	if (cfg.type === 'remote') {
+		if (isEmpty(cfg.auto_update))
+			uci.set(uciconfig, cfg['.name'], 'auto_update', '1');
+
+		if (!is_update_cron(cfg.update_interval))
+			uci.set(uciconfig, cfg['.name'], 'update_interval', '0 0 * * *');
+	}
 });
 
 /* server options */

@@ -1747,8 +1747,8 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.taboption('subscription', form.Value, 'auto_update_time', _('Update time'));
-		o.renderWidget = function() {
-			return hp.renderCronSelector.apply(this, arguments);
+		o.render = function() {
+			return hp.renderCronSelectorRow.apply(this, arguments);
 		};
 		o.default = '0 0 * * *';
 		o.rmempty = false;

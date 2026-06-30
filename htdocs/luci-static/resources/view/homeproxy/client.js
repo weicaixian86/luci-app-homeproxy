@@ -379,6 +379,8 @@ function renderRuleSetAdd(section, extra_class) {
 				uci.set(uciconfig, section_id, 'type', 'remote');
 				uci.set(uciconfig, section_id, 'format', 'binary');
 				uci.set(uciconfig, section_id, 'remote_path', '/etc/homeproxy/ruleset/');
+				uci.set(uciconfig, section_id, 'auto_update', '1');
+				uci.set(uciconfig, section_id, 'update_interval', '0 0 * * *');
 			}
 		}, 0);
 	});
@@ -2007,9 +2009,15 @@ return view.extend({
 		so.depends('type', 'remote');
 		so.modalonly = true;
 
+		so = ss.option(form.Flag, 'auto_update', _('Auto update'));
+		so.default = '1';
+		so.rmempty = false;
+		so.depends('type', 'remote');
+		so.modalonly = true;
+
 		so = ss.option(form.Value, 'update_interval', _('Update time'));
-		so.renderWidget = function() {
-			return hp.renderCronSelector.apply(this, arguments);
+		so.render = function() {
+			return hp.renderCronSelectorRow.apply(this, arguments);
 		};
 		so.default = '0 0 * * *';
 		so.rmempty = false;

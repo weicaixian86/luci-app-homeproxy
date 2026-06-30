@@ -52,6 +52,73 @@ function buildCron(day, hour, minute) {
 	].join(' ');
 }
 
+function normalizeTimeValue(value) {
+	const matched = String(value || '').trim().match(/^(\d{1,2})\s*[:：]\s*(\d{1,2})$/) ||
+	    String(value || '').trim().match(/^(\d{1,2})(\d{2})$/);
+	if (!matched)
+		return '00:00';
+
+	return normalizeTimePart(matched[1], 0, 23) + ':' + normalizeTimePart(matched[2], 0, 59);
+}
+
+function renderCronEditor(input) {
+	if (!input)
+		return null;
+
+	const parsed = parseCron(input.value);
+	input.type = 'hidden';
+
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'min-width: 10em;' }),
+	    time = E('input', {
+		'class': 'cbi-input-text',
+		'type': 'text',
+		'inputmode': 'numeric',
+		'placeholder': '00:00',
+		'maxlength': '5',
+		'style': 'width: 10em; text-align: center;'
+	    }),
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 34em;' }, [
+		E('div', { 'class': 'cbi-value', 'style': 'display: flex; align-items: center; gap: 1em; margin: 0 0 1em 0; padding: 0;' }, [
+			E('label', { 'class': 'cbi-value-title', 'style': 'width: 10em; flex: 0 0 10em; margin: 0;' }, _('Update time (weekly)')),
+			E('div', { 'class': 'cbi-value-field', 'style': 'flex: 1 1 auto;' }, [ day ])
+		]),
+		E('div', { 'class': 'cbi-value', 'style': 'display: flex; align-items: center; gap: 1em; margin: 0; padding: 0;' }, [
+			E('label', { 'class': 'cbi-value-title', 'style': 'width: 10em; flex: 0 0 10em; margin: 0;' }, _('Update time (daily)')),
+			E('div', { 'class': 'cbi-value-field', 'style': 'flex: 1 1 auto;' }, [
+				time
+			])
+		])
+	    ]);
+
+	[
+		['*', _('Every day')],
+		['1', _('Every Monday')],
+		['2', _('Every Tuesday')],
+		['3', _('Every Wednesday')],
+		['4', _('Every Thursday')],
+		['5', _('Every Friday')],
+		['6', _('Every Saturday')],
+		['0', _('Every Sunday')]
+	].forEach(([value, label]) => day.appendChild(E('option', { value }, label)));
+
+	day.value = parsed ? parsed.day : '*';
+	time.value = parsed ? (parsed.hour + ':' + parsed.minute) : '00:00';
+
+	const sync = () => {
+		const parts = normalizeTimeValue(time.value).split(':');
+		time.value = parts[0] + ':' + parts[1];
+		input.value = buildCron(day.value, parts[0], parts[1]);
+		input.dispatchEvent(new Event('change', { bubbles: true }));
+	};
+
+	day.addEventListener('change', sync);
+	time.addEventListener('change', sync);
+	time.addEventListener('blur', sync);
+	wrap.appendChild(input);
+	window.setTimeout(sync, 0);
+	return wrap;
+}
+
 return baseclass.extend({
 	dns_strategy: {
 		'': _('Default'),
@@ -250,77 +317,45 @@ return baseclass.extend({
 
 	renderCronSelector(/* ... */) {
 		let node = form.Value.prototype.renderWidget.apply(this, arguments),
-		    input = node.querySelector('input');
+		    editor = renderCronEditor(node.querySelector('input'));
 
-		if (!input)
-			return node;
+		return editor || node;
+	},
 
-		const parsed = parseCron(input.value);
-		input.type = 'hidden';
+	renderCronSelectorRow(/* ... */) {
+		let row = form.Value.prototype.render.apply(this, arguments),
+		    title, field;
 
-		let day = E('select', { 'class': 'cbi-input-select', 'style': 'min-width: 10em;' }),
-		    hour = E('input', {
-			'class': 'cbi-input-text',
-			'type': 'number',
-			'min': '0',
-			'max': '23',
-			'step': '1',
-			'style': 'width: 4.5em; text-align: center;'
-		    }),
-		    minute = E('input', {
-			'class': 'cbi-input-text',
-			'type': 'number',
-			'min': '0',
-			'max': '59',
-			'step': '1',
-			'style': 'width: 4.5em; text-align: center;'
-		    }),
-		    wrap = E('div', { 'class': 'homeproxy-cron-editor' }, [
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Update time (weekly)')),
-				E('div', { 'class': 'cbi-value-field' }, [ day ])
-			]),
-			E('div', { 'class': 'cbi-value' }, [
-				E('label', { 'class': 'cbi-value-title' }, _('Update time (daily)')),
-				E('div', { 'class': 'cbi-value-field' }, [
-					E('span', { 'class': 'cbi-input-group-text' }, ' '),
-					hour,
-					E('span', { 'class': 'cbi-input-group-text' }, ':'),
-					minute
-				])
-			])
-		    ]);
+		for (let i = 0; row && i < row.children.length; i++) {
+			if (row.children[i].classList.contains('cbi-value-title'))
+				title = row.children[i];
+			else if (row.children[i].classList.contains('cbi-value-field'))
+				field = row.children[i];
+		}
 
-		[
-			['*', _('Every day')],
-			['1', _('Every Monday')],
-			['2', _('Every Tuesday')],
-			['3', _('Every Wednesday')],
-			['4', _('Every Thursday')],
-			['5', _('Every Friday')],
-			['6', _('Every Saturday')],
-			['0', _('Every Sunday')]
-		].forEach(([value, label]) => day.appendChild(E('option', { value }, label)));
+		if (!field)
+			return row;
 
-		day.value = parsed ? parsed.day : '*';
-		hour.value = parsed ? parsed.hour : '00';
-		minute.value = parsed ? parsed.minute : '00';
+		let editor = renderCronEditor(field.querySelector('input'));
+		if (!editor)
+			return row;
 
-		const sync = () => {
-			hour.value = normalizeTimePart(hour.value, 0, 23);
-			minute.value = normalizeTimePart(minute.value, 0, 59);
-			input.value = buildCron(day.value, hour.value, minute.value);
-			input.dispatchEvent(new Event('change', { bubbles: true }));
-		};
+		if (title)
+			title.remove();
 
-		day.addEventListener('change', sync);
-		hour.addEventListener('change', sync);
-		hour.addEventListener('blur', sync);
-		minute.addEventListener('change', sync);
-		minute.addEventListener('blur', sync);
-		wrap.appendChild(input);
-		window.setTimeout(sync, 0);
-		return wrap;
+		field.textContent = '';
+		field.appendChild(editor);
+		field.style.margin = '0';
+		field.style.marginLeft = '0';
+		field.style.width = '100%';
+		field.style.maxWidth = 'none';
+		field.style.flexBasis = '100%';
+		field.style.gridColumn = '1 / -1';
+
+		row.style.display = 'block';
+		row.style.gridTemplateColumns = '1fr';
+
+		return row;
 	},
 
 	generateRand(type, length) {

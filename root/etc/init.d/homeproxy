@@ -45,13 +45,15 @@ has_ruleset_cron() {
 
 add_ruleset_cron() {
 	local section="$1"
-	local enabled type update_time
+	local enabled auto_update type update_time
 
 	config_get_bool enabled "$section" "enabled" "0"
+	config_get_bool auto_update "$section" "auto_update" "1"
 	config_get type "$section" "type" "local"
 	config_get update_time "$section" "update_interval" ""
 
 	[ "$enabled" = "1" ] || return
+	[ "$auto_update" = "1" ] || return
 	[ "$type" = "remote" ] || return
 	[ -n "$update_time" ] || return
 	valid_update_cron "$update_time" || return
@@ -105,9 +107,10 @@ start_service() {
 		fi
 
 		# Auto update
+		local cron_reload="0"
+		grep -q "#${CONF}_autosetup" "/etc/crontabs/root" 2>"/dev/null" && cron_reload="1"
 		sed -i "/#${CONF}_autosetup/d" "/etc/crontabs/root" 2>"/dev/null"
 
-		local cron_reload="0"
 		local auto_update auto_update_time
 		config_get_bool auto_update "subscription" "auto_update" "0"
 		if [ "$auto_update" = "1" ]; then
