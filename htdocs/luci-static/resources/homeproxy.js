@@ -70,15 +70,7 @@ function alignCronEditorRow(wrap) {
 	if (title)
 		title.style.display = 'none';
 
-	field.style.margin = '0';
-	field.style.marginLeft = '0';
-	field.style.width = '100%';
-	field.style.maxWidth = 'none';
-	field.style.flexBasis = '100%';
-	field.style.gridColumn = '1 / -1';
-
-	row.style.display = 'block';
-	row.style.gridTemplateColumns = '1fr';
+	field.style.marginTop = '0';
 
 	return true;
 }
@@ -105,19 +97,19 @@ function renderCronEditor(input) {
 	const parsed = parseCron(input.value);
 	input.type = 'hidden';
 
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12.5em !important; min-width: 12.5em !important; max-width: 12.5em !important; box-sizing: border-box;' }),
-	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 5.6em !important; min-width: 5.6em !important; max-width: 5.6em !important; box-sizing: border-box;' }),
-	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 5.6em !important; min-width: 5.6em !important; max-width: 5.6em !important; box-sizing: border-box;' }),
-	    rowStyle = 'display: grid; grid-template-columns: 12em 13em; column-gap: 1em; align-items: center; margin: 0 0 .75em 0; padding: 0;',
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 13em !important; min-width: 13em !important; max-width: 13em !important; box-sizing: border-box;' }),
+	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 6em !important; min-width: 6em !important; max-width: 6em !important; box-sizing: border-box;' }),
+	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 6em !important; min-width: 6em !important; max-width: 6em !important; box-sizing: border-box;' }),
+	    rowStyle = 'display: grid; grid-template-columns: 14em 13em; column-gap: 1em; align-items: center; margin: 0 0 .6em 0; padding: 0;',
 	    labelStyle = 'margin: 0; line-height: 2.4em; text-align: right; white-space: nowrap;',
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 26em; max-width: 100%;' }, [
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 28em; max-width: 100%;' }, [
 		E('div', { 'style': rowStyle }, [
-			E('label', { 'style': labelStyle }, _('Update time (weekly)')),
-			E('div', [ day ])
+			E('div', { 'style': labelStyle }, _('Update time (weekly)')),
+			day
 		]),
-		E('div', { 'style': rowStyle.replace('margin: 0 0 .75em 0;', 'margin: 0;') }, [
-			E('label', { 'style': labelStyle }, _('Update time (daily)')),
-			E('div', { 'style': 'display: flex; align-items: center; gap: .4em; width: 12.5em;' }, [
+		E('div', { 'style': rowStyle.replace('margin: 0 0 .6em 0;', 'margin: 0;') }, [
+			E('div', { 'style': labelStyle }, _('Update time (daily)')),
+			E('div', { 'style': 'display: flex; align-items: center; gap: .35em; width: 13em;' }, [
 				hour,
 				E('span', ':'),
 				minute

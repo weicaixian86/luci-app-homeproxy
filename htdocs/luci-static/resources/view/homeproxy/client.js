@@ -2017,7 +2017,7 @@ return view.extend({
 
 		so = ss.option(form.Value, 'update_interval', _('Update time'));
 		so.renderWidget = function() {
-			return hp.renderCronSelector.apply(this, arguments);
+			return hp.renderCronSelectorRow.apply(this, arguments);
 		};
 		so.default = '0 0 * * *';
 		so.rmempty = false;
