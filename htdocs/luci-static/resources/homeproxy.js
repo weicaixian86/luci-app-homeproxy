@@ -73,13 +73,6 @@ function alignCronEditorRow(wrap) {
 	field.style.margin = '0';
 	field.style.marginLeft = '0';
 	field.style.padding = '0';
-	field.style.width = '100%';
-	field.style.maxWidth = 'none';
-	field.style.flexBasis = '100%';
-	field.style.gridColumn = '1 / -1';
-
-	row.style.display = 'block';
-	row.style.gridTemplateColumns = '1fr';
 
 	return true;
 }
