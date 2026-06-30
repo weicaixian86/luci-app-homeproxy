@@ -61,6 +61,52 @@ function normalizeTimeValue(value) {
 	return normalizeTimePart(matched[1], 0, 23) + ':' + normalizeTimePart(matched[2], 0, 59);
 }
 
+function alignCronEditorRow(wrap) {
+	let field = wrap?.parentNode;
+
+	while (field && !field.classList?.contains('cbi-value-field'))
+		field = field.parentNode;
+
+	let row = field?.parentNode;
+	while (row && !row.classList?.contains('cbi-value'))
+		row = row.parentNode;
+
+	if (!row || !field)
+		return false;
+
+	let title = row.querySelector('.cbi-value-title');
+
+	if (title)
+		title.style.display = 'none';
+
+	field.style.margin = '0';
+	field.style.marginLeft = '0';
+	field.style.width = '100%';
+	field.style.maxWidth = 'none';
+	field.style.flexBasis = '100%';
+	field.style.gridColumn = '1 / -1';
+
+	row.style.display = 'block';
+	row.style.gridTemplateColumns = '1fr';
+
+	return true;
+}
+
+function watchCronEditorRow(wrap) {
+	const align = () => alignCronEditorRow(wrap);
+	[ 0, 50, 200, 500, 1000, 2000 ].forEach(delay => window.setTimeout(align, delay));
+
+	if (typeof MutationObserver !== 'undefined' && document?.body) {
+		const observer = new MutationObserver(() => {
+			if (align())
+				observer.disconnect();
+		});
+
+		observer.observe(document.body, { childList: true, subtree: true });
+		window.setTimeout(() => observer.disconnect(), 3000);
+	}
+}
+
 function renderCronEditor(input) {
 	if (!input)
 		return null;
@@ -115,7 +161,10 @@ function renderCronEditor(input) {
 	time.addEventListener('change', sync);
 	time.addEventListener('blur', sync);
 	wrap.appendChild(input);
-	window.setTimeout(sync, 0);
+	window.setTimeout(() => {
+		sync();
+		watchCronEditorRow(wrap);
+	}, 0);
 	return wrap;
 }
 
@@ -323,39 +372,7 @@ return baseclass.extend({
 	},
 
 	renderCronSelectorRow(/* ... */) {
-		let row = form.Value.prototype.render.apply(this, arguments),
-		    title, field;
-
-		for (let i = 0; row && i < row.children.length; i++) {
-			if (row.children[i].classList.contains('cbi-value-title'))
-				title = row.children[i];
-			else if (row.children[i].classList.contains('cbi-value-field'))
-				field = row.children[i];
-		}
-
-		if (!field)
-			return row;
-
-		let editor = renderCronEditor(field.querySelector('input'));
-		if (!editor)
-			return row;
-
-		if (title)
-			title.remove();
-
-		field.textContent = '';
-		field.appendChild(editor);
-		field.style.margin = '0';
-		field.style.marginLeft = '0';
-		field.style.width = '100%';
-		field.style.maxWidth = 'none';
-		field.style.flexBasis = '100%';
-		field.style.gridColumn = '1 / -1';
-
-		row.style.display = 'block';
-		row.style.gridTemplateColumns = '1fr';
-
-		return row;
+		return form.Value.prototype.render.apply(this, arguments);
 	},
 
 	generateRand(type, length) {

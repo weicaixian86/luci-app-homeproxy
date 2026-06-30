@@ -2016,8 +2016,8 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(form.Value, 'update_interval', _('Update time'));
-		so.render = function() {
-			return hp.renderCronSelectorRow.apply(this, arguments);
+		so.renderWidget = function() {
+			return hp.renderCronSelector.apply(this, arguments);
 		};
 		so.default = '0 0 * * *';
 		so.rmempty = false;
