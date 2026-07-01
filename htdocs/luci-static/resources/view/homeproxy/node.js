@@ -22,6 +22,13 @@ const callNodeLatencyTest = rpc.declare({
 	expect: { '': {} }
 });
 
+const callRCInit = rpc.declare({
+	object: 'rc',
+	method: 'init',
+	params: ['name', 'action'],
+	expect: { '': {} }
+});
+
 function allowInsecureConfirm(ev, _section_id, value) {
 	if (value === '1' && !confirm(_('Are you sure to allow insecure?')))
 		ev.target.firstElementChild.checked = null;
@@ -1823,7 +1830,9 @@ return view.extend({
 		o.inputtitle = _('Save current settings');
 		o.onclick = function() {
 			return this.map.save(null, true).then(() => {
-				ui.changes.apply(true);
+				return ui.changes.apply(true);
+			}).then(() => {
+				return callRCInit('homeproxy', 'reload');
 			});
 		}
 

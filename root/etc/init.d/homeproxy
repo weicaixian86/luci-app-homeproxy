@@ -36,7 +36,7 @@ init_logs() {
 }
 
 valid_update_cron() {
-	echo "$1" | grep -Eq '^([0-9]|[1-5][0-9]) ([0-9]|1[0-9]|2[0-3]) \* \* ([0-7]|\*)$'
+	echo "$1" | grep -Eq '^([0-9]|[0-5][0-9]) ([0-9]|[01][0-9]|2[0-3]) \* \* ([0-7]|\*)$'
 }
 
 has_ruleset_cron() {
@@ -65,10 +65,33 @@ ${update_time}"
 	cron_reload="1"
 }
 
+setup_auto_update_cron() {
+	local cron_reload="0"
+	mkdir -p "/etc/crontabs"
+	touch "/etc/crontabs/root"
+	grep -q "#${CONF}_autosetup" "/etc/crontabs/root" 2>"/dev/null" && cron_reload="1"
+	sed -i "/#${CONF}_autosetup/d" "/etc/crontabs/root" 2>"/dev/null"
+
+	local auto_update auto_update_time
+	config_get_bool auto_update "subscription" "auto_update" "0"
+	if [ "$auto_update" = "1" ]; then
+		config_get auto_update_time "subscription" "auto_update_time" "0 0 * * *"
+		if valid_update_cron "$auto_update_time"; then
+			echo -e "$auto_update_time sh $HP_DIR/scripts/update_crond.sh #${CONF}_autosetup" >> "/etc/crontabs/root"
+			cron_reload="1"
+		fi
+	fi
+
+	local ruleset_cron_list=""
+	config_foreach add_ruleset_cron "ruleset"
+	[ "$cron_reload" = "1" ] && /etc/init.d/cron restart
+}
+
 start_service() {
 	init_logs
 
 	config_load "$CONF"
+	setup_auto_update_cron
 
 	local routing_mode proxy_mode
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
@@ -105,25 +128,6 @@ start_service() {
 			log "Error: wrong client configuration detected."
 			return 1
 		fi
-
-		# Auto update
-		local cron_reload="0"
-		grep -q "#${CONF}_autosetup" "/etc/crontabs/root" 2>"/dev/null" && cron_reload="1"
-		sed -i "/#${CONF}_autosetup/d" "/etc/crontabs/root" 2>"/dev/null"
-
-		local auto_update auto_update_time
-		config_get_bool auto_update "subscription" "auto_update" "0"
-		if [ "$auto_update" = "1" ]; then
-			config_get auto_update_time "subscription" "auto_update_time" "0 0 * * *"
-			if valid_update_cron "$auto_update_time"; then
-				echo -e "$auto_update_time $HP_DIR/scripts/update_crond.sh #${CONF}_autosetup" >> "/etc/crontabs/root"
-				cron_reload="1"
-			fi
-		fi
-
-		local ruleset_cron_list=""
-		config_foreach add_ruleset_cron "ruleset"
-		[ "$cron_reload" = "1" ] && /etc/init.d/cron restart
 
 		# DNSMasq rules
 		local ipv6_support dns_port
