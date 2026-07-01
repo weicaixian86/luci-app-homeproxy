@@ -101,7 +101,18 @@ function renderCronEditor(input) {
 		return null;
 
 	const parsed = parseCron(input.value);
-	input.type = 'hidden';
+	input.type = 'text';
+	input.readOnly = true;
+	input.tabIndex = -1;
+	input.style.position = 'absolute';
+	input.style.opacity = '0';
+	input.style.pointerEvents = 'none';
+	input.style.width = '1px';
+	input.style.height = '1px';
+	input.style.minWidth = '1px';
+	input.style.maxWidth = '1px';
+	input.style.padding = '0';
+	input.style.border = '0';
 
 	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
 	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
@@ -136,9 +147,12 @@ function renderCronEditor(input) {
 	hour.value = parsed ? parsed.hour : '00';
 	minute.value = parsed ? parsed.minute : '00';
 	input.value = buildCron(day.value, hour.value, minute.value);
+	input.setAttribute('value', input.value);
 
 	const sync = () => {
 		input.value = buildCron(day.value, hour.value, minute.value);
+		input.setAttribute('value', input.value);
+		input.dispatchEvent(new Event('input', { bubbles: true }));
 		input.dispatchEvent(new Event('change', { bubbles: true }));
 	};
 
@@ -347,6 +361,38 @@ return baseclass.extend({
 	},
 
 	renderCronSelector(/* ... */) {
+		if (!this._homeproxyCronOriginalFormvalue) {
+			this._homeproxyCronOriginalFormvalue = this.formvalue;
+			this.formvalue = function(section_id) {
+				let cbid = this.cbid(section_id),
+				    ids = [ cbid, 'widget.' + cbid ],
+				    roots = [ document.getElementById('modal_overlay'), document ],
+				    input = null;
+
+				for (let root of roots) {
+					if (!root)
+						continue;
+
+					for (let el of root.querySelectorAll('input')) {
+						if (ids.includes(el.id) || ids.includes(el.name)) {
+							input = el;
+							break;
+						}
+					}
+
+					if (input)
+						break;
+				}
+
+				let value = input?.value ||
+					this._homeproxyCronOriginalFormvalue?.call(this, section_id) ||
+					this.default ||
+					'0 0 * * *';
+
+				return parseCron(value) ? value : (this.default || '0 0 * * *');
+			};
+		}
+
 		let node = form.Value.prototype.renderWidget.apply(this, arguments),
 		    editor = renderCronEditor(node.querySelector('input'));
 

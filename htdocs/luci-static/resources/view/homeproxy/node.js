@@ -1753,6 +1753,7 @@ return view.extend({
 		o.default = '0 0 * * *';
 		o.rmempty = false;
 		o.validate = function(section_id, value) {
+			value = value || this.formvalue(section_id);
 			const matched = String(value || '').trim().match(/^(\d{1,2})\s+(\d{1,2})\s+\*\s+\*\s+([0-7*])$/);
 			if (!matched || +matched[1] > 59 || +matched[2] > 23)
 				return _('Expecting: %s').format(_('valid cron expression'));

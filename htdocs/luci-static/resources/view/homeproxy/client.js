@@ -2022,6 +2022,7 @@ return view.extend({
 		so.default = '0 0 * * *';
 		so.rmempty = false;
 		so.validate = function(section_id, value) {
+			value = value || this.formvalue(section_id);
 			if (!validateUpdateCron(value))
 				return _('Expecting: %s').format(_('valid cron expression'));
 
