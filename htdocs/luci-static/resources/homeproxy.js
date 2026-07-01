@@ -65,14 +65,18 @@ function alignCronEditorRow(wrap) {
 	if (!row || !field)
 		return false;
 
-	let title = row.querySelector('.cbi-value-title');
+	if (wrap._dailyRow) {
+		wrap._dailyRow.style.display = row.style.display;
+		return true;
+	}
 
-	if (title)
-		title.style.display = 'none';
+	let dailyRow = E('div', { 'class': 'cbi-value homeproxy-cron-daily-row' }, [
+		E('div', { 'class': 'cbi-value-title' }, _('Update time (daily)')),
+		E('div', { 'class': 'cbi-value-field' }, [ wrap._dailyField ])
+	]);
 
-	field.style.margin = '0';
-	field.style.marginLeft = '0';
-	field.style.padding = '0';
+	wrap._dailyRow = dailyRow;
+	row.parentNode.insertBefore(dailyRow, row.nextSibling);
 
 	return true;
 }
@@ -99,25 +103,17 @@ function renderCronEditor(input) {
 	const parsed = parseCron(input.value);
 	input.type = 'hidden';
 
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 9.5em !important; min-width: 9.5em !important; max-width: 9.5em !important; box-sizing: border-box;' }),
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
 	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
 	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
-	    rowStyle = 'display: grid; grid-template-columns: 8.5em 1fr; column-gap: .6em; align-items: center; margin: 0 0 .45em 0; padding: 0;',
-	    labelStyle = 'margin: 0; line-height: 2.4em; text-align: right; white-space: nowrap;',
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'width: 100%; max-width: 24em;' }, [
-		E('div', { 'style': rowStyle }, [
-			E('div', { 'style': labelStyle }, _('Update time (weekly)')),
-			day
-		]),
-		E('div', { 'style': 'display: grid; grid-template-columns: 8.5em 1fr; column-gap: .6em; align-items: center; margin: 0; padding: 0;' }, [
-			E('div', { 'style': labelStyle }, _('Update time (daily)')),
-			E('div', { 'style': 'display: flex; align-items: center; gap: .25em; width: 9.5em;' }, [
-				hour,
-				E('span', ':'),
-				minute
-			])
-		])
-	    ]);
+	    dailyField = E('div', { 'style': 'display: flex; align-items: center; gap: .25em; width: 9.5em;' }, [
+		hour,
+		E('span', ':'),
+		minute
+	    ]),
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor' }, [ day ]);
+
+	wrap._dailyField = dailyField;
 
 	for (let i = 0; i < 24; i++)
 		hour.appendChild(E('option', { value: pad2(i) }, pad2(i)));

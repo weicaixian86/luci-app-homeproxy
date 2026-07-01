@@ -2015,7 +2015,7 @@ return view.extend({
 		so.depends('type', 'remote');
 		so.modalonly = true;
 
-		so = ss.option(form.Value, 'update_interval', _('Update time'));
+		so = ss.option(form.Value, 'update_interval', _('Update time (weekly)'));
 		so.renderWidget = function() {
 			return hp.renderCronSelector.apply(this, arguments);
 		};

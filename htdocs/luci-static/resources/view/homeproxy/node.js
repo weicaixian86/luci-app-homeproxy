@@ -1746,7 +1746,7 @@ return view.extend({
 			_('Auto update subscriptions and geodata.'));
 		o.rmempty = false;
 
-		o = s.taboption('subscription', form.Value, 'auto_update_time', _('Update time'));
+		o = s.taboption('subscription', form.Value, 'auto_update_time', _('Update time (weekly)'));
 		o.renderWidget = function() {
 			return hp.renderCronSelector.apply(this, arguments);
 		};
