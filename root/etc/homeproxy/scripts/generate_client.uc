@@ -629,11 +629,11 @@ function build_proxy_providers() {
 	let providers = [],
 	    used_names = {},
 	    subscription_names = normalize_list(uci.get(uciconfig, 'subscription', 'subscription_name')),
-	    index = 0;
+	    sub_index = 0;
 
 	for (let suburl in normalize_list(uci.get(uciconfig, 'subscription', 'subscription_url'))) {
-		const subscription_name = subscription_names[index];
-		index++;
+		const subscription_name = subscription_names[sub_index];
+		sub_index++;
 
 		if (isEmpty(suburl) || isEmpty(trim(subscription_name || '')))
 			continue;

@@ -158,6 +158,9 @@ const SubscriptionList = form.Value.extend({
 		      usedNames = {},
 		      usedUrls = {};
 
+		if (!names.length || !urls.length)
+			return _('\u8ba2\u9605\u540d\u79f0\u548c\u8ba2\u9605\u5730\u5740\u4e3a\u5fc5\u586b\u9879');
+
 		for (let i = 0; i < Math.max(names.length, urls.length); i++) {
 			const name = String(names[i] || '').trim(),
 			      url = String(urls[i] || '').trim(),
@@ -1791,7 +1794,7 @@ return view.extend({
 	},
 
 	render(data) {
-		let m, s, o, ss, so;
+		let m, s, o, ss, so, subscription_list_option;
 		let main_node = uci.get(data[0], 'config', 'main_node');
 		let routing_mode = uci.get(data[0], 'config', 'routing_mode');
 		let features = data[1];
@@ -1943,6 +1946,7 @@ return view.extend({
 
 		o = s.taboption('subscription', SubscriptionList, 'subscription_url', _('Subscriptions'),
 			_('Support Hysteria, Shadowsocks, Trojan, v2rayN (VMess), and XTLS (VLESS) online configuration delivery standard.'));
+		subscription_list_option = o;
 
 		o = s.taboption('subscription', form.ListValue, 'filter_nodes', _('Filter nodes'),
 			_('Drop/keep specific nodes from subscriptions.'));
@@ -1977,6 +1981,12 @@ return view.extend({
 		o.inputstyle = 'apply';
 		o.inputtitle = _('Save current settings');
 		o.onclick = function() {
+			const validation = subscription_list_option.validate('subscription', subscription_list_option.formvalue('subscription'));
+			if (validation !== true) {
+				ui.addNotification(null, E('p', validation));
+				return Promise.resolve();
+			}
+
 			return this.map.save(null, true).then(() => {
 				return ui.changes.apply(true);
 			}).then(() => {
