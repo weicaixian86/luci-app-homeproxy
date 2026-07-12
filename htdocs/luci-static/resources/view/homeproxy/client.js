@@ -426,6 +426,9 @@ return view.extend({
 		let proxy_nodes = {};
 		let subscription_groups = {};
 		let routing_groups = {};
+		let normalizeFormList = function(value) {
+			return Array.isArray(value) ? value : (value ? [value] : []);
+		};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
@@ -434,19 +437,18 @@ return view.extend({
 				String.format('[%s] %s', res.type, res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
 					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport));
 		});
-		for (let suburl of (uci.get(data[0], 'subscription', 'subscription_url') || [])) {
-			let parts = suburl.split(',', 2),
-			    title = parts[0],
-			    url = parts[1] || parts[0];
+		let subscriptionUrls = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_url')),
+		    subscriptionNames = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_name'));
+		for (let i = 0; i < subscriptionUrls.length; i++) {
+			let url = subscriptionUrls[i],
+			    title = String(subscriptionNames[i] || '').trim();
 
-			subscription_groups[hp.calcStringMD5(url)] = title;
+			if (title)
+				subscription_groups[hp.calcStringMD5(url.replace(/#.*$/, ''))] = title;
 		}
 		uci.sections(data[0], 'routing_node', (res) => {
 			routing_groups[res['.name']] = res.label || res['.name'];
 		});
-		let normalizeFormList = function(value) {
-			return Array.isArray(value) ? value : (value ? [value] : []);
-		};
 		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes, policy_nodes, section_id) {
 			let nodes = [];
 			groups = normalizeFormList(groups);

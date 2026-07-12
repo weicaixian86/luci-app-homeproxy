@@ -29,6 +29,174 @@ const callRCInit = rpc.declare({
 	expect: { '': {} }
 });
 
+function normalizeList(value) {
+	return Array.isArray(value) ? value : (value ? [value] : []);
+}
+
+function getSubscriptionInfo(config) {
+	const urls = normalizeList(uci.get(config, 'subscription', 'subscription_url')),
+	      names = normalizeList(uci.get(config, 'subscription', 'subscription_name')),
+	      info = [];
+
+	for (let i = 0; i < urls.length; i++) {
+		const url = urls[i],
+		      cleanUrl = String(url || '').replace(/#.*$/, ''),
+		      title = String(names[i] || '').trim();
+
+		if (!url)
+			continue;
+
+		info.push({
+			hash: hp.calcStringMD5(cleanUrl),
+			title,
+			url
+		});
+	}
+
+	return info;
+}
+
+const SubscriptionList = form.Value.extend({
+	__name__: 'CBI.HomeProxySubscriptionList',
+
+	cfgvalue(section_id) {
+		return {
+			urls: normalizeList(uci.get('homeproxy', section_id, 'subscription_url')),
+			names: normalizeList(uci.get('homeproxy', section_id, 'subscription_name'))
+		};
+	},
+
+	renderWidget(section_id, _option_index, cfgvalue) {
+		const value = cfgvalue || { urls: [], names: [] },
+		      rows = E('div', {
+			id: this.cbid(section_id),
+			'class': 'homeproxy-subscription-list',
+			'style': 'display: flex; flex-direction: column; gap: .45em; width: min(100%, 42em);'
+		});
+
+		rows.appendChild(E('div', {
+			'class': 'homeproxy-subscription-header',
+			'style': 'display: grid; grid-template-columns: minmax(8em, 13em) minmax(16em, 1fr) auto; gap: .35em; color: var(--text-muted, #6b7280); font-size: 90%;'
+		}, [
+			E('span', {}, [ _('\u8ba2\u9605\u540d\u79f0') ]),
+			E('span', {}, [ _('\u8ba2\u9605\u5730\u5740') ]),
+			E('span')
+		]));
+
+		const addRow = (name, url) => {
+			const row = E('div', {
+				'class': 'homeproxy-subscription-row',
+				'style': 'display: grid; grid-template-columns: minmax(8em, 13em) minmax(16em, 1fr) auto; gap: .35em; align-items: stretch;'
+			}, [
+				E('input', {
+					'type': 'text',
+					'class': 'cbi-input-text subscription-name',
+					'placeholder': _('\u8ba2\u9605\u540d\u79f0'),
+					'value': name || '',
+					'style': 'width: 100%; box-sizing: border-box;'
+				}),
+				E('input', {
+					'type': 'text',
+					'class': 'cbi-input-text subscription-url',
+					'placeholder': _('\u8ba2\u9605\u5730\u5740'),
+					'value': url || '',
+					'style': 'width: 100%; box-sizing: border-box;'
+				}),
+				E('button', {
+					'type': 'button',
+					'class': 'cbi-button cbi-button-remove',
+					'click': () => {
+						row.remove();
+						if (!rows.querySelector('.homeproxy-subscription-row'))
+							addRow('', '');
+					}
+				}, [ '-' ])
+			]);
+
+			if (rows._addButton)
+				rows.insertBefore(row, rows._addButton);
+			else
+				rows.appendChild(row);
+		};
+
+		for (let i = 0; i < Math.max(value.urls.length, 1); i++)
+			addRow(value.names[i], value.urls[i]);
+
+		rows._addButton = E('button', {
+			'type': 'button',
+			'class': 'cbi-button cbi-button-add',
+			'style': 'width: 3em;',
+			'click': () => addRow('', '')
+		}, [ '+' ]);
+		rows.appendChild(rows._addButton);
+
+		return rows;
+	},
+
+	formvalue(section_id) {
+		const node = document.getElementById(this.cbid(section_id)),
+		      names = [],
+		      urls = [];
+
+		node?.querySelectorAll('.homeproxy-subscription-row').forEach((row) => {
+			const name = row.querySelector('.subscription-name')?.value.trim() || '',
+			      url = row.querySelector('.subscription-url')?.value.trim() || '';
+
+			if (!name && !url)
+				return;
+
+			names.push(name);
+			urls.push(url);
+		});
+
+		return { names, urls };
+	},
+
+	validate(_section_id, value) {
+		const names = value?.names || [],
+		      urls = value?.urls || [],
+		      usedNames = {},
+		      usedUrls = {};
+
+		for (let i = 0; i < Math.max(names.length, urls.length); i++) {
+			const name = String(names[i] || '').trim(),
+			      url = String(urls[i] || '').trim(),
+			      normalizedUrl = url.replace(/#.*$/, '');
+
+			if (!name || !url)
+				return _('\u8ba2\u9605\u540d\u79f0\u548c\u8ba2\u9605\u5730\u5740\u5fc5\u987b\u6210\u5bf9\u586b\u5199');
+
+			if (usedNames[name])
+				return _('\u8ba2\u9605\u540d\u79f0\u4e0d\u80fd\u91cd\u590d');
+			usedNames[name] = true;
+
+			if (usedUrls[normalizedUrl])
+				return _('\u8ba2\u9605\u5730\u5740\u4e0d\u80fd\u91cd\u590d');
+			usedUrls[normalizedUrl] = true;
+
+			try {
+				let parsed = new URL(url);
+				if (!parsed.hostname)
+					return _('Expecting: %s').format(_('valid URL'));
+			} catch(e) {
+				return _('Expecting: %s').format(_('valid URL'));
+			}
+		}
+
+		return true;
+	},
+
+	write(section_id, value) {
+		if (value?.urls?.length) {
+			uci.set('homeproxy', section_id, 'subscription_url', value.urls);
+			uci.set('homeproxy', section_id, 'subscription_name', value.names);
+		} else {
+			uci.unset('homeproxy', section_id, 'subscription_url');
+			uci.unset('homeproxy', section_id, 'subscription_name');
+		}
+	}
+});
+
 function allowInsecureConfirm(ev, _section_id, value) {
 	if (value === '1' && !confirm(_('Are you sure to allow insecure?')))
 		ev.target.firstElementChild.checked = null;
@@ -1634,13 +1802,7 @@ return view.extend({
 		this.node_latency_row_state = node_latency_row_state;
 
 		/* Cache subscription information, it will be called multiple times */
-		let subinfo = [];
-		for (let suburl of (uci.get(data[0], 'subscription', 'subscription_url') || [])) {
-			const url = new URL(suburl);
-			const urlhash = hp.calcStringMD5(suburl.replace(/#.*$/, ''));
-			const title = url.hash ? decodeURIComponent(url.hash.slice(1)) : url.hostname;
-			subinfo.push({ 'hash': urlhash, 'title': title });
-		}
+		let subinfo = getSubscriptionInfo(data[0]);
 
 		m = new form.Map('homeproxy', _('Edit nodes'));
 
@@ -1736,7 +1898,7 @@ return view.extend({
 
 		/* Subscription nodes start */
 		for (const info of subinfo) {
-			s.tab('sub_' + info.hash, _('Sub (%s)').format(info.title));
+			s.tab('sub_' + info.hash, info.title ? _('Sub (%s)').format(info.title) : _('Sub'));
 			o = s.taboption('sub_' + info.hash, form.SectionValue, '_sub_' + info.hash, form.GridSection, 'node');
 			ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode, node_latency_row_state);
 			ss.filter = function(section_id) {
@@ -1779,22 +1941,8 @@ return view.extend({
 		o.default = 'icmp';
 		o.rmempty = false;
 
-		o = s.taboption('subscription', form.DynamicList, 'subscription_url', _('Subscription URL-s'),
+		o = s.taboption('subscription', SubscriptionList, 'subscription_url', _('Subscriptions'),
 			_('Support Hysteria, Shadowsocks, Trojan, v2rayN (VMess), and XTLS (VLESS) online configuration delivery standard.'));
-		o.validate = function(section_id, value) {
-			if (section_id && value) {
-				try {
-					let url = new URL(value);
-					if (!url.hostname)
-						return _('Expecting: %s').format(_('valid URL'));
-				}
-				catch(e) {
-					return _('Expecting: %s').format(_('valid URL'));
-				}
-			}
-
-			return true;
-		}
 
 		o = s.taboption('subscription', form.ListValue, 'filter_nodes', _('Filter nodes'),
 			_('Drop/keep specific nodes from subscriptions.'));

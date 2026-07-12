@@ -7,6 +7,7 @@
 
 'use strict';
 
+import { md5 } from 'digest';
 import { readfile, writefile } from 'fs';
 import { isnan } from 'math';
 import { connect } from 'ubus';
@@ -606,13 +607,72 @@ function get_ruleset(cfg) {
 	return rules;
 }
 
+function subscription_provider_name(name) {
+	name = trim(name || '');
+	return name;
+}
+
+function unique_provider_name(name, used) {
+	const base = name;
+	let suffix = 2;
+
+	while (used[name]) {
+		name = sprintf('%s (%d)', base, suffix);
+		suffix++;
+	}
+	used[name] = true;
+
+	return name;
+}
+
+function build_proxy_providers() {
+	let providers = [],
+	    used_names = {},
+	    subscription_names = normalize_list(uci.get(uciconfig, 'subscription', 'subscription_name')),
+	    index = 0;
+
+	for (let suburl in normalize_list(uci.get(uciconfig, 'subscription', 'subscription_url'))) {
+		const subscription_name = subscription_names[index];
+		index++;
+
+		if (isEmpty(suburl) || isEmpty(trim(subscription_name || '')))
+			continue;
+
+		const url = replace(suburl, /#.*$/, ''),
+		      group_hash = md5(url);
+
+		let proxies = [];
+		uci.foreach(uciconfig, ucinode, (cfg) => {
+			if (cfg.grouphash !== group_hash)
+				return;
+
+			const tag = get_section_outbound_tag(cfg['.name']);
+			if (!isEmpty(tag) && !~index(proxies, tag))
+				push(proxies, tag);
+		});
+
+		if (isEmpty(proxies))
+			continue;
+
+		push(providers, {
+			name: unique_provider_name(subscription_provider_name(subscription_name), used_names),
+			type: 'Proxy',
+			vehicle_type: 'HTTP',
+			proxies: proxies
+		});
+	}
+
+	return providers;
+}
+
 clash_api = {
 	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
 	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
 	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
-	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
+	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
+	proxy_providers: build_proxy_providers()
 };
 /* Config helper end */
 
