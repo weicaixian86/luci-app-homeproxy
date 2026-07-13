@@ -6,7 +6,7 @@ set -eu
 NAME="homeproxy"
 RUN_DIR="/var/run/$NAME"
 REQUEST_FILE="$RUN_DIR/provider-update-id"
-LOCK_FILE="$RUN_DIR/provider-update.lock"
+LOCK_FILE="$RUN_DIR/provider-update-v2.lock"
 LOG_FILE="$RUN_DIR/homeproxy.log"
 PROVIDER_ID="${1:-}"
 
@@ -21,13 +21,19 @@ esac
 
 mkdir -p "$RUN_DIR"
 if ! lock -n "$LOCK_FILE" 2>/dev/null; then
-	log "Provider update is already running."
-	exit 2
+	log "Another provider update is running; waiting for it to finish..."
+	lock "$LOCK_FILE"
 fi
 
 umask 077
 printf '%s\n' "$PROVIDER_ID" > "$REQUEST_FILE"
-trap 'rm -f "$REQUEST_FILE"' EXIT INT TERM
+cleanup() {
+	rm -f "$REQUEST_FILE"
+	lock -u "$LOCK_FILE" 2>/dev/null || true
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # Give the Clash API response time to reach the panel before HomeProxy restarts.
 log "Updating provider $PROVIDER_ID from Clash API..."
