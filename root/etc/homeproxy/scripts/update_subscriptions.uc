@@ -8,7 +8,7 @@
 'use strict';
 
 import { md5 } from 'digest';
-import { open } from 'fs';
+import { open, readfile } from 'fs';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
 
@@ -16,7 +16,7 @@ import { urldecode, urlencode } from 'luci.http';
 import { init_action } from 'luci.sys';
 
 import {
-	wGET, decodeBase64Str, getTime, isEmpty, parseURL,
+	wGETResponse, decodeBase64Str, getTime, isEmpty, parseURL,
 	validation, HP_DIR, RUN_DIR
 } from 'homeproxy';
 
@@ -34,9 +34,15 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
       filter_mode = uci.get(uciconfig, ucisubscription, 'filter_nodes') || 'disabled',
       filter_keywords = uci.get(uciconfig, ucisubscription, 'filter_keywords') || [],
       packet_encoding = uci.get(uciconfig, ucisubscription, 'packet_encoding') || 'xudp',
-      subscription_urls = uci.get(uciconfig, ucisubscription, 'subscription_url') || [],
-      user_agent = uci.get(uciconfig, ucisubscription, 'user_agent'),
-      via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
+      all_subscription_urls = uci.get(uciconfig, ucisubscription, 'subscription_url') || [],
+	  user_agent = uci.get(uciconfig, ucisubscription, 'user_agent'),
+	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
+
+const provider_update_id = trim(readfile(RUN_DIR + '/provider-update-id') || '');
+let subscription_urls = all_subscription_urls;
+if (provider_update_id)
+	subscription_urls = filter(all_subscription_urls, (url) =>
+		md5(replace(url, /#.*$/, '')) === provider_update_id);
 
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainalnd_china';
 let main_node, main_udp_node;
@@ -504,6 +510,56 @@ function parse_mihomo_proxy(proxy) {
 	}
 
 	return config;
+}
+
+function parse_subscription_userinfo(headers) {
+	let header_value = null;
+	for (let line in split(headers || '', '\n')) {
+		const matched = match(line, /^\s*subscription-userinfo:\s*(.*)$/i);
+		if (matched)
+			header_value = trim(matched[1]);
+	}
+
+	if (isEmpty(header_value))
+		return null;
+
+	let info = {};
+	for (let item in split(header_value, ';')) {
+		const matched = match(trim(item), /^([a-z]+)\s*=\s*([0-9]+)$/i);
+		if (!matched)
+			continue;
+
+		const value = int(matched[2]);
+		if (value < 0)
+			continue;
+
+		if (match(matched[1], /^upload$/i))
+			info.upload = value;
+		else if (match(matched[1], /^download$/i))
+			info.download = value;
+		else if (match(matched[1], /^total$/i))
+			info.total = value;
+		else if (match(matched[1], /^expire$/i))
+			info.expire = value;
+	}
+
+	return length(info) ? info : null;
+}
+
+function subscription_info_option(url) {
+	url = replace(url || '', /#.*$/, '');
+	return 'subinfo_' + substr(md5(url), 0, 16);
+}
+
+function cleanup_subscription_info() {
+	let active_options = {};
+	for (let url in all_subscription_urls)
+		active_options[subscription_info_option(url)] = true;
+
+	const subscription = uci.get_all(uciconfig, ucisubscription) || {};
+	for (let option in keys(subscription))
+		if (match(option, /^subinfo_/) && !active_options[option])
+			uci.delete(uciconfig, ucisubscription, option);
 }
 
 function apply_sing_box_tls(config, outbound) {
@@ -1314,7 +1370,9 @@ function parse_mihomo_yaml(text) {
 }
 
 function main() {
-	if (via_proxy !== '1') {
+	cleanup_subscription_info();
+
+	if (via_proxy !== '1' && !provider_update_id) {
 		log('Stopping service...');
 		init_action('homeproxy', 'stop');
 	}
@@ -1324,7 +1382,8 @@ function main() {
 		const groupHash = md5(url);
 		node_cache[groupHash] = {};
 
-		const res = wGET(url, user_agent);
+		const response = wGETResponse(url, user_agent),
+		      res = response?.body;
 		if (isEmpty(res)) {
 			log(sprintf('Failed to fetch resources from %s.', url));
 			continue;
@@ -1402,14 +1461,20 @@ function main() {
 
 		if (count == 0)
 			log(sprintf('No valid node found in %s.', url));
-		else
+		else {
+			const info_option = subscription_info_option(url),
+			      subscription_info = parse_subscription_userinfo(response.headers) || {};
+			subscription_info.updated_at = getTime();
+			uci.set(uciconfig, ucisubscription, info_option, sprintf('%.J', subscription_info));
+
 			log(sprintf('Successfully fetched %s nodes of total %s from %s.', count, length(nodes), url));
+		}
 	}
 
 	if (isEmpty(node_result)) {
 		log('Failed to update subscriptions: no valid node found.');
 
-		if (via_proxy !== '1') {
+		if (via_proxy !== '1' && !provider_update_id) {
 			log('Starting service...');
 			init_action('homeproxy', 'start');
 		}
@@ -1421,6 +1486,10 @@ function main() {
 	uci.foreach(uciconfig, ucinode, (cfg) => {
 		/* Nodes created by the user */
 		if (!cfg.grouphash)
+			return null;
+
+		/* A provider update must not touch nodes from other subscriptions. */
+		if (!(cfg.grouphash in node_cache))
 			return null;
 
 		/* Empty object - failed to fetch nodes */
@@ -1456,7 +1525,7 @@ function main() {
 		});
 	uci.commit(uciconfig);
 
-	let need_restart = (via_proxy !== '1');
+	let need_restart = (via_proxy !== '1') || !!provider_update_id;
 	if (!isEmpty(main_node)) {
 		const first_server = uci.get_first(uciconfig, ucinode);
 		if (first_server) {
@@ -1519,9 +1588,15 @@ function main() {
 	log('Successfully updated subscriptions.');
 }
 
+if (provider_update_id && isEmpty(subscription_urls)) {
+	log(sprintf('Provider %s does not match any subscription.', provider_update_id));
+	exit(1);
+}
+
 if (!isEmpty(subscription_urls))
 	try {
-		call(main);
+		if (call(main) === false)
+			exit(1);
 	} catch(e) {
 		log('[FATAL ERROR] An error occurred during updating subscriptions:');
 		log(sprintf('%s: %s', e.type, e.message));
@@ -1530,4 +1605,5 @@ if (!isEmpty(subscription_urls))
 		log('Restarting service...');
 		init_action('homeproxy', 'stop');
 		init_action('homeproxy', 'start');
+		exit(1);
 	}

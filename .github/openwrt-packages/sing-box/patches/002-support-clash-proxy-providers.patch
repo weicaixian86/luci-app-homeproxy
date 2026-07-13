@@ -1,13 +1,16 @@
 diff --git a/experimental/clashapi/provider.go b/experimental/clashapi/provider.go
-index 352b289..067dfac 100644
+index 352b289..ef07e6d 100644
 --- a/experimental/clashapi/provider.go
 +++ b/experimental/clashapi/provider.go
-@@ -4,33 +4,45 @@ import (
+@@ -3,43 +3,65 @@ package clashapi
+ import (
  	"context"
  	"net/http"
- 
-+	"github.com/sagernet/sing-box/option"
++	"os/exec"
++	"regexp"
 +
++	"github.com/sagernet/sing-box/option"
+ 
  	"github.com/go-chi/chi/v5"
  	"github.com/go-chi/render"
  )
@@ -60,7 +63,27 @@ index 352b289..067dfac 100644
  }
  
  func updateProvider(w http.ResponseWriter, r *http.Request) {
-@@ -57,18 +69,50 @@ func parseProviderName(next http.Handler) http.Handler {
+-	/*provider := r.Context().Value(CtxKeyProvider).(provider.ProxyProvider)
+-	if err := provider.Update(); err != nil {
++	provider := r.Context().Value(CtxKeyProvider).(option.ClashProxyProviderOptions)
++	if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(provider.UpdateID) {
++		render.Status(r, http.StatusServiceUnavailable)
++		render.JSON(w, r, newError("Provider update is unavailable"))
++		return
++	}
++
++	command := exec.Command("/bin/sh", "/etc/homeproxy/scripts/update_provider.sh", provider.UpdateID)
++	if err := command.Start(); err != nil {
+ 		render.Status(r, http.StatusServiceUnavailable)
+ 		render.JSON(w, r, newError(err.Error()))
+ 		return
+-	}*/
++	}
++	_ = command.Process.Release()
+ 	render.NoContent(w, r)
+ }
+ 
+@@ -57,18 +79,58 @@ func parseProviderName(next http.Handler) http.Handler {
  	})
  }
  
@@ -121,6 +144,14 @@ index 352b289..067dfac 100644
 +	}
 +	if provider.UpdatedAt != "" {
 +		info["updatedAt"] = provider.UpdatedAt
++	}
++	if provider.SubscriptionInfo != nil {
++		info["subscriptionInfo"] = render.M{
++			"Upload":   provider.SubscriptionInfo.Upload,
++			"Download": provider.SubscriptionInfo.Download,
++			"Total":    provider.SubscriptionInfo.Total,
++			"Expire":   provider.SubscriptionInfo.Expire,
++		}
 +	}
 +	return info
  }
@@ -335,7 +366,7 @@ index 950dca0..e4c1210 100644
  		r.Mount("/script", scriptRouter())
  		r.Mount("/profile", profileRouter())
 diff --git a/option/experimental.go b/option/experimental.go
-index bf0df9e..af1a0cc 100644
+index bf0df9e..50de31d 100644
 --- a/option/experimental.go
 +++ b/option/experimental.go
 @@ -19,15 +19,16 @@ type CacheFileOptions struct {
@@ -364,16 +395,25 @@ index bf0df9e..af1a0cc 100644
  
  	// Deprecated: migrated to global cache file
  	CacheFile string `json:"cache_file,omitempty"`
-@@ -41,6 +42,14 @@ type ClashAPIOptions struct {
+@@ -41,6 +42,23 @@ type ClashAPIOptions struct {
  	StoreFakeIP bool `json:"store_fakeip,omitempty"`
  }
  
 +type ClashProxyProviderOptions struct {
-+	Name        string   `json:"name,omitempty"`
-+	Type        string   `json:"type,omitempty"`
-+	VehicleType string   `json:"vehicle_type,omitempty"`
-+	Proxies     []string `json:"proxies,omitempty"`
-+	UpdatedAt   string   `json:"updated_at,omitempty"`
++	Name             string                              `json:"name,omitempty"`
++	Type             string                              `json:"type,omitempty"`
++	VehicleType      string                              `json:"vehicle_type,omitempty"`
++	Proxies          []string                            `json:"proxies,omitempty"`
++	UpdatedAt        string                              `json:"updated_at,omitempty"`
++	UpdateID         string                              `json:"update_id,omitempty"`
++	SubscriptionInfo *ClashProxyProviderSubscriptionInfo `json:"subscription_info,omitempty"`
++}
++
++type ClashProxyProviderSubscriptionInfo struct {
++	Upload   uint64 `json:"upload,omitempty"`
++	Download uint64 `json:"download,omitempty"`
++	Total    uint64 `json:"total,omitempty"`
++	Expire   int64  `json:"expire,omitempty"`
 +}
 +
  type V2RayAPIOptions struct {

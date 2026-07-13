@@ -625,6 +625,33 @@ function unique_provider_name(name, used) {
 	return name;
 }
 
+function get_subscription_info(group_hash) {
+	const value = uci.get(uciconfig, 'subscription', 'subinfo_' + substr(group_hash, 0, 16));
+	if (isEmpty(value))
+		return null;
+
+	try {
+		const info = json(value);
+		if (type(info) !== 'object')
+			return null;
+
+		const has_subscription_info = ('upload' in info) || ('download' in info) ||
+		      ('total' in info) || ('expire' in info);
+
+		return {
+			updated_at: info.updated_at,
+			subscription_info: has_subscription_info ? {
+				upload: info.upload,
+				download: info.download,
+				total: info.total,
+				expire: info.expire
+			} : null
+		};
+	} catch (e) {
+		return null;
+	}
+}
+
 function build_proxy_providers() {
 	let providers = [],
 	    used_names = {},
@@ -654,11 +681,16 @@ function build_proxy_providers() {
 		if (isEmpty(proxies))
 			continue;
 
+		const subscription_info = get_subscription_info(group_hash);
+
 		push(providers, {
 			name: unique_provider_name(subscription_provider_name(subscription_name), used_names),
 			type: 'Proxy',
 			vehicle_type: 'HTTP',
-			proxies: proxies
+			proxies: proxies,
+			update_id: (routing_mode === 'custom') ? group_hash : null,
+			updated_at: subscription_info?.updated_at,
+			subscription_info: subscription_info?.subscription_info
 		});
 	}
 
