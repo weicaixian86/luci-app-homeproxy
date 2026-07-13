@@ -1,4 +1,8 @@
-适用于 OpenWrt 24.10 的 HomeProxy LuCI 管理界面，已按 `官方内核sing-box 1.13.13` 配置结构进行适配。
+适用于 OpenWrt 24.10 的 HomeProxy LuCI 管理界面，按 `官方内核sing-box 1.13.13` 进行二次定制适配。
+官方内核基础上增加功能
+1、远程规则集本地持久化
+2、Clash API 代理供应商
+3、Clash API 中文名称
 
 ## 一、安装
 上传 zip 到 OpenWrt /tmp目录后解压并执行（文件名homeproxy-2.0.1-x86_64.zip自行替换）：
