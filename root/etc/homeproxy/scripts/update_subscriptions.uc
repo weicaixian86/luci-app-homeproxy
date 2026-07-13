@@ -16,7 +16,7 @@ import { urldecode, urlencode } from 'luci.http';
 import { init_action } from 'luci.sys';
 
 import {
-	wGETResponse, decodeBase64Str, getTime, isEmpty, parseURL,
+	wGETResponse, wGETHeaders, decodeBase64Str, getTime, isEmpty, parseURL,
 	validation, HP_DIR, RUN_DIR
 } from 'homeproxy';
 
@@ -549,6 +549,34 @@ function parse_subscription_userinfo(headers) {
 function subscription_info_option(url) {
 	url = replace(url || '', /#.*$/, '');
 	return 'subinfo_' + substr(md5(url), 0, 16);
+}
+
+function subscription_display_name(url) {
+	const names = normalize_list(uci.get(uciconfig, ucisubscription, 'subscription_name')) || [];
+	let index = 0;
+	for (let configured_url in all_subscription_urls) {
+		if (replace(configured_url, /#.*$/, '') === replace(url, /#.*$/, '')) {
+			const name = trim(names[index] || '');
+			return name || substr(md5(replace(url, /#.*$/, '')), 0, 8);
+		}
+		index++;
+	}
+	return substr(md5(replace(url, /#.*$/, '')), 0, 8);
+}
+
+function previous_subscription_info(info_option) {
+	const value = uci.get(uciconfig, ucisubscription, info_option);
+	if (isEmpty(value))
+		return null;
+
+	try {
+		const info = json(value);
+		if (type(info) === 'object' && (('upload' in info) || ('download' in info) ||
+		    ('total' in info) || ('expire' in info)))
+			return info;
+	} catch (e) {}
+
+	return null;
 }
 
 function cleanup_subscription_info() {
@@ -1463,7 +1491,28 @@ function main() {
 			log(sprintf('No valid node found in %s.', url));
 		else {
 			const info_option = subscription_info_option(url),
-			      subscription_info = parse_subscription_userinfo(response.headers) || {};
+			      display_name = subscription_display_name(url);
+			let subscription_info = parse_subscription_userinfo(response.headers);
+
+			if (!subscription_info) {
+				const fallback_headers = wGETHeaders(url, 'clash.meta');
+				subscription_info = parse_subscription_userinfo(fallback_headers);
+				if (subscription_info)
+					log(sprintf('Fetched subscription user info for %s with Clash Meta user agent.', display_name));
+			}
+
+			if (!subscription_info) {
+				subscription_info = previous_subscription_info(info_option) || {};
+				if (length(subscription_info))
+					log(sprintf('Subscription %s did not return user info; keeping the previous values.', display_name));
+				else
+					log(sprintf('Subscription %s did not return Subscription-Userinfo.', display_name));
+			}
+			if (length(subscription_info) && !('expire' in subscription_info))
+				log(sprintf('Subscription %s returned traffic data without an expire value.', display_name));
+			if (length(subscription_info) && !('total' in subscription_info))
+				log(sprintf('Subscription %s returned user info without a total value.', display_name));
+
 			subscription_info.updated_at = getTime();
 			uci.set(uciconfig, ucisubscription, info_option, sprintf('%.J', subscription_info));
 

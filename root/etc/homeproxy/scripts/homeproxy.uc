@@ -84,6 +84,17 @@ export function wGETResponse(url, ua) {
 export function wGET(url, ua) {
 	return wGETResponse(url, ua)?.body;
 };
+
+export function wGETHeaders(url, ua) {
+	if (!url || type(url) !== 'string')
+		return null;
+
+	if (!ua)
+		ua = 'clash.meta';
+
+	const output = executeCommand(`/usr/bin/wget -O /dev/null -S --user-agent ${shellQuote(ua)} --timeout=10 ${shellQuote(url)}`) || {};
+	return output.stderr || '';
+};
 /* Utilities end */
 
 /* String helper start */
