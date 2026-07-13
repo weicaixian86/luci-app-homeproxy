@@ -579,6 +579,19 @@ function previous_subscription_info(info_option) {
 	return null;
 }
 
+function merge_subscription_info(current, previous) {
+	if (!current)
+		return previous || null;
+	if (!previous)
+		return current;
+
+	for (let field in ['upload', 'download', 'total', 'expire'])
+		if (!(field in current) && (field in previous))
+			current[field] = previous[field];
+
+	return current;
+}
+
 function cleanup_subscription_info() {
 	let active_options = {};
 	for (let url in all_subscription_urls)
@@ -1492,26 +1505,36 @@ function main() {
 		else {
 			const info_option = subscription_info_option(url),
 			      display_name = subscription_display_name(url);
+			const previous_info = previous_subscription_info(info_option);
 			let subscription_info = parse_subscription_userinfo(response.headers);
 
-			if (!subscription_info) {
+			if (!subscription_info || !('total' in subscription_info) || !('expire' in subscription_info)) {
 				const fallback_headers = wGETHeaders(url, 'clash.meta');
-				subscription_info = parse_subscription_userinfo(fallback_headers);
-				if (subscription_info)
-					log(sprintf('Fetched subscription user info for %s with Clash Meta user agent.', display_name));
+				const fallback_info = parse_subscription_userinfo(fallback_headers);
+				if (fallback_info) {
+					if (subscription_info)
+						log(sprintf('Supplemented subscription user info for %s with Clash Meta user agent.', display_name));
+					else
+						log(sprintf('Fetched subscription user info for %s with Clash Meta user agent.', display_name));
+					subscription_info = merge_subscription_info(subscription_info, fallback_info);
+				}
 			}
 
 			if (!subscription_info) {
-				subscription_info = previous_subscription_info(info_option) || {};
+				subscription_info = previous_info || {};
 				if (length(subscription_info))
 					log(sprintf('Subscription %s did not return user info; keeping the previous values.', display_name));
 				else
 					log(sprintf('Subscription %s did not return Subscription-Userinfo.', display_name));
+			} else {
+				if (!('expire' in subscription_info))
+					log(sprintf('Subscription %s returned traffic data without an expire value%s.', display_name,
+						previous_info && ('expire' in previous_info) ? '; keeping the previous value' : ''));
+				if (!('total' in subscription_info))
+					log(sprintf('Subscription %s returned user info without a total value%s.', display_name,
+						previous_info && ('total' in previous_info) ? '; keeping the previous value' : ''));
+				subscription_info = merge_subscription_info(subscription_info, previous_info);
 			}
-			if (length(subscription_info) && !('expire' in subscription_info))
-				log(sprintf('Subscription %s returned traffic data without an expire value.', display_name));
-			if (length(subscription_info) && !('total' in subscription_info))
-				log(sprintf('Subscription %s returned user info without a total value.', display_name));
 
 			subscription_info.updated_at = getTime();
 			uci.set(uciconfig, ucisubscription, info_option, sprintf('%.J', subscription_info));
