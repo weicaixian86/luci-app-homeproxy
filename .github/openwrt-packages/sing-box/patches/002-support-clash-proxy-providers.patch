@@ -124,6 +124,187 @@ index 352b289..067dfac 100644
 +	}
 +	return info
  }
+diff --git a/experimental/clashapi/proxies.go b/experimental/clashapi/proxies.go
+index ef88ff3..1f7d14d 100644
+--- a/experimental/clashapi/proxies.go
++++ b/experimental/clashapi/proxies.go
+@@ -21,6 +21,50 @@ import (
+ 	"github.com/go-chi/render"
+ )
+ 
++func proxyDisplayName(tag string) string {
++	switch tag {
++	case "GLOBAL":
++		return "GLOBAL"
++	case "main-out":
++		return "主代理"
++	case "main-udp-out":
++		return "UDP 主代理"
++	case "direct-out":
++		return "直连"
++	case "block-out":
++		return "拦截"
++	default:
++		return tag
++	}
++}
++
++func lookupProxyByName(server *Server, name string) (adapter.Outbound, bool) {
++	proxy, exist := server.outbound.Outbound(name)
++	if exist {
++		return proxy, true
++	}
++
++	for _, detour := range server.outbound.Outbounds() {
++		if proxyDisplayName(detour.Tag()) == name {
++			return detour, true
++		}
++	}
++
++	for _, endpoint := range server.endpoint.Endpoints() {
++		if proxyDisplayName(endpoint.Tag()) == name {
++			return endpoint, true
++		}
++	}
++
++	return nil, false
++}
++
++func proxyDisplayNames(tags []string) []string {
++	return common.Map(tags, func(tag string) string {
++		return proxyDisplayName(tag)
++	})
++}
++
+ func proxyRouter(server *Server, router adapter.Router) http.Handler {
+ 	r := chi.NewRouter()
+ 	r.Get("/", getProxies(server))
+@@ -29,7 +73,7 @@ func proxyRouter(server *Server, router adapter.Router) http.Handler {
+ 		r.Use(parseProxyName, findProxyByName(server))
+ 		r.Get("/", getProxy(server))
+ 		r.Get("/delay", getProxyDelay(server))
+-		r.Put("/", updateProxy)
++		r.Put("/", updateProxy(server))
+ 	})
+ 	return r
+ }
+@@ -46,7 +90,7 @@ func findProxyByName(server *Server) func(next http.Handler) http.Handler {
+ 	return func(next http.Handler) http.Handler {
+ 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 			name := r.Context().Value(CtxKeyProxyName).(string)
+-			proxy, exist := server.outbound.Outbound(name)
++			proxy, exist := lookupProxyByName(server, name)
+ 			if !exist {
+ 				render.Status(r, http.StatusNotFound)
+ 				render.JSON(w, r, ErrNotFound)
+@@ -68,7 +112,7 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
+ 		clashType = C.ProxyDisplayName(detour.Type())
+ 	}
+ 	info.Put("type", clashType)
+-	info.Put("name", detour.Tag())
++	info.Put("name", proxyDisplayName(detour.Tag()))
+ 	info.Put("udp", common.Contains(detour.Network(), N.NetworkUDP))
+ 	delayHistory := server.urlTestHistory.LoadURLTestHistory(adapter.OutboundTag(detour))
+ 	if delayHistory != nil {
+@@ -77,8 +121,8 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
+ 		info.Put("history", []*adapter.URLTestHistory{})
+ 	}
+ 	if group, isGroup := detour.(adapter.OutboundGroup); isGroup {
+-		info.Put("now", group.Now())
+-		info.Put("all", group.All())
++		info.Put("now", proxyDisplayName(group.Now()))
++		info.Put("all", proxyDisplayNames(group.All()))
+ 	}
+ 	return &info
+ }
+@@ -102,10 +146,10 @@ func getProxies(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 			case C.TypeDirect, C.TypeBlock, C.TypeDNS:
+ 				continue
+ 			}
+-			allProxies = append(allProxies, detour.Tag())
++			allProxies = append(allProxies, proxyDisplayName(detour.Tag()))
+ 		}
+ 
+-		defaultTag := server.outbound.Default().Tag()
++		defaultTag := proxyDisplayName(server.outbound.Default().Tag())
+ 
+ 		sort.SliceStable(allProxies, func(i, j int) bool {
+ 			return allProxies[i] == defaultTag
+@@ -114,7 +158,7 @@ func getProxies(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 		// fix clash dashboard
+ 		proxyMap.Put("GLOBAL", map[string]any{
+ 			"type":    "Fallback",
+-			"name":    "GLOBAL",
++			"name":    proxyDisplayName("GLOBAL"),
+ 			"udp":     true,
+ 			"history": []*adapter.URLTestHistory{},
+ 			"all":     allProxies,
+@@ -126,7 +170,7 @@ func getProxies(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 			if detour.Tag() == "" {
+ 				tag = F.ToString(i)
+ 			} else {
+-				tag = detour.Tag()
++				tag = proxyDisplayName(detour.Tag())
+ 			}
+ 			proxyMap.Put(tag, proxyInfo(server, detour))
+ 		}
+@@ -159,29 +203,36 @@ type UpdateProxyRequest struct {
+ 	Name string `json:"name"`
+ }
+ 
+-func updateProxy(w http.ResponseWriter, r *http.Request) {
+-	req := UpdateProxyRequest{}
+-	if err := render.DecodeJSON(r.Body, &req); err != nil {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, ErrBadRequest)
+-		return
+-	}
++func updateProxy(server *Server) func(w http.ResponseWriter, r *http.Request) {
++	return func(w http.ResponseWriter, r *http.Request) {
++		req := UpdateProxyRequest{}
++		if err := render.DecodeJSON(r.Body, &req); err != nil {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, ErrBadRequest)
++			return
++		}
+ 
+-	proxy := r.Context().Value(CtxKeyProxy).(adapter.Outbound)
+-	selector, ok := proxy.(*group.Selector)
+-	if !ok {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, newError("Must be a Selector"))
+-		return
+-	}
++		proxy := r.Context().Value(CtxKeyProxy).(adapter.Outbound)
++		selector, ok := proxy.(*group.Selector)
++		if !ok {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, newError("Must be a Selector"))
++			return
++		}
+ 
+-	if !selector.SelectOutbound(req.Name) {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, newError("Selector update error: not found"))
+-		return
+-	}
++		selectedName := req.Name
++		if targetProxy, exist := lookupProxyByName(server, req.Name); exist {
++			selectedName = targetProxy.Tag()
++		}
++
++		if !selector.SelectOutbound(selectedName) {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, newError("Selector update error: not found"))
++			return
++		}
+ 
+-	render.NoContent(w, r)
++		render.NoContent(w, r)
++	}
+ }
+ 
+ func getProxyDelay(server *Server) func(w http.ResponseWriter, r *http.Request) {
 diff --git a/experimental/clashapi/server.go b/experimental/clashapi/server.go
 index 950dca0..e4c1210 100644
 --- a/experimental/clashapi/server.go
