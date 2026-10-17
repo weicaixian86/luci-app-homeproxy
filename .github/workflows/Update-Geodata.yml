@@ -1,0 +1,59 @@
+name: Update Geodata
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: 0 0 * * 0
+
+env:
+  GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+permissions: write-all
+
+jobs:
+  update:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Projects
+        uses: actions/checkout@main
+
+      - name: Update Geodata
+        run: |
+          RES_RULE="surge"
+          RES_PATH="root/etc/homeproxy/resources"
+          CFG_PATH="root/etc/config/homeproxy"
+
+          rm -rf ./$RES_PATH/*
+
+          git clone -q --depth=1 --single-branch --branch "release" "https://github.com/Loyalsoldier/surge-rules.git" ./$RES_RULE/
+          cd ./$RES_RULE/ && RES_VER=$(git log -1 --pretty=format:'%s' | grep -o "[0-9]*")
+
+          #更新大陆列表
+          echo "RES_VER=$RES_VER" >> $GITHUB_ENV
+          echo $RES_VER | tee china_ip4.ver china_ip6.ver china_list.ver gfw_list.ver
+
+          awk -F, '/^IP-CIDR,/{print $2 > "china_ip4.txt"} /^IP-CIDR6,/{print $2 > "china_ip6.txt"}' cncidr.txt
+          sed 's/^\.//g' direct.txt > china_list.txt ; sed 's/^\.//g' gfw.txt > gfw_list.txt
+
+          mv -f ./{china_*,gfw_list}.{ver,txt} ../$RES_PATH/
+
+          #更新TG列表
+          TG_IPV4=$(grep "^IP-CIDR," "telegramcidr.txt" | sed "s/IP-CIDR,\(.*\)/list wan_proxy_ipv4_ips '\1'/g")
+          TG_IPV6=$(grep "^IP-CIDR6," "telegramcidr.txt" | sed "s/IP-CIDR6,\(.*\)/list wan_proxy_ipv6_ips '\1'/g")
+          TG_IPV4_ENTRIES=$(echo "$TG_IPV4" | sed ':a;N;$!ba; s/\n/\\\n/g')
+          TG_IPV6_ENTRIES=$(echo "$TG_IPV6" | sed ':a;N;$!ba; s/\n/\\\n/g')
+
+          sed -i "/wan_proxy_/d" ../$CFG_PATH
+          sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV6_ENTRIES" ../$CFG_PATH
+          sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV4_ENTRIES" ../$CFG_PATH
+          sed -i "/list wan_proxy_/ s/^/	/" ../$CFG_PATH
+
+          cd .. && rm -rf ./$RES_RULE/ && echo "homeproxy date has been updated!"
+
+      - name: Commit Changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "<github-actions[bot]@users.noreply.github.com>"
+          git add .
+          git commit -m "chore(resources): update geodata to ${{env.RES_VER}}"
+          git push -f origin HEAD:main
