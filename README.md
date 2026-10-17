@@ -1,32 +1,24 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面。
-
 HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装包内不预置任何单一架构的 sing-box 二进制**。运行时由插件根据设备架构，从 reF1nd 的第三方 sing-box 发布（`reF1nd/sing-box-releases`）下载对应架构的官方二进制压缩包，校验后安装到 `/usr/bin/sing-box`。
-
 当前固定使用 reF1nd 定制内核：
-
 - 版本：`1.14.3-reF1nd`
 - 发布地址：`https://github.com/reF1nd/sing-box-releases/releases/tag/v1.14.3-reF1nd`
-
 reF1nd 目前已发布 Linux musl 构建的架构：
-
 - `x86_64`（`linux-amd64-musl`）
 - `aarch64`（`linux-arm64-musl`）
-
 其余架构（armv7-musleabihf / armv7-musleabi / arm-musleabihf / arm-musleabi / mips / mipsel）reF1nd 暂未发布对应构建，插件会在日志中提示“暂无可下载的二进制程序”，作者后续可能会补充；已安装的内核（若有）仍可继续使用。
 
 ## 一、安装
 
-从 Release 下载对应格式的安装包后，用包管理器安装即可（无需手动解压 ZIP）：
-
+上传ipk或apk至tmp目录：
 - OpenWrt 24.10 使用 `opkg` 安装 `.ipk`：
   ```sh
-  opkg install luci-app-homeproxy_<版本>-all.ipk
+  opkg update && opkg install /tmp/luci-app-homeproxy_<版本>-all.ipk
   ```
 - OpenWrt 25.12 使用 `apk` 安装 `.apk`：
   ```sh
-  apk add --allow-untrusted luci-app-homeproxy_<版本>-all.apk
+  apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
   ```
-
 安装后首次启动服务时，插件会按设备架构自动下载并安装 reF1nd sing-box 内核；也可以在 LuCI 状态页「sing-box 内核管理」中手动点击「下载 / 更新内核」。
 
 ## 二、卸载
