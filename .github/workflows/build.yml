@@ -97,26 +97,28 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-homeproxy=m" >> .config
           make defconfig
           grep -E '^CONFIG_PACKAGE_luci-app-homeproxy=' .config
-          # --- Precompile the Simplified Chinese catalog into the package's root/
-          #     tree so it ships INSIDE the single arch-independent package.
-          #     luci.mk runs $(eval $(call BuildPackage,...)) during the include,
-          #     which expands $(Build/Compile) before a Makefile-level override can
-          #     take effect, so the .lmo must be placed in root/ *before* the build.
-          #     First make sure the host po2lmo tool exists (luci-base/host ships
-          #     it; a package build also pulls it in as a build dependency). ---
-          make package/feeds/luci/luci-base/host/compile -j"$(nproc)" V=s || true
-          PO2LMO="$(find staging_dir/host -type f -name po2lmo | head -n1)"
-          if [ ! -x "$PO2LMO" ]; then
-            make package/luci-app-homeproxy/compile V=s -j"$(nproc)"
-            PO2LMO="$(find staging_dir/host -type f -name po2lmo | head -n1)"
-          fi
-          [ -x "$PO2LMO" ] || { echo "::error::po2lmo host tool not found"; exit 1; }
+          # --- Inject the Simplified Chinese catalog into the single main package.
+          #     luci.mk ALWAYS builds a *separate* luci-i18n-homeproxy-zh-cn
+          #     subpackage that contains homeproxy.zh-cn.lmo (see the po2lmo
+          #     invocation in the build log: it compiles po/zh_Hans/homeproxy.po
+          #     into .../luci-i18n-homeproxy-zh-cn/usr/lib/lua/luci/i18n/
+          #     homeproxy.zh-cn.lmo). We publish only the arch-independent main
+          #     package, so we lift that .lmo out of luci.mk's i18n subpackage
+          #     build dir and copy it into the main package's root/ tree, then
+          #     rebuild the main package so luci.mk's own Build/Prepare re-copies
+          #     root/ (now holding the .lmo) into the package payload.
+          #     We REUSE the .lmo luci.mk already generated rather than invoking
+          #     po2lmo ourselves: on this SDK po2lmo is only on the build's PATH
+          #     transiently and is NOT reliably installed to staging_dir/host/bin,
+          #     so locating/invoking it directly is fragile (it previously aborted
+          #     the build with "po2lmo host tool not found").
+          make package/luci-app-homeproxy/compile V=s -j"$(nproc)"
+          LMO="$(find build_dir -name 'homeproxy.zh-cn.lmo' | head -n1)"
+          [ -n "$LMO" ] || { echo "::error::homeproxy.zh-cn.lmo not found in build_dir"; exit 1; }
           mkdir -p package/luci-app-homeproxy/root/usr/lib/lua/luci/i18n
-          "$PO2LMO" package/luci-app-homeproxy/po/zh_Hans/homeproxy.po \
-              package/luci-app-homeproxy/root/usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
+          cp -f "$LMO" package/luci-app-homeproxy/root/usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
           ls -l package/luci-app-homeproxy/root/usr/lib/lua/luci/i18n/
-          # Rebuild from scratch so luci.mk's Build/Prepare re-copies root/ (now
-          # containing the .lmo) into the package payload.
+          # Rebuild only the main package so Build/Prepare re-copies root/ in.
           make package/luci-app-homeproxy/clean
           make package/luci-app-homeproxy/compile V=s -j"$(nproc)"
 
