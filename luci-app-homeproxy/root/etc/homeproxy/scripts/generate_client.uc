@@ -47,6 +47,8 @@ const ucinode = 'node';
 const uciruleset = 'ruleset';
 const RULESET_DIR = HP_DIR + '/ruleset';
 
+let http_client_map = {};
+
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 
 function normalize_list(value) {
@@ -79,6 +81,18 @@ function ruleset_remote_path(path, tag, format) {
 	return path;
 }
 
+/* Map a rule-set download detour (outbound tag) to a top-level http_client tag.
+   Collects distinct detours so they can be declared once as http_clients.
+   Replaces the deprecated download_detour field (sing-box 1.14). */
+function dl_tag_for(detour) {
+	if (isEmpty(detour))
+		return 'dl-default';
+
+	const tag = 'dl-' + detour;
+	http_client_map[tag] = detour;
+	return tag;
+}
+
 let wan_dns = ubus.call('network.interface', 'status', {'interface': 'wan'})?.['dns-server']?.[0];
 if (!wan_dns)
 	wan_dns = (routing_mode in ['proxy_mainland_china', 'global']) ? '9.9.9.9' : '223.5.5.5';
@@ -97,10 +111,10 @@ if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
 
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
-let cache_file_enabled, cache_file_path, cache_store_rdrc, cache_rdrc_timeout,
+let cache_file_enabled, cache_file_path, cache_store_dns,
     main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
-    dns_default_server, dns_disable_cache, dns_disable_cache_expire, dns_independent_cache,
+    dns_default_server, dns_disable_cache, dns_disable_cache_expire,
     dns_client_subnet, direct_domain_list,
     proxy_domain_list;
 
@@ -135,7 +149,6 @@ if (routing_mode !== 'custom') {
 	dns_default_server = uci.get(uciconfig, ucidnssetting, 'default_server');
 	dns_disable_cache = uci.get(uciconfig, ucidnssetting, 'disable_cache');
 	dns_disable_cache_expire = uci.get(uciconfig, ucidnssetting, 'disable_cache_expire');
-	dns_independent_cache = uci.get(uciconfig, ucidnssetting, 'independent_cache');
 	dns_client_subnet = uci.get(uciconfig, ucidnssetting, 'client_subnet');
 
 	/* Routing settings */
@@ -180,8 +193,7 @@ const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
 
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');
-cache_store_rdrc = uci.get(uciconfig, ucicache, 'store_rdrc');
-cache_rdrc_timeout = uci.get(uciconfig, ucicache, 'rdrc_timeout');
+cache_store_dns = uci.get(uciconfig, ucicache, 'store_dns');
 
 let clash_api = null;
 /* UCI config end */
@@ -749,7 +761,6 @@ config.dns = {
 	strategy: dns_default_strategy,
 	disable_cache: strToBool(dns_disable_cache),
 	disable_expire: strToBool(dns_disable_cache_expire),
-	independent_cache: strToBool(dns_independent_cache),
 	client_subnet: dns_client_subnet
 };
 
@@ -1224,7 +1235,7 @@ if (!isEmpty(main_node)) {
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/IPCIDR-CHINA@rule-set/cn.srs',
 			path: ruleset_default_path('geoip-cn', 'binary'),
-			download_detour: 'main-out'
+			http_client: dl_tag_for('main-out')
 		});
 		push(config.route.rule_set, {
 			type: 'remote',
@@ -1232,7 +1243,7 @@ if (!isEmpty(main_node)) {
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-cn.srs',
 			path: ruleset_default_path('geosite-cn', 'binary'),
-			download_detour: 'main-out'
+			http_client: dl_tag_for('main-out')
 		});
 		push(config.route.rule_set, {
 			type: 'remote',
@@ -1240,7 +1251,7 @@ if (!isEmpty(main_node)) {
 			format: 'binary',
 			url: 'https://fastly.jsdelivr.net/gh/1715173329/sing-geosite@rule-set-unstable/geosite-geolocation-!cn.srs',
 			path: ruleset_default_path('geosite-noncn', 'binary'),
-			download_detour: 'main-out'
+			http_client: dl_tag_for('main-out')
 		});
 	}
 
@@ -1321,12 +1332,22 @@ if (!isEmpty(main_node)) {
 			format: cfg.format,
 			url: cfg.url,
 			path: (cfg.type === 'remote') ? ruleset_remote_path(cfg.remote_path || cfg.path, tag, cfg.format) : cfg.path,
-			download_detour: get_outbound(cfg.outbound),
+			http_client: dl_tag_for(get_outbound(cfg.outbound)),
 			update_interval: (cfg.type === 'remote') ? '87600h' : null
 		});
 	});
 }
 /* Routing rules end */
+
+/* HTTP clients for remote rule-set downloads (sing-box 1.14: replaces deprecated download_detour) */
+if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
+	http_client_map['dl-default'] = null;
+	config.http_clients = map(keys(http_client_map), (t) => ({
+		tag: t,
+		detour: (t === 'dl-default') ? null : http_client_map[t]
+	}));
+	config.default_http_client = 'dl-default';
+}
 
 /* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
@@ -1335,8 +1356,7 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 		cache_file: {
 			enabled: cache_file_enabled !== '0',
 			path: cache_file_path || (HP_DIR + '/cache.db'),
-			store_rdrc: strToBool(cache_store_rdrc),
-			rdrc_timeout: strToTime(cache_rdrc_timeout),
+			store_dns: strToBool(cache_store_dns),
 		}
 	};
 }

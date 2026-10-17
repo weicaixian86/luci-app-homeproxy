@@ -3430,6 +3430,10 @@ msgid "Persist RDRC cache"
 msgstr "持久化 RDRC 缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist DNS cache"
+msgstr "持久化 DNS 缓存"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr "状态"
 
@@ -3507,3 +3511,42 @@ msgstr "点我检测"
 
 msgid "Checking..."
 msgstr "检测中..."
+
+msgid "reF1nd sing-box core"
+msgstr "reF1nd sing-box 内核"
+
+msgid "Download / update core"
+msgstr "下载 / 更新内核"
+
+msgid "loading..."
+msgstr "加载中..."
+
+msgid "Installed: %s"
+msgstr "已安装：%s"
+
+msgid "Not installed"
+msgstr "未安装"
+
+msgid "Arch: %s"
+msgstr "架构：%s"
+
+msgid "Target: %s"
+msgstr "目标版本：%s"
+
+msgid "No binary for this arch yet"
+msgstr "该架构暂无可用二进制"
+
+msgid "Download / update succeeded."
+msgstr "下载 / 更新成功。"
+
+msgid "Current architecture is not supported by reF1nd yet."
+msgstr "当前架构 reF1nd 暂未支持。"
+
+msgid "No matching binary for this architecture yet."
+msgstr "当前架构暂无可匹配的二进制。"
+
+msgid "Download / update failed. See log for details."
+msgstr "下载 / 更新失败，请查看日志。"
+
+msgid "unavailable"
+msgstr "不可用"

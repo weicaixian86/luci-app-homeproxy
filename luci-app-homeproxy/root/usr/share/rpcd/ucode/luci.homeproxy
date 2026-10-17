@@ -1465,6 +1465,75 @@ const methods = {
 			} else
 				return { status: 255, error: 'illegal type' };
 		}
+	},
+
+	/* Runtime reF1nd sing-box core management. The correct-arch core is fetched
+	 * at runtime (see root/etc/homeproxy/scripts/update_core.sh). */
+	singbox_core_status: {
+		call: function() {
+			const result = {
+				arch: '-',
+				asset_available: false,
+				asset: '',
+				installed_version: '-',
+				refind_version: ''
+			};
+
+			const fd = popen('/usr/bin/sing-box version 2>/dev/null');
+			if (fd) {
+				for (let line = fd.read('line'); length(line); line = fd.read('line')) {
+					const matched = match(trim(line), /^sing-box version (.*)/);
+					if (matched)
+						result.installed_version = matched[1];
+				}
+				fd.close();
+			}
+
+			const sfd = popen(`${HP_DIR}/scripts/update_core.sh status 2>/dev/null`);
+			if (sfd) {
+				for (let line = sfd.read('line'); length(line); line = sfd.read('line')) {
+					line = trim(line);
+					if (!length(line))
+						continue;
+					const kv = split(line, '=');
+					if (length(kv) < 2)
+						continue;
+					const key = kv[0];
+					const value = substr(line, length(key) + 1);
+					switch (key) {
+					case 'arch':
+						result.arch = value;
+						break;
+					case 'asset_available':
+						result.asset_available = (value === '1');
+						break;
+					case 'asset':
+						result.asset = value;
+						break;
+					case 'refind_version':
+						result.refind_version = value;
+						break;
+					}
+				}
+				sfd.close();
+			}
+
+			return result;
+		}
+	},
+
+	singbox_core_update: {
+		call: function() {
+			const fd = popen(`${HP_DIR}/scripts/update_core.sh update 2>&1`);
+			let output = '';
+			if (fd) {
+				for (let line = fd.read('line'); line !== null && length(line); line = fd.read('line'))
+					output += line + '\n';
+				fd.close();
+			}
+
+			return { result: (output || '').indexOf('ok') !== -1, output: trim(output) };
+		}
 	}
 };
 

@@ -371,10 +371,75 @@ return view.extend({
 			return node;
 		}
 
-		s = m.section(form.NamedSection, 'config', 'homeproxy');
-		s.anonymous = true;
+	s = m.section(form.NamedSection, 'config', 'homeproxy', _('sing-box core management'));
+	s.anonymous = true;
 
-		o = s.option(form.DummyValue, '_homeproxy_logview');
+	const callCoreStatus = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'singbox_core_status',
+		expect: { '': {} }
+	});
+
+	const callCoreUpdate = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'singbox_core_update',
+		expect: { '': {} }
+	});
+
+	o = s.option(form.DummyValue, '_singbox_core', _('reF1nd sing-box core'));
+	o.rawhtml = true;
+	o.render = function() {
+		const self = this;
+		let content = E('div', { 'style': 'cbi-value-field' }, [
+			E('button', {
+				'class': 'btn cbi-button cbi-button-action',
+				'click': ui.createHandlerFn(this, () => {
+					return L.resolveDefault(callCoreUpdate(), {}).then((res) => {
+						let msg;
+						if (res.result)
+							msg = _('Download / update succeeded.');
+						else if (res.output && res.output.indexOf('unsupported') !== -1)
+							msg = _('Current architecture is not supported by reF1nd yet.');
+						else if (res.output && res.output.indexOf('no_asset') !== -1)
+							msg = _('No matching binary for this architecture yet.');
+						else
+							msg = _('Download / update failed. See log for details.');
+
+						self.description = msg;
+						return self.map.reset();
+					});
+				})
+			}, [ _('Download / update core') ]),
+			' ',
+			E('strong', { 'style': 'color:#7d8aa0' }, [ _('loading...') ])
+		]);
+
+		L.resolveDefault(callCoreStatus(), {}).then((res) => {
+			let detail;
+			if (res.installed_version && res.installed_version !== '-')
+				detail = _('Installed: %s').format(res.installed_version);
+			else
+				detail = _('Not installed');
+
+			detail += ' / ' + _('Arch: %s').format(res.arch || '-');
+
+			if (res.asset_available)
+				detail += ' / ' + _('Target: %s').format(res.refind_version || '-');
+			else
+				detail += ' / ' + _('No binary for this arch yet');
+
+			dom.content(content.lastElementChild, detail);
+		}).catch(() => {
+			dom.content(content.lastElementChild, _('unavailable'));
+		});
+
+		return content;
+	};
+
+	s = m.section(form.NamedSection, 'config', 'homeproxy');
+	s.anonymous = true;
+
+	o = s.option(form.DummyValue, '_homeproxy_logview');
 		o.render = L.bind(getRuntimeLog, this, o, _('HomeProxy'));
 
 		o = s.option(form.DummyValue, '_sing-box-c_logview');

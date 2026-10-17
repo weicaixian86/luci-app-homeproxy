@@ -1,326 +1,198 @@
-name: Build and Release IPK
+name: Build and Release
 
 on:
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: 'Release tag'
+      tag:
+        description: "Release tag（例如 v2.0.54 或 V2.0.54，只去掉开头的 v/V）"
         required: true
-        default: '2.0.0'
-      release_description:
-        description: 'Release description'
+        type: string
+      description:
+        description: "Release 描述（可选，默认留空）"
         required: false
-        default: ''
+        type: string
+        default: ""
 
 permissions:
   contents: write
 
+env:
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
+
 jobs:
   build:
-    runs-on: ubuntu-22.04
-
-    env:
-      TARGET: x86/64
-      PACKAGE_NAME: luci-app-homeproxy
-      SING_BOX_VERSION: 1.13.13
-      SDK_URL: https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-      OPENWRT_BASE_URL: https://downloads.openwrt.org/releases/24.10.0
-
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: OpenWrt 24.10.0 IPK
+            sdk_url: https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            output: ipk
+          - name: OpenWrt 25.12.0 APK
+            sdk_url: https://downloads.openwrt.org/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            output: apk
     steps:
-      - name: Checkout source tree
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install build tools
+      - name: Install check tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget curl xz-utils zstd zip
+          sudo apt-get install -y lua5.1 zstd
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24.7'
-
-      - name: Validate release tag
+      - name: Locate package source directory
+        id: pkgdir
         run: |
-          set -euo pipefail
-
-          RELEASE_TAG="${{ inputs.release_tag }}"
-          if ! printf '%s' "$RELEASE_TAG" | grep -Eq '^v?[0-9]+(\.[0-9]+){1,3}(-[A-Za-z0-9._+-]+)?$'; then
-            echo "Release tag must look like 2.0.1 or v2.0.1."
+          set -e
+          makefile="$(mktemp)"
+          found=""
+          while IFS= read -r candidate; do
+            tr -d '\r' <"$candidate" >"$makefile"
+            if grep -q '^PKG_NAME:=luci-app-homeproxy[[:space:]]*$' "$makefile"; then
+              found="$(cd "$(dirname "$candidate")" && pwd)"
+              break
+            fi
+          done < <(find . -name Makefile -type f)
+          if [ -z "$found" ]; then
+            echo "::error::no Makefile with PKG_NAME:=luci-app-homeproxy found"
             exit 1
           fi
+          echo "dir=$found" >>"$GITHUB_OUTPUT"
+          echo "package source directory: $found"
 
-      - name: Download OpenWrt SDK
+      - name: Update package version from tag
         run: |
-          set -euo pipefail
+          set -e
+          pkg_dir="${{ steps.pkgdir.outputs.dir }}"
+          tag="${{ inputs.tag }}"
+          # Only strip a leading v/V; keep the rest of the tag verbatim.
+          version="${tag#v}"
+          version="${version#V}"
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" "$pkg_dir/Makefile"
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$pkg_dir/Makefile"
+          grep -E '^PKG_(VERSION|RELEASE):=' "$pkg_dir/Makefile"
 
-          SDK_FILE="${SDK_URL##*/}"
-
-          if [ -z "$SDK_FILE" ]; then
-            echo "Invalid OpenWrt SDK URL."
-            exit 1
-          fi
-
-          curl -fsSLO "$SDK_URL"
+      - name: Download and extract SDK
+        run: |
+          set -e
+          curl -fsSL --http1.1 --retry 5 --retry-delay 5 --retry-all-errors \
+            "${{ matrix.sdk_url }}" -o sdk.tar.zst
           mkdir -p sdk
-          tar --strip-components=1 -C sdk -xaf "$SDK_FILE"
+          tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
 
-      - name: Prepare package
-        run: |
-          set -euo pipefail
-
-          rsync -a --delete \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='sdk' \
-            --exclude='artifacts' \
-            --exclude='openwrt-sdk-*.tar.*' \
-            ./ ./sdk/package/${PACKAGE_NAME}/
-
-          find ./sdk/package -type d -name sing-box -prune -exec rm -rf {} +
-          if [ -d ./sdk/feeds ]; then
-            find ./sdk/feeds -type d -name sing-box -prune -exec rm -rf {} +
-          fi
-          mkdir -p ./sdk/package/sing-box
-          rsync -a ./.github/openwrt-packages/sing-box/ ./sdk/package/sing-box/
-
-          PACKAGE_VERSION="${{ inputs.release_tag }}"
-          PACKAGE_VERSION="${PACKAGE_VERSION#v}"
-          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=${PACKAGE_VERSION}/" ./sdk/package/${PACKAGE_NAME}/Makefile
-          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" ./sdk/package/${PACKAGE_NAME}/Makefile
-
-          mkdir -p ./sdk/package/${PACKAGE_NAME}/root/usr/share/homeproxy
-          printf '%s\n' "$PACKAGE_VERSION" > ./sdk/package/${PACKAGE_NAME}/root/usr/share/homeproxy/version
-
-      - name: Update feeds
+      - name: Build package
         working-directory: sdk
         run: |
-          set -euo pipefail
-
+          set -e
           ./scripts/feeds update -a
-          ./scripts/feeds install -a
-          if [ -d ./package/feeds ]; then
-            find ./package/feeds -type d -name sing-box -prune -exec rm -rf {} +
-          fi
-
-      - name: Compile IPK packages
-        working-directory: sdk
-        run: |
-          set -euo pipefail
-
-          echo "CONFIG_PACKAGE_luci-i18n-homeproxy-zh-cn=m" >> .config
-          echo "CONFIG_LUCI_LANG_zh_Hans=m" >> .config
+          ./scripts/feeds install luci
+          cp -r "${{ steps.pkgdir.outputs.dir }}" package/luci-app-homeproxy
+          # Ensure service and runtime scripts keep their executable bit even when
+          # committed from a Windows checkout (git may drop the mode).
+          chmod 0755 package/luci-app-homeproxy/root/etc/init.d/* \
+                     package/luci-app-homeproxy/root/etc/homeproxy/scripts/* 2>/dev/null || true
+          echo "CONFIG_PACKAGE_luci-app-homeproxy=m" >> .config
           make defconfig
-          make package/sing-box/compile V=s -j"$(nproc)"
-          make package/${PACKAGE_NAME}/compile V=s -j"$(nproc)"
+          grep -E '^CONFIG_PACKAGE_luci-app-homeproxy=' .config
+          make package/luci-app-homeproxy/compile V=s -j"$(nproc)"
 
-          mkdir -p ../artifacts
-          HOMEPROXY_IPK="$(find bin/packages -type f -name "${PACKAGE_NAME}_*.ipk" | head -n1)"
-          SING_BOX_IPK="$(find bin/packages -type f -name "sing-box_${SING_BOX_VERSION}-*.ipk" | head -n1)"
-          I18N_IPK="$(find bin/packages -type f -name "luci-i18n-homeproxy-zh-cn_*.ipk" | head -n1)"
-
-          if [ -z "$HOMEPROXY_IPK" ]; then
-            echo "No luci-app-homeproxy IPK file produced."
-            exit 1
-          fi
-          if [ -z "$SING_BOX_IPK" ]; then
-            echo "No sing-box IPK file produced."
-            exit 1
-          fi
-          if [ -z "$I18N_IPK" ]; then
-            echo "No luci-i18n-homeproxy-zh-cn IPK file produced."
-            exit 1
-          fi
-
-          cp "$HOMEPROXY_IPK" "../artifacts/${PACKAGE_NAME}_${{ inputs.release_tag }}.ipk"
-          cp "$SING_BOX_IPK" "../artifacts/sing-box_${SING_BOX_VERSION}_x86_64.ipk"
-          cp "$I18N_IPK" "../artifacts/luci-i18n-homeproxy-zh-cn_${{ inputs.release_tag }}.ipk"
-
-      - name: Download dependency.ipk
+      - name: Collect artifact
+        id: collect
         run: |
-          set -euo pipefail
-
-          mkdir -p artifacts/deps package-index
-
-          REPOS="
-          ${OPENWRT_BASE_URL}/targets/x86/64/packages
-          ${OPENWRT_BASE_URL}/packages/x86_64/base
-          ${OPENWRT_BASE_URL}/packages/x86_64/packages
-          ${OPENWRT_BASE_URL}/packages/x86_64/luci
-          ${OPENWRT_BASE_URL}/packages/x86_64/routing
-          ${OPENWRT_BASE_URL}/packages/x86_64/telephony
-          "
-
-          fetch_index() {
-            local repo="$1"
-            local name
-            name="$(printf '%s' "$repo" | sed 's#https\?://##; s#[/:]#_#g')"
-            if [ ! -f "package-index/${name}.Packages" ]; then
-              curl -fsSL "$repo/Packages.gz" | gzip -dc > "package-index/${name}.Packages"
-            fi
-          }
-
-          package_field() {
-            local index="$1"
-            local package="$2"
-            local field="$3"
-            awk -v pkg="$package" -v field="$field" '
-              BEGIN { RS=""; FS="\n" }
-              $0 ~ "(^|\n)Package: " pkg "(\n|$)" {
-                for (i = 1; i <= NF; i++) {
-                  if ($i ~ "^" field ": ") {
-                    sub("^" field ": ", "", $i)
-                    print $i
-                    exit
-                  }
-                }
-              }
-            ' "$index"
-          }
-
-          normalize_depends() {
-            tr ',' '\n' |
-              sed -E 's/^\s+//; s/\s+$//; s/ \(.+\)//; s/\|.*$//' |
-              grep -E '^[A-Za-z0-9_.+-]+$' |
-              grep -Ev '^(libc|kernel)$' || true
-          }
-
-          download_package() {
-            local package="$1"
-            local repo index filename deps dep
-
-            case " $VISITED " in
-              *" $package "*) return 0 ;;
-            esac
-            VISITED="$VISITED $package"
-
-            for repo in $REPOS; do
-              fetch_index "$repo"
-              index="package-index/$(printf '%s' "$repo" | sed 's#https\?://##; s#[/:]#_#g').Packages"
-              filename="$(package_field "$index" "$package" "Filename")"
-              if [ -n "$filename" ]; then
-                echo "Downloading dependency: $package"
-                curl -fsSL "$repo/$filename" -o "artifacts/deps/${filename##*/}"
-                deps="$(package_field "$index" "$package" "Depends")"
-                if [ -n "$deps" ]; then
-                  printf '%s\n' "$deps" | normalize_depends | while IFS= read -r dep; do
-                    [ -z "$dep" ] || download_package "$dep"
-                  done
-                fi
-                return 0
-              fi
-            done
-
-            echo "Warning: dependency package not found in OpenWrt repositories: $package"
-          }
-
-          VISITED=" sing-box ${PACKAGE_NAME} "
-          for package in \
-            firewall4 \
-            dnsmasq-full \
-            ip-full \
-            kmod-tun \
-            kmod-nft-tproxy \
-            ca-bundle \
-            curl \
-            jsonfilter \
-            unzip \
-            ucode-mod-digest \
-            ucode-mod-fs \
-            ucode-mod-math \
-            ucode-mod-ubus \
-            ucode-mod-uci \
-            luci-i18n-base-zh-cn; do
-            download_package "$package"
-          done
-
-      - name: Create release package
-        env:
-          RELEASE_VERSION: ${{ inputs.release_tag }}
-        run: |
-          set -euo pipefail
-
-          BUNDLE_DIR="homeproxy-${RELEASE_VERSION}-x86_64"
-          rm -rf "$BUNDLE_DIR"
-          mkdir -p "$BUNDLE_DIR/packages/deps"
-
-          cp artifacts/${PACKAGE_NAME}_${RELEASE_VERSION}.ipk "$BUNDLE_DIR/packages/"
-          cp artifacts/luci-i18n-homeproxy-zh-cn_${RELEASE_VERSION}.ipk "$BUNDLE_DIR/packages/"
-          cp artifacts/sing-box_${SING_BOX_VERSION}_x86_64.ipk "$BUNDLE_DIR/packages/"
-          if compgen -G "artifacts/deps/*.ipk" >/dev/null; then
-            cp artifacts/deps/*.ipk "$BUNDLE_DIR/packages/deps/"
+          set -e
+          tag="${{ inputs.tag }}"
+          version="${tag#v}"
+          version="${version#V}"
+          ext="${{ matrix.output }}"
+          out_dir="release_artifacts"
+          mkdir -p "$out_dir"
+          candidates=$(find sdk/bin -type f -name "luci-app-homeproxy*.${ext}" 2>/dev/null || true)
+          count=$(printf '%s\n' "$candidates" | grep -c . || true)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::expected exactly one .${ext} artifact, found ${count}"
+            printf '%s\n' "$candidates"
+            exit 1
           fi
+          src="$(printf '%s\n' "$candidates" | head -n1)"
+          dest="${out_dir}/luci-app-homeproxy_${version}-all.${ext}"
+          cp -f "$src" "$dest"
+          echo "file=$dest" >>"$GITHUB_OUTPUT"
+          ls -la "$out_dir"
 
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-homeproxy-${{ matrix.output }}
+          path: release_artifacts/*
+
+  release:
+    name: Publish Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: ${{ success() }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_artifacts
+
+      - name: Prepare release body
+        run: |
           {
-            echo '#!/bin/sh'
-            echo 'set -eu'
-            echo ''
-            echo 'cd "$(dirname "$0")"'
-            echo ''
-            echo 'echo "Installing dependency packages..."'
-            echo 'if ls packages/deps/*.ipk >/dev/null 2>&1; then'
-            echo '  opkg install packages/deps/*.ipk || true'
-            echo 'fi'
-            echo ''
-            echo 'echo "Installing sing-box 1.13.13..."'
-            echo 'opkg install --force-reinstall --force-overwrite packages/sing-box_1.13.13_x86_64.ipk'
-            echo ''
-            echo 'echo "Installing luci-app-homeproxy..."'
-            echo 'opkg install --force-reinstall --force-overwrite packages/luci-app-homeproxy_*.ipk'
-            echo 'opkg install --force-reinstall --force-overwrite packages/luci-i18n-homeproxy-zh-cn_*.ipk'
-            echo ''
-            echo 'echo "Setting LuCI language to Simplified Chinese..."'
-            echo "uci set luci.main.lang='zh_cn'"
-            echo 'uci commit luci'
-            echo ''
-            echo 'echo "Clearing LuCI cache..."'
-            echo 'rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true'
-            echo ''
-            echo '/etc/init.d/rpcd restart 2>/dev/null || true'
-            echo '/etc/init.d/uhttpd restart 2>/dev/null || true'
-            echo ''
-            echo 'echo "Done."'
-          } > "$BUNDLE_DIR/install.sh"
-          chmod +x "$BUNDLE_DIR/install.sh"
-
-          rm -f artifacts/*.zip
-          zip -qr "artifacts/homeproxy-${RELEASE_VERSION}-x86_64.zip" "$BUNDLE_DIR"
-
-      - name: Create release notes
-        env:
-          RELEASE_DESCRIPTION: ${{ inputs.release_description }}
-        run: |
-          set -euo pipefail
-
-          {
-            export TZ='Asia/Shanghai'
-            echo "编译时间：$(date '+%Y-%m-%d %H:%M:%S CST')"
-            echo
-            echo "Release description："
-            if [ -n "$RELEASE_DESCRIPTION" ]; then
-              printf '%s\n' "$RELEASE_DESCRIPTION"
+            printf '编译时间：%s\n' "$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S CST')"
+            if [ -n "${{ inputs.description }}" ]; then
+              printf '\n%s\n' "${{ inputs.description }}"
             fi
-          } > release_body.md
+          } >release_body.md
+          # Drop leading/trailing blank lines when the description is empty.
+          sed -i -e '/./,$!d' release_body.md
+          sed -i -e :a -e '/^\n*$/{$d;N;}; /\n$/ba' release_body.md
 
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_VERSION: ${{ inputs.release_tag }}
+      - name: Verify release files
         run: |
-          set -euo pipefail
-
-          git tag -f "$RELEASE_VERSION"
-          git push -f origin "$RELEASE_VERSION"
-
-          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
-            gh release delete "$RELEASE_VERSION" --yes --cleanup-tag
-            git tag -f "$RELEASE_VERSION"
-            git push -f origin "$RELEASE_VERSION"
+          set -e
+          tag="${{ inputs.tag }}"
+          version="${tag#v}"
+          version="${version#V}"
+          expected_ipk="release_artifacts/luci-app-homeproxy-ipk/luci-app-homeproxy_${version}-all.ipk"
+          expected_apk="release_artifacts/luci-app-homeproxy-apk/luci-app-homeproxy_${version}-all.apk"
+          if [ ! -f "$expected_ipk" ] || [ ! -f "$expected_apk" ]; then
+            echo "::error::release artifacts missing"
+            find release_artifacts -type f
+            exit 1
+          fi
+          # Reject any unexpected extra files in the release artifacts.
+          if find release_artifacts -type f ! -name "luci-app-homeproxy_${version}-all.ipk" ! -name "luci-app-homeproxy_${version}-all.apk" | grep -q .; then
+            echo "::error::unexpected extra files in release artifacts"
+            find release_artifacts -type f
+            exit 1
           fi
 
-          assets=(artifacts/homeproxy-${RELEASE_VERSION}-x86_64.zip)
+      - name: Check tag does not exist
+        run: |
+          set -e
+          tag="${{ inputs.tag }}"
+          if git ls-remote --tags origin "refs/tags/${tag}" | grep -q .; then
+            echo "::error::git tag ${tag} already exists, refusing to overwrite"
+            exit 1
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::GitHub Release ${tag} already exists, refusing to overwrite"
+            exit 1
+          fi
 
-          gh release create "$RELEASE_VERSION" \
-            "${assets[@]}" \
-            --title "$RELEASE_VERSION" \
-            --notes-file release_body.md
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          body_path: release_body.md
+          files: |
+            release_artifacts/luci-app-homeproxy-ipk/*
+            release_artifacts/luci-app-homeproxy-apk/*

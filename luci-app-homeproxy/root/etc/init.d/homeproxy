@@ -10,6 +10,8 @@ STOP=10
 
 CONF="homeproxy"
 PROG="/usr/bin/sing-box"
+# Runtime reF1nd sing-box core downloader (architecture independent package).
+CORE_SCRIPT="/etc/homeproxy/scripts/update_core.sh"
 
 HP_DIR="/etc/homeproxy"
 RUN_DIR="/var/run/homeproxy"
@@ -89,6 +91,20 @@ setup_auto_update_cron() {
 
 start_service() {
 	init_logs
+
+	# Ensure the reF1nd sing-box core for this architecture is installed.
+	# HomeProxy no longer bundles a single-arch binary; the correct build is
+	# fetched at runtime. If no binary exists and the architecture is not yet
+	# supported (or the download fails), do not start the service.
+	if [ -x "$CORE_SCRIPT" ]; then
+		if ! "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
+			log "Error: sing-box core is not available (unsupported arch or download failed)."
+			return 1
+		fi
+	else
+		log "Error: core download script $CORE_SCRIPT is missing."
+		return 1
+	fi
 
 	config_load "$CONF"
 	setup_auto_update_cron

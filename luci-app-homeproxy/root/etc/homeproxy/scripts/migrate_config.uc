@@ -158,17 +158,29 @@ if (isEmpty(cache_path) || cache_path === old_cache_path)
 if (!isEmpty(uci.get(uciconfig, ucicache, 'store_fakeip')))
 	uci.delete(uciconfig, ucicache, 'store_fakeip');
 
-if (isEmpty(uci.get(uciconfig, ucicache, 'store_rdrc')))
-	uci.set(uciconfig, ucicache, 'store_rdrc', isEmpty(uci.get(uciconfig, ucidns, 'cache_file_store_rdrc')) ? '1' : uci.get(uciconfig, ucidns, 'cache_file_store_rdrc'));
+/* cache_file.store_rdrc was renamed to store_dns in sing-box 1.14 */
+if (isEmpty(uci.get(uciconfig, ucicache, 'store_dns'))) {
+	let legacy = uci.get(uciconfig, ucicache, 'store_rdrc');
+	if (isEmpty(legacy))
+		legacy = uci.get(uciconfig, ucidns, 'cache_file_store_rdrc');
+	uci.set(uciconfig, ucicache, 'store_dns', isEmpty(legacy) ? '1' : legacy);
+}
 
-if (isEmpty(uci.get(uciconfig, ucicache, 'rdrc_timeout')) && !isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
-	uci.set(uciconfig, ucicache, 'rdrc_timeout', uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout'));
+if (!isEmpty(uci.get(uciconfig, ucicache, 'store_rdrc')))
+	uci.delete(uciconfig, ucicache, 'store_rdrc');
+
+if (!isEmpty(uci.get(uciconfig, ucicache, 'rdrc_timeout')))
+	uci.delete(uciconfig, ucicache, 'rdrc_timeout');
 
 if (!isEmpty(uci.get(uciconfig, ucidns, 'cache_file_store_rdrc')))
 	uci.delete(uciconfig, ucidns, 'cache_file_store_rdrc');
 
 if (!isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
 	uci.delete(uciconfig, ucidns, 'cache_file_rdrc_timeout');
+
+/* independent_cache was removed in sing-box 1.14 */
+if (!isEmpty(uci.get(uciconfig, ucidns, 'independent_cache')))
+	uci.delete(uciconfig, ucidns, 'independent_cache');
 
 /* create migration section */
 if (!uci.get(uciconfig, ucimigration))

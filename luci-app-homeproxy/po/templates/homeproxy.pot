@@ -3375,6 +3375,10 @@ msgid "Persist RDRC cache"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Persist DNS cache"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr ""
 
@@ -3446,4 +3450,43 @@ msgid "Click to check"
 msgstr ""
 
 msgid "Checking..."
+msgstr ""
+
+msgid "reF1nd sing-box core"
+msgstr ""
+
+msgid "Download / update core"
+msgstr ""
+
+msgid "loading..."
+msgstr ""
+
+msgid "Installed: %s"
+msgstr ""
+
+msgid "Not installed"
+msgstr ""
+
+msgid "Arch: %s"
+msgstr ""
+
+msgid "Target: %s"
+msgstr ""
+
+msgid "No binary for this arch yet"
+msgstr ""
+
+msgid "Download / update succeeded."
+msgstr ""
+
+msgid "Current architecture is not supported by reF1nd yet."
+msgstr ""
+
+msgid "No matching binary for this architecture yet."
+msgstr ""
+
+msgid "Download / update failed. See log for details."
+msgstr ""
+
+msgid "unavailable"
 msgstr ""

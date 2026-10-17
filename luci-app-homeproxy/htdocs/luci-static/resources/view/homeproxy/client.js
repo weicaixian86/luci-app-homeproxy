@@ -1447,10 +1447,6 @@ return view.extend({
 		so = ss.option(form.Flag, 'disable_cache_expire', _('Disable DNS memory cache expiration'));
 		so.depends('disable_cache', '0');
 
-		so = ss.option(form.Flag, 'independent_cache', _('Independent DNS memory cache per server'),
-			_('Make each DNS server\'s memory cache independent for special purposes. If enabled, will slightly degrade performance.'));
-		so.depends('disable_cache', '0');
-
 		so = ss.option(form.Value, 'client_subnet', _('EDNS Client subnet'),
 			_('Append a <code>edns0-subnet</code> OPT extra record with the specified IP prefix to every query by default.<br/>' +
 			'If value is an IP address instead of prefix, <code>/32</code> or <code>/128</code> will be appended automatically.'));
@@ -2105,17 +2101,13 @@ return view.extend({
 		so.placeholder = '/etc/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
-		so = ss.option(form.ListValue, 'store_rdrc', _('Persist RDRC cache'));
+		so = ss.option(form.ListValue, 'store_dns', _('Persist DNS cache'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
 
-		so = ss.option(form.Value, 'rdrc_timeout', _('RDRC timeout'),
-			_('Timeout of rejected DNS response cache in seconds. <code>604800 (7d)</code> is used by default.'));
-		so.datatype = 'uinteger';
-		so.depends({'enabled': '1', 'store_rdrc': '1'});
 		/* Cache settings end */
 
 		/* ACL settings start */

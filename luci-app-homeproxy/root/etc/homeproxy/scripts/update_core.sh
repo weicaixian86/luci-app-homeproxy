@@ -1,0 +1,450 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Runtime download / install of the reF1nd sing-box core for HomeProxy.
+#
+# HomeProxy is now shipped as an architecture-independent LuCI package
+# (LUCI_PKGARCH:=all). It does NOT bundle any single-arch sing-box binary.
+# Instead, this script detects the device architecture at runtime and fetches
+# the matching reF1nd sing-box build, verifies its SHA-256 when a checksum is
+# published, and installs it to /usr/bin/sing-box.
+#
+# reF1nd/sing-box-releases currently publishes Linux musl builds for:
+#   - x86_64  -> linux-amd64-musl
+#   - aarch64 -> linux-arm64-musl
+# Other architectures (armv7, arm, mips, mipsel) are not published yet; for
+# those the script logs a clear notice and leaves any already-installed binary
+# in place (the author may add more builds later).
+#
+# Download methodology follows luci-app-vnt2cli:
+#   - curl is the preferred downloader, with --retry 2 inside a single mirror;
+#   - if a mirror fails, fail over to the next source (gh-proxy -> github);
+#   - the download cache is cleared before every download;
+#   - SHA-256 is verified when an official checksum can be located.
+
+set -u
+
+HP_DIR="/etc/homeproxy"
+RUN_DIR="/var/run/homeproxy"
+CORE_BIN="/usr/bin/sing-box"
+STATE_FILE="${HP_DIR}/core.state"
+DOWNLOAD_LOG="${RUN_DIR}/core_download.log"
+CACHE_DIR="/tmp/homeproxy-core-dl"
+
+# Pinned reF1nd release. Only the leading 'v' differs between the git tag and
+# the download path; the version string itself is reused verbatim.
+REFIND_REPO="reF1nd/sing-box-releases"
+REFIND_TAG="v1.14.3-reF1nd"
+REFIND_VERSION="1.14.3-reF1nd"
+
+GH_PROXY_PREFIX="https://gh-proxy.com/"
+
+. /lib/functions.sh 2>/dev/null || true
+
+# ---------- logging ----------
+ensure_log() {
+	mkdir -p "${RUN_DIR}" 2>/dev/null
+}
+
+log_download() {
+	ensure_log
+	printf '%s download : %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${DOWNLOAD_LOG}" 2>/dev/null
+}
+
+# ---------- ELF / arch detection (BusyBox safe) ----------
+is_elf_binary() {
+	local bin="$1" magic expected
+	[ -s "$bin" ] || return 1
+	magic="$(dd if="$bin" bs=1 count=4 2>/dev/null)"
+	expected="$(printf '\177ELF')"
+	[ "$magic" = "$expected" ]
+}
+
+# Read the 32-bit little-endian EI_DATA byte (offset 5) of /proc/self/exe to
+# decide MIPS endianness. 1 = little-endian (mipsel), 2 = big-endian (mips).
+detect_mips_endian() {
+	local ei_data
+	ei_data="$(dd if=/proc/self/exe bs=1 skip=5 count=1 2>/dev/null)"
+	if [ "$ei_data" = "$(printf '\001')" ]; then
+		echo "mipsel"
+	else
+		echo "mips"
+	fi
+}
+
+read_elf_eflags_le() {
+	local f="$1" b0 b1 b2 b3 v
+	[ -r "$f" ] || { echo 0; return; }
+	is_elf_binary "$f" >/dev/null 2>&1 || { echo 0; return; }
+	b0="$(dd if="$f" bs=1 skip=24 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
+	b1="$(dd if="$f" bs=1 skip=25 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
+	b2="$(dd if="$f" bs=1 skip=26 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
+	b3="$(dd if="$f" bs=1 skip=27 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
+	b0="${b0:-0}"; b1="${b1:-0}"; b2="${b2:-0}"; b3="${b3:-0}"
+	[ -z "${b0}${b1}${b2}${b3}" ] && { echo 0; return; }
+	v=$(( 0x$b0 + (0x$b1 << 8) + (0x$b2 << 16) + (0x$b3 << 24) ))
+	echo "$v"
+}
+
+# Decide ARM float ABI from the ELF e_flags of a system binary.
+detect_arm_float() {
+	local f flags eabi
+	for f in /proc/self/exe /bin/busybox /lib/libc.so* /bin/sh /sbin/init /lib/ld-musl-arm*.so.1; do
+		[ -r "$f" ] || continue
+		flags="$(read_elf_eflags_le "$f")"
+		eabi=$(( (flags >> 24) & 0xFF ))
+		[ "$eabi" -ge 1 ] || continue
+		if [ $((flags & 0x400)) -ne 0 ]; then
+			echo "musleabihf"; return 0
+		elif [ $((flags & 0x200)) -ne 0 ]; then
+			echo "musleabi"; return 0
+		fi
+	done
+	echo ""
+}
+
+# Detect device architecture. Returns one of:
+#   x86_64 | aarch64 | armv7-musleabihf | armv7-musleabi |
+#   arm-musleabihf | arm-musleabi | mips | mipsel | unsupported
+detect_arch_name() {
+	local mach package_arch arm_family arm_abi
+	mach="$(uname -m 2>/dev/null)"
+	package_arch="$(opkg print-architecture 2>/dev/null | awk '$2 != "all" && $2 != "noarch" {print $2; exit}')"
+
+	case "$mach" in
+		x86_64|amd64)
+			echo "x86_64"; return 0 ;;
+		aarch64|arm64)
+			echo "aarch64"; return 0 ;;
+		armv7*)
+			arm_family="armv7" ;;
+		armv6*|arm*)
+			arm_family="arm" ;;
+		mipsel*)
+			echo "mipsel"; return 0 ;;
+		mips*)
+			detect_mips_endian; return 0 ;;
+	esac
+
+	if [ -n "$arm_family" ]; then
+		arm_abi="$(detect_arm_float)"
+		[ -z "$arm_abi" ] && {
+			if [ -e /lib/ld-musl-armhf.so.1 ] || [ -e /lib/ld-musl-armhf.so.1.* ]; then
+				arm_abi="musleabihf"
+			elif [ -e /lib/ld-musl-arm.so.1 ] || [ -e /lib/ld-musl-arm.so.1.* ]; then
+				arm_abi="musleabi"
+			else
+				case "$package_arch" in
+					*eabihf*|*hard*|*hf*|*neon*|*vfp*) arm_abi="musleabihf" ;;
+					*eabi*|*soft*) arm_abi="musleabi" ;;
+				esac
+			fi
+		}
+		[ -n "$arm_abi" ] && { echo "${arm_family}-${arm_abi}"; return 0; }
+		echo "unsupported"; return 0
+	fi
+
+	case "$package_arch" in
+		*x86_64*|*amd64*) echo "x86_64" ;;
+		*aarch64*|*arm64*) echo "aarch64" ;;
+		*mipsel*) echo "mipsel" ;;
+		*mips*) detect_mips_endian ;;
+		*) echo "unsupported" ;;
+	esac
+}
+
+# Map a detected architecture to the reF1nd asset filename.
+# Returns non-zero (no output) when reF1nd does not publish that arch yet.
+asset_name_for_arch() {
+	local arch="$1"
+	case "$arch" in
+		x86_64)  echo "sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz" ;;
+		aarch64) echo "sing-box-${REFIND_VERSION}-linux-arm64-musl.tar.gz" ;;
+		*) return 1 ;;
+	esac
+}
+
+# ---------- SHA-256 ----------
+sha256_of() {
+	local f="$1"
+	[ -s "$f" ] || return 1
+	command -v sha256sum >/dev/null 2>&1 || return 1
+	sha256sum "$f" 2>/dev/null | awk '{print $1}'
+}
+
+# ---------- downloader ----------
+get_downloader() {
+	if command -v curl >/dev/null 2>&1; then
+		echo "curl"; return 0
+	elif command -v wget >/dev/null 2>&1; then
+		echo "wget"; return 0
+	fi
+	return 1
+}
+
+# Produce the ordered list of candidate URLs for a github release asset.
+# Auto mode tries gh-proxy first, then github (failover).
+candidate_urls() {
+	local url="$1" mirror="${2:-auto}"
+	case "$mirror" in
+		github)
+			printf '%s\n' "$url" ;;
+		gh-proxy)
+			printf '%s\n' "${GH_PROXY_PREFIX}${url}" "$url" ;;
+		*)
+			printf '%s\n' "${GH_PROXY_PREFIX}${url}" "$url" ;;
+	esac
+}
+
+# Download a file with curl --retry 2 inside each mirror, then fail over.
+# Usage: download_file SOURCE_URL OUTPUT_PATH PURPOSE [MIRROR]
+download_file() {
+	local url="$1" out="$2" purpose="${3:-generic}" mirror="${4:-auto}"
+	local downloader rc actual_url connect_timeout transfer_timeout
+
+	downloader="$(get_downloader "$purpose")" || return 1
+
+	case "$purpose" in
+		asset)    connect_timeout=20; transfer_timeout=240 ;;
+		checksum) connect_timeout=20; transfer_timeout=60 ;;
+		*)        connect_timeout=10; transfer_timeout=30 ;;
+	esac
+
+	for actual_url in $(candidate_urls "$url" "$mirror"); do
+		case "$downloader" in
+			curl)
+				curl -fsSL --connect-timeout "$connect_timeout" --max-time "$transfer_timeout" \
+					--retry 2 --retry-delay 5 --retry-all-errors \
+					-A "luci-app-homeproxy" \
+					-o "$out" "$actual_url" >/dev/null 2>&1
+				rc=$?
+				;;
+			wget)
+				wget -q --timeout="$transfer_timeout" --tries=3 \
+					--user-agent="luci-app-homeproxy" \
+					-O "$out" "$actual_url" >/dev/null 2>&1
+				rc=$?
+				;;
+			*)
+				return 1
+				;;
+		esac
+
+		if [ "$rc" -eq 0 ] && [ -s "$out" ]; then
+			return 0
+		fi
+		rm -f "$out"
+	done
+
+	return 1
+}
+
+# Best-effort SHA-256 verification. reF1nd does not publish per-asset checksums
+# for this release, so when no checksum can be located we log a warning and let
+# the install proceed (rather than blocking it). If a checksum IS found and does
+# not match, the install is aborted.
+verify_sha256() {
+	local asset="$1" file="$2" base sum_url expected sum
+	base="${asset%.tar.gz}"
+	sum_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}.sha256"
+
+	if download_file "$sum_url" "${CACHE_DIR}/${asset}.sha256" checksum auto; then
+		expected="$(awk '{print $1}' "${CACHE_DIR}/${asset}.sha256" 2>/dev/null | head -n1)"
+	fi
+
+	if [ -z "$expected" ]; then
+		log_download "未找到 ${asset} 的官方 SHA256 校验和，跳过校验（作者后续可能提供）"
+		return 0
+	fi
+
+	sum="$(sha256_of "$file")"
+	if [ "$sum" = "$expected" ]; then
+		log_download "SHA256 校验通过：${sum}"
+		return 0
+	fi
+
+	log_download "SHA256 校验失败：期望 ${expected}，实际 ${sum}（拒绝安装）"
+	return 1
+}
+
+# ---------- cache / install ----------
+clear_cache() {
+	rm -rf "${CACHE_DIR}"
+	mkdir -p "${CACHE_DIR}"
+}
+
+record_state() {
+	local version="$1" arch="$2" dir tmp
+	dir="$(dirname "$STATE_FILE")"
+	mkdir -p "$dir" 2>/dev/null
+	tmp="${STATE_FILE}.$$"
+	{
+		echo "version=${version}"
+		echo "arch=${arch}"
+		echo "time=$(date '+%Y-%m-%d %H:%M:%S')"
+	} >"$tmp" 2>/dev/null && mv -f "$tmp" "$STATE_FILE" 2>/dev/null
+}
+
+installed_core_version() {
+	[ -x "$CORE_BIN" ] || return 1
+	"$CORE_BIN" version 2>/dev/null | sed -n 's/^sing-box version //p' | head -n1
+}
+
+extract_and_install() {
+	local archive="$1" tmp_dir bin rc
+
+	tmp_dir="$(mktemp -d "${CACHE_DIR}/extract.XXXXXX")" || return 1
+	tar -xzf "$archive" -C "$tmp_dir" >/dev/null 2>&1 || { rm -rf "$tmp_dir"; return 1; }
+
+	bin="$(find "$tmp_dir" -type f -name sing-box 2>/dev/null | head -n1)"
+	if [ -z "$bin" ]; then
+		log_download "压缩包内未找到 sing-box 可执行文件"
+		rm -rf "$tmp_dir"
+		return 1
+	fi
+
+	chmod 0755 "$bin" 2>/dev/null
+	# Best-effort health check: a wrong-arch binary would fail to exec. If it
+	# fails for another reason we still install, since arch selection is correct.
+	if ! "$bin" version >/dev/null 2>&1; then
+		log_download "内核健康检查未通过（可能缺少运行依赖），仍尝试安装"
+	fi
+
+	if ! mv -f "$bin" "$CORE_BIN"; then
+		rm -rf "$tmp_dir"
+		return 1
+	fi
+	chmod 0755 "$CORE_BIN" 2>/dev/null
+	chown root:root "$CORE_BIN" 2>/dev/null
+	rm -rf "$tmp_dir"
+	return 0
+}
+
+# Download and install the matching reF1nd core for the given arch/asset.
+download_and_install() {
+	local arch="$1" asset="$2"
+	local asset_url rc
+
+	clear_cache
+
+	asset_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}"
+	log_download "开始下载 reF1nd 内核：${asset}（架构 ${arch}）"
+
+	if ! download_file "$asset_url" "${CACHE_DIR}/${asset}" asset auto; then
+		log_download "下载失败：${asset}（已尝试 gh-proxy 与 github 故障转移）"
+		return 1
+	fi
+
+	log_download "下载完成，开始校验与安装"
+
+	if ! verify_sha256 "$asset" "${CACHE_DIR}/${asset}"; then
+		rm -f "${CACHE_DIR}/${asset}"
+		return 1
+	fi
+
+	if ! extract_and_install "${CACHE_DIR}/${asset}"; then
+		log_download "安装失败：${asset}"
+		return 1
+	fi
+
+	record_state "$REFIND_VERSION" "$arch"
+	log_download "reF1nd 内核安装成功：$($CORE_BIN version 2>/dev/null | head -n1)"
+	return 0
+}
+
+# Ensure a usable reF1nd core is present. Returns 0 when /usr/bin/sing-box
+# exists (correct version, or at least an existing binary), 1 otherwise.
+ensure_core() {
+	local arch asset cur_ver
+
+	arch="$(detect_arch_name)"
+	log_download "检测到设备架构：${arch}"
+
+	if [ "$arch" = "unsupported" ]; then
+		log_download "当前架构暂不支持，reF1nd 尚未提供该架构二进制（作者后续可能提供）"
+		[ -x "$CORE_BIN" ] && return 0
+		return 1
+	fi
+
+	if ! asset="$(asset_name_for_arch "$arch")"; then
+		log_download "架构 ${arch} 暂无可下载的 reF1nd 二进制程序（作者后续可能提供）"
+		[ -x "$CORE_BIN" ] && return 0
+		return 1
+	fi
+
+	cur_ver="$(installed_core_version)"
+	if [ -x "$CORE_BIN" ] && [ "$cur_ver" = "$REFIND_VERSION" ]; then
+		log_download "reF1nd 内核已是最新版本：${cur_ver}"
+		return 0
+	fi
+
+	if download_and_install "$arch" "$asset"; then
+		return 0
+	fi
+
+	# Download failed: fall back to any existing binary so the service can still
+	# attempt to run (it may be a stale but working version).
+	if [ -x "$CORE_BIN" ]; then
+		log_download "reF1nd 内核下载/更新失败，继续使用已有内核（版本 $(installed_core_version)）"
+		return 0
+	fi
+
+	log_download "reF1nd 内核缺失且下载失败，无法启动服务"
+	return 1
+}
+
+# Force a re-download regardless of the installed version.
+update_core() {
+	local arch asset
+	arch="$(detect_arch_name)"
+	if [ "$arch" = "unsupported" ]; then
+		log_download "当前架构暂不支持，reF1nd 尚未提供该架构二进制"
+		echo "unsupported"
+		return 1
+	fi
+	if ! asset="$(asset_name_for_arch "$arch")"; then
+		log_download "架构 ${arch} 暂无可下载的 reF1nd 二进制程序"
+		echo "no_asset"
+		return 1
+	fi
+	if download_and_install "$arch" "$asset"; then
+		echo "ok"
+		return 0
+	fi
+	echo "failed"
+	return 1
+}
+
+# Print machine-readable status for the LuCI backend.
+print_status() {
+	local arch cur_ver asset
+	arch="$(detect_arch_name)"
+	cur_ver="$(installed_core_version)"
+	if asset="$(asset_name_for_arch "$arch")"; then
+		asset_available="1"
+	else
+		asset_available="0"
+		asset=""
+	fi
+	[ -z "$cur_ver" ] && cur_ver="-"
+	echo "arch=${arch}"
+	echo "asset_available=${asset_available}"
+	echo "asset=${asset}"
+	echo "installed_version=${cur_ver}"
+	echo "refind_version=${REFIND_VERSION}"
+}
+
+main() {
+	local cmd="${1:-ensure}"
+	case "$cmd" in
+		ensure)  ensure_core ;;
+		update)  update_core ;;
+		status)  print_status ;;
+		*)
+			echo "Usage: $0 {ensure|update|status}" >&2
+			exit 2
+			;;
+	esac
+}
+
+main "$@"
