@@ -13,7 +13,7 @@ LUCI_PKGARCH:=all
 LUCI_DEPENDS:= \
 	+firewall4 \
 	+dnsmasq-full \
-	+ip-full \
+	+ip \
 	+kmod-tun \
 	+kmod-nft-tproxy \
 	+ca-bundle \
@@ -53,5 +53,21 @@ fi
 endef
 
 include $(TOPDIR)/feeds/luci/luci.mk
+
+# ---------------------------------------------------------------------------
+# Translations
+#
+# luci.mk ships translations as a *separate* luci-i18n-<app>-<lang> package,
+# which means luci-app-homeproxy itself never contains any .lmo and the UI
+# falls back to English. This project intentionally publishes exactly one
+# architecture-independent package, so compile the Simplified Chinese catalog
+# straight into the main package, at the same path the per-language i18n
+# packages install to.
+# ---------------------------------------------------------------------------
+define Build/Compile
+	$(INSTALL_DIR) $(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n
+	po2lmo $(CURDIR)/po/zh_Hans/homeproxy.po \
+		$(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
+endef
 
 # call BuildPackage - OpenWrt buildroot signature
