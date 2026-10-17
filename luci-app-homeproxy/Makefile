@@ -58,16 +58,20 @@ include $(TOPDIR)/feeds/luci/luci.mk
 # Translations
 #
 # luci.mk ships translations as a *separate* luci-i18n-<app>-<lang> package,
-# which means luci-app-homeproxy itself never contains any .lmo and the UI
-# falls back to English. This project intentionally publishes exactly one
-# architecture-independent package, so compile the Simplified Chinese catalog
-# straight into the main package, at the same path the per-language i18n
-# packages install to.
+# so luci-app-homeproxy itself never contains any .lmo and the UI falls back
+# to English. This project publishes exactly one architecture-independent
+# package, so the Simplified Chinese catalog must end up *inside* the main
+# package at the same path the per-language i18n packages install to:
+#   /usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
+#
+# IMPORTANT: a `define Build/Compile` hook CANNOT be used for this. luci.mk
+# calls `$(eval $(call BuildPackage,...))` on its very last line *during the
+# include*, which expands `$(Build/Compile)` / `$(Build/Prepare)` /
+# `$(Package/.../install)` at that moment -- before any definition placed
+# after the include can take effect (verified against openwrt include/
+# package.mk). The .lmo is therefore precompiled into the package's root/
+# tree by CI (.github/workflows/build.yml) right before the build, so
+# luci.mk's own Build/Prepare copies it into the package. See build.yml.
 # ---------------------------------------------------------------------------
-define Build/Compile
-	$(INSTALL_DIR) $(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n
-	po2lmo $(CURDIR)/po/zh_Hans/homeproxy.po \
-		$(PKG_BUILD_DIR)/root/usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
-endef
 
 # call BuildPackage - OpenWrt buildroot signature
