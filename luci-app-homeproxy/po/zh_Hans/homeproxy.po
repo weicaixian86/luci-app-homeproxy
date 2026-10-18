@@ -2546,7 +2546,7 @@ msgstr "用于解析域名形式的DNS，如：https://dns.alidns.com/dns-query�
 msgid "Tag of an outbound for connecting to the dns server."
 msgstr "用于连接到 DNS 服务器的出站标签。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1399
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2143
 msgid "Tag of the outbound to download rule set."
 msgstr "用于下载规则集的出站标签。"
 
@@ -3423,11 +3423,6 @@ msgstr "打开面板"
 msgid "Upload Panel ZIP"
 msgstr "上传面板ZIP"
 
-#~ msgid "Real Proxy"
-#~ msgstr "Real Proxy"
-
-#~ msgid "HTTP3"
-#~ msgstr "HTTP3"
 msgid "Aliyun Connection"
 msgstr "阿里连接"
 
@@ -3524,4 +3519,16 @@ msgid "unavailable"
 msgstr "不可用"
 
 msgid "Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, \"?\", \"#\" or \"%\"."
-msgstr "将作为 sing-box 出站标识（tag）与显示名，支持中文。需唯一，且不能包含斜杠、问号、井号、百分号。"
+msgstr "支持中文需唯一，且不能包含斜杠、问号、井号、百分号。"
+
+msgid "Used as the displayed routing rule name. Chinese is supported. It must be unique."
+msgstr "作为路由规则的显示名，支持中文。需唯一。"
+
+msgid "Used as the displayed DNS server name. Chinese is supported. It must be unique."
+msgstr "作为 DNS 服务器的显示名，支持中文。需唯一。"
+
+msgid "Used as the displayed DNS rule name. Chinese is supported. It must be unique."
+msgstr "作为 DNS 规则的显示名，支持中文。需唯一。"
+
+msgid "Used as the displayed server name. Chinese is supported. It must be unique."
+msgstr "作为服务器的显示名，支持中文。需唯一。"

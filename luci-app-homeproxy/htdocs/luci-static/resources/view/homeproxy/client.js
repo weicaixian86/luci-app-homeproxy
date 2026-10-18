@@ -365,8 +365,30 @@ function renderRuleSetAdd(section, extra_class) {
 	let hintEl = E('div', { 'class': 'cbi-value-description' }, baseHint);
 
 	nameEl.style.display = 'none';
-	nameEl.parentNode.insertBefore(tagEl, nameEl);
-	nameEl.parentNode.appendChild(hintEl);
+
+	/* Upstream wraps the hidden name input in an anonymous <div> and puts the
+	   add button as a *sibling* of that wrapper. Rebuild the controls so the
+	   visible tag input and the add button share one flex row and the hint sits
+	   on its own line below. Otherwise the button is rendered below the input. */
+	el.style.display = 'block';
+
+	const wrapper = nameEl.parentNode;
+	const row = E('div', { 'class': 'cbi-section-create-row' });
+	row.style.display = 'flex';
+	row.style.alignItems = 'center';
+	row.style.gap = '.4em';
+	row.style.flexWrap = 'wrap';
+
+	row.appendChild(tagEl);     /* visible tag input */
+	row.appendChild(nameEl);    /* hidden original, still used by handleAdd() */
+	row.appendChild(button);    /* add button, same row as the input */
+	el.appendChild(row);
+	el.appendChild(hintEl);     /* hint below the row */
+
+	/* The original wrapper is now empty; drop it so it cannot affect layout. */
+	if (wrapper && wrapper.parentNode === el && wrapper.childElementCount === 0)
+		wrapper.remove();
+
 	button.disabled = true;
 
 	let syncSectionName = () => {
@@ -1251,7 +1273,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Routing rule'), _('Add a routing rule'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
+		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
+			_('Used as the displayed routing rule name. Chinese is supported. It must be unique.'));
 
 		ss.tab('field_other', _('Other fields'));
 		ss.tab('field_host', _('Host/IP fields'));
@@ -1591,7 +1614,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('DNS server'), _('Add a DNS server'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
+		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
+			_('Used as the displayed DNS server name. Chinese is supported. It must be unique.'));
 
 		so = ss.option(form.Value, 'label', _('Label'));
 		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
@@ -1765,7 +1789,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('DNS rule'), _('Add a DNS rule'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
+		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
+			_('Used as the displayed DNS rule name. Chinese is supported. It must be unique.'));
 
 		ss.tab('field_other', _('Other fields'));
 		ss.tab('field_host', _('Host/IP fields'));
@@ -2120,7 +2145,7 @@ return view.extend({
 			delete this.keylist;
 			delete this.vallist;
 
-			this.value('', _('Default'));
+			this.value('', _('Default outbound (fallback)'));
 			this.value('direct-out', _('Direct'));
 			uci.sections(data[0], 'routing_node', (res) => {
 				if (res.enabled === '1')
@@ -2129,6 +2154,7 @@ return view.extend({
 
 			return this.super('load', section_id);
 		}
+		so.default = 'direct-out';
 		so.depends('type', 'remote');
 
 		so = ss.option(form.Value, 'remote_path', _('Path'));

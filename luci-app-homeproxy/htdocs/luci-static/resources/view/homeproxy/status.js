@@ -97,19 +97,19 @@ function getConnStat(o, site) {
 /* Brand logos are inlined so the cards render without external assets and
    without pulling remote images into the router's web UI. */
 const connLogos = {
-	aliyun: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+	aliyun: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="24" height="24">' +
 		'<path fill="#ff6a00" d="M7.2 18.6a4.7 4.7 0 0 1 0-9.4 6.6 6.6 0 0 1 12.4 1.6 4 4 0 0 1-1.1 7.8z"/>' +
 		'</svg>',
-	google: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">' +
+	google: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="24" height="24">' +
 		'<path fill="#ea4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
 		'<path fill="#4285f4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
 		'<path fill="#fbbc05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
 		'<path fill="#34a853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
 		'</svg>',
-	github: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
+	github: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="24" height="24">' +
 		'<path fill="#1f2328" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.04-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68.78 1.31.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>' +
 		'</svg>',
-	youtube: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+	youtube: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" width="24" height="24">' +
 		'<path fill="#ff0033" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>' +
 		'</svg>'
 };
@@ -223,6 +223,15 @@ function getResVersion(o, type) {
 return view.extend({
 	render() {
 		let m, s, o;
+
+		/* The card styles below are not part of any stylesheet shipped with
+		   the package, so they have to be injected here. Without them the
+		   brand SVGs keep their intrinsic size and overflow the page. */
+		if (!document.getElementById('homeproxy-connect-css')) {
+			const style = E('style', { 'id': 'homeproxy-connect-css' });
+			style.textContent = css;
+			document.head.appendChild(style);
+		}
 
 		hp.installCloseButtonText();
 

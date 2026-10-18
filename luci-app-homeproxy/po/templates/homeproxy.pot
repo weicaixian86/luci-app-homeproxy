@@ -2501,7 +2501,7 @@ msgstr ""
 msgid "Tag of an outbound for connecting to the dns server."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1399
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2143
 msgid "Tag of the outbound to download rule set."
 msgstr ""
 
@@ -3469,4 +3469,16 @@ msgid "Download / update failed. See log for details."
 msgstr ""
 
 msgid "unavailable"
+msgstr ""
+
+msgid "Used as the displayed routing rule name. Chinese is supported. It must be unique."
+msgstr ""
+
+msgid "Used as the displayed DNS server name. Chinese is supported. It must be unique."
+msgstr ""
+
+msgid "Used as the displayed DNS rule name. Chinese is supported. It must be unique."
+msgstr ""
+
+msgid "Used as the displayed server name. Chinese is supported. It must be unique."
 msgstr ""

@@ -68,67 +68,98 @@ const SubscriptionList = form.Value.extend({
 
 	renderWidget(section_id, _option_index, cfgvalue) {
 		const value = cfgvalue || { urls: [], names: [] },
+		      cols = 'minmax(8em, 13em) minmax(16em, 1fr) 3em',
+		      rowStyle = 'display: grid; grid-template-columns: ' + cols + '; gap: .3em .4em; align-items: center;',
 		      rows = E('div', {
 			id: this.cbid(section_id),
 			'class': 'homeproxy-subscription-list',
-			'style': 'display: flex; flex-direction: column; gap: .45em; width: min(100%, 42em);'
+			'style': 'display: flex; flex-direction: column; gap: .3em; width: min(100%, 44em);'
 		});
 
+		/* Header and rows share the same fixed column template, so the
+		   name / address column labels line up exactly above their inputs. */
+		/* Keep the header font-size at inherited level so that the `em` units in
+		   grid-template-columns resolve exactly like the body rows; only shrink
+		   the label text itself, otherwise the header columns become narrower
+		   than the input columns and the second label drifts left. */
 		rows.appendChild(E('div', {
 			'class': 'homeproxy-subscription-header',
-			'style': 'display: grid; grid-template-columns: minmax(8em, 13em) minmax(16em, 1fr) auto; gap: .35em; color: var(--text-muted, #6b7280); font-size: 90%;'
+			'style': rowStyle + ' align-items: end; color: var(--text-muted, #6b7280);'
 		}, [
-			E('span', {}, [ _('\u8ba2\u9605\u540d\u79f0') ]),
-			E('span', {}, [ _('\u8ba2\u9605\u5730\u5740') ]),
+			E('span', { 'style': 'font-size: 90%;' }, [ _('\u8ba2\u9605\u540d\u79f0') ]),
+			E('span', { 'style': 'font-size: 90%;' }, [ _('\u8ba2\u9605\u5730\u5740') ]),
 			E('span')
 		]));
+
+		const body = E('div', {
+			'class': 'homeproxy-subscription-body',
+			'style': 'display: flex; flex-direction: column; gap: .3em;'
+		});
+		rows.appendChild(body);
+
+		/* No placeholder: the column headers already label the fields, so
+		   repeated placeholder text on the empty row is redundant. */
+		const makeInput = (cls, val) => E('input', {
+			'type': 'text',
+			'class': 'cbi-input-text ' + cls,
+			'value': val || '',
+			'style': 'width: 100%; box-sizing: border-box;'
+		});
 
 		const addRow = (name, url) => {
 			const row = E('div', {
 				'class': 'homeproxy-subscription-row',
-				'style': 'display: grid; grid-template-columns: minmax(8em, 13em) minmax(16em, 1fr) auto; gap: .35em; align-items: stretch;'
-			}, [
-				E('input', {
-					'type': 'text',
-					'class': 'cbi-input-text subscription-name',
-					'placeholder': _('\u8ba2\u9605\u540d\u79f0'),
-					'value': name || '',
-					'style': 'width: 100%; box-sizing: border-box;'
-				}),
-				E('input', {
-					'type': 'text',
-					'class': 'cbi-input-text subscription-url',
-					'placeholder': _('\u8ba2\u9605\u5730\u5740'),
-					'value': url || '',
-					'style': 'width: 100%; box-sizing: border-box;'
-				}),
-				E('button', {
-					'type': 'button',
-					'class': 'cbi-button cbi-button-remove',
-					'click': () => {
-						row.remove();
-						if (!rows.querySelector('.homeproxy-subscription-row'))
-							addRow('', '');
-					}
-				}, [ '-' ])
-			]);
+				'style': rowStyle
+			});
 
-			if (rows._addButton)
-				rows.insertBefore(row, rows._addButton);
-			else
-				rows.appendChild(row);
+			row.appendChild(makeInput('subscription-name', name));
+			row.appendChild(makeInput('subscription-url', url));
+			row.appendChild(E('button', {
+				'type': 'button',
+				'class': 'cbi-button cbi-button-remove',
+				'style': 'width: 100%; box-sizing: border-box; min-width: 0;',
+				'click': () => row.remove()
+			}, [ '-' ]));
+
+			body.insertBefore(row, newRow);
+			return row;
 		};
 
-		for (let i = 0; i < Math.max(value.urls.length, 1); i++)
-			addRow(value.names[i], value.urls[i]);
+		/* Trailing "new entry" row: both inputs and the + button share a single
+		   grid line, matching the DynamicList (Filter keywords) look. */
+		const newName = makeInput('subscription-name', ''),
+		      newUrl = makeInput('subscription-url', ''),
+		      newRow = E('div', {
+			'class': 'homeproxy-subscription-row homeproxy-subscription-new',
+			'style': rowStyle
+		});
 
-		rows._addButton = E('button', {
+		newRow.appendChild(newName);
+		newRow.appendChild(newUrl);
+		newRow.appendChild(E('button', {
 			'type': 'button',
 			'class': 'cbi-button cbi-button-add',
-			'style': 'width: 3em;',
-			'click': () => addRow('', '')
-		}, [ '+' ]);
-		rows.appendChild(rows._addButton);
+			'style': 'width: 100%; box-sizing: border-box; min-width: 0;',
+			'click': () => {
+				let name = newName.value.trim(),
+				    url = newUrl.value.trim();
+
+				if (!name && !url) {
+					newName.focus();
+					return;
+				}
+
+				addRow(name, url);
+				newName.value = '';
+				newUrl.value = '';
+				newName.focus();
+			}
+		}, [ '+' ]));
+		body.appendChild(newRow);
+
+		for (let i = 0; i < value.urls.length; i++)
+			if (value.urls[i] || value.names[i])
+				addRow(value.names[i], value.urls[i]);
 
 		return rows;
 	},

@@ -456,6 +456,7 @@ return baseclass.extend({
 			button = el.querySelector('.cbi-section-create > .cbi-button-add'),
 			uciconfig = section.uciconfig || section.map.config,
 			sectiontype = section.sectiontype,
+			mapData = section.map && section.map.data,
 		labelEl = E('input', {
 			'type': 'text',
 			'class': nameEl.className
@@ -463,14 +464,60 @@ return baseclass.extend({
 		hintEl = E('div', { 'class': 'cbi-value-description' }, baseHint);
 
 		nameEl.style.display = 'none';
-		nameEl.parentNode.insertBefore(labelEl, nameEl);
-		nameEl.parentNode.appendChild(hintEl);
+
+		/* Upstream wraps the hidden name input in an anonymous <div> and puts
+		   the add button as a *sibling* of that wrapper. Rebuild the controls
+		   so the visible label input and the add button share one flex row and
+		   the hint sits on its own line below. Otherwise the button is rendered
+		   below the input, which looks misaligned. */
+		el.style.display = 'block';
+
+		const wrapper = nameEl.parentNode;
+		const row = E('div', { 'class': 'cbi-section-create-row' });
+		row.style.display = 'flex';
+		row.style.alignItems = 'center';
+		row.style.gap = '.4em';
+		row.style.flexWrap = 'wrap';
+
+		row.appendChild(labelEl);   /* visible label input */
+		row.appendChild(nameEl);    /* hidden original, still used by handleAdd() */
+		row.appendChild(button);    /* add button, same row as the input */
+		el.appendChild(row);
+		el.appendChild(hintEl);     /* hint below the row */
+
+		/* The original wrapper is now empty; drop it so it cannot affect layout. */
+		if (wrapper && wrapper.parentNode === el && wrapper.childElementCount === 0)
+			wrapper.remove();
+
 		button.disabled = true;
 
 		/* Attach the typed label to the new section synchronously, i.e.
 		   before the edit modal is rendered. Otherwise the modal loads an
 		   empty label and the section ends up displayed as its internal id
-		   (e.g. 'routing_node_section_1') instead of the typed name. */
+		   (e.g. 'routing_node_section') instead of the typed name.
+
+		   LuCI's add button calls map.data.add() directly (handleAdd() in
+		   form.js) and never section.add(), so the label is attached at the
+		   data layer. The section.add hook below only covers callers that
+		   go through the section object itself. */
+		if (mapData && !mapData.__hpPendingLabels) {
+			mapData.__hpPendingLabels = { };
+
+			const origDataAdd = mapData.add;
+			mapData.add = function(config, type, name) {
+				const sid = origDataAdd.apply(this, arguments),
+				      key = config + '|' + type,
+				      label = this.__hpPendingLabels[key];
+
+				if (label && sid)
+					uci.set(config, sid, 'label', label);
+
+				delete this.__hpPendingLabels[key];
+
+				return sid;
+			};
+		}
+
 		if (!section.__hpCreateLabelHooked) {
 			section.__hpCreateLabelHooked = true;
 
@@ -493,6 +540,9 @@ return baseclass.extend({
 			let label = (labelEl.value || '').trim();
 			hintEl.textContent = baseHint;
 			section.__hpCreateLabel = label;
+
+			if (mapData && mapData.__hpPendingLabels)
+				mapData.__hpPendingLabels[uciconfig + '|' + sectiontype] = label;
 
 			if (!label) {
 				nameEl.value = '';
@@ -528,10 +578,14 @@ return baseclass.extend({
 		labelEl.addEventListener('input', syncSectionName);
 		labelEl.addEventListener('blur', syncSectionName);
 
-		/* Capture phase runs before LuCI's own add handler, so the section
-		   id and the pending label are ready when the section is created. */
-		button.addEventListener('click', (ev) => {
-			syncSectionName();
+		/* The pending label has to be up to date before LuCI's own click
+		   handler runs, otherwise the section is created without a label.
+		   The listener sits on the container `el` with capture = true so it
+		   fires during the capture phase, before LuCI's handler on the
+		   button; a listener bound to the button itself would run too late. */
+		el.addEventListener('click', (ev) => {
+			if (ev.target === button || button.contains(ev.target))
+				syncSectionName();
 		}, true);
 
 		button.addEventListener('click', () => {

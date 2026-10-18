@@ -157,7 +157,8 @@ return view.extend({
 		s.nodescriptions = true;
 		s.modaltitle = L.bind(hp.loadModalTitle, this, _('Server'), _('Add a server'), data[0]);
 		s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		s.renderSectionAdd = L.bind(hp.renderSectionAdd, this, s);
+		s.renderSectionAdd = L.bind(hp.renderSectionAdd, this, s, null,
+			_('Used as the displayed server name. Chinese is supported. It must be unique.'));
 
 		o = s.option(form.Value, 'label', _('Label'));
 		o.load = L.bind(hp.loadDefaultLabel, this, data[0]);
