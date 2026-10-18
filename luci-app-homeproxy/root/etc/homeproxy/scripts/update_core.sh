@@ -37,7 +37,11 @@ REFIND_REPO="reF1nd/sing-box-releases"
 REFIND_TAG="v1.14.3-reF1nd"
 REFIND_VERSION="1.14.3-reF1nd"
 
-GH_PROXY_PREFIX="https://gh-proxy.com/"
+# Mirror prefixes tried in order before falling back to github.com itself.
+# GitHub release downloads are frequently unreachable from mainland China, so
+# several public accelerators are attempted first; the list is kept in one
+# place so it is easy to extend.
+GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghfast.top/ https://ghproxy.net/ https://hub.gitmirror.com/"
 
 . /lib/functions.sh 2>/dev/null || true
 
@@ -185,15 +189,14 @@ get_downloader() {
 # Produce the ordered list of candidate URLs for a github release asset.
 # Auto mode tries gh-proxy first, then github (failover).
 candidate_urls() {
-	local url="$1" mirror="${2:-auto}"
-	case "$mirror" in
-		github)
-			printf '%s\n' "$url" ;;
-		gh-proxy)
-			printf '%s\n' "${GH_PROXY_PREFIX}${url}" "$url" ;;
-		*)
-			printf '%s\n' "${GH_PROXY_PREFIX}${url}" "$url" ;;
-	esac
+	local url="$1" mirror="${2:-auto}" prefix
+
+	[ "$mirror" = "github" ] && { printf '%s\n' "$url"; return 0; }
+
+	for prefix in $GH_PROXY_PREFIXES; do
+		printf '%s\n' "${prefix}${url}"
+	done
+	printf '%s\n' "$url"
 }
 
 # Download a file with curl --retry 2 inside each mirror, then fail over.
@@ -220,8 +223,9 @@ download_file() {
 				rc=$?
 				;;
 			wget)
-				wget -q --timeout="$transfer_timeout" --tries=3 \
-					--user-agent="luci-app-homeproxy" \
+				# BusyBox wget is common on OpenWrt and rejects some GNU-only
+				# long options, so only universally supported flags are used.
+				wget -q -T "$transfer_timeout" \
 					-O "$out" "$actual_url" >/dev/null 2>&1
 				rc=$?
 				;;
@@ -231,8 +235,21 @@ download_file() {
 		esac
 
 		if [ "$rc" -eq 0 ] && [ -s "$out" ]; then
+			if [ "$purpose" = "asset" ]; then
+				local magic
+				magic="$(dd if="$out" bs=1 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+				# A misbehaving mirror may answer with an HTML error page and
+				# HTTP 200; only a real gzip stream is accepted.
+				if [ "$magic" != "1f8b" ]; then
+					log_download "下载内容不是 gzip 压缩包（疑似错误页面），继续尝试下一个源：${actual_url}"
+					rm -f "$out"
+					continue
+				fi
+			fi
+			log_download "下载成功：${actual_url}"
 			return 0
 		fi
+		log_download "下载失败（返回码 ${rc}）：${actual_url}"
 		rm -f "$out"
 	done
 
@@ -244,13 +261,20 @@ download_file() {
 # the install proceed (rather than blocking it). If a checksum IS found and does
 # not match, the install is aborted.
 verify_sha256() {
-	local asset="$1" file="$2" base sum_url expected sum
+	local asset="$1" file="$2" base sum_url expected='' sum
 	base="${asset%.tar.gz}"
 	sum_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}.sha256"
 
 	if download_file "$sum_url" "${CACHE_DIR}/${asset}.sha256" checksum auto; then
 		expected="$(awk '{print $1}' "${CACHE_DIR}/${asset}.sha256" 2>/dev/null | head -n1)"
 	fi
+
+	# Mirrors may answer a missing checksum with an error page (HTTP 200), so
+	# only a real 64-character hex digest is accepted as a checksum.
+	case "$expected" in
+		*[!0-9a-fA-F]*) expected='' ;;
+	esac
+	[ ${#expected} -eq 64 ] || expected=''
 
 	if [ -z "$expected" ]; then
 		log_download "未找到 ${asset} 的官方 SHA256 校验和，跳过校验（作者后续可能提供）"
@@ -389,6 +413,19 @@ ensure_core() {
 		return 0
 	fi
 
+	# Last resort: an archive placed manually by the user, e.g. copied over
+	# SSH when every mirror is unreachable:
+	#   scp sing-box-*-linux-amd64-musl.tar.gz root@router:/etc/homeproxy/sing-box.tar.gz
+	if [ -f "${HP_DIR}/sing-box.tar.gz" ]; then
+		log_download "尝试安装手动放置的内核：${HP_DIR}/sing-box.tar.gz"
+		if extract_and_install "${HP_DIR}/sing-box.tar.gz"; then
+			record_state "$REFIND_VERSION" "$arch"
+			log_download "手动放置的内核安装成功：$($CORE_BIN version 2>/dev/null | head -n1)"
+			return 0
+		fi
+		log_download "手动放置的内核安装失败：${HP_DIR}/sing-box.tar.gz"
+	fi
+
 	log_download "reF1nd 内核缺失且下载失败，无法启动服务"
 	return 1
 }
@@ -411,6 +448,15 @@ update_core() {
 		echo "ok"
 		return 0
 	fi
+
+	# Same manual-archive fallback as ensure_core(), so the UI button can also
+	# recover when no mirror is reachable.
+	if [ -f "${HP_DIR}/sing-box.tar.gz" ] && extract_and_install "${HP_DIR}/sing-box.tar.gz"; then
+		record_state "$REFIND_VERSION" "$arch"
+		echo "ok"
+		return 0
+	fi
+
 	echo "failed"
 	return 1
 }

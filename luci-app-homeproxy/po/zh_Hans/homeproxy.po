@@ -18,7 +18,7 @@ msgstr "%s 日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:500
 msgid "%s ms"
-msgstr "%s 毫秒"
+msgstr "%s ms"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1896
 msgid "%s nodes removed"
@@ -421,6 +421,14 @@ msgstr "拥塞控制算法"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:232
 msgid "Connection check"
 msgstr "连接检查"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:166
+msgid "Core download"
+msgstr "内核下载"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:171
+msgid "Panel download"
+msgstr "面板下载"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:278
 msgid "Custom routing"
@@ -1069,10 +1077,6 @@ msgstr "HTTPS"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:404
 msgid "HTTPUpgrade"
 msgstr "HTTPUpgrade"
-
-#: htdocs/luci-static/resources/view/homeproxy/status.js
-msgid "Handshake %s ms"
-msgstr "握手 %s 毫秒"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:744
 msgid "Handshake server address"

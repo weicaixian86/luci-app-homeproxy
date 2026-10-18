@@ -29,6 +29,75 @@ log() {
 	echo -e "$(date "+%Y-%m-%d %H:%M:%S") [DAEMON] $*" >> "$LOG_PATH"
 }
 
+# Panel download log: mirror the RPC panelLog() format so the "Logs" page
+# shows one consistent timeline for both the UI-triggered and the
+# boot-time (service-start) panel downloads.
+panel_log() {
+	mkdir -p "$RUN_DIR" 2>/dev/null
+	local msg="面板: $*"
+	printf '%s %s\n' "$(date "+%Y-%m-%d %H:%M:%S")" "$msg" >> "$RUN_DIR/panel_download.log" 2>/dev/null
+	logger -t homeproxy "$msg" 2>/dev/null
+}
+
+# Auto-install the dashboard panel on service start, exactly like the kernel
+# is fetched by update_core.sh ensure: only when it is missing, and only in the
+# routing modes that actually use the panel. The sing-box core must be running
+# first (the clash API serves /upgrade/ui), so we poll for readiness, then let
+# the core download and extract the dashboard itself.
+ensure_panel() {
+	local routing_mode controller port secret panel_dir base_url tmp ok
+
+	routing_mode="$(uci -q get "$CONF.config.routing_mode" 2>/dev/null)"
+	[ "$routing_mode" = "custom" ] || [ "$routing_mode" = "bypass_mainland_china" ] || return 0
+
+	controller="$(uci -q get "$CONF.clash_api.external_controller" 2>/dev/null)"
+	port="${controller##*:}"
+	[ -n "$port" ] || port="9090"
+	secret="$(uci -q get "$CONF.clash_api.secret" 2>/dev/null)"
+	panel_dir="$(uci -q get "$CONF.clash_api.external_ui" 2>/dev/null)"
+	[ -n "$panel_dir" ] || panel_dir="$HP_DIR/run/ui"
+
+	if [ -f "$panel_dir/index.html" ]; then
+		panel_log "面板已存在，跳过自动下载。"
+		return 0
+	fi
+
+	base_url="http://127.0.0.1:${port}"
+	tmp="/tmp/homeproxy_panel_upgrade.res"
+
+	# Wait for the core's clash API to come up (procd launches it asynchronously).
+	local i ready=0
+	for i in $(seq 1 30); do
+		if wget -qO- -T 3 "${base_url}/version" >/dev/null 2>&1; then
+			ready=1
+			break
+		fi
+		sleep 2
+	done
+
+	if [ "$ready" != "1" ]; then
+		panel_log "下载失败：等待 clash API 就绪超时（端口 ${port}），请稍后从页面手动更新面板。"
+		return 1
+	fi
+
+	panel_log "开始下载（服务启动自动触发）"
+	if [ -n "$secret" ]; then
+		wget -qO- -T 120 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+	else
+		wget -qO- -T 120 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+	fi
+
+	if [ "$ok" = "1" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$tmp"; then
+		panel_log "下载成功"
+		rm -f "$tmp"
+		return 0
+	fi
+
+	panel_log "下载失败：clash API 未返回成功状态，请稍后从页面手动更新面板。"
+	rm -f "$tmp"
+	return 1
+}
+
 init_logs() {
 	mkdir -p "$RUN_DIR"
 	mkdir -p "$HP_DIR/run/ui"
@@ -98,11 +167,11 @@ start_service() {
 	# supported (or the download fails), do not start the service.
 	if [ -x "$CORE_SCRIPT" ]; then
 		if ! "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
-			log "Error: sing-box core is not available (unsupported arch or download failed)."
+			log "错误：sing-box 内核不可用（架构不支持或下载失败）。"
 			return 1
 		fi
 	else
-		log "Error: core download script $CORE_SCRIPT is missing."
+		log "错误：内核下载脚本 $CORE_SCRIPT 缺失。"
 		return 1
 	fi
 
@@ -138,10 +207,10 @@ start_service() {
 		ucode -S "$HP_DIR/scripts/generate_client.uc" 2>>"$LOG_PATH"
 
 		if [ ! -e "$RUN_DIR/sing-box-c.json" ]; then
-			log "Error: failed to generate client configuration."
+			log "错误：生成客户端配置失败。"
 			return 1
 		elif ! "$PROG" check --config "$RUN_DIR/sing-box-c.json" 2>>"$LOG_PATH"; then
-			log "Error: wrong client configuration detected."
+			log "错误：检测到客户端配置有误。"
 			return 1
 		fi
 
@@ -252,10 +321,10 @@ start_service() {
 		ucode -S "$HP_DIR/scripts/generate_server.uc" 2>>"$LOG_PATH"
 
 		if [ ! -e "$RUN_DIR/sing-box-s.json" ]; then
-			log "Error: failed to generate server configuration."
+			log "错误：生成服务端配置失败。"
 			return 1
 		elif ! "$PROG" check --config "$RUN_DIR/sing-box-s.json" 2>>"$LOG_PATH"; then
-			log "Error: wrong server configuration detected."
+			log "错误：检测到服务端配置有误。"
 			return 1
 		fi
 
@@ -319,7 +388,12 @@ start_service() {
 	fw4 reload >"/dev/null" 2>&1
 	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
 
-	log "sing-box $(sing-box version -n) started."
+	log "sing-box $(sing-box version -n) 已启动。"
+
+	# Auto-install the dashboard panel after the core is up, the same way the
+	# kernel is fetched at start. Run detached so service start is not blocked
+	# while the core boots and the clash API becomes reachable.
+	( ensure_panel ) &
 }
 
 stop_service() {
@@ -380,7 +454,7 @@ stop_service() {
 	rm -f "$RUN_DIR/sing-box-c.json" "$RUN_DIR/sing-box-s.json"
 	init_logs
 
-	log "Service stopped."
+	log "服务已停止。"
 }
 
 service_stopped() {
@@ -395,7 +469,7 @@ service_stopped() {
 }
 
 reload_service() {
-	log "Reloading service..."
+	log "正在重新加载服务..."
 
 	stop
 	start

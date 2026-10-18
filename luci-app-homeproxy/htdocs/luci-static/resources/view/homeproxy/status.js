@@ -141,14 +141,10 @@ function renderConnCards() {
 				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
 					if (ret.result && ret.latency != null) {
 						result.style.setProperty('color', 'green');
-						result.textContent = _('%s ms').format(ret.latency);
-
-						/* Response time excludes the handshake, same as passwall;
-						   the handshake time is shown next to it for reference. */
-						if (ret.handshake != null)
-							result.appendChild(E('span', {
-								'style': 'margin-left:6px;color:#7d8aa0;font-size:11px;font-weight:400'
-							}, _('Handshake %s ms').format(ret.handshake)));
+						/* Keep the unit short ("ms") and untranslated so the card
+						   stays compact; the handshake time is intentionally not
+						   shown here. */
+						result.textContent = '%s ms'.format(ret.latency);
 					} else {
 						result.style.setProperty('color', '#ff4d35');
 						result.textContent = _('failed');

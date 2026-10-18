@@ -6,7 +6,9 @@
 				"/etc/homeproxy/scripts/update_subscriptions.uc": [ "exec" ],
 				"/var/run/homeproxy/homeproxy.log": [ "read" ],
 				"/var/run/homeproxy/sing-box-c.log": [ "read" ],
-				"/var/run/homeproxy/sing-box-s.log": [ "read" ]
+				"/var/run/homeproxy/sing-box-s.log": [ "read" ],
+				"/var/run/homeproxy/core_download.log": [ "read" ],
+				"/var/run/homeproxy/panel_download.log": [ "read" ]
 			},
 			"ubus": {
 				"rc": [ "*" ],

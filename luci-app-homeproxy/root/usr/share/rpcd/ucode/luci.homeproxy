@@ -7,7 +7,7 @@
 
 'use strict';
 
-import { access, error, lstat, popen, readfile, writefile } from 'fs';
+import { access, lstat, popen, readfile, writefile } from 'fs';
 import { cursor } from 'uci';
 
 /* Kanged from ucode/luci */
@@ -56,6 +56,14 @@ function clashAPIRequest(api, method, path, timeout) {
 
 function getPanelDir(uci) {
 	return trim(uci.get('homeproxy', 'clash_api', 'external_ui') || `${HP_DIR}/run/ui`);
+}
+
+/* Append a timestamped panel-download event to the dedicated runtime log
+   file so it is visible in the HomeProxy "Logs" page, and also keep a syslog
+   copy for system-level debugging. */
+function panelLog(msg) {
+	const line = sprintf('面板: %s', msg);
+	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/panel_download.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
 }
 
 function hasDirectoryContent(directory) {
@@ -422,12 +430,12 @@ const methods = {
 				return { result: false, error: 'panel_backup_failed' };
 
 			const download_url = uci.get('homeproxy', 'clash_api', 'external_ui_download_url') || '';
-			system(sprintf('logger -t homeproxy "Panel: downloading (attempt %d): %s"', attempt, shellquote(download_url)));
+			panelLog(sprintf('开始下载（第 %d 次尝试）：%s', attempt, shellquote(download_url)));
 
 			const payload = clashAPIRequest(getClashAPIConfig(uci), 'POST', '/upgrade/ui', 120);
 			if (payload === null) {
 				restorePanelBackup(panel_dir, backup_dir);
-				system(sprintf('logger -t homeproxy "Panel: download failed (attempt %d): Clash API unavailable (timeout 120s)%s"', attempt, manual_hint));
+				panelLog(sprintf('下载失败（第 %d 次尝试）：Clash API 不可用（超时 120 秒）%s', attempt, manual_hint));
 				return { result: false, error: 'clash_api_unavailable' };
 			}
 
@@ -438,14 +446,14 @@ const methods = {
 
 			if (data?.status === 'ok') {
 				cleanupPanelBackup(backup_dir);
-				system(sprintf('logger -t homeproxy "Panel: downloaded successfully (attempt %d)"', attempt));
+				panelLog(sprintf('下载成功（第 %d 次尝试）', attempt));
 				return { result: true };
 			}
 
 			if (!restorePanelBackup(panel_dir, backup_dir))
 				return { result: false, error: 'panel_restore_failed' };
 
-			system(sprintf('logger -t homeproxy "Panel: download failed (attempt %d): %s%s"', attempt, shellquote(data?.message || data?.error || 'unknown error'), manual_hint));
+			panelLog(sprintf('下载失败（第 %d 次尝试）：%s%s', attempt, shellquote(data?.message || data?.error || 'unknown error'), manual_hint));
 			return {
 				result: false,
 				error: data?.message || data?.error || 'update_panel_failed'
@@ -1346,7 +1354,7 @@ const methods = {
 	log_clean: {
 		args: { type: 'type' },
 		call: function(req) {
-			if (!(req.args?.type in ['homeproxy', 'sing-box-c', 'sing-box-s']))
+			if (!(req.args?.type in ['homeproxy', 'sing-box-c', 'sing-box-s', 'core_download', 'panel_download']))
 				return { result: false, error: 'illegal type' };
 
 			const filestat = lstat(`${RUN_DIR}/${req.args?.type}.log`);
@@ -1487,6 +1495,39 @@ const methods = {
 				}
 			}
 
+			if (!version) {
+				/* apk-based images (e.g. OpenWrt snapshots) do not use opkg,
+				 * so parse their installed-package database as a last resort. */
+				const apkdb = readfile('/lib/apk/db/installed');
+
+				if (apkdb) {
+					const lines = split(apkdb, '\n');
+					let current = '';
+
+					for (let i = 0; i < length(lines); i++) {
+						const line = trim(lines[i]);
+						let matched;
+
+						if (!length(line)) {
+							current = '';
+							continue;
+						}
+
+						matched = match(line, /^P:(.*)$/);
+						if (matched) {
+							current = trim(matched[1]);
+							continue;
+						}
+
+						matched = match(line, /^V:(.*)$/);
+						if (matched && current == 'luci-app-homeproxy') {
+							version = trim(matched[1]);
+							break;
+						}
+					}
+				}
+			}
+
 			return { version: version || '-' };
 		}
 	},
@@ -1494,8 +1535,15 @@ const methods = {
 	resources_get_version: {
 		args: { type: 'type' },
 		call: function(req) {
-			const version = trim(readfile(`${HP_DIR}/resources/${req.args?.type}.ver`));
-			return { version: version, error: error() };
+			/* Derive the error flag from the actual read result. Do NOT use
+			 * fs error() here: it reports the *last* fs error of the persistent
+			 * rpcd ucode VM and is cleared on read, so a leftover error from an
+			 * unrelated earlier fs operation would make the first queried row
+			 * (china_ip4) falsely report "not found" even though its .ver file
+			 * was read successfully. */
+			const version = trim(readfile(`${HP_DIR}/resources/${req.args?.type}.ver`) || '');
+
+			return { version: version, error: length(version) ? null : 'not found' };
 		}
 	},
 	resources_update: {

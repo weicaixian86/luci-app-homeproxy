@@ -411,6 +411,14 @@ msgstr ""
 msgid "Connection check"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:166
+msgid "Core download"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:171
+msgid "Panel download"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:278
 msgid "Custom routing"
 msgstr ""
@@ -1045,10 +1053,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1208
 #: htdocs/luci-static/resources/view/homeproxy/server.js:404
 msgid "HTTPUpgrade"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/status.js
-msgid "Handshake %s ms"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:744

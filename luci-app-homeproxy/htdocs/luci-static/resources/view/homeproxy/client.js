@@ -1165,9 +1165,7 @@ return view.extend({
 
 		so = ss.option(form.DynamicList, 'filter_keywords', _('Filter keywords'),
 			_('Drop/keep nodes that contain the specific keywords. <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions">Regex</a> is supported.'));
-		so.depends('node', 'urltest');
-		so.depends('node', 'selector');
-		so.depends('filter_nodes', /^(blacklist|whitelist)$/);
+		so.depends({ 'node': /^(urltest|selector)$/, 'filter_nodes': /^(blacklist|whitelist)$/ });
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
@@ -1370,19 +1368,12 @@ return view.extend({
 			_('Match user name.'));
 		so.modalonly = true;
 
-		so = ss.taboption('field_other', hp.CBIStaticList, 'rule_set', _('Rule set'),
+		so = ss.taboption('field_other', hp.CBIMultiValue, 'rule_set', _('Rule set'),
 			_('Match rule set.'));
-		so.load = function(section_id) {
-			delete this.keylist;
-			delete this.vallist;
-
-			uci.sections(data[0], 'ruleset', (res) => {
-				if (res.enabled === '1')
-					this.value(res['.name'], res.tag || res.label);
-			});
-
-			return this.super('load', section_id);
-		}
+		uci.sections(data[0], 'ruleset', (res) => {
+			if (res.enabled === '1')
+				so.value(res['.name'], res.tag || res.label);
+		});
 		so.modalonly = true;
 
 		so = ss.taboption('field_other', form.Flag, 'rule_set_ip_cidr_match_source', _('Rule set IP CIDR as source IP'),
@@ -1879,19 +1870,12 @@ return view.extend({
 			_('Match user name.'));
 		so.modalonly = true;
 
-		so = ss.taboption('field_other', hp.CBIStaticList, 'rule_set', _('Rule set'),
+		so = ss.taboption('field_other', hp.CBIMultiValue, 'rule_set', _('Rule set'),
 			_('Match rule set.'));
-		so.load = function(section_id) {
-			delete this.keylist;
-			delete this.vallist;
-
-			uci.sections(data[0], 'ruleset', (res) => {
-				if (res.enabled === '1')
-					this.value(res['.name'], res.tag || res.label);
-			});
-
-			return this.super('load', section_id);
-		}
+		uci.sections(data[0], 'ruleset', (res) => {
+			if (res.enabled === '1')
+				so.value(res['.name'], res.tag || res.label);
+		});
 		so.modalonly = true;
 
 		so = ss.taboption('field_other', form.Flag, 'rule_set_ip_cidr_match_source', _('Rule set IP CIDR as source IP'),

@@ -42,6 +42,11 @@ endef
 # under the sing-box account.
 define Package/luci-app-homeproxy/postinst
 #!/bin/sh
+# Record the installed package version so the UI (and any script) can show it
+# without relying on parsing the package manager database, which differs
+# between opkg- and apk-based images.
+mkdir -p "$${IPKG_INSTROOT}/usr/share/homeproxy" 2>/dev/null
+echo "$(PKG_VERSION)-$(PKG_RELEASE)" > "$${IPKG_INSTROOT}/usr/share/homeproxy/version" 2>/dev/null
 if [ -z "$${IPKG_INSTROOT}" ]; then
 	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/group" 2>/dev/null && ! grep -qs '^sing-box:' /etc/group 2>/dev/null; then
 		addgroup -S sing-box 2>/dev/null || true

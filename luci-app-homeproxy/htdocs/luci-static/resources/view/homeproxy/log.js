@@ -34,7 +34,7 @@ const css = '				\
 const hp_dir = '/var/run/homeproxy';
 
 function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
-	const filename = o.option.split('_')[1];
+	const filename = o.option.replace(/^_/, '').replace(/_logview$/, '');
 
 	let section, log_level_el;
 	switch (filename) {
@@ -159,6 +159,16 @@ return view.extend({
 
 		o = s.option(form.DummyValue, '_sing-box-c_logview');
 		o.render = L.bind(getRuntimeLog, this, o, _('sing-box client'));
+
+		/* Download log of the runtime reF1nd sing-box core (update_core.sh).
+		   Kept here so a failed core download can be diagnosed from the UI. */
+		o = s.option(form.DummyValue, '_core_download_logview');
+		o.render = L.bind(getRuntimeLog, this, o, _('Core download'));
+
+		/* Download log of the Clash-API dashboard panel (clash_api_update_panel).
+		   Records each auto-download attempt triggered by "Save & Apply". */
+		o = s.option(form.DummyValue, '_panel_download_logview');
+		o.render = L.bind(getRuntimeLog, this, o, _('Panel download'));
 
 		/* The server log level belongs to the 'server' section, so register
 		   it in the map as well to make sure the change gets committed. */
