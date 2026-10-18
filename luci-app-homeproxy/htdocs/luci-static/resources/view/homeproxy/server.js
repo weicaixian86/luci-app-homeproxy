@@ -129,7 +129,7 @@ return view.extend({
 		hp.installCloseButtonText();
 
 		m = new form.Map('homeproxy', _('HomeProxy Server'),
-			_('The modern ImmortalWrt proxy platform for ARM64/AMD64.'));
+			_('HomeProxy can work as a proxy server.'));
 
 		s = m.section(form.TypedSection);
 		s.render = function() {
@@ -195,6 +195,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'address', _('Listen address'));
 		o.placeholder = '::';
+		o.default = '::';
 		o.datatype = 'ipaddr';
 		o.modalonly = true;
 
@@ -863,6 +864,7 @@ return view.extend({
 			_('In seconds.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '300';
+		o.default = '300';
 		o.depends({'network': 'tcp', '!reverse': true});
 		o.modalonly = true;
 

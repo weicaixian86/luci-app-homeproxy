@@ -1028,17 +1028,14 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	}
 
 	o = s.option(form.Value, 'label', _('Label'),
-		_('Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
+		_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 	o.load = L.bind(hp.loadDefaultLabel, this, data[0]);
 	o.validate = function(section_id, value) {
 		let r = hp.validateUniqueValue(data[0], 'node', 'label', section_id, value);
 		if (r !== true)
 			return r;
 
-		if (value && !value.match(/^[A-Za-z0-9_.-]+$/))
-			return _('Expecting: %s').format(_('valid tag'));
-
-		return true;
+		return hp.validateOutboundTag(section_id, value);
 	};
 	o.modalonly = true;
 
@@ -1117,6 +1114,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		_('Interval checking for idle sessions, in seconds.'));
 	o.datatype = 'uinteger';
 	o.placeholder = '30';
+	o.default = '30';
 	o.depends('type', 'anytls');
 	o.modalonly = true;
 
@@ -1124,6 +1122,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		_('In the check, close sessions that have been idle for longer than this, in seconds.'));
 	o.datatype = 'uinteger';
 	o.placeholder = '30';
+	o.default = '30';
 	o.depends('type', 'anytls');
 	o.modalonly = true;
 
@@ -1131,6 +1130,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		_('In the check, at least the first <code>n</code> idle sessions are kept open.'));
 	o.datatype = 'uinteger';
 	o.placeholder = '0';
+	o.default = '0';
 	o.depends('type', 'anytls');
 	o.modalonly = true;
 	/* AnyTLS config end */
@@ -1146,6 +1146,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		_('Port hopping interval in seconds.'));
 	o.datatype = 'uinteger';
 	o.placeholder = '30';
+	o.default = '30';
 	o.depends({'type': 'hysteria', 'hysteria_hopping_port': /[\s\S]/});
 	o.depends({'type': 'hysteria2', 'hysteria_hopping_port': /[\s\S]/});
 	o.modalonly = true;
@@ -1540,6 +1541,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	o = s.option(form.Value, 'wireguard_mtu', _('MTU'));
 	o.datatype = 'range(0,9000)';
 	o.placeholder = '1408';
+	o.default = '1408';
 	o.depends('type', 'wireguard');
 	o.modalonly = true;
 
@@ -1823,7 +1825,7 @@ return view.extend({
 
 		/* Node settings start */
 		/* User nodes start */
-		s.tab('node', _('Nodes'));
+		s.tab('node', _('Self-built nodes'));
 		o = s.taboption('node', form.SectionValue, '_node', form.GridSection, 'node');
 		ss = renderNodeSettings(o.subsection, data, features, main_node, routing_mode, node_latency_row_state);
 		ss.addremove = true;
@@ -1896,7 +1898,8 @@ return view.extend({
 			])
 		}
 		ss.renderSectionAdd = function(/* ... */) {
-			let el = hp.renderSectionAdd(this, arguments[0]);
+			let el = hp.renderSectionAdd(this, arguments[0],
+				_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 
 			el.appendChild(E('button', {
 				'class': 'cbi-button cbi-button-add',
@@ -1922,7 +1925,7 @@ return view.extend({
 		/* Node settings end */
 
 		/* Subscriptions settings start */
-		s.tab('subscription', _('Subscriptions'));
+		s.tab('subscription', _('Subscription links'));
 
 		o = s.taboption('subscription', form.Flag, 'auto_update', _('Auto update'),
 			_('Auto update subscriptions and geodata.'));
@@ -1973,6 +1976,7 @@ return view.extend({
 
 		o = s.taboption('subscription', form.Value, 'user_agent', _('User-Agent'));
 		o.placeholder = 'Wget/1.21 (HomeProxy, like v2rayN)';
+		o.default = 'Wget/1.21 (HomeProxy, like v2rayN)';
 
 		o = s.taboption('subscription', form.Flag, 'allow_insecure', _('Allow insecure'),
 			_('Allow insecure connection by default when add nodes from subscriptions.') +

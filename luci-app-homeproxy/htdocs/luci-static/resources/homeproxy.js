@@ -429,13 +429,10 @@ return baseclass.extend({
 		if (!ucisection)
 			return '';
 
-		let label = uci.get(uciconfig, ucisection, 'label');
-		if (label) {
-			return label;
-		} else {
-			uci.set(uciconfig, ucisection, 'label', ucisection);
-			return ucisection;
-		}
+		/* Never write the internal section id back into 'label': doing so
+		   turns names like 'routing_node_section_1' into permanent labels
+		   that then show up in the LuCI table and in Clash dashboards. */
+		return uci.get(uciconfig, ucisection, 'label') || ucisection;
 	},
 
 	loadModalTitle(title, addtitle, uciconfig, ucisection) {
@@ -451,26 +448,51 @@ return baseclass.extend({
 		return (prefix || 'cfg') + '_' + (section_id || 'section');
 	},
 
-	renderSectionAdd(section, extra_class) {
+	renderSectionAdd(section, extra_class, hint) {
+		const baseHint = hint || '';
+
 		let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
 			nameEl = el.querySelector('.cbi-section-create-name'),
 			button = el.querySelector('.cbi-section-create > .cbi-button-add'),
 			uciconfig = section.uciconfig || section.map.config,
 			sectiontype = section.sectiontype,
-			labelEl = E('input', {
-				'type': 'text',
-				'class': nameEl.className
-			}),
-			hintEl = E('div', { 'class': 'cbi-value-description' });
+		labelEl = E('input', {
+			'type': 'text',
+			'class': nameEl.className
+		}),
+		hintEl = E('div', { 'class': 'cbi-value-description' }, baseHint);
 
 		nameEl.style.display = 'none';
 		nameEl.parentNode.insertBefore(labelEl, nameEl);
 		nameEl.parentNode.appendChild(hintEl);
 		button.disabled = true;
 
+		/* Attach the typed label to the new section synchronously, i.e.
+		   before the edit modal is rendered. Otherwise the modal loads an
+		   empty label and the section ends up displayed as its internal id
+		   (e.g. 'routing_node_section_1') instead of the typed name. */
+		if (!section.__hpCreateLabelHooked) {
+			section.__hpCreateLabelHooked = true;
+
+			const origAdd = section.add;
+			section.add = function(name) {
+				const sid = origAdd.apply(this, arguments),
+				      id = (typeof sid === 'string' && sid) ? sid : name,
+				      pending = this.__hpCreateLabel;
+
+				this.__hpCreateLabel = '';
+
+				if (pending && id)
+					uci.set(this.map.config, id, 'label', pending);
+
+				return sid;
+			};
+		}
+
 		const syncSectionName = () => {
 			let label = (labelEl.value || '').trim();
-			hintEl.textContent = '';
+			hintEl.textContent = baseHint;
+			section.__hpCreateLabel = label;
 
 			if (!label) {
 				nameEl.value = '';
@@ -505,6 +527,12 @@ return baseclass.extend({
 
 		labelEl.addEventListener('input', syncSectionName);
 		labelEl.addEventListener('blur', syncSectionName);
+
+		/* Capture phase runs before LuCI's own add handler, so the section
+		   id and the pending label are ready when the section is created. */
+		button.addEventListener('click', (ev) => {
+			syncSectionName();
+		}, true);
 
 		button.addEventListener('click', () => {
 			syncSectionName();
@@ -670,6 +698,19 @@ return baseclass.extend({
 			if (duplicate)
 				return _('Expecting: %s').format(_('unique value'));
 		}
+
+		return true;
+	},
+
+	validateOutboundTag(section_id, value) {
+		/* sing-box outbound tags and Clash API proxy names are UTF-8, so
+		   Chinese labels are supported. Only reject characters that break
+		   tag handling or get rewritten by generate_client.uc. */
+		if (!value)
+			return _('Expecting: %s').format(_('non-empty value'));
+
+		if (/[\/\\?#%\r\n\t]/.test(value))
+			return _('Expecting: %s').format(_('valid tag'));
 
 		return true;
 	},

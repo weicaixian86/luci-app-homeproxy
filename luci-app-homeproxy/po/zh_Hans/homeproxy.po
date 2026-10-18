@@ -724,6 +724,10 @@ msgstr ""
 "developer.mozilla.org/zh-CN/docs/Web/JavaScript/Guide/Regular_Expressions\">"
 "正则表达式</a>。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1100
+msgid "Drop/keep specific nodes from outbounds."
+msgstr "从出站中 丢弃/保留 指定节点"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1807
 msgid "Drop/keep specific nodes from subscriptions."
 msgstr "从订阅中 丢弃/保留 指定节点"
@@ -925,7 +929,7 @@ msgstr "上传 %s 失败，错误：%s。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "panel ZIP package"
-msgstr "面版ZIP压缩包"
+msgstr "面板ZIP压缩包"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "unknown error"
@@ -934,16 +938,16 @@ msgstr "未知错误"
 #: htdocs/luci-static/resources/homeproxy.js
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Backup panel failed."
-msgstr "备份面版失败。"
+msgstr "备份面板失败。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Restore panel failed."
-msgstr "恢复面版失败。"
+msgstr "恢复面板失败。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Panel ZIP file is empty."
-msgstr "面版 ZIP 文件为空。"
+msgstr "面板 ZIP 文件为空。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "The unzip command is unavailable."
@@ -951,11 +955,11 @@ msgstr "unzip 命令不可用。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Invalid panel ZIP file."
-msgstr "面版 ZIP 文件无效。"
+msgstr "面板 ZIP 文件无效。"
 
 #: htdocs/luci-static/resources/homeproxy.js
 msgid "Install panel failed."
-msgstr "安装面版失败。"
+msgstr "安装面板失败。"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:140
 msgid "Fatal"
@@ -1131,6 +1135,10 @@ msgstr "HomeProxy"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:129
 msgid "HomeProxy Server"
 msgstr "HomeProxy 服务端"
+
+#: htdocs/luci-static/resources/view/homeproxy/server.js:132
+msgid "HomeProxy can work as a proxy server."
+msgstr "HomeProxy 可作为代理服务端"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:965
 msgid "Hop interval"
@@ -1768,10 +1776,6 @@ msgstr "节点"
 msgid "Node Settings"
 msgstr "节点设置"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1650
-msgid "Nodes"
-msgstr "节点"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1017
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1167
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1205
@@ -2258,8 +2262,8 @@ msgstr "规则集 IP CIDR 作为源 IP"
 msgid "Tag"
 msgstr "标签"
 
-msgid "Used as the sing-box rule set tag and display name. Only letters, digits, \".\", \"_\" and \"-\" are allowed, and it must be unique."
-msgstr "同时作为 sing-box 规则集标签与显示名，仅允许字母、数字、\".\"、\"_\"、\"-\"，且需唯一。"
+msgid "Used as the sing-box rule set tag and display name. Only letters, digits, \".\", \"_\" and \"-\" are allowed. Chinese is not supported. It must be unique."
+msgstr "同时作为 sing-box 规则集标签与显示名。仅允许字母、数字、\".\"、\"_\"、\"-\"，不支持中文，且需唯一。"
 
 msgid "valid tag"
 msgstr "有效标签"
@@ -2287,6 +2291,10 @@ msgstr "策略节点"
 
 msgid "List of policy groups."
 msgstr "策略组列表。"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js
+msgid "Subscription links"
+msgstr "订阅连接"
 
 msgid "Subscription nodes"
 msgstr "订阅节点"
@@ -2338,6 +2346,10 @@ msgstr "保存当前设置"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1834
 msgid "Save subscriptions settings"
 msgstr "保存订阅设置"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js
+msgid "Self-built nodes"
+msgstr "自建节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1178
 #: htdocs/luci-static/resources/view/homeproxy/server.js:156
@@ -3339,7 +3351,7 @@ msgstr "有效 uuid"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Panel Settings"
-msgstr "面版设置"
+msgstr "面板设置"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "UI path"
@@ -3471,23 +3483,33 @@ msgstr "重启服务"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Update Panel"
-msgstr "更新面版"
+msgstr "更新面板"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Update panel failed."
-msgstr "更新面版失败"
+msgstr "更新面板失败"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Clash API unavailable."
 msgstr "Clash API 不可用"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Panel downloaded."
+msgstr "面板已下载。"
+
+msgid "Panel download failed after 3 attempts (Clash API unavailable). Please install the panel manually."
+msgstr "面板下载失败，已重试 3 次（Clash API 不可用）。请手动安装面板。"
+
+msgid "Panel download failed after 3 attempts. Please install the panel manually."
+msgstr "面板下载失败，已重试 3 次。请手动安装面板。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Open Panel"
-msgstr "打开面版"
+msgstr "打开面板"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Upload Panel ZIP"
-msgstr "上传面版ZIP"
+msgstr "上传面板ZIP"
 
 #~ msgid "Real Proxy"
 #~ msgstr "Real Proxy"
@@ -3551,5 +3573,5 @@ msgstr "下载 / 更新失败，请查看日志。"
 msgid "unavailable"
 msgstr "不可用"
 
-msgid "Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique."
-msgstr "将作为 sing-box 出站标识（tag）与显示名。仅允许字母、数字、\".\"、\"_\"、\"-\"，且需唯一。"
+msgid "Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, \"?\", \"#\" or \"%\"."
+msgstr "将作为 sing-box 出站标识（tag）与显示名，支持中文。需唯一，且不能包含斜杠、问号、井号、百分号。"

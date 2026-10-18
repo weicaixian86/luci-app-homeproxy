@@ -61,6 +61,7 @@ const callPackageVersion = rpc.declare({
 const callUpdatePanel = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'clash_api_update_panel',
+	params: ['only_if_missing', 'attempt', 'total'],
 	expect: { '': {} }
 });
 
@@ -166,7 +167,7 @@ function getClashApiInfo() {
 }
 
 function updateDashboard() {
-	return callUpdatePanel().then((res) => {
+	return callUpdatePanel(false, 1, 1).then((res) => {
 		if (!res?.result) {
 			let message = res?.error;
 			if (message === 'update_panel_failed')
@@ -184,6 +185,49 @@ function updateDashboard() {
 	}).catch((err) => {
 		ui.addNotification(null, E('p', err.message || err), 'danger');
 	});
+}
+
+function ensurePanelInstalled() {
+	const tryUpdate = (remaining) => callUpdatePanel(true, 3 - remaining + 1, 3).then((res) => {
+		if (res?.result)
+			return res;
+
+		/* Single backend request already enforces a 120s timeout
+		   (clashAPIRequest(..., 120)): each panel download that exceeds
+		   120s is reported back as 'clash_api_unavailable'. On a download
+		   timeout or a download failure, retry the download. The 2s gap
+		   lets the homeproxy service finish restarting after 'Save & Apply'
+		   before the next attempt. tryUpdate(3) = 3 download attempts in
+		   total (1 initial + 2 retries). */
+		if ((res?.error === 'clash_api_unavailable' || res?.error === 'update_panel_failed') && remaining > 1)
+			return new Promise((resolve) => setTimeout(resolve, 2000))
+				.then(() => tryUpdate(remaining - 1));
+
+		return res;
+	});
+
+	return tryUpdate(3).then((res) => {
+		if (res?.result) {
+			if (!res.skipped)
+				ui.addNotification(null, E('p', _('Panel downloaded.')), 'info');
+			return res;
+		}
+
+		let message;
+		if (res?.error === 'clash_api_unavailable')
+			message = _('Panel download failed after 3 attempts (Clash API unavailable). Please install the panel manually.');
+		else if (res?.error === 'update_panel_failed')
+			message = _('Panel download failed after 3 attempts. Please install the panel manually.');
+		else if (res?.error === 'panel_backup_failed')
+			message = _('Backup panel failed.');
+		else if (res?.error === 'panel_restore_failed')
+			message = _('Restore panel failed.');
+		else
+			message = _('Update failed.');
+
+		ui.addNotification(null, E('p', message || _('Update failed.')), 'danger');
+		return res;
+	}).catch(() => {});
 }
 
 function openDashboard() {
@@ -310,11 +354,15 @@ function renderRuleSetAdd(section, extra_class) {
 	    button = el.querySelector('.cbi-section-create > .cbi-button-add'),
 	    uciconfig = section.uciconfig || section.map.config;
 
+	/* Rule set tags are also used to build the local .srs file name, so they
+	   stay ASCII-only. The hint below the create box makes that explicit. */
+	const baseHint = _('Used as the sing-box rule set tag and display name. Only letters, digits, ".", "_" and "-" are allowed. Chinese is not supported. It must be unique.');
+
 	let tagEl = E('input', {
 		'type': 'text',
 		'class': nameEl.className
 	});
-	let hintEl = E('div', { 'class': 'cbi-value-description' });
+	let hintEl = E('div', { 'class': 'cbi-value-description' }, baseHint);
 
 	nameEl.style.display = 'none';
 	nameEl.parentNode.insertBefore(tagEl, nameEl);
@@ -323,7 +371,7 @@ function renderRuleSetAdd(section, extra_class) {
 
 	let syncSectionName = () => {
 		let tag = (tagEl.value || '').trim();
-		hintEl.textContent = '';
+		hintEl.textContent = baseHint;
 
 		if (!tag) {
 			nameEl.value = '';
@@ -424,6 +472,7 @@ return view.extend({
 
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
+		let node_labels = {};
 		let subscription_groups = {};
 		let routing_groups = {};
 		let normalizeFormList = function(value) {
@@ -431,12 +480,39 @@ return view.extend({
 		};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
-			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '';
+			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '',
+			    nodefallback = (stubValidator.apply('ip6addr', nodeaddr) ?
+					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport,
+			    nodelabel = res.label || nodefallback;
 
-			proxy_nodes[res['.name']] =
-				String.format('[%s] %s', res.type, res.label || ((stubValidator.apply('ip6addr', nodeaddr) ?
-					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport));
+			node_labels[res['.name']] = nodelabel;
+			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, nodelabel);
 		});
+		/* Mirrors the generator's policy group node filter: keywords are
+		   regexes matched against the node display name (the outbound tag). */
+		let matchNodeFilter = function(node_id, filter_mode, filter_keywords) {
+			if (filter_mode !== 'whitelist' && filter_mode !== 'blacklist')
+				return true;
+
+			let keywords = normalizeFormList(filter_keywords);
+			if (!keywords.length)
+				return true;
+
+			let name = node_labels[node_id] || '',
+			    matched = false;
+
+			for (let keyword of keywords) {
+				try {
+					if (name && new RegExp(keyword).test(name)) {
+						matched = true;
+						break;
+					}
+				}
+				catch (e) {}
+			}
+
+			return (filter_mode === 'whitelist') ? matched : !matched;
+		};
 		let subscriptionUrls = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_url')),
 		    subscriptionNames = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_name'));
 		for (let i = 0; i < subscriptionUrls.length; i++) {
@@ -449,8 +525,9 @@ return view.extend({
 		uci.sections(data[0], 'routing_node', (res) => {
 			routing_groups[res['.name']] = res.label || res['.name'];
 		});
-		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes, policy_nodes, section_id) {
-			let nodes = [];
+		let collectSelectedRoutingNodes = function(groups, subscription_nodes, selected_nodes, policy_nodes, section_id, filter_mode, filter_keywords) {
+			let nodes = [],
+			    policies = [];
 			groups = normalizeFormList(groups);
 			subscription_nodes = normalizeFormList(subscription_nodes);
 			selected_nodes = normalizeFormList(selected_nodes);
@@ -467,10 +544,16 @@ return view.extend({
 				if (proxy_nodes[node] && !nodes.includes(node))
 					nodes.push(node);
 			for (let node of policy_nodes)
-				if (node !== section_id && routing_groups[node] && !nodes.includes(node))
-					nodes.push(node);
+				if (node !== section_id && routing_groups[node] && !policies.includes(node))
+					policies.push(node);
 
-			return nodes;
+			let filtered = nodes.filter((node) => matchNodeFilter(node, filter_mode, filter_keywords));
+
+			/* Same fallback as the generator: never end up with an empty list. */
+			if (!filtered.length && nodes.length)
+				filtered = nodes;
+
+			return filtered.concat(policies);
 		};
 
 		m = new form.Map('homeproxy', _('HomeProxy'),
@@ -509,7 +592,10 @@ return view.extend({
 				}, [ _('Restart Service') ])
 			];
 
-			if (routingMode === 'custom') {
+			/* The Clash API is enabled in both custom and
+			   bypass_mainland_china modes, so expose the panel actions
+			   in both instead of hiding them outside custom mode. */
+			if (routingMode === 'custom' || routingMode === 'bypass_mainland_china') {
 				actions.push(
 					E('button', {
 						'class': 'btn cbi-button cbi-button-positive',
@@ -576,12 +662,14 @@ return view.extend({
 			_('The test interval in seconds.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '180';
+		o.default = '180';
 		o.depends('main_node', 'urltest');
 
 		o = s.taboption('routing', form.Value, 'main_urltest_tolerance', _('Test tolerance'),
 			_('The test tolerance in milliseconds.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '50';
+		o.default = '50';
 		o.depends('main_node', 'urltest');
 
 		o = s.taboption('routing', form.ListValue, 'main_udp_node', _('Main UDP node'));
@@ -605,12 +693,14 @@ return view.extend({
 			_('The test interval in seconds.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '180';
+		o.default = '180';
 		o.depends('main_udp_node', 'urltest');
 
 		o = s.taboption('routing', form.Value, 'main_udp_urltest_tolerance', _('Test tolerance'),
 			_('The test tolerance in milliseconds.'));
 		o.datatype = 'uinteger';
 		o.placeholder = '50';
+		o.default = '50';
 		o.depends('main_udp_node', 'urltest');
 
 		o = s.taboption('routing', form.Value, 'dns_server', _('DNS server'),
@@ -764,6 +854,7 @@ return view.extend({
 			_('In seconds.'));
 		so.datatype = 'uinteger';
 		so.placeholder = '300';
+		so.default = '300';
 		so.depends('homeproxy.config.proxy_mode', 'redirect_tproxy');
 		so.depends('homeproxy.config.proxy_mode', 'redirect_tun');
 		so.depends('homeproxy.config.proxy_mode', 'tun');
@@ -832,20 +923,18 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Routing node'), _('Add a routing node'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
+		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
+			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 
 		so = ss.option(form.Value, 'label', _('Label'),
-			_('Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
+			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
 		so.validate = function(section_id, value) {
 			let r = hp.validateUniqueValue(data[0], 'routing_node', 'label', section_id, value);
 			if (r !== true)
 				return r;
 
-			if (value && !value.match(/^[A-Za-z0-9_.-]+$/))
-				return _('Expecting: %s').format(_('valid tag'));
-
-			return true;
+			return hp.validateOutboundTag(section_id, value);
 		};
 		so.modalonly = true;
 
@@ -1007,6 +1096,24 @@ return view.extend({
 		so.rmempty = true;
 		so.modalonly = true;
 
+		so = ss.option(form.ListValue, 'filter_nodes', _('Filter nodes'),
+			_('Drop/keep specific nodes from outbounds.'));
+		so.value('disabled', _('Disable'));
+		so.value('blacklist', _('Blacklist mode'));
+		so.value('whitelist', _('Whitelist mode'));
+		so.default = 'disabled';
+		so.rmempty = false;
+		so.depends('node', 'urltest');
+		so.depends('node', 'selector');
+		so.modalonly = true;
+
+		so = ss.option(form.DynamicList, 'filter_keywords', _('Filter keywords'),
+			_('Drop/keep nodes that contain the specific keywords. <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions">Regex</a> is supported.'));
+		so.depends('node', 'urltest');
+		so.depends('node', 'selector');
+		so.depends('filter_nodes', /^((?!(disabled)$).)+$/);
+		so.modalonly = true;
+
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
 			_('List of policy groups.'));
 		so.load = function(section_id) {
@@ -1038,10 +1145,12 @@ return view.extend({
 			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
 			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
 			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
-			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
+			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes')),
+			    filter_mode = this.section.formvalue(section_id, 'filter_nodes'),
+			    filter_keywords = normalizeFormList(this.section.formvalue(section_id, 'filter_keywords'));
 
 			this.value('', _('Default'));
-			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id))
+			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id, filter_mode, filter_keywords))
 				this.value(node, proxy_nodes[node] || routing_groups[node]);
 
 			return this.super('load', section_id);
@@ -1053,9 +1162,11 @@ return view.extend({
 			let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
 			    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
 			    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
-			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
+			    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes')),
+			    filter_mode = this.section.formvalue(section_id, 'filter_nodes'),
+			    filter_keywords = normalizeFormList(this.section.formvalue(section_id, 'filter_keywords'));
 
-			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id).includes(value))
+			if (!collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id, filter_mode, filter_keywords).includes(value))
 				return _('Invalid node');
 
 			return true;
@@ -1071,6 +1182,7 @@ return view.extend({
 		so = ss.option(form.Value, 'urltest_url', _('Test URL'),
 			_('The URL to test.'));
 		so.placeholder = 'https://www.gstatic.com/generate_204';
+		so.default = 'https://www.gstatic.com/generate_204';
 		so.validate = function(section_id, value) {
 			if (section_id && value) {
 				try {
@@ -1092,6 +1204,7 @@ return view.extend({
 			_('The test interval in seconds.'));
 		so.datatype = 'uinteger';
 		so.placeholder = '180';
+		so.default = '180';
 		so.validate = function(section_id, value) {
 			if (section_id && value) {
 				let idle_timeout = this.section.formvalue(section_id, 'idle_timeout') || '1800';
@@ -1108,6 +1221,7 @@ return view.extend({
 			_('The test tolerance in milliseconds.'));
 		so.datatype = 'uinteger';
 		so.placeholder = '50';
+		so.default = '50';
 		so.depends('node', 'urltest');
 		so.modalonly = true;
 
@@ -1115,6 +1229,7 @@ return view.extend({
 			_('The idle timeout in seconds.'));
 		so.datatype = 'uinteger';
 		so.placeholder = '1800';
+		so.default = '1800';
 		so.depends('node', 'urltest');
 		so.modalonly = true;
 
@@ -1914,7 +2029,7 @@ return view.extend({
 		ss.renderSectionAdd = L.bind(renderRuleSetAdd, this, ss);
 
 		so = ss.option(form.Value, 'tag', _('Label'),
-			_('Used as the sing-box rule set tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
+			_('Used as the sing-box rule set tag and display name. Only letters, digits, ".", "_" and "-" are allowed. Chinese is not supported. It must be unique.'));
 		so.rmempty = false;
 		so.load = function(section_id) {
 			if (!section_id)
@@ -2123,6 +2238,7 @@ return view.extend({
 
 		so = ss.option(form.Value, 'path', _('Persistent cache file path'));
 		so.placeholder = '/etc/homeproxy/cache.db';
+		so.default = '/etc/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
 		so = ss.option(form.ListValue, 'store_dns', _('Persist DNS cache'));
@@ -2283,7 +2399,7 @@ return view.extend({
 		/* Panel settings start */
 		s.tab('panel', _('Panel Settings'));
 		o = s.taboption('panel', form.SectionValue, '_clash_api', form.NamedSection, 'clash_api', 'homeproxy');
-		o.depends('routing_mode', 'custom');
+		o.depends({'routing_mode': /^(custom|bypass_mainland_china)$/});
 		ss = o.subsection;
 
 		so = ss.option(form.Value, 'external_ui', _('UI path'));
@@ -2304,23 +2420,18 @@ return view.extend({
 		};
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts');
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (gh-proxy)');
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版');
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
-		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
-		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD (gh-proxy)');
-		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
-		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord (gh-proxy)');
-		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
 		so.value('__custom__', _('Custom'));
-		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 		so.load = function(section_id) {
 			const value = uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default;
 			return (value in panelPresetUrls) ? value : '__custom__';
@@ -2374,6 +2485,20 @@ return view.extend({
 		so.default = 'rule';
 		so.rmempty = false;
 		/* Panel settings end */
+
+		/* After "Save & Apply" in custom mode, install the panel only when it is missing */
+		if (typeof m.handleSaveApply === 'function') {
+			const handleSaveApply = m.handleSaveApply;
+
+			m.handleSaveApply = function(ev, mode) {
+				const result = handleSaveApply.call(this, ev, mode);
+				const afterApply = () => ensurePanelInstalled();
+
+				return (result && typeof result.then === 'function')
+					? result.then(afterApply)
+					: afterApply();
+			};
+		}
 
 		return m.render();
 	}

@@ -98,7 +98,7 @@ const legacy_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest
 const legacy_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 const old_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
 const old_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-const default_panel_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+const default_panel_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 
 /* clash api panel options were introduced */
 if (!uci.get(uciconfig, uciclashapi))
@@ -108,7 +108,7 @@ if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui')))
 	uci.set(uciconfig, uciclashapi, 'external_ui', '/etc/homeproxy/run/ui');
 
 const panel_url = uci.get(uciconfig, uciclashapi, 'external_ui_download_url');
-if (isEmpty(panel_url) || panel_url === legacy_panel_url || panel_url === legacy_panel_proxy_url || panel_url === old_panel_proxy_url)
+if (isEmpty(panel_url) || panel_url === legacy_panel_url || panel_url === legacy_panel_proxy_url || panel_url === old_panel_url || panel_url === old_panel_proxy_url)
 	uci.set(uciconfig, uciclashapi, 'external_ui_download_url', default_panel_url);
 
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')))

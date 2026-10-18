@@ -14,7 +14,7 @@ import { connect } from 'ubus';
 import { cursor } from 'uci';
 
 import {
-	isEmpty, parseURL, strToBool, strToInt, strToTime,
+	isEmpty, parseURL, shellQuote, strToBool, strToInt, strToTime,
 	removeBlankAttrs, validation, HP_DIR, RUN_DIR
 } from 'homeproxy';
 
@@ -274,7 +274,50 @@ function filter_existing_nodes(nodes) {
 	});
 }
 
-function collect_group_nodes(groups, subscription_nodes, nodes, legacy_nodes) {
+/* Keep/drop nodes of a policy group according to the group's own node filter.
+   Keywords are matched (regex, unanchored) against the node display name, i.e.
+   the label used as the sing-box outbound tag. */
+function filter_group_nodes(nodes, mode, keywords) {
+	keywords = normalize_list(keywords);
+
+	if ((mode !== 'whitelist' && mode !== 'blacklist') || isEmpty(keywords) || isEmpty(nodes))
+		return nodes;
+
+	const kept = [];
+	for (let node in nodes) {
+		const name = section_display_name(uci.get_all(uciconfig, node)) || '';
+		let matched = false;
+
+		for (let keyword in keywords) {
+			let patten = null;
+
+			try {
+				patten = regexp(keyword);
+			} catch (e) {
+				patten = null;
+			}
+
+			if (patten !== null && !isEmpty(name) && match(name, patten)) {
+				matched = true;
+				break;
+			}
+		}
+
+		if (mode === 'whitelist' ? matched : !matched)
+			push(kept, node);
+	}
+
+	/* An empty outbound list makes sing-box refuse to start, so fall back to
+	   the unfiltered list instead of dropping every node. */
+	if (isEmpty(kept)) {
+		system(sprintf('logger -t homeproxy "Warning: node filter (%s) in policy group matched no node, filter ignored."', shellQuote(mode)));
+		return nodes;
+	}
+
+	return kept;
+}
+
+function collect_group_nodes(groups, subscription_nodes, nodes, legacy_nodes, filter_mode, filter_keywords) {
 	let result = [];
 
 	for (let group in normalize_list(groups))
@@ -295,7 +338,7 @@ function collect_group_nodes(groups, subscription_nodes, nodes, legacy_nodes) {
 		if (!~index(result, node))
 			push(result, node);
 
-	return result;
+	return filter_group_nodes(result, filter_mode, filter_keywords);
 }
 
 function collect_policy_nodes(nodes, current) {
@@ -365,6 +408,11 @@ function register_outbound_tag(section_id, display_name) {
 
 	const fallback_tag = `cfg-${section_id}-out`;
 	const base_tag = normalize_outbound_tag(display_name) || fallback_tag;
+
+	/* No readable label/address: the internal tag leaks into Clash
+	   dashboards (e.g. zashboard). Log it so it can be traced back. */
+	if (base_tag === fallback_tag)
+		system(sprintf('logger -t homeproxy "Warning: outbound %s has no label or address; falling back to internal tag %s, it will show as-is in Clash dashboards."', shellQuote(section_id), shellQuote(fallback_tag)));
 
 	tag = base_tag;
 	let suffix = 2;
@@ -715,8 +763,7 @@ clash_api = {
 	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
-	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
-	proxy_providers: build_proxy_providers()
+	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
 };
 /* Config helper end */
 
@@ -1077,7 +1124,7 @@ if (!isEmpty(main_node)) {
 
 		if (cfg.node === 'urltest') {
 			const legacy_nodes = (isEmpty(cfg.subscription_groups) && isEmpty(cfg.subscription_nodes) && isEmpty(cfg.selected_nodes)) ? cfg.urltest_nodes : null;
-			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes);
+			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes, cfg.filter_nodes, cfg.filter_keywords);
 			push(config.outbounds, {
 				type: 'urltest',
 				tag: get_section_outbound_tag(cfg['.name']),
@@ -1090,7 +1137,7 @@ if (!isEmpty(main_node)) {
 			});
 			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
 		} else if (cfg.node === 'selector') {
-			const selector_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null);
+			const selector_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
 			const selector_policy_list = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);
 			const selector_list = [...selector_node_list, ...filter(selector_policy_list, (l) => !~index(selector_node_list, l))];
 			const selector_default = (!isEmpty(cfg.selector_default) && ~index(selector_list, cfg.selector_default)) ? cfg.selector_default : null;
@@ -1351,6 +1398,13 @@ if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
 
 /* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
+	/* proxy_providers is a top-level field: nesting it inside clash_api
+	   triggers `unknown field "proxy_providers"` on sing-box startup.
+	   Only emit it when there is at least one provider. */
+	const proxy_providers = build_proxy_providers();
+	if (!isEmpty(proxy_providers))
+		config.proxy_providers = proxy_providers;
+
 	config.experimental = {
 		clash_api,
 		cache_file: {

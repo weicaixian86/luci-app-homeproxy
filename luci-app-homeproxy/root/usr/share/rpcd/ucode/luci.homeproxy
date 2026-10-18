@@ -375,18 +375,39 @@ const methods = {
 		}
 	},
 	clash_api_update_panel: {
-		call: function() {
+		args: { only_if_missing: true, attempt: 1, total: 1 },
+		call: function(request) {
 			const uci = cursor();
 			uci.load('homeproxy');
 			const panel_dir = getPanelDir(uci);
 			const backup_dir = `${panel_dir}.backup`;
 
+			const attempt = (request?.args?.attempt && +request.args.attempt) || 1;
+			const total = (request?.args?.total && +request.args.total) || attempt;
+			const manual_hint = (attempt >= total) ? '; please install the panel manually' : '';
+
+			if (request?.args?.only_if_missing) {
+				/* The panel is only enabled in custom and
+				   bypass_mainland_china routing modes */
+				const routing_mode = trim(uci.get('homeproxy', 'config', 'routing_mode') || '');
+				if (routing_mode !== 'custom' && routing_mode !== 'bypass_mainland_china')
+					return { result: true, skipped: true };
+
+				const panel_index = lstat(`${panel_dir}/index.html`);
+				if (panel_index && panel_index.type === 'file')
+					return { result: true, skipped: true };
+			}
+
 			if (!preparePanelBackup(panel_dir, backup_dir))
 				return { result: false, error: 'panel_backup_failed' };
+
+			const download_url = uci.get('homeproxy', 'clash_api', 'external_ui_download_url') || '';
+			system(sprintf('logger -t homeproxy "Panel: downloading (attempt %d): %s"', attempt, shellquote(download_url)));
 
 			const payload = clashAPIRequest(getClashAPIConfig(uci), 'POST', '/upgrade/ui', 120);
 			if (payload === null) {
 				restorePanelBackup(panel_dir, backup_dir);
+				system(sprintf('logger -t homeproxy "Panel: download failed (attempt %d): Clash API unavailable (timeout 120s)%s"', attempt, manual_hint));
 				return { result: false, error: 'clash_api_unavailable' };
 			}
 
@@ -397,12 +418,14 @@ const methods = {
 
 			if (data?.status === 'ok') {
 				cleanupPanelBackup(backup_dir);
+				system(sprintf('logger -t homeproxy "Panel: downloaded successfully (attempt %d)"', attempt));
 				return { result: true };
 			}
 
 			if (!restorePanelBackup(panel_dir, backup_dir))
 				return { result: false, error: 'panel_restore_failed' };
 
+			system(sprintf('logger -t homeproxy "Panel: download failed (attempt %d): %s%s"', attempt, shellquote(data?.message || data?.error || 'unknown error'), manual_hint));
 			return {
 				result: false,
 				error: data?.message || data?.error || 'update_panel_failed'

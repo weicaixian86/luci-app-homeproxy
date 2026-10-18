@@ -708,6 +708,10 @@ msgid ""
 "Regular_Expressions\">Regex</a> is supported."
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1100
+msgid "Drop/keep specific nodes from outbounds."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1807
 msgid "Drop/keep specific nodes from subscriptions."
 msgstr ""
@@ -1107,6 +1111,10 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/server.js:60
 #: htdocs/luci-static/resources/view/homeproxy/server.js:129
 msgid "HomeProxy Server"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/server.js:132
+msgid "HomeProxy can work as a proxy server."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:965
@@ -1737,10 +1745,6 @@ msgstr ""
 msgid "Node Settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1650
-msgid "Nodes"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1017
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1167
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1205
@@ -2252,6 +2256,10 @@ msgstr ""
 msgid "List of policy groups."
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js
+msgid "Subscription links"
+msgstr ""
+
 msgid "Subscription nodes"
 msgstr ""
 
@@ -2306,6 +2314,10 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1834
 msgid "Save subscriptions settings"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js
+msgid "Self-built nodes"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1178
@@ -3038,6 +3050,10 @@ msgstr ""
 msgid "Used to verify the hostname on the returned certificates."
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Used as the sing-box rule set tag and display name. Only letters, digits, \".\", \"_\" and \"-\" are allowed. Chinese is not supported. It must be unique."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:665
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1138
 msgid "User"
@@ -3082,6 +3098,11 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1810
 msgid "Whitelist mode"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+#: htdocs/luci-static/resources/view/homeproxy/node.js
+msgid "Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, \"?\", \"#\" or \"%\"."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:873
@@ -3424,6 +3445,16 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Clash API unavailable."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Panel downloaded."
+msgstr ""
+
+msgid "Panel download failed after 3 attempts (Clash API unavailable). Please install the panel manually."
+msgstr ""
+
+msgid "Panel download failed after 3 attempts. Please install the panel manually."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
