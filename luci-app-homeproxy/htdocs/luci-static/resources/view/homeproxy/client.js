@@ -1897,17 +1897,31 @@ return view.extend({
 		ss.sortable = true;
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Rule set'), _('Add a rule set'), data[0]);
-		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
+		ss.sectiontitle = function(section_id) {
+			return uci.get(data[0], section_id, 'tag') ||
+				uci.get(data[0], section_id, 'label') || section_id;
+		};
 		ss.renderSectionAdd = L.bind(renderRuleSetAdd, this, ss);
 
-		so = ss.option(form.Value, 'label', _('Label'));
-		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
-		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'ruleset', 'label');
-		so.modalonly = true;
+		so = ss.option(form.Value, 'tag', _('Label'),
+			_('Used as the sing-box rule set tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
+		so.rmempty = false;
+		so.load = function(section_id) {
+			if (!section_id)
+				return '';
 
-	so = ss.option(form.Value, 'tag', _('Tag'),
-		_('Used by sing-box rule sets. Please fill it in yourself.'));
-	so.rmempty = false;
+			return uci.get(data[0], section_id, 'tag') ||
+				uci.get(data[0], section_id, 'label') || '';
+		}
+		so.write = function(section_id, value) {
+			if (value != null) {
+				uci.set(data[0], section_id, 'tag', value);
+				uci.set(data[0], section_id, 'label', value);
+			} else {
+				uci.unset(data[0], section_id, 'tag');
+				uci.unset(data[0], section_id, 'label');
+			}
+		}
 		so.validate = function(section_id, value) {
 			if (section_id) {
 				if (!value)

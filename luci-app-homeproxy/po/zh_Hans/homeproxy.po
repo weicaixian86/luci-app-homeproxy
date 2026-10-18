@@ -1380,7 +1380,7 @@ msgstr "LAN IP 策略"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:852
 #: htdocs/luci-static/resources/view/homeproxy/server.js:160
 msgid "Label"
-msgstr "标签"
+msgstr "卷标"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:817
 msgid "Latency"
@@ -2258,8 +2258,8 @@ msgstr "规则集 IP CIDR 作为源 IP"
 msgid "Tag"
 msgstr "标签"
 
-msgid "Used by sing-box rule sets. Please fill it in yourself."
-msgstr "用于 sing-box 规则集，请自行填写。"
+msgid "Used as the sing-box rule set tag and display name. Only letters, digits, \".\", \"_\" and \"-\" are allowed, and it must be unique."
+msgstr "同时作为 sing-box 规则集标签与显示名，仅允许字母、数字、\".\"、\"_\"、\"-\"，且需唯一。"
 
 msgid "valid tag"
 msgstr "有效标签"
