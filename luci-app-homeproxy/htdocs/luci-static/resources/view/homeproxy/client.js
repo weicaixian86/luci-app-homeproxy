@@ -280,19 +280,23 @@ function validateDnsServerAddress(type, value) {
 	if (!value)
 		return false;
 
+	/* 各类型对应的协议头；HTTPS/HTTP/3 共用 https 协议头 */
+	const scheme = {
+		udp: 'udp', tcp: 'tcp', tls: 'tls', quic: 'quic',
+		https: 'https', h3: 'https'
+	}[type];
+
 	if (value.includes('://')) {
-		if (!['https', 'h3'].includes(type))
-			return false;
-
+		let url;
 		try {
-			let url = new URL(value);
-			if (url.protocol !== 'https:')
-				return false;
-
-			value = url.hostname;
+			url = new URL(value);
 		} catch (e) {
 			return false;
 		}
+		if (url.protocol.replace(':', '').toLowerCase() !== scheme)
+			return false;
+
+		value = url.hostname;
 	}
 
 	return stubValidator.apply('hostname', value) ||
@@ -1663,7 +1667,7 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('Address'),
-			_('Full URL, e.g. https://dns.alidns.com/dns-query'));
+			_('示例：\nUDP：udp://223.5.5.5\nTCP：tcp://223.5.5.5\nTLS：tls://223.5.5.5\nHTTPS：https://223.5.5.5/dns-query\nHTTP/3：https://223.5.5.5/dns-query\nQUIC：quic://dns.alidns.com\n\n所有类型均可填写协议头（udp://、tcp://、tls://、quic://、https://）；HTTPS/HTTP/3 还需包含路径（如 /dns-query），省略时默认 /dns-query。不写协议头则按所选类型使用标准端口。'));
 		so.placeholder = '';
 		so.validate = function(section_id, value) {
 			let type = this.section.formvalue(section_id, 'type') ||

@@ -2587,8 +2587,17 @@ msgstr ""
 msgid "The URL to test."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:981
-msgid "Full URL, e.g. https://dns.alidns.com/dns-query"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1669
+msgid ""
+"示例：\n"
+"UDP：udp://223.5.5.5\n"
+"TCP：tcp://223.5.5.5\n"
+"TLS：tls://223.5.5.5\n"
+"HTTPS：https://223.5.5.5/dns-query\n"
+"HTTP/3：https://223.5.5.5/dns-query\n"
+"QUIC：quic://dns.alidns.com\n"
+"\n"
+"所有类型均可填写协议头（udp://、tcp://、tls://、quic://、https://）；HTTPS/HTTP/3 还需包含路径（如 /dns-query），省略时默认 /dns-query。不写协议头则按所选类型使用标准端口。"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:679
