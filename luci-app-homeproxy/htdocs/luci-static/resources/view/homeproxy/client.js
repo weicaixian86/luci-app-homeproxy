@@ -834,9 +834,19 @@ return view.extend({
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss);
 
-		so = ss.option(form.Value, 'label', _('Label'));
+		so = ss.option(form.Value, 'label', _('Label'),
+			_('Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
 		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
-		so.validate = L.bind(hp.validateUniqueValue, this, data[0], 'routing_node', 'label');
+		so.validate = function(section_id, value) {
+			let r = hp.validateUniqueValue(data[0], 'routing_node', 'label', section_id, value);
+			if (r !== true)
+				return r;
+
+			if (value && !value.match(/^[A-Za-z0-9_.-]+$/))
+				return _('Expecting: %s').format(_('valid tag'));
+
+			return true;
+		};
 		so.modalonly = true;
 
 		so = ss.option(form.Flag, 'enabled', _('Enable'));

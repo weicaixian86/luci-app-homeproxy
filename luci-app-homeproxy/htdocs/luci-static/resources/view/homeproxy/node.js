@@ -1027,9 +1027,19 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 		return E([ outputEl, hiddenEl.render() ]);
 	}
 
-	o = s.option(form.Value, 'label', _('Label'));
+	o = s.option(form.Value, 'label', _('Label'),
+		_('Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique.'));
 	o.load = L.bind(hp.loadDefaultLabel, this, data[0]);
-	o.validate = L.bind(hp.validateUniqueValue, this, data[0], 'node', 'label');
+	o.validate = function(section_id, value) {
+		let r = hp.validateUniqueValue(data[0], 'node', 'label', section_id, value);
+		if (r !== true)
+			return r;
+
+		if (value && !value.match(/^[A-Za-z0-9_.-]+$/))
+			return _('Expecting: %s').format(_('valid tag'));
+
+		return true;
+	};
 	o.modalonly = true;
 
 	o = s.option(form.ListValue, 'type', _('Type'));

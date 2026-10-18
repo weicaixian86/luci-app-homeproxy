@@ -3550,3 +3550,6 @@ msgstr "下载 / 更新失败，请查看日志。"
 
 msgid "unavailable"
 msgstr "不可用"
+
+msgid "Will be used as the sing-box outbound tag and display name. Only letters, digits, ".", "_" and "-" are allowed, and it must be unique."
+msgstr "将作为 sing-box 出站标识（tag）与显示名。仅允许字母、数字、\".\"、\"_\"、\"-\"，且需唯一。"
