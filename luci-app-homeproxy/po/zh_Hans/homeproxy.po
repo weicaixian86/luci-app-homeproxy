@@ -264,10 +264,6 @@ msgstr "BBR"
 msgid "Backend execution failed"
 msgstr "后端执行失败"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:235
-msgid "BaiDu"
-msgstr "百度"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:986
 #: htdocs/luci-static/resources/view/homeproxy/server.js:277
 msgid "Base64"
@@ -426,10 +422,6 @@ msgstr "拥塞控制算法"
 msgid "Connection check"
 msgstr "连接检查"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1772
-msgid "Cron expression"
-msgstr "定时任务表达式"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:278
 msgid "Custom routing"
 msgstr "自定义路由"
@@ -583,15 +575,6 @@ msgstr "禁用"
 msgid "Disable (the service)"
 msgstr "禁用（服务）"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:810
-#: htdocs/luci-static/resources/view/homeproxy/client.js:922
-msgid "Disable DNS cache"
-msgstr "禁用 DNS 缓存"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:811
-msgid "Disable DNS cache in this query."
-msgstr "在本次查询中禁用 DNS 缓存。"
-
 msgid "Disable DNS memory cache"
 msgstr "禁用 DNS 内存缓存"
 
@@ -600,12 +583,6 @@ msgstr "在本次查询中禁用 DNS 内存缓存。"
 
 msgid "Disable DNS memory cache expiration"
 msgstr "禁用 DNS 内存缓存过期"
-
-msgid "Independent DNS memory cache per server"
-msgstr "每个 DNS 服务器独立内存缓存"
-
-msgid "Make each DNS server's memory cache independent for special purposes. If enabled, will slightly degrade performance."
-msgstr "让每个 DNS 服务器使用独立内存缓存。启用后性能会略微下降。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:670
 msgid "Disable HTTP challenge"
@@ -624,20 +601,8 @@ msgstr "禁用 TLS ALPN 认证"
 msgid "Disable UDP domain unmapping"
 msgstr "禁用 UDP 域名映射"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1205
-msgid "Disable cache and save cache in this query."
-msgstr "在本次查询中禁用缓存。"
-
 msgid "Disable DNS memory cache and persistent cache in this query."
 msgstr "在本次查询中禁用 DNS 内存缓存和持久化缓存。"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:924
-msgid "Disable cache expire"
-msgstr "缓存永不过期"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1204
-msgid "Disable dns cache"
-msgstr "禁用 DNS 缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1036
 #: htdocs/luci-static/resources/view/homeproxy/server.js:322
@@ -840,10 +805,6 @@ msgstr "启用 TCP Brutal 拥塞控制算法。"
 msgid "Enable UDP fragmentation."
 msgstr "启用 UDP 分片。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:351
-msgid "Enable endpoint-independent NAT"
-msgstr "启用端点独立 NAT"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1410
 #: htdocs/luci-static/resources/view/homeproxy/server.js:507
 msgid "Enable padding"
@@ -1037,6 +998,10 @@ msgstr "游戏模式 MAC 地址"
 msgid "Generate"
 msgstr "生成"
 
+#: htdocs/luci-static/resources/view/homeproxy/status.js:259
+msgid "Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty unless updates keep failing with \"Failed to get the latest version\". Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one."
+msgstr "可选。仅在检查资源更新时用于提高 GitHub API 配额（每小时 60 → 5000 次）。留空即可，除非反复出现「获取最新版本失败」。注意：令牌会以明文保存在 /etc/config/homeproxy，建议使用只读令牌。"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:260
 msgid "GitHub token"
 msgstr "GitHub 令牌"
@@ -1104,6 +1069,10 @@ msgstr "HTTPS"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:404
 msgid "HTTPUpgrade"
 msgstr "HTTPUpgrade"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js
+msgid "Handshake %s ms"
+msgstr "握手 %s 毫秒"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:744
 msgid "Handshake server address"
@@ -1322,10 +1291,6 @@ msgid ""
 "seconds."
 msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:927
-msgid "Independent cache per server"
-msgstr "独立缓存"
-
 #: htdocs/luci-static/resources/view/homeproxy/status.js:137
 msgid "Info"
 msgstr "信息"
@@ -1498,12 +1463,6 @@ msgstr "使规则集中的 IP CIDR 匹配源 IP。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1162
 msgid "Make IP CIDR in rule-sets accept empty query response."
 msgstr "使规则集中的 IP CIDR 接受空查询响应。"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:928
-msgid ""
-"Make each DNS server's cache independent for special purposes. If enabled, "
-"will slightly degrade performance."
-msgstr "独立缓存每个 DNS 服务器的结果以供特殊用途。启用后会略微降低性能。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:331
 msgid "Masquerade"
@@ -1679,10 +1638,6 @@ msgstr "在打开新连接之前，连接中的最小多路复用流数量。"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1405
 msgid "Minimum streams"
 msgstr "最小流数量"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1773
-msgid "Minutes(0-59) Hours(0-23) Dates(1-31) Months(1-12) Weeks(0-6)"
-msgstr "分(0-59) 时(0-23) 日(1-31) 月(1-12) 周(0-6)"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:333
 #: htdocs/luci-static/resources/view/homeproxy/server.js:183
@@ -1881,12 +1836,6 @@ msgstr "路径"
 msgid "Peer pubkic key"
 msgstr "对端公钥"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:352
-msgid ""
-"Performance may degrade slightly, so it is not recommended to enable on when "
-"it is not needed."
-msgstr "性能可能会略有下降，建议仅在需要时开启。"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1366
 msgid "Persistent keepalive interval"
 msgstr "持久 keepalive 间隔"
@@ -2030,10 +1979,6 @@ msgstr "仅允许列表内"
 msgid "Proxy mode"
 msgstr "代理模式"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:927
-msgid "Proxy protocol"
-msgstr "代理协议"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:644
 #: htdocs/luci-static/resources/view/homeproxy/client.js:976
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1132
@@ -2078,10 +2023,6 @@ msgstr "RCode"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1133
 msgid "RDP"
 msgstr "RDP"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:940
-msgid "RDRC timeout"
-msgstr "RDRC 超时"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1572
 #: htdocs/luci-static/resources/view/homeproxy/server.js:709
@@ -2374,6 +2315,10 @@ msgstr "服务器设置"
 msgid "Service Status"
 msgstr "服务状态"
 
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:46
+msgid "Runtime Log"
+msgstr "运行日志"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1198
 msgid "Set domain strategy for this query."
 msgstr "为此查询设置域名策略。"
@@ -2496,10 +2441,6 @@ msgstr "字符串"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1755
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1789
-msgid "Subscription URL-s"
-msgstr "订阅地址"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1766
 msgid "Subscriptions"
@@ -2861,14 +2802,6 @@ msgid ""
 "in inbounds will have no effect."
 msgstr "UDP 连接的超时时间。<br/>设置比入站的 UDP 超时更大的值将无效。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:941
-msgid ""
-"Timeout of rejected DNS response cache in seconds. <code>604800 (7d)</code> "
-"is used by default."
-msgstr ""
-"被拒绝的 DNS 响应缓存超时时间（单位：秒）。默认为 <code>604800（7 天）</"
-"code>。"
-
 #: htdocs/luci-static/resources/view/homeproxy/server.js:491
 msgid ""
 "To be compatible with Xray-core, set this to <code>Sec-WebSocket-Protocol</"
@@ -3166,10 +3099,6 @@ msgstr "WireGuard 预共享密钥。"
 msgid "WireGuard requires base64-encoded private keys."
 msgstr "WireGuard 要求 base64 编码的私钥。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:928
-msgid "Write proxy protocol in the connection header."
-msgstr "在连接头中写入代理协议。"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1319
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1832
 msgid "Xudp (Xray-core)"
@@ -3286,11 +3215,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/status.js:59
 msgid "unchecked"
 msgstr "未检查"
-
-#: htdocs/luci-static/resources/homeproxy.js:237
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1735
-msgid "unique UCI identifier"
-msgstr "独立 UCI 标识"
 
 #: htdocs/luci-static/resources/homeproxy.js:317
 msgid "unique value"
@@ -3426,20 +3350,8 @@ msgid "Enable cache file"
 msgstr "启用缓存文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Cache file path"
-msgstr "缓存文件路径"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Persistent cache file path"
 msgstr "持久化缓存文件路径"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Cache RDRC"
-msgstr "缓存 RDRC"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Persist RDRC cache"
-msgstr "持久化 RDRC 缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Persist DNS cache"
@@ -3516,8 +3428,8 @@ msgstr "上传面板ZIP"
 
 #~ msgid "HTTP3"
 #~ msgstr "HTTP3"
-msgid "Baidu Connection"
-msgstr "百度连接"
+msgid "Aliyun Connection"
+msgstr "阿里连接"
 
 msgid "Google Connection"
 msgstr "谷歌连接"
@@ -3533,6 +3445,44 @@ msgstr "点我检测"
 
 msgid "Checking..."
 msgstr "检测中..."
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:81
+#: htdocs/luci-static/resources/view/homeproxy/node.js:94
+msgid "订阅名称"
+msgstr "订阅名称"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:82
+#: htdocs/luci-static/resources/view/homeproxy/node.js:101
+msgid "订阅地址"
+msgstr "订阅地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:162
+msgid "订阅名称和订阅地址为必填项"
+msgstr "订阅名称和订阅地址为必填项"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:170
+msgid "订阅名称和订阅地址必须成对填写"
+msgstr "订阅名称和订阅地址必须成对填写"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:173
+msgid "订阅名称不能重复"
+msgstr "订阅名称不能重复"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:177
+msgid "订阅地址不能重复"
+msgstr "订阅地址不能重复"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2482
+msgid "Rule"
+msgstr "规则"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1917
+msgid "Sub"
+msgstr "订阅"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:276
+msgid "sing-box core management"
+msgstr "sing-box 内核管理"
 
 msgid "reF1nd sing-box core"
 msgstr "reF1nd sing-box 内核"

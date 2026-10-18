@@ -7,29 +7,13 @@
 'use strict';
 'require dom';
 'require form';
-'require fs';
-'require poll';
 'require rpc';
-'require uci';
 'require ui';
 'require view';
 
 'require homeproxy as hp';
 
-/* Thanks to luci-app-aria2 */
 const css = '				\
-#log_textarea {				\
-	padding: 10px;			\
-	text-align: left;		\
-}					\
-#log_textarea pre {			\
-	padding: .5rem;			\
-	word-break: break-all;		\
-	margin: 0;			\
-}					\
-.description {				\
-	background-color: #33ccff;	\
-}					\
 .homeproxy-connect-grid {		\
 	display: grid;			\
 	grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));\
@@ -53,9 +37,12 @@ const css = '				\
 	width: 38px;			\
 	height: 38px;			\
 	border-radius: 50%;		\
-	color: #fff;			\
-	font-weight: 700;		\
-	font-size: 15px;		\
+	background: #f4f6f9;		\
+}					\
+.homeproxy-connect-icon svg {		\
+	display: block;			\
+	width: 24px;			\
+	height: 24px;			\
 }					\
 .homeproxy-connect-info {		\
 	min-height: 42px;		\
@@ -77,8 +64,6 @@ const css = '				\
 	cursor: pointer;		\
 	line-height: 1.2;		\
 }';
-
-const hp_dir = '/var/run/homeproxy';
 
 function getConnStat(o, site) {
 	const callConnStat = rpc.declare({
@@ -109,6 +94,26 @@ function getConnStat(o, site) {
 	]);
 }
 
+/* Brand logos are inlined so the cards render without external assets and
+   without pulling remote images into the router's web UI. */
+const connLogos = {
+	aliyun: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+		'<path fill="#ff6a00" d="M7.2 18.6a4.7 4.7 0 0 1 0-9.4 6.6 6.6 0 0 1 12.4 1.6 4 4 0 0 1-1.1 7.8z"/>' +
+		'</svg>',
+	google: '<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">' +
+		'<path fill="#ea4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>' +
+		'<path fill="#4285f4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>' +
+		'<path fill="#fbbc05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>' +
+		'<path fill="#34a853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>' +
+		'</svg>',
+	github: '<svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">' +
+		'<path fill="#1f2328" d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.04-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68.78 1.31.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>' +
+		'</svg>',
+	youtube: '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
+		'<path fill="#ff0033" d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>' +
+		'</svg>'
+};
+
 function renderConnCards() {
 	const callConnStat = rpc.declare({
 		object: 'luci.homeproxy',
@@ -118,13 +123,15 @@ function renderConnCards() {
 	});
 
 	const items = [
-		{ site: 'baidu', title: _('Baidu Connection'), icon: 'B', color: '#ff7a00' },
-		{ site: 'google', title: _('Google Connection'), icon: 'G', color: '#4285f4' },
-		{ site: 'github', title: _('GitHub Connection'), icon: 'GH', color: '#7b3bb3' },
-		{ site: 'youtube', title: _('YouTube Connection'), icon: 'YT', color: '#ff0033' }
+		{ site: 'aliyun', title: _('Aliyun Connection') },
+		{ site: 'google', title: _('Google Connection') },
+		{ site: 'github', title: _('GitHub Connection') },
+		{ site: 'youtube', title: _('YouTube Connection') }
 	];
 
 	return E('div', { 'class': 'homeproxy-connect-grid' }, items.map((item) => {
+		const icon = E('div', { 'class': 'homeproxy-connect-icon' });
+		icon.innerHTML = connLogos[item.site] || '';
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
 			'click': ui.createHandlerFn(this, () => {
@@ -135,6 +142,13 @@ function renderConnCards() {
 					if (ret.result && ret.latency != null) {
 						result.style.setProperty('color', 'green');
 						result.textContent = _('%s ms').format(ret.latency);
+
+						/* Response time excludes the handshake, same as passwall;
+						   the handshake time is shown next to it for reference. */
+						if (ret.handshake != null)
+							result.appendChild(E('span', {
+								'style': 'margin-left:6px;color:#7d8aa0;font-size:11px;font-weight:400'
+							}, _('Handshake %s ms').format(ret.handshake)));
 					} else {
 						result.style.setProperty('color', '#ff4d35');
 						result.textContent = _('failed');
@@ -144,10 +158,7 @@ function renderConnCards() {
 		}, [ _('Click to check') ]);
 
 		return E('div', { 'class': 'homeproxy-connect-card' }, [
-			E('div', {
-				'class': 'homeproxy-connect-icon',
-				'style': 'background:%s'.format(item.color)
-			}, [ item.icon ]),
+			icon,
 			E('div', { 'class': 'homeproxy-connect-info' }, [
 				E('div', { 'class': 'homeproxy-connect-title' }, [ item.title ]),
 				result
@@ -209,116 +220,6 @@ function getResVersion(o, type) {
 	});
 }
 
-function getRuntimeLog(o, name, _option_index, section_id, _in_table) {
-	const filename = o.option.split('_')[1];
-
-	let section, log_level_el;
-	switch (filename) {
-	case 'homeproxy':
-		section = null;
-		break;
-	case 'sing-box-c':
-		section = 'config';
-		break;
-	case 'sing-box-s':
-		section = 'server';
-		break;
-	}
-
-	if (section) {
-		const selected = uci.get('homeproxy', section, 'log_level') || 'warn';
-		const choices = {
-			trace: _('Trace'),
-			debug: _('Debug'),
-			info: _('Info'),
-			warn: _('Warn'),
-			error: _('Error'),
-			fatal: _('Fatal'),
-			panic: _('Panic')
-		};
-
-		log_level_el = E('select', {
-			'id': o.cbid(section_id),
-			'class': 'cbi-input-select',
-			'style': 'margin-left: 4px; width: 6em;',
-			'change': ui.createHandlerFn(this, (ev) => {
-				uci.set('homeproxy', section, 'log_level', ev.target.value);
-				return o.map.save(null, true).then(() => {
-					ui.changes.apply(true);
-				});
-			})
-		});
-
-		Object.keys(choices).forEach((v) => {
-			log_level_el.appendChild(E('option', {
-				'value': v,
-				'selected': (v === selected) ? '' : null
-			}, [ choices[v] ]));
-		});
-	}
-
-	const callLogClean = rpc.declare({
-		object: 'luci.homeproxy',
-		method: 'log_clean',
-		params: ['type'],
-		expect: { '': {} }
-	});
-
-	const log_textarea = E('div', { 'id': 'log_textarea' },
-		E('img', {
-			'src': L.resource('icons/loading.svg'),
-			'alt': _('Loading'),
-			'style': 'vertical-align:middle'
-		}, _('Collecting data...'))
-	);
-
-	let log;
-	poll.add(L.bind(() => {
-		return fs.read_direct(String.format('%s/%s.log', hp_dir, filename), 'text')
-		.then((res) => {
-			log = E('pre', { 'wrap': 'pre' }, [
-				res.trim() || _('Log is empty.')
-			]);
-
-			dom.content(log_textarea, log);
-		}).catch((err) => {
-			if (err.toString().includes('NotFoundError'))
-				log = E('pre', { 'wrap': 'pre' }, [
-					_('Log file does not exist.')
-				]);
-			else
-				log = E('pre', { 'wrap': 'pre' }, [
-					_('Unknown error: %s').format(err)
-				]);
-
-			dom.content(log_textarea, log);
-		});
-	}));
-
-	return E([
-		E('style', [ css ]),
-		E('div', {'class': 'cbi-map'}, [
-			E('h3', {'name': 'content', 'style': 'align-items: center; display: flex;'}, [
-				_('%s log').format(name),
-				log_level_el || '',
-				E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'style': 'margin-left: 4px;',
-					'click': ui.createHandlerFn(this, () => {
-						return L.resolveDefault(callLogClean(filename), {});
-					})
-				}, [ _('Clean log') ])
-			]),
-			E('div', {'class': 'cbi-section'}, [
-				log_textarea,
-				E('div', {'style': 'text-align:right'},
-					E('small', {}, _('Refresh every %s seconds.').format(L.env.pollinterval))
-				)
-			])
-		])
-	]);
-}
-
 return view.extend({
 	render() {
 		let m, s, o;
@@ -355,6 +256,7 @@ return view.extend({
 
 		o = s.option(form.Value, 'github_token', _('GitHub token'));
 		o.password = true;
+		o.description = _('Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty unless updates keep failing with "Failed to get the latest version". Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one.');
 		o.renderWidget = function() {
 			let node = form.Value.prototype.renderWidget.apply(this, arguments);
 
@@ -436,19 +338,7 @@ return view.extend({
 		return content;
 	};
 
-	s = m.section(form.NamedSection, 'config', 'homeproxy');
-	s.anonymous = true;
-
-	o = s.option(form.DummyValue, '_homeproxy_logview');
-		o.render = L.bind(getRuntimeLog, this, o, _('HomeProxy'));
-
-		o = s.option(form.DummyValue, '_sing-box-c_logview');
-		o.render = L.bind(getRuntimeLog, this, o, _('sing-box client'));
-
-		o = s.option(form.DummyValue, '_sing-box-s_logview');
-		o.render = L.bind(getRuntimeLog, this, o, _('sing-box server'));
-
-		return m.render();
+	return m.render();
 	},
 
 	handleSaveApply: null,

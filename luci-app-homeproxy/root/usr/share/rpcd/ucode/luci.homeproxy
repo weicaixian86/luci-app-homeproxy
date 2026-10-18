@@ -193,8 +193,9 @@ const methods = {
 		call: function(req) {
 			let url;
 			switch(req.args?.site) {
+			case 'aliyun':
 			case 'baidu':
-				url = 'https://www.baidu.com';
+				url = 'https://www.aliyun.com';
 				break;
 			case 'google':
 				url = 'https://www.google.com/generate_204';
@@ -210,23 +211,42 @@ const methods = {
 				break;
 			}
 
-			const fd = popen(`/usr/bin/curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_pretransfer}" ${shellquote(url)} 2>"/dev/null"`);
+			const fd = popen(`/usr/bin/curl --connect-timeout 3 --max-time 5 -o /dev/null -I -skL -w "%{http_code}:%{time_pretransfer}:%{time_starttransfer}" ${shellquote(url)} 2>"/dev/null"`);
 			if (!fd)
 				return { result: false };
 
 			const output = trim(readProcess(fd) || '');
 			const parts = split(output, ':');
 			const code = int(parts[0] || 0);
-			const parsed = match(parts[1] || '', /^([0-9]+)(\.([0-9]+))?$/);
 
-			if (code > 0 && parsed) {
+			/* Same metric as passwall: handshake = time before the request is
+			   sent (DNS + TCP + TLS), latency = server response time only
+			   (starttransfer - pretransfer), so the two panels are comparable.
+			   Values are kept in 1e-5 second units to avoid float rounding. */
+			const toCentims = (value) => {
+				const parsed = match(value || '', /^([0-9]+)(\.([0-9]+))?$/);
+				if (!parsed)
+					return null;
+
 				const sec = int(parsed[1]);
 				const frac = ((parsed[3] || '') + '00000');
-				const centims = sec * 100000 + int(substr(frac, 0, 5));
 
+				return sec * 100000 + int(substr(frac, 0, 5));
+			};
+
+			const toMillis = (centims) => sprintf('%d.%02d', int(centims / 100), centims % 100);
+
+			const handshake = toCentims(parts[1]);
+			const transfer = toCentims(parts[2]);
+
+			/* Any complete HTTP response (including 4xx/5xx) proves reachability,
+			   same as passwall's 200 <= code < 600 rule. */
+			if (code >= 200 && code < 600 && handshake != null && transfer != null && transfer > 0 && transfer >= handshake) {
 				return {
 					result: true,
-					latency: sprintf('%d.%02d', int(centims / 100), centims % 100),
+					latency: toMillis(transfer - handshake),
+					handshake: toMillis(handshake),
+					code,
 					type: 'curl'
 				};
 			}

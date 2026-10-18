@@ -41,5 +41,13 @@
 			"type": "view",
 			"path": "homeproxy/status"
 		}
+	},
+	"admin/services/homeproxy/log": {
+		"title": "Runtime Log",
+		"order": 35,
+		"action": {
+			"type": "view",
+			"path": "homeproxy/log"
+		}
 	}
 }

@@ -253,10 +253,6 @@ msgstr ""
 msgid "Backend execution failed"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:235
-msgid "BaiDu"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:986
 #: htdocs/luci-static/resources/view/homeproxy/server.js:277
 msgid "Base64"
@@ -415,10 +411,6 @@ msgstr ""
 msgid "Connection check"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1772
-msgid "Cron expression"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:278
 msgid "Custom routing"
 msgstr ""
@@ -572,15 +564,6 @@ msgstr ""
 msgid "Disable (the service)"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:810
-#: htdocs/luci-static/resources/view/homeproxy/client.js:922
-msgid "Disable DNS cache"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:811
-msgid "Disable DNS cache in this query."
-msgstr ""
-
 msgid "Disable DNS memory cache"
 msgstr ""
 
@@ -588,12 +571,6 @@ msgid "Disable DNS memory cache in this query."
 msgstr ""
 
 msgid "Disable DNS memory cache expiration"
-msgstr ""
-
-msgid "Independent DNS memory cache per server"
-msgstr ""
-
-msgid "Make each DNS server's memory cache independent for special purposes. If enabled, will slightly degrade performance."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:670
@@ -613,19 +590,7 @@ msgstr ""
 msgid "Disable UDP domain unmapping"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1205
-msgid "Disable cache and save cache in this query."
-msgstr ""
-
 msgid "Disable DNS memory cache and persistent cache in this query."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:924
-msgid "Disable cache expire"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1204
-msgid "Disable dns cache"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1036
@@ -815,10 +780,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1598
 #: htdocs/luci-static/resources/view/homeproxy/server.js:855
 msgid "Enable UDP fragmentation."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:351
-msgid "Enable endpoint-independent NAT"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1410
@@ -1014,6 +975,10 @@ msgstr ""
 msgid "Generate"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/status.js:259
+msgid "Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty unless updates keep failing with \"Failed to get the latest version\". Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:260
 msgid "GitHub token"
 msgstr ""
@@ -1080,6 +1045,10 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1208
 #: htdocs/luci-static/resources/view/homeproxy/server.js:404
 msgid "HTTPUpgrade"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js
+msgid "Handshake %s ms"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:744
@@ -1295,10 +1264,6 @@ msgid ""
 "seconds."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:927
-msgid "Independent cache per server"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/status.js:137
 msgid "Info"
 msgstr ""
@@ -1468,12 +1433,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1162
 msgid "Make IP CIDR in rule-sets accept empty query response."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:928
-msgid ""
-"Make each DNS server's cache independent for special purposes. If enabled, "
-"will slightly degrade performance."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:331
@@ -1647,10 +1606,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1396
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1405
 msgid "Minimum streams"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1773
-msgid "Minutes(0-59) Hours(0-23) Dates(1-31) Months(1-12) Weeks(0-6)"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:333
@@ -1850,12 +1805,6 @@ msgstr ""
 msgid "Peer pubkic key"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:352
-msgid ""
-"Performance may degrade slightly, so it is not recommended to enable on when "
-"it is not needed."
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1366
 msgid "Persistent keepalive interval"
 msgstr ""
@@ -1999,10 +1948,6 @@ msgstr ""
 msgid "Proxy mode"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:927
-msgid "Proxy protocol"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:644
 #: htdocs/luci-static/resources/view/homeproxy/client.js:976
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1132
@@ -2046,10 +1991,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:645
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1133
 msgid "RDP"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:940
-msgid "RDRC timeout"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1572
@@ -2226,9 +2167,6 @@ msgstr ""
 msgid "Tag"
 msgstr ""
 
-msgid "Used by sing-box rule sets. Please fill it in yourself."
-msgstr ""
-
 msgid "valid tag"
 msgstr ""
 
@@ -2343,6 +2281,10 @@ msgstr ""
 msgid "Service Status"
 msgstr ""
 
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:46
+msgid "Runtime Log"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1198
 msgid "Set domain strategy for this query."
 msgstr ""
@@ -2455,10 +2397,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1755
 msgid "Sub (%s)"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1789
-msgid "Subscription URL-s"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1766
@@ -2811,12 +2749,6 @@ msgid ""
 "in inbounds will have no effect."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:941
-msgid ""
-"Timeout of rejected DNS response cache in seconds. <code>604800 (7d)</code> "
-"is used by default."
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/server.js:491
 msgid ""
 "To be compatible with Xray-core, set this to <code>Sec-WebSocket-Protocol</"
@@ -3121,10 +3053,6 @@ msgstr ""
 msgid "WireGuard requires base64-encoded private keys."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:928
-msgid "Write proxy protocol in the connection header."
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1319
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1832
 msgid "Xudp (Xray-core)"
@@ -3239,11 +3167,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:59
 msgid "unchecked"
-msgstr ""
-
-#: htdocs/luci-static/resources/homeproxy.js:237
-#: htdocs/luci-static/resources/view/homeproxy/node.js:1735
-msgid "unique UCI identifier"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:317
@@ -3380,19 +3303,7 @@ msgid "Enable cache file"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Cache file path"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Persistent cache file path"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Cache RDRC"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js
-msgid "Persist RDRC cache"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
@@ -3465,7 +3376,7 @@ msgstr ""
 msgid "Upload Panel ZIP"
 msgstr ""
 
-msgid "Baidu Connection"
+msgid "Aliyun Connection"
 msgstr ""
 
 msgid "Google Connection"
@@ -3481,6 +3392,44 @@ msgid "Click to check"
 msgstr ""
 
 msgid "Checking..."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:81
+#: htdocs/luci-static/resources/view/homeproxy/node.js:94
+msgid "订阅名称"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:82
+#: htdocs/luci-static/resources/view/homeproxy/node.js:101
+msgid "订阅地址"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:162
+msgid "订阅名称和订阅地址为必填项"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:170
+msgid "订阅名称和订阅地址必须成对填写"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:173
+msgid "订阅名称不能重复"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:177
+msgid "订阅地址不能重复"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2482
+msgid "Rule"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:1917
+msgid "Sub"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:276
+msgid "sing-box core management"
 msgstr ""
 
 msgid "reF1nd sing-box core"
