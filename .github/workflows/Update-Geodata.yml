@@ -19,9 +19,19 @@ jobs:
 
       - name: Update Geodata
         run: |
+          # NOTE: the package lives in the luci-app-homeproxy/ subdirectory of
+          # this repository, not at the repository root. Every path below must
+          # carry that prefix, otherwise `mv` fails with
+          # "target '../root/etc/homeproxy/resources/' is not a directory".
+          PKG_DIR="luci-app-homeproxy"
           RES_RULE="surge"
-          RES_PATH="root/etc/homeproxy/resources"
-          CFG_PATH="root/etc/config/homeproxy"
+          RES_PATH="$PKG_DIR/root/etc/homeproxy/resources"
+          CFG_PATH="$PKG_DIR/root/etc/config/homeproxy"
+
+          if [ ! -d "$RES_PATH" ] || [ ! -f "$CFG_PATH" ]; then
+            echo "::error::$RES_PATH or $CFG_PATH not found - repository layout changed?"
+            exit 1
+          fi
 
           rm -rf ./$RES_PATH/*
 
@@ -33,19 +43,28 @@ jobs:
           echo $RES_VER | tee china_ip4.ver china_ip6.ver china_list.ver gfw_list.ver
 
           awk -F, '/^IP-CIDR,/{print $2 > "china_ip4.txt"} /^IP-CIDR6,/{print $2 > "china_ip6.txt"}' cncidr.txt
+          # Defensive: keep an (empty) IPv6 list even if upstream ships no
+          # IP-CIDR6 lines this round, so we never silently drop the file.
+          [ -f china_ip6.txt ] || : > china_ip6.txt
           sed 's/^\.//g' direct.txt > china_list.txt ; sed 's/^\.//g' gfw.txt > gfw_list.txt
 
           mv -f ./{china_*,gfw_list}.{ver,txt} ../$RES_PATH/
 
           #更新TG列表
-          TG_IPV4=$(grep "^IP-CIDR," "telegramcidr.txt" | sed "s/IP-CIDR,\(.*\)/list wan_proxy_ipv4_ips '\1'/g")
-          TG_IPV6=$(grep "^IP-CIDR6," "telegramcidr.txt" | sed "s/IP-CIDR6,\(.*\)/list wan_proxy_ipv6_ips '\1'/g")
+          # \(.+\) would keep any trailing rule options (e.g. ",no-resolve") and
+          # write them into the nft set as part of the element, so only take the
+          # CIDR part up to the first comma.
+          TG_IPV4=$(grep "^IP-CIDR," "telegramcidr.txt" | sed "s/IP-CIDR,\([^,]*\).*/list wan_proxy_ipv4_ips '\1'/g")
+          TG_IPV6=$(grep "^IP-CIDR6," "telegramcidr.txt" | sed "s/IP-CIDR6,\([^,]*\).*/list wan_proxy_ipv6_ips '\1'/g")
           TG_IPV4_ENTRIES=$(echo "$TG_IPV4" | sed ':a;N;$!ba; s/\n/\\\n/g')
           TG_IPV6_ENTRIES=$(echo "$TG_IPV6" | sed ':a;N;$!ba; s/\n/\\\n/g')
 
           sed -i "/wan_proxy_/d" ../$CFG_PATH
-          sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV6_ENTRIES" ../$CFG_PATH
-          sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV4_ENTRIES" ../$CFG_PATH
+          # Both appends are guarded: an empty value would make GNU sed's `a`
+          # form error out ("expected \ after a"), and the job runs under
+          # `bash -e`, so a bare failure would abort before IPv4 is written.
+          [ -n "$TG_IPV6_ENTRIES" ] && sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV6_ENTRIES" ../$CFG_PATH
+          [ -n "$TG_IPV4_ENTRIES" ] && sed -i "/option lan_proxy_mode 'disabled'/a $TG_IPV4_ENTRIES" ../$CFG_PATH
           sed -i "/list wan_proxy_/ s/^/	/" ../$CFG_PATH
 
           cd .. && rm -rf ./$RES_RULE/ && echo "homeproxy date has been updated!"
