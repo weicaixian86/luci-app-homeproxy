@@ -352,7 +352,8 @@ function renderRuleSetAdd(section, extra_class) {
 	let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
 	    nameEl = el.querySelector('.cbi-section-create-name'),
 	    button = el.querySelector('.cbi-section-create > .cbi-button-add'),
-	    uciconfig = section.uciconfig || section.map.config;
+	    uciconfig = section.uciconfig || section.map.config,
+	    mapData = section.map && section.map.data;
 
 	/* Rule set tags are also used to build the local .srs file name, so they
 	   stay ASCII-only. The hint below the create box makes that explicit. */
@@ -389,9 +390,42 @@ function renderRuleSetAdd(section, extra_class) {
 	if (wrapper && wrapper.parentNode === el && wrapper.childElementCount === 0)
 		wrapper.remove();
 
+	/* LuCI's add button creates the section through map.data.add() and then
+	   renders the edit modal synchronously. Writing the tag/label from a
+	   setTimeout() therefore happens *after* the modal has already loaded, so
+	   the 卷标 field shows up empty. Apply the pending tag inside
+	   map.data.add() instead, i.e. before the modal is rendered. */
+	if (mapData && !mapData.__hpRuleSetAdd) {
+		mapData.__hpRuleSetAdd = { };
+
+		const origAdd = mapData.add;
+		mapData.add = function(config, type, name) {
+			const sid = origAdd.apply(this, arguments),
+			      pending = this.__hpRuleSetAdd[config + '|' + type];
+
+			if (pending && sid) {
+				uci.set(config, sid, 'tag', pending.tag);
+				uci.set(config, sid, 'label', pending.tag);
+				uci.set(config, sid, 'enabled', '1');
+				uci.set(config, sid, 'type', 'remote');
+				uci.set(config, sid, 'format', 'binary');
+				uci.set(config, sid, 'remote_path', '/etc/homeproxy/ruleset/');
+				uci.set(config, sid, 'auto_update', '1');
+				uci.set(config, sid, 'update_interval', '0 0 * * *');
+			}
+
+			delete this.__hpRuleSetAdd[config + '|' + type];
+
+			return sid;
+		};
+	}
+
 	button.disabled = true;
 
 	let syncSectionName = () => {
+		if (mapData && mapData.__hpRuleSetAdd)
+			delete mapData.__hpRuleSetAdd[uciconfig + '|ruleset'];
+
 		let tag = (tagEl.value || '').trim();
 		hintEl.textContent = baseHint;
 
@@ -429,31 +463,22 @@ function renderRuleSetAdd(section, extra_class) {
 		nameEl.value = section_id;
 		nameEl.dataset.sectionId = section_id;
 		nameEl.dataset.ruleSetTag = tag;
+		if (mapData && mapData.__hpRuleSetAdd)
+			mapData.__hpRuleSetAdd[uciconfig + '|ruleset'] = { tag: tag };
 		button.disabled = null;
 	};
 
 	tagEl.addEventListener('input', syncSectionName);
 	tagEl.addEventListener('blur', syncSectionName);
 
-	button.addEventListener('click', () => {
-		syncSectionName();
-
-		let tag = nameEl.dataset.ruleSetTag,
-		    section_id = nameEl.dataset.sectionId;
-
-		window.setTimeout(() => {
-			if (tag && section_id && uci.get(uciconfig, section_id)) {
-				uci.set(uciconfig, section_id, 'tag', tag);
-				uci.set(uciconfig, section_id, 'label', tag);
-				uci.set(uciconfig, section_id, 'enabled', '1');
-				uci.set(uciconfig, section_id, 'type', 'remote');
-				uci.set(uciconfig, section_id, 'format', 'binary');
-				uci.set(uciconfig, section_id, 'remote_path', '/etc/homeproxy/ruleset/');
-				uci.set(uciconfig, section_id, 'auto_update', '1');
-				uci.set(uciconfig, section_id, 'update_interval', '0 0 * * *');
-			}
-		}, 0);
-	});
+	/* Run syncSectionName() in the capture phase so the pending tag is ready
+	   before LuCI's own add handler (bound to the button) creates the section
+	   and renders the modal; the tag itself is written by the map.data.add()
+	   hook above, during the add. */
+	el.addEventListener('click', (ev) => {
+		if (ev.target === button || button.contains(ev.target))
+			syncSectionName();
+	}, true);
 
 	return el;
 }
@@ -500,15 +525,33 @@ return view.extend({
 		let normalizeFormList = function(value) {
 			return Array.isArray(value) ? value : (value ? [value] : []);
 		};
+		/* Map each subscription (airport) URL hash to its display name so we
+		   can prefix node display names with the airport they belong to. */
+		let subscriptionUrls = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_url')),
+		    subscriptionNames = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_name'));
+		for (let i = 0; i < subscriptionUrls.length; i++) {
+			let url = subscriptionUrls[i],
+			    title = String(subscriptionNames[i] || '').trim();
+
+			if (title)
+				subscription_groups[hp.calcStringMD5(url.replace(/#.*$/, ''))] = title;
+		}
+
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
 			    nodeport = ((res.type === 'direct') ? res.override_port : res.port) || '',
 			    nodefallback = (stubValidator.apply('ip6addr', nodeaddr) ?
 					String.format('[%s]', nodeaddr) : nodeaddr) + ':' + nodeport,
-			    nodelabel = res.label || nodefallback;
+			    nodelabel = res.label || nodefallback,
+			    airport = (res.grouphash && subscription_groups[res.grouphash]) || '';
+
+			/* Display name keeps the airport prefix for readability; the
+			   unprefixed label is still stored in node_labels for the
+			   keyword filter so its matching behaviour is unchanged. */
+			let displayLabel = airport ? String.format('[%s] %s', airport, nodelabel) : nodelabel;
 
 			node_labels[res['.name']] = nodelabel;
-			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, nodelabel);
+			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, displayLabel);
 		});
 		/* Mirrors the generator's policy group node filter: keywords are
 		   regexes matched against the node display name (the outbound tag). */
@@ -535,15 +578,6 @@ return view.extend({
 
 			return (filter_mode === 'whitelist') ? matched : !matched;
 		};
-		let subscriptionUrls = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_url')),
-		    subscriptionNames = normalizeFormList(uci.get(data[0], 'subscription', 'subscription_name'));
-		for (let i = 0; i < subscriptionUrls.length; i++) {
-			let url = subscriptionUrls[i],
-			    title = String(subscriptionNames[i] || '').trim();
-
-			if (title)
-				subscription_groups[hp.calcStringMD5(url.replace(/#.*$/, ''))] = title;
-		}
 		uci.sections(data[0], 'routing_node', (res) => {
 			routing_groups[res['.name']] = res.label || res['.name'];
 		});
@@ -1133,7 +1167,7 @@ return view.extend({
 			_('Drop/keep nodes that contain the specific keywords. <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions">Regex</a> is supported.'));
 		so.depends('node', 'urltest');
 		so.depends('node', 'selector');
-		so.depends('filter_nodes', /^((?!(disabled)$).)+$/);
+		so.depends('filter_nodes', /^(blacklist|whitelist)$/);
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
