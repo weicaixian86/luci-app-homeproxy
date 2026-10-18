@@ -78,8 +78,27 @@ jobs:
       - name: Download and extract SDK
         run: |
           set -e
-          curl -fsSL --http1.1 --retry 5 --retry-delay 5 --retry-all-errors \
-            "${{ matrix.sdk_url }}" -o sdk.tar.zst
+          full="${{ matrix.sdk_url }}"
+          # Every OpenWrt mirror serves the identical SDK path; try each one
+          # until one answers. downloads.openwrt.org frequently returns 503 to
+          # CI runners, so it is only one candidate among several.
+          sdk_rel="${full#*downloads.openwrt.org}"
+          MIRRORS="https://mirror-03.infra.openwrt.org https://mirrors.kernel.org/openwrt https://ftp.halifax.rwth-aachen.de/openwrt https://downloads.openwrt.org https://openwrt.proxy.ustclug.org https://mirrors.ustc.edu.cn/openwrt https://mirrors.tuna.tsinghua.edu.cn/openwrt"
+          got=0
+          for base in $MIRRORS; do
+            url="${base}${sdk_rel}"
+            echo "-> trying SDK mirror: $url"
+            if curl -fsSL --http1.1 --connect-timeout 30 --max-time 900 \
+                 --retry 3 --retry-delay 5 --retry-all-errors \
+                 "$url" -o sdk.tar.zst; then
+              echo "downloaded from $base"
+              got=1
+              break
+            fi
+            echo "failed from $base, trying next mirror"
+            rm -f sdk.tar.zst
+          done
+          [ "$got" = "1" ] || { echo "::error::all SDK mirrors failed"; exit 1; }
           mkdir -p sdk
           tar --zstd -xf sdk.tar.zst -C sdk --strip-components=1
 
@@ -95,6 +114,9 @@ jobs:
           chmod 0755 package/luci-app-homeproxy/root/etc/init.d/* \
                      package/luci-app-homeproxy/root/etc/homeproxy/scripts/* 2>/dev/null || true
           echo "CONFIG_PACKAGE_luci-app-homeproxy=m" >> .config
+          # Fall back to OpenWrt mirrors when downloads.openwrt.org 503s while
+          # fetching package sources during the build.
+          echo 'CONFIG_DOWNLOAD_MIRRORS="https://mirror-03.infra.openwrt.org https://mirrors.kernel.org/openwrt https://ftp.halifax.rwth-aachen.de/openwrt https://mirrors.tuna.tsinghua.edu.cn/openwrt"' >> .config
           make defconfig
           grep -E '^CONFIG_PACKAGE_luci-app-homeproxy=' .config
           # --- Inject the Simplified Chinese catalog into the single main package.
