@@ -87,10 +87,13 @@ read_elf_eflags_le() {
 	local f="$1" b0 b1 b2 b3 v
 	[ -r "$f" ] || { echo 0; return; }
 	is_elf_binary "$f" >/dev/null 2>&1 || { echo 0; return; }
-	b0="$(dd if="$f" bs=1 skip=24 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
-	b1="$(dd if="$f" bs=1 skip=25 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
-	b2="$(dd if="$f" bs=1 skip=26 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
-	b3="$(dd if="$f" bs=1 skip=27 count=1 2>/dev/null | od -An -tx1 | tr -dc '0-9a-fA-F')"
+	# `od` is missing on some minimal BusyBox builds (e.g. iStoreOS). Its stderr
+	# must be silenced too, otherwise "od: not found" leaks into the captured
+	# output of every caller and pollutes the LuCI log.
+	b0="$(dd if="$f" bs=1 skip=24 count=1 2>/dev/null | od -An -tx1 2>/dev/null | tr -dc '0-9a-fA-F')"
+	b1="$(dd if="$f" bs=1 skip=25 count=1 2>/dev/null | od -An -tx1 2>/dev/null | tr -dc '0-9a-fA-F')"
+	b2="$(dd if="$f" bs=1 skip=26 count=1 2>/dev/null | od -An -tx1 2>/dev/null | tr -dc '0-9a-fA-F')"
+	b3="$(dd if="$f" bs=1 skip=27 count=1 2>/dev/null | od -An -tx1 2>/dev/null | tr -dc '0-9a-fA-F')"
 	b0="${b0:-0}"; b1="${b1:-0}"; b2="${b2:-0}"; b3="${b3:-0}"
 	[ -z "${b0}${b1}${b2}${b3}" ] && { echo 0; return; }
 	v=$(( 0x$b0 + (0x$b1 << 8) + (0x$b2 << 16) + (0x$b3 << 24) ))
@@ -337,21 +340,31 @@ download_file() {
 	return 1
 }
 
-# Best-effort SHA-256 verification. reF1nd does not publish per-asset checksums
-# for this release, so when no checksum can be located we log a warning and let
-# the install proceed (rather than blocking it). If a checksum IS found and does
-# not match, the install is aborted.
+# Best-effort SHA-256 verification.
+#
+# IMPORTANT: reF1nd does NOT publish per-asset checksums. Verified against the
+# release asset lists of both v1.14.3-reF1nd and v1.15.0-alpha.11-reF1nd —
+# neither contains a `.sha256`, `sha256sums` or `checksums` asset. The previous
+# implementation nevertheless requested `<asset>.sha256` through every mirror:
+# 7 candidate URLs x 3 curl attempts each (--retry 2, --retry-delay 5), i.e.
+# minutes of pure latency on EVERY install, plus 7 bogus "download failed" log
+# lines that buried the real error when something actually went wrong.
+# Checksum verification is therefore opt-in: place a `<asset>.sha256` file in
+# /etc/homeproxy/ (first whitespace-separated field = hex digest) and it will
+# be honoured; otherwise the install proceeds without it.
 verify_sha256() {
-	local asset="$1" file="$2" base sum_url expected='' sum
-	base="${asset%.tar.gz}"
-	sum_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}.sha256"
+	local asset="$1" file="$2" expected='' sum
+	local sum_file="${HP_DIR}/${asset}.sha256"
 
-	if download_file "$sum_url" "${CACHE_DIR}/${asset}.sha256" checksum auto; then
-		expected="$(awk '{print $1}' "${CACHE_DIR}/${asset}.sha256" 2>/dev/null | head -n1)"
+	if [ -f "$sum_file" ]; then
+		expected="$(awk '{print $1}' "$sum_file" 2>/dev/null | head -n1)"
+	else
+		log_download "reF1nd 未发布 ${asset} 的 SHA256 校验和（该 release 不含 .sha256 文件），跳过校验"
+		return 0
 	fi
 
-	# Mirrors may answer a missing checksum with an error page (HTTP 200), so
-	# only a real 64-character hex digest is accepted as a checksum.
+	# Guard against a malformed digest file: only a real 64-character hex
+	# digest counts as a checksum.
 	case "$expected" in
 		*[!0-9a-fA-F]*) expected='' ;;
 	esac
@@ -413,7 +426,11 @@ extract_and_install() {
 	# SIGILL here. Refuse to install so the caller can fall back to the next
 	# candidate (the baseline amd64 build) instead of leaving a dead binary.
 	if ! "$bin" version >/dev/null 2>&1; then
-		log_download "内核健康检查未通过（可能架构不匹配或缺少运行依赖），不安装此候选：${asset}"
+		# NOTE: log the archive path, not `${asset}`. `asset` lives in the
+		# caller (download_and_install); under `set -u` referencing it here
+		# is only safe when the caller happens to have set it, and the
+		# manual-archive path can reach this function with no such variable.
+		log_download "内核健康检查未通过（可能架构不匹配或缺少运行依赖），不安装此候选：${archive}"
 		rm -rf "$tmp_dir"
 		return 1
 	fi
