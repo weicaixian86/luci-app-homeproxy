@@ -310,12 +310,19 @@ download_file() {
 
 		if [ "$rc" -eq 0 ] && [ -s "$out" ]; then
 			if [ "$purpose" = "asset" ]; then
-				local magic
-				magic="$(dd if="$out" bs=1 count=2 2>/dev/null | od -An -tx1 | tr -d ' \n')"
-				# A misbehaving mirror may answer with an HTML error page and
-				# HTTP 200; only a real gzip stream is accepted.
-				if [ "$magic" != "1f8b" ]; then
-					log_download "下载内容不是 gzip 压缩包（疑似错误页面），继续尝试下一个源：${actual_url}"
+				# Validate that the mirror really returned a gzip-compressed
+				# tarball. A misbehaving mirror may answer with an HTML error
+				# page and HTTP 200, so the content must be checked.
+				#
+				# IMPORTANT: do NOT check the gzip magic via `od`. Many minimal
+				# BusyBox builds (e.g. some iStoreOS images) ship WITHOUT `od`;
+				# the old `od`-based check then produced an empty string, which
+				# never equals "1f8b", so EVERY valid download was rejected as
+				# "not gzip" and deleted — making the core impossible to install
+				# even with a perfectly healthy mirror. `tar -tzf` is portable
+				# (busybox tar handles -z) and validates the archive for real.
+				if ! tar -tzf "$out" >/dev/null 2>&1; then
+					log_download "下载内容不是有效的 tar.gz 包（疑似错误页面），继续尝试下一个源：${actual_url}"
 					rm -f "$out"
 					continue
 				fi
