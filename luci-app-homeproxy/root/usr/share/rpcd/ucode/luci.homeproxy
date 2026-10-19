@@ -1764,20 +1764,25 @@ const methods = {
 				};
 
 			/* Wait briefly for the detached worker to publish its pid file.
-			 * On success this returns in well under a second; on failure the
-			 * UI gets a precise message now instead of polling for 15 s and
-			 * then reporting a vague timeout.
+			 * On success this returns almost immediately; on failure the UI
+			 * gets a precise message now instead of polling for 15 s and then
+			 * reporting a vague timeout.
 			 *
 			 * The rc file counts as success too: a cached/CDN-hit download
 			 * finishes in a few seconds, so the worker may already have
-			 * removed its pid and written its status by the time we look. */
+			 * removed its pid and written its status by the time we look.
+			 *
+			 * `sleep 1`, not a fractional sleep: not every BusyBox build
+			 * accepts a non-integer argument, and a rejected argument would
+			 * spin this loop dry in microseconds, turning the check into a
+			 * guaranteed false negative. */
 			let spawned = false;
-			for (let i = 0; i < 12 && !spawned; i++) {
+			for (let i = 0; i < 3 && !spawned; i++) {
 				if (coreUpdateRunning() || access(`${RUN_DIR}/core_update.rc`)) {
 					spawned = true;
 					break;
 				}
-				system('sleep 0.2');
+				system('sleep 1');
 			}
 
 			if (!spawned)
