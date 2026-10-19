@@ -114,6 +114,9 @@ detect_arch_name() {
 	local mach package_arch arm_family arm_abi
 	mach="$(uname -m 2>/dev/null)"
 	package_arch="$(opkg print-architecture 2>/dev/null | awk '$2 != "all" && $2 != "noarch" {print $2; exit}')"
+	# OpenWrt 25.12+ switched to apk; opkg may be absent there. Fall back to
+	# apk's arch query so the package_arch heuristics below still apply.
+	[ -n "$package_arch" ] || package_arch="$(apk --print-arch 2>/dev/null)"
 
 	case "$mach" in
 		x86_64|amd64)
@@ -461,6 +464,7 @@ ensure_core() {
 	fi
 
 	log_download "reF1nd 内核缺失且下载失败，无法启动服务"
+	log_download "提示：若系统时间未同步（NTP 未校时），HTTPS 证书校验会失败（curl 返回码 60）；请先确认 date 与真实时间一致"
 	return 1
 }
 
@@ -494,6 +498,8 @@ update_core() {
 		return 0
 	fi
 
+	log_download "手动更新失败：所有镜像及手动放置的内核均未成功"
+	log_download "提示：若系统时间未同步（NTP 未校时），HTTPS 证书校验会失败（curl 返回码 60）；请先确认 date 与真实时间一致"
 	echo "failed"
 	return 1
 }

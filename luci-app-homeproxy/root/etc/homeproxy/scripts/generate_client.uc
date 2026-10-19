@@ -189,7 +189,7 @@ if (match(proxy_mode, /tun/)) {
 		tcpip_stack = uci.get(uciconfig, uciroutingsetting, 'tcpip_stack') || 'system';
 }
 
-const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
+const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'info';
 
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');

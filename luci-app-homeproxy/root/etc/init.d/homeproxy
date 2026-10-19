@@ -146,7 +146,8 @@ ensure_panel() {
 init_logs() {
 	mkdir -p "$RUN_DIR"
 	mkdir -p "$HP_DIR/run/ui"
-	touch "$LOG_PATH" "$RUN_DIR/sing-box-c.log" "$RUN_DIR/sing-box-s.log"
+	touch "$LOG_PATH" "$RUN_DIR/sing-box-c.log" "$RUN_DIR/sing-box-s.log" \
+	      "$RUN_DIR/core_download.log" "$RUN_DIR/panel_download.log"
 	chown -R sing-box:sing-box "$RUN_DIR" 2>"/dev/null"
 	chown -R sing-box:sing-box "$HP_DIR/run" 2>"/dev/null"
 }
@@ -219,6 +220,7 @@ start_service() {
 		# runtime core download.
 		if ! /bin/sh "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
 			log "错误：sing-box 内核不可用：下载失败或架构暂不支持。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+			panel_log "面板未下载：sing-box 内核不可用，服务未启动（面板依赖内核运行）。"
 			return 1
 		fi
 	else

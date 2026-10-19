@@ -1609,6 +1609,37 @@ const methods = {
 				sfd.close();
 			}
 
+			/* Fallback: if the helper produced no output at all (e.g. the
+			 * script failed to execute or is missing), the UI would otherwise
+			 * show a bare "-" and "No binary for this arch". Derive a
+			 * best-effort architecture here via uname so the panel stays
+			 * meaningful and the download button has a chance to work. */
+			if (result.arch === '-' || !length(result.arch)) {
+				const ufd = popen('uname -m 2>/dev/null');
+				if (ufd) {
+					let mach = '';
+					for (let line = ufd.read('line'); length(line); line = ufd.read('line'))
+						mach = trim(line);
+					ufd.close();
+
+					if (match(mach, /^(x86_64|amd64)$/))
+						result.arch = 'x86_64';
+					else if (match(mach, /^(aarch64|arm64)$/))
+						result.arch = 'aarch64';
+					else if (length(mach))
+						result.arch = mach;
+
+					if (result.arch === 'x86_64' || result.arch === 'aarch64') {
+						result.asset_available = true;
+						result.asset = (result.arch === 'x86_64')
+							? 'sing-box-1.14.3-reF1nd-linux-amd64-musl.tar.gz'
+							: 'sing-box-1.14.3-reF1nd-linux-arm64-musl.tar.gz';
+						if (!length(result.refind_version))
+							result.refind_version = '1.14.3-reF1nd';
+					}
+				}
+			}
+
 			return result;
 		}
 	},
@@ -1623,7 +1654,27 @@ const methods = {
 				fd.close();
 			}
 
-			return { result: (output || '').indexOf('ok') !== -1, output: trim(output) };
+			/* The helper writes the real per-mirror errors (curl exit codes,
+			 * certificate failures, timeouts) to core_download.log rather than
+			 * stdout. Return its tail so the UI can show the actual cause
+			 * instead of a generic "see log" hint. */
+			let logtail = '';
+			try {
+				const raw = readfile(`${RUN_DIR}/core_download.log`);
+				if (raw) {
+					const lines = split(raw, '\n');
+					let n = 0;
+					for (let i = length(lines) - 1; i >= 0 && n < 12; i--) {
+						const l = trim(lines[i]);
+						if (length(l)) {
+							logtail = l + '\n' + logtail;
+							n++;
+						}
+					}
+				}
+			} catch (e) {}
+
+			return { result: (output || '').indexOf('ok') !== -1, output: trim(output), log: trim(logtail) };
 		}
 	}
 };

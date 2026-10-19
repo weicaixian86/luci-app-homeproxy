@@ -1427,6 +1427,10 @@ msgstr ""
 msgid "Log is empty."
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js
+msgid "[%s] No log content yet."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1360
 msgid "MTU"
 msgstr ""

@@ -196,10 +196,10 @@ if (!migration_crontab) {
 
 /* log_level was introduced */
 if (isEmpty(uci.get(uciconfig, ucimain, 'log_level')))
-	uci.set(uciconfig, ucimain, 'log_level', 'warn');
+	uci.set(uciconfig, ucimain, 'log_level', 'info');
 
 if (isEmpty(uci.get(uciconfig, uciserver, 'log_level')))
-	uci.set(uciconfig, uciserver, 'log_level', 'warn');
+	uci.set(uciconfig, uciserver, 'log_level', 'info');
 
 if (!isEmpty(uci.get(uciconfig, 'subscription', 'auto_update_time')) &&
     !is_update_cron(uci.get(uciconfig, 'subscription', 'auto_update_time')))

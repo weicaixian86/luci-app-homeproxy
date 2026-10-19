@@ -16,54 +16,72 @@
 
 'require homeproxy as hp';
 
-/* Thanks to luci-app-aria2 */
-const css = '				\
-#log_textarea {				\
-	padding: 10px;			\
-	text-align: left;		\
-}					\
-#log_textarea pre {			\
-	padding: .5rem;			\
-	word-break: break-all;		\
-	margin: 0;			\
-}					\
-.hp-log-topbar {			\
-	display: flex;			\
-	align-items: center;		\
-	justify-content: space-between;	\
-	flex-wrap: wrap;			\
-	gap: 8px;			\
-	padding: 8px 10px;		\
-}					\
-.hp-log-src {				\
-	margin-bottom: 10px;		\
-	border: 1px solid #ddd;		\
-	border-radius: 4px;		\
-	overflow: hidden;		\
-}					\
-.hp-log-src-head {			\
-	padding: 4px 10px;		\
-	font-weight: bold;		\
-	color: #fff;			\
-}					\
-.hp-log-src pre {			\
-	background: #fafafa;		\
-}					\
-.src-homeproxy {			\
-	background: #e67e22;		\
-}					\
-.src-sing-box-c {			\
-	background: #2980b9;		\
-}					\
-.src-core-download {			\
-	background: #8e44ad;		\
-}					\
-.src-panel-download {			\
-	background: #16a085;		\
-}					\
-.src-sing-box-s {			\
-	background: #c0392b;		\
-}';
+const css = `
+#log_textarea {
+	text-align: left;
+}
+.hp-log-topbar {
+	display: flex;
+	align-items: center;
+	justify-content: flex-start;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 8px 10px;
+}
+/* One merged log box with its own scrollbar: all five sources share this
+   viewport, so the page no longer grows with the amount of history. */
+.hp-log-scroll {
+	max-height: 62vh;
+	min-height: 240px;
+	overflow-y: scroll;
+	overflow-x: hidden;
+	background: #fff;
+	border: 1px solid #ddd;
+	border-radius: 4px;
+	padding: 6px 0;
+	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+	font-size: 12px;
+	line-height: 1.55;
+}
+.hp-log-line {
+	display: block;
+	white-space: pre-wrap;
+	word-break: break-all;
+	padding: 0 10px;
+	margin: 0;
+}
+.hp-log-tag {
+	display: inline-block;
+	min-width: 104px;
+	margin-right: 8px;
+	padding: 0 6px;
+	border-radius: 3px;
+	color: #fff;
+	font-size: 11px;
+	line-height: 16px;
+	text-align: center;
+	white-space: nowrap;
+}
+.hp-log-indent {
+	display: inline-block;
+	min-width: 112px;
+	margin-right: 8px;
+}
+.hp-log-trunc {
+	padding: 6px 10px;
+	color: #c0392b;
+	font-size: 11px;
+}
+.hp-log-empty {
+	padding: 16px 12px;
+	color: #888;
+}
+.src-homeproxy { background: #e67e22; }
+.src-sing-box-c { background: #2980b9; }
+.src-core-download { background: #8e44ad; }
+.src-panel-download { background: #16a085; }
+.src-sing-box-s { background: #c0392b; }
+`;
 
 const hp_dir = '/var/run/homeproxy';
 
@@ -79,39 +97,148 @@ const callLogClean = rpc.declare({
 	expect: { '': {} }
 });
 
-/* Max lines kept per source; older lines are dropped when exceeded. */
+/* Max lines shown in the merged log box; older lines are dropped. */
 const LOG_MAX_LINES = 1000;
 
-/* Read one log file and return a DOM node for its content. */
+/* Leading "YYYY-MM-DD HH:MM:SS" of a log line. An optional "+0800"-style
+   zone prefix is tolerated because some sing-box builds emit it. */
+const TS_RE = /^\s*(?:[+-]\d{4}\s+)?(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/;
+
+/* Split one log file into records: a timestamped line plus the untimestamped
+   continuation lines that follow it (e.g. sing-box "Cause:" / stack traces).
+   Keeping records intact means multi-line entries survive the merge. */
+function splitRecords(text) {
+	const out = [];
+	const lines = text.split('\n');
+	let cur = null;
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+		const m = TS_RE.exec(line);
+
+		if (m) {
+			if (cur)
+				out.push(cur);
+			cur = { ts: m[1] + ' ' + m[2], lines: [ line ] };
+		}
+		else if (cur) {
+			cur.lines.push(line);
+		}
+		else if (line.trim() !== '') {
+			/* Lines before the first timestamp: keep as an untimed record. */
+			out.push({ ts: '', lines: [ line ] });
+		}
+	}
+
+	if (cur)
+		out.push(cur);
+
+	return out;
+}
+
+/* Read one log file and resolve to { src, records, error }. Never rejects, so
+   one unreadable source cannot blank out the whole merged view. */
 function readSourceLog(src) {
 	return fs.read_direct(String.format('%s/%s.log', hp_dir, src.file), 'text')
 	.then((res) => {
-		let text = res.trim();
-		let truncated = false;
-		if (text) {
-			const lines = text.split('\n');
-			if (lines.length > LOG_MAX_LINES) {
-				text = lines.slice(-LOG_MAX_LINES).join('\n');
-				truncated = true;
-			}
-		}
-		const body = (text || _('Log is empty.')) +
-			(truncated ? '\n' + _('… (only the last %s lines are shown)').format(LOG_MAX_LINES) : '');
-		return E('pre', { 'wrap': 'pre', 'class': src.cls }, [ body ]);
-	}).catch((err) => {
-		let body;
-		if (err.toString().includes('NotFoundError'))
-			body = _('Log file does not exist.');
-		else
-			body = _('Unknown error: %s').format(err);
-		return E('pre', { 'wrap': 'pre', 'class': src.cls }, [ body ]);
+		const text = String(res || '').replace(/\r\n/g, '\n').trim();
+		return { src: src, records: text ? splitRecords(text) : [], error: null };
+	})
+	.catch((err) => {
+		const missing = err.toString().includes('NotFoundError');
+		return {
+			src: src,
+			records: [],
+			error: missing ? _('Log file does not exist.') : _('Unknown error: %s').format(err)
+		};
 	});
 }
 
-/* Build the unified log view (top bar with level switch + body) and poll. */
+/* Merge records from every source into one chronological list. Each item is
+   { si, ts, lines }, where si indexes log_sources. Untimed notices (a missing
+   file, for instance) sort first so they stay visible. Ties keep source order. */
+function mergeRecords(results, log_sources) {
+	const all = [];
+
+	results.forEach((r, si) => {
+		if (r.error) {
+			all.push({ si: si, ts: '', lines: [ r.error ] });
+			return;
+		}
+
+		/* A source with no records and no error: surface a per-source
+		   placeholder so the user can see at a glance that this source has
+		   simply not produced output yet (e.g. the kernel never downloaded,
+		   so sing-box never started and its logs stay empty). */
+		if (r.records.length === 0) {
+			all.push({ si: si, ts: '', lines:
+				[ _('[%s] No log content yet.').format(log_sources[si].label) ] });
+			return;
+		}
+
+		for (let i = 0; i < r.records.length; i++) {
+			const rec = r.records[i];
+			all.push({ si: si, ts: rec.ts, lines: rec.lines });
+		}
+	});
+
+	all.sort((a, b) => {
+		if (a.ts !== b.ts)
+			return (a.ts < b.ts) ? -1 : 1;
+		return a.si - b.si;
+	});
+
+	return all;
+}
+
+/* Render merged records into the single scrollable box. Only the first line of
+   each record carries a coloured source tag; continuation lines are indented. */
+function renderLogBox(merged, log_sources) {
+	const box = E('div', { 'class': 'hp-log-scroll' });
+	const flat = [];
+
+	for (let i = 0; i < merged.length; i++) {
+		const rec = merged[i];
+		for (let j = 0; j < rec.lines.length; j++)
+			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j] });
+	}
+
+	if (flat.length === 0) {
+		box.appendChild(E('div', { 'class': 'hp-log-empty' }, [ _('Log is empty.') ]));
+		return box;
+	}
+
+	let truncated = false;
+	if (flat.length > LOG_MAX_LINES) {
+		flat.splice(0, flat.length - LOG_MAX_LINES);
+		truncated = true;
+	}
+
+	for (let i = 0; i < flat.length; i++) {
+		const it = flat[i];
+		const src = log_sources[it.si];
+		const children = [];
+
+		if (it.first)
+			children.push(E('span', { 'class': 'hp-log-tag ' + src.cls }, [ src.label ]));
+		else
+			children.push(E('span', { 'class': 'hp-log-indent' }, [ '' ]));
+
+		children.push(it.text === '' ? ' ' : it.text);
+		box.appendChild(E('div', { 'class': 'hp-log-line' }, children));
+	}
+
+	if (truncated)
+		box.appendChild(E('div', { 'class': 'hp-log-trunc' },
+			[ _('… (only the last %s lines are shown)').format(LOG_MAX_LINES) ]));
+
+	return box;
+}
+
+/* Build the unified log view (top bar with level switch + one merged box). */
 function renderUnifiedLog() {
-	/* Source blocks, top-to-bottom, in a single view. Defined here (render
-	   time) so the labels are translated against the loaded catalog. */
+	/* Sources, in merge order. Defined here (render time) so the labels are
+	   translated against the loaded catalog. */
 	const log_sources = [
 		{ file: 'homeproxy',      label: _('HomeProxy'),       cls: 'src-homeproxy' },
 		{ file: 'sing-box-c',     label: _('sing-box client'), cls: 'src-sing-box-c' },
@@ -130,7 +257,7 @@ function renderUnifiedLog() {
 		panic: _('Panic')
 	};
 
-	const selected = uci.get('homeproxy', 'config', 'log_level') || 'warn';
+	const selected = uci.get('homeproxy', 'config', 'log_level') || 'info';
 
 	/* Unified log level switcher: writes both the client (config) and the
 	   server (server) section so a single control tunes sing-box verbosity. */
@@ -168,17 +295,11 @@ function renderUnifiedLog() {
 	function refresh() {
 		if (!autoRefresh)
 			return;
-		const reads = log_sources.map((src) => {
-			return readSourceLog(src).then((node) => {
-				return E('div', { 'class': 'hp-log-src' }, [
-					E('div', { 'class': 'hp-log-src-head ' + src.cls }, [ src.label ]),
-					node
-				]);
+
+		return Promise.all(log_sources.map(readSourceLog))
+			.then((results) => {
+				dom.content(log_body, renderLogBox(mergeRecords(results, log_sources), log_sources));
 			});
-		});
-		return Promise.all(reads).then((blocks) => {
-			dom.content(log_body, blocks);
-		});
 	}
 
 	/* Auto-refresh checkbox: when checked the log reloads on every poll tick
@@ -200,22 +321,26 @@ function renderUnifiedLog() {
 		E('style', [ css ]),
 		E('div', { 'class': 'cbi-map' }, [
 			E('div', { 'class': 'cbi-section hp-log-topbar' }, [
-			E('div', { 'style': 'display:flex; align-items:center;' }, [
-				_('Log level:'),
-				level_sel
-			]),
-			E('label', { 'style': 'display:flex; align-items:center; margin-left:16px;' }, [
-				auto_cb,
-				_('Auto refresh')
-			]),
-			E('button', {
-					'class': 'btn cbi-button cbi-button-action',
-					'click': ui.createHandlerFn(this, () => {
-						return Promise.all(log_sources.map((src) =>
-							L.resolveDefault(callLogClean(src.file), {})
-						));
-					})
-				}, [ _('Clean log') ])
+			/* All controls are left-aligned in a single row:
+			   log level -> auto refresh -> clean log. */
+			E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, [
+				E('div', { 'style': 'display:flex; align-items:center;' }, [
+					_('Log level:'),
+					level_sel
+				]),
+				E('label', { 'style': 'display:flex; align-items:center;' }, [
+					auto_cb,
+					_('Auto refresh')
+				]),
+				E('button', {
+						'class': 'btn cbi-button cbi-button-action',
+						'click': ui.createHandlerFn(this, () => {
+							return Promise.all(log_sources.map((src) =>
+								L.resolveDefault(callLogClean(src.file), {})
+							));
+						})
+					}, [ _('Clean log') ])
+			])
 			]),
 			E('div', { 'class': 'cbi-section' }, [
 				log_body,

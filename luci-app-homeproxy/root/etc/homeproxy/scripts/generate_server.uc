@@ -23,7 +23,7 @@ uci.load(uciconfig);
 
 const uciserver = 'server';
 
-const log_level = uci.get(uciconfig, uciserver, 'log_level') || 'warn';
+const log_level = uci.get(uciconfig, uciserver, 'log_level') || 'info';
 /* UCI config end */
 
 const config = {};

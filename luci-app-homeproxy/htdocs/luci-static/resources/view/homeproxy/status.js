@@ -309,8 +309,12 @@ return view.extend({
 							msg = _('Current architecture is not supported by reF1nd yet.');
 						else if (res.output && res.output.indexOf('no_asset') !== -1)
 							msg = _('No matching binary for this architecture yet.');
-						else
+						else {
 							msg = _('Download / update failed. See log for details.');
+							const tail = (res.log || '').split('\n').filter(l => l.trim()).slice(-4).join(' ; ');
+							if (tail)
+								msg += ' ' + tail;
+						}
 
 						self.description = msg;
 						return self.map.reset();
