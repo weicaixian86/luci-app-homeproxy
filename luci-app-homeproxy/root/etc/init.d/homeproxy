@@ -26,40 +26,37 @@ else
 fi
 
 # ---------- clock / time-sync helpers ----------
-# OpenWrt's sysfixtime sets the boot clock to the newest file mtime (usually the
-# firmware build / package install time) until NTP corrects it. If the service
-# starts before that correction, log lines would carry the stale boot time even
-# though the router's clock is correct a moment later. Detect that state so
-# startup logs are not silently misleading.
-time_sync_reference() {
-	local f newest=0 m
-	for f in /etc/init.d/homeproxy /usr/share/homeproxy/version /etc/config/homeproxy; do
-		[ -e "$f" ] || continue
-		m="$(stat -c %Y "$f" 2>/dev/null)" || continue
-		[ -n "$m" ] || continue
-		if [ "$m" -gt "$newest" ]; then
-			newest="$m"
-		fi
-	done
-	echo "$newest"
-}
-
+# Only flag a genuinely implausible clock. A wrong date is what actually breaks
+# HTTPS certificate validation (curl exit 60). We deliberately do NOT compare
+# against the package file mtime here: a freshly installed package has an mtime
+# equal to "now", which would otherwise mark every boot within the first few
+# minutes as "unsynced" even when the clock is already correct. The timestamp
+# carried by the log line is authoritative for humans.
 clock_looks_unsynced() {
-	local ref now
-	ref="$(time_sync_reference)"
-	[ "${ref:-0}" -gt 0 ] 2>/dev/null || return 1
-	now="$(date +%s 2>/dev/null)" || return 1
-	[ -n "$now" ] || return 1
-	# Within 5 minutes of the sysfixtime value => NTP has not moved the clock yet.
-	[ "$now" -le $((ref + 300)) ]
+	local y
+	y="$(date +%Y 2>/dev/null)" || return 1
+	case "$y" in
+		[0-9][0-9][0-9][0-9]) ;;
+		*) return 1 ;;
+	esac
+	[ "$y" -lt 2024 ] || [ "$y" -gt 2035 ]
 }
 
-# Give NTP up to 10 seconds to correct a boot-time (sysfixtime) clock. Only
-# waits when the clock actually looks unsynced, so a normal boot is unaffected.
+# Give NTP a brief chance to correct an implausible (boot-time) clock. Only
+# waits when the clock actually looks wrong, so a normally-synced boot is
+# unaffected; a ~12-second cap keeps service start from hanging on a network
+# that simply has no reachable NTP server.
 wait_for_time_sync() {
-	local i=0
 	clock_looks_unsynced || return 0
-	while [ "$i" -lt 10 ]; do
+	# Best-effort one-shot NTP correction so a fresh boot with a wrong
+	# (boot-time) clock can still validate TLS certificates for the core
+	# download (otherwise curl exits 60). Run detached so the wait loop is not
+	# blocked if no server is reachable.
+	if command -v ntpd >/dev/null 2>&1; then
+		( ntpd -n -q 2>/dev/null ) &
+	fi
+	local i=0
+	while [ "$i" -lt 12 ]; do
 		sleep 1
 		i=$((i + 1))
 		clock_looks_unsynced || return 0
@@ -219,7 +216,19 @@ start_service() {
 		# Windows checkout that dropped the mode) cannot silently disable the
 		# runtime core download.
 		if ! /bin/sh "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
-			log "错误：sing-box 内核不可用：下载失败或架构暂不支持。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+			# Surface the actual download failure (e.g. "下载失败（返回码 60）"
+			# = certificate/clock, 6 = DNS, 28 = timeout) so the cause is visible
+			# on the status page without SSH. Fall back to the generic hint when
+			# the log carries nothing useful.
+			local reason
+			reason="$(tail -n 8 "$RUN_DIR/core_download.log" 2>/dev/null \
+				| grep -E '下载失败|错误|返回码|reF1nd 内核缺失|reF1nd 内核下载' \
+				| tail -n 1 | sed 's/^.*download : //')"
+			if [ -n "$reason" ]; then
+				log "错误：sing-box 内核不可用：${reason}。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+			else
+				log "错误：sing-box 内核不可用：下载失败或架构暂不支持。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+			fi
 			panel_log "面板未下载：sing-box 内核不可用，服务未启动（面板依赖内核运行）。"
 			return 1
 		fi

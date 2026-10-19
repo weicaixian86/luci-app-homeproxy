@@ -1456,10 +1456,6 @@ msgstr "日志文件不存在。"
 msgid "Log is empty."
 msgstr "日志为空。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js
-msgid "[%s] No log content yet."
-msgstr "【%s】暂无日志内容。"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1360
 msgid "MTU"
 msgstr "MTU"

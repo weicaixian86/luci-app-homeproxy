@@ -50,22 +50,10 @@ const css = `
 	padding: 0 10px;
 	margin: 0;
 }
-.hp-log-tag {
-	display: inline-block;
-	min-width: 104px;
-	margin-right: 8px;
-	padding: 0 6px;
-	border-radius: 3px;
-	color: #fff;
-	font-size: 11px;
-	line-height: 16px;
-	text-align: center;
-	white-space: nowrap;
-}
-.hp-log-indent {
-	display: inline-block;
-	min-width: 112px;
-	margin-right: 8px;
+/* Continuation line of a multi-line record (e.g. sing-box "Caused by:"),
+   indented so it stays visually grouped with its timestamped first line. */
+.hp-log-cont {
+	padding-left: 24px;
 }
 .hp-log-trunc {
 	padding: 6px 10px;
@@ -76,11 +64,6 @@ const css = `
 	padding: 16px 12px;
 	color: #888;
 }
-.src-homeproxy { background: #e67e22; }
-.src-sing-box-c { background: #2980b9; }
-.src-core-download { background: #8e44ad; }
-.src-panel-download { background: #16a085; }
-.src-sing-box-s { background: #c0392b; }
 `;
 
 const hp_dir = '/var/run/homeproxy';
@@ -157,7 +140,7 @@ function readSourceLog(src) {
 /* Merge records from every source into one chronological list. Each item is
    { si, ts, lines }, where si indexes log_sources. Untimed notices (a missing
    file, for instance) sort first so they stay visible. Ties keep source order. */
-function mergeRecords(results, log_sources) {
+function mergeRecords(results) {
 	const all = [];
 
 	results.forEach((r, si) => {
@@ -166,15 +149,12 @@ function mergeRecords(results, log_sources) {
 			return;
 		}
 
-		/* A source with no records and no error: surface a per-source
-		   placeholder so the user can see at a glance that this source has
-		   simply not produced output yet (e.g. the kernel never downloaded,
-		   so sing-box never started and its logs stay empty). */
-		if (r.records.length === 0) {
-			all.push({ si: si, ts: '', lines:
-				[ _('[%s] No log content yet.').format(log_sources[si].label) ] });
+		/* A source that simply has no output yet is skipped silently: the merged
+		   box should contain real log lines only, not per-source "empty"
+		   placeholders (which just added noise). The whole box still shows
+		   "Log is empty." when every source is empty. */
+		if (r.records.length === 0)
 			return;
-		}
 
 		for (let i = 0; i < r.records.length; i++) {
 			const rec = r.records[i];
@@ -191,9 +171,9 @@ function mergeRecords(results, log_sources) {
 	return all;
 }
 
-/* Render merged records into the single scrollable box. Only the first line of
-   each record carries a coloured source tag; continuation lines are indented. */
-function renderLogBox(merged, log_sources) {
+/* Render merged records into the single scrollable box as plain log text.
+   The first line of each record is flush; continuation lines are indented. */
+function renderLogBox(merged) {
 	const box = E('div', { 'class': 'hp-log-scroll' });
 	const flat = [];
 
@@ -216,16 +196,12 @@ function renderLogBox(merged, log_sources) {
 
 	for (let i = 0; i < flat.length; i++) {
 		const it = flat[i];
-		const src = log_sources[it.si];
-		const children = [];
-
-		if (it.first)
-			children.push(E('span', { 'class': 'hp-log-tag ' + src.cls }, [ src.label ]));
-		else
-			children.push(E('span', { 'class': 'hp-log-indent' }, [ '' ]));
-
-		children.push(it.text === '' ? ' ' : it.text);
-		box.appendChild(E('div', { 'class': 'hp-log-line' }, children));
+		/* No per-source badge: the box shows plain log text. The record's
+		   first line is flush, its continuation lines (e.g. sing-box
+		   "Caused by:") are indented so the grouping stays readable. */
+		box.appendChild(E('div', {
+			'class': it.first ? 'hp-log-line' : 'hp-log-line hp-log-cont'
+		}, [ it.text === '' ? ' ' : it.text ]));
 	}
 
 	if (truncated)
@@ -237,14 +213,15 @@ function renderLogBox(merged, log_sources) {
 
 /* Build the unified log view (top bar with level switch + one merged box). */
 function renderUnifiedLog() {
-	/* Sources, in merge order. Defined here (render time) so the labels are
-	   translated against the loaded catalog. */
+	/* Log files merged into the single timeline, in merge order. Only the file
+	   names matter now that the view renders plain log text without per-source
+	   badges. */
 	const log_sources = [
-		{ file: 'homeproxy',      label: _('HomeProxy'),       cls: 'src-homeproxy' },
-		{ file: 'sing-box-c',     label: _('sing-box client'), cls: 'src-sing-box-c' },
-		{ file: 'core_download',  label: _('Core download'),   cls: 'src-core-download' },
-		{ file: 'panel_download', label: _('Panel download'),  cls: 'src-panel-download' },
-		{ file: 'sing-box-s',     label: _('sing-box server'), cls: 'src-sing-box-s' }
+		{ file: 'homeproxy' },
+		{ file: 'sing-box-c' },
+		{ file: 'core_download' },
+		{ file: 'panel_download' },
+		{ file: 'sing-box-s' }
 	];
 
 	const log_level_choices = {
@@ -298,7 +275,7 @@ function renderUnifiedLog() {
 
 		return Promise.all(log_sources.map(readSourceLog))
 			.then((results) => {
-				dom.content(log_body, renderLogBox(mergeRecords(results, log_sources), log_sources));
+				dom.content(log_body, renderLogBox(mergeRecords(results)));
 			});
 	}
 
