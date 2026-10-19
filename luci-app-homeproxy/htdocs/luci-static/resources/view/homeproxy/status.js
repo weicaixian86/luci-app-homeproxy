@@ -315,18 +315,18 @@ return view.extend({
 						}
 						else if (res.output && res.output.indexOf('unsupported') !== -1) {
 							msg = _('Current architecture is not supported by reF1nd yet.');
-							level = 'warning';
+							level = 'danger';
 						}
 						else if (res.output && res.output.indexOf('no_asset') !== -1) {
 							msg = _('No matching binary for this architecture yet.');
-							level = 'warning';
+							level = 'danger';
 						}
 						else {
 							msg = _('Download / update failed. See log for details.');
 							const tail = (res.log || '').split('\n').filter(l => l.trim()).slice(-4).join(' ; ');
 							if (tail)
 								msg += ' ' + tail;
-							level = 'warning';
+							level = 'danger';
 						}
 
 						/* self.description is not rendered by this custom
