@@ -54,12 +54,18 @@ wait_for_time_sync() {
 	# blocked if no server is reachable. NOTE: BusyBox ntpd requires at least
 	# one `-p PEER` (plain `ntpd -n -q` just prints usage), so servers must be
 	# passed explicitly — preferring the UCI-configured ones.
-	local srv
+	local srv s ntp_args=''
 	srv="$(uci -q get system.ntp.server 2>/dev/null | tr '\n' ' ')"
 	if command -v ntpd >/dev/null 2>&1; then
 		if [ -n "$srv" ]; then
+			# Build "-p <server>" without relying on `printf --`, which some
+			# minimal BusyBox printf builds do not special-case; a plain loop
+			# is unambiguously ash-safe (matches update_core.sh sync_time).
+			for s in $srv; do
+				ntp_args="$ntp_args -p $s"
+			done
 			# shellcheck disable=SC2086
-			( ntpd -n -q $(printf -- '-p %s ' $srv) 2>/dev/null ) &
+			( ntpd -n -q $ntp_args 2>/dev/null ) &
 		else
 			( ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
 		fi
