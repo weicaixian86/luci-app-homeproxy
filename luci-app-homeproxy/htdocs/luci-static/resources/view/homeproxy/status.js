@@ -301,22 +301,38 @@ return view.extend({
 			E('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(this, () => {
+					/* Immediate feedback: a 34 MB download over a slow mirror can
+					   take a while (or the rpc call can time out), so tell the
+					   user the click was received instead of leaving the button
+					   looking dead. */
+					ui.addNotification(null, E('p', _('Downloading / updating sing-box core, please wait…')), 'info');
+
 					return L.resolveDefault(callCoreUpdate(), {}).then((res) => {
-						let msg;
-						if (res.result)
+						let msg, level;
+						if (res.result) {
 							msg = _('Download / update succeeded.');
-						else if (res.output && res.output.indexOf('unsupported') !== -1)
+							level = 'info';
+						}
+						else if (res.output && res.output.indexOf('unsupported') !== -1) {
 							msg = _('Current architecture is not supported by reF1nd yet.');
-						else if (res.output && res.output.indexOf('no_asset') !== -1)
+							level = 'warning';
+						}
+						else if (res.output && res.output.indexOf('no_asset') !== -1) {
 							msg = _('No matching binary for this architecture yet.');
+							level = 'warning';
+						}
 						else {
 							msg = _('Download / update failed. See log for details.');
 							const tail = (res.log || '').split('\n').filter(l => l.trim()).slice(-4).join(' ; ');
 							if (tail)
 								msg += ' ' + tail;
+							level = 'warning';
 						}
 
-						self.description = msg;
+						/* self.description is not rendered by this custom
+						   DummyValue render, so surface the outcome as a toast —
+						   otherwise a failed update looked like a dead button. */
+						ui.addNotification(null, E('p', msg), level);
 						return self.map.reset();
 					});
 				})

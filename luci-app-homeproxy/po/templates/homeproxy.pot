@@ -3479,6 +3479,9 @@ msgstr ""
 msgid "Download / update succeeded."
 msgstr ""
 
+msgid "Downloading / updating sing-box core, please wait…"
+msgstr ""
+
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr ""
 

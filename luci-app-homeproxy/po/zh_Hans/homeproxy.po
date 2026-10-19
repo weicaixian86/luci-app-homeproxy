@@ -3530,6 +3530,9 @@ msgstr "该架构暂无可用二进制"
 msgid "Download / update succeeded."
 msgstr "下载 / 更新成功。"
 
+msgid "Downloading / updating sing-box core, please wait…"
+msgstr "正在下载 / 更新 sing-box 内核，请稍候…"
+
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
 
