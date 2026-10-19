@@ -1,0 +1,19 @@
+# OpenWrt / LuCI packages run shell scripts (busybox ash) and ucode on Linux.
+# CRLF line endings make ash abort at parse time with
+#   Syntax error: word unexpected (expecting "in")
+# which yields ZERO output and an EMPTY log — easily mistaken for a download
+# failure. Force LF for every text file regardless of the developer's
+# core.autocrlf setting, so a Windows checkout can never corrupt the scripts.
+* text=auto eol=lf
+*.sh    text eol=lf
+*.uc    text eol=lf
+*.ut    text eol=lf
+*.js    text eol=lf
+*.lua   text eol=lf
+*.po    text eol=lf
+*.pot   text eol=lf
+*.conf  text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf

@@ -227,23 +227,41 @@ start_service() {
 	# fetched at runtime. If no binary exists and the architecture is not yet
 	# supported (or the download fails), do not start the service.
 	if [ -f "$CORE_SCRIPT" ]; then
+		# Defensive: a package built on a Windows host with core.autocrlf=true
+		# can ship this helper with CRLF endings. busybox ash then dies at parse
+		# time ("Syntax error: word unexpected (expecting \"in\")") and produces
+		# ZERO output and an EMPTY core_download.log — which looks exactly like a
+		# download failure. Strip a stray trailing CR before running so the
+		# helper always parses, regardless of how it was packaged.
+		if [ "$(tr -cd '\r' < "$CORE_SCRIPT" 2>/dev/null | wc -c)" -gt 0 ]; then
+			if tr -d '\r' < "$CORE_SCRIPT" > "${CORE_SCRIPT}.lf" 2>/dev/null \
+				&& mv -f "${CORE_SCRIPT}.lf" "$CORE_SCRIPT" 2>/dev/null; then
+				log "警告：检测到内核脚本含 CRLF 换行，已自动修正为 LF。"
+			fi
+		fi
+
 		# Invoke through /bin/sh explicitly so a lost executable bit (e.g. a
 		# Windows checkout that dropped the mode) cannot silently disable the
-		# runtime core download.
-		if ! /bin/sh "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
-			# Surface the actual download failure (e.g. "下载失败（返回码 60）"
-			# = certificate/clock, 6 = DNS, 28 = timeout) so the cause is visible
-			# on the status page without SSH. Fall back to the generic hint when
-			# the log carries nothing useful.
+		# runtime core download. Capture the helper's own stdout/stderr to a
+		# dedicated file: if core_download.log ends up empty (script aborted
+		# before its first log write, missing interpreter, parse error, ...),
+		# we can still surface the real cause instead of a generic message.
+		local core_out="$RUN_DIR/core_ensure.out"
+		if ! /bin/sh "$CORE_SCRIPT" ensure >"$core_out" 2>&1; then
+			# 1) Prefer a concrete per-mirror reason from core_download.log
+			#    (e.g. "下载失败（返回码 60）"). 2) If that log has nothing
+			#    useful, fall back to the helper's own stdout/stderr. 3) Only
+			#    then use the generic hint.
 			local reason
-			reason="$(tail -n 8 "$RUN_DIR/core_download.log" 2>/dev/null \
-				| grep -E '下载失败|错误|返回码|reF1nd 内核缺失|reF1nd 内核下载' \
+			reason="$(tail -n 40 "$RUN_DIR/core_download.log" 2>/dev/null \
+				| grep -E '下载失败|错误|返回码|reF1nd 内核缺失|reF1nd 内核下载|暂不支持|未找到' \
 				| tail -n 1 | sed 's/^.*download : //')"
-			if [ -n "$reason" ]; then
-				log "错误：sing-box 内核不可用：${reason}。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
-			else
-				log "错误：sing-box 内核不可用：下载失败或架构暂不支持。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+			if [ -z "$reason" ]; then
+				reason="$(tail -n 3 "$core_out" 2>/dev/null | tr '\n' ' ' \
+					| sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')"
 			fi
+			[ -n "$reason" ] || reason="下载失败或架构暂不支持"
+			log "错误：sing-box 内核不可用：${reason}。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
 			panel_log "面板未下载：sing-box 内核不可用，服务未启动（面板依赖内核运行）。"
 			return 1
 		fi
