@@ -383,6 +383,18 @@ msgstr "Cisco 公共DNS (DoH)"
 msgid "Clean log"
 msgstr "清空日志"
 
+msgid "Copy log"
+msgstr "复制日志"
+
+msgid "Log copied to clipboard."
+msgstr "日志已复制到剪贴板。"
+
+msgid "Nothing to copy."
+msgstr "没有可复制的内容。"
+
+msgid "Click the log first, then Ctrl+A selects it all."
+msgstr "先点击日志区域，再按 Ctrl+A 即可全选。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:650
 msgid "Client"
 msgstr "客户端"

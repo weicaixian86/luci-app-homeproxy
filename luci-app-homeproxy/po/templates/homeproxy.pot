@@ -372,6 +372,18 @@ msgstr ""
 msgid "Clean log"
 msgstr ""
 
+msgid "Copy log"
+msgstr ""
+
+msgid "Log copied to clipboard."
+msgstr ""
+
+msgid "Nothing to copy."
+msgstr ""
+
+msgid "Click the log first, then Ctrl+A selects it all."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/log.js:104
 msgid "Log level:"
 msgstr ""

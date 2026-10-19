@@ -19,6 +19,13 @@
 const css = `
 #log_textarea {
 	text-align: left;
+	/* Focusable for the Ctrl+A handler; show it rather than the browser's
+	   default outline so it is obvious the box can be selected from. */
+	outline: none;
+}
+#log_textarea:focus {
+	outline: 1px solid #4a90d9;
+	outline-offset: -1px;
 }
 .hp-log-topbar {
 	display: flex;
@@ -259,7 +266,12 @@ function renderUnifiedLog() {
 		}, [ log_level_choices[v] ]));
 	});
 
-	const log_body = E('div', { 'id': 'log_textarea' },
+	const log_body = E('div', {
+		'id': 'log_textarea',
+		/* Focusable so a click inside the box gives it focus; without this
+		   Ctrl+A never reaches our handler and selects the whole LuCI page. */
+		'tabindex': '0'
+	},
 		E('img', {
 			'src': L.resource('icons/loading.svg'),
 			'alt': _('Loading'),
@@ -267,10 +279,64 @@ function renderUnifiedLog() {
 		}, _('Collecting data...'))
 	);
 
+	/* The log box is a <div> (per-line colouring needs markup, which a
+	   <textarea> cannot do), so the browser's built-in "select all" climbs to
+	   the document and selects the entire page. Handle the shortcut here:
+	   Ctrl/Cmd+A while the box has focus selects only the log text. */
+	log_body.addEventListener('keydown', function(ev) {
+		if (!(ev.ctrlKey || ev.metaKey) || (ev.key !== 'a' && ev.key !== 'A'))
+			return;
+
+		ev.preventDefault();
+		ev.stopPropagation();
+
+		const selection = window.getSelection();
+		const range = document.createRange();
+		range.selectNodeContents(log_body);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	});
+
+	/* Copy the whole log as plain text. navigator.clipboard is unavailable
+	   over plain http (the usual way LuCI is reached on a LAN address), so
+	   fall back to the execCommand path, which works everywhere. */
+	function copyLogText() {
+		const text = (log_body.textContent || '').trim();
+
+		if (!text.length)
+			return false;
+
+		const scratch = document.createElement('textarea');
+		scratch.value = text;
+		scratch.setAttribute('readonly', '');
+		scratch.style.position = 'fixed';
+		scratch.style.top = '-1000px';
+		document.body.appendChild(scratch);
+		scratch.select();
+
+		let copied = false;
+		try {
+			copied = document.execCommand('copy');
+		} catch (e) {
+			copied = false;
+		}
+
+		document.body.removeChild(scratch);
+		return copied;
+	}
+
 	let autoRefresh = true;
 
 	function refresh() {
 		if (!autoRefresh)
+			return;
+
+		/* Never clobber a selection: with auto-refresh on, the box is rebuilt
+		   every 5 s, which wipes whatever the user selected and makes copying
+		   impossible. Skip this tick while a selection lives inside the box. */
+		const selection = window.getSelection();
+		if (selection && !selection.isCollapsed &&
+			log_body.contains(selection.anchorNode))
 			return;
 
 		return Promise.all(log_sources.map(readSourceLog))
@@ -316,13 +382,28 @@ function renderUnifiedLog() {
 								L.resolveDefault(callLogClean(src.file), {})
 							));
 						})
-					}, [ _('Clean log') ])
+					}, [ _('Clean log') ]),
+				/* Selecting with Ctrl+A only works while the box has focus,
+				   which is easy to miss; this always copies everything. */
+				E('button', {
+						'class': 'btn cbi-button',
+						'click': ui.createHandlerFn(this, () => {
+							const ok = copyLogText();
+							ui.addNotification(null,
+								E('p', ok ? _('Log copied to clipboard.') : _('Nothing to copy.')),
+								ok ? 'info' : 'warning');
+						})
+					}, [ _('Copy log') ])
 			])
 			]),
 			E('div', { 'class': 'cbi-section' }, [
 				log_body,
 				E('div', { 'style': 'text-align:right' },
-					E('small', {}, _('Refresh every %s seconds.').format(L.env.pollinterval))
+					E('small', {}, [
+						_('Refresh every %s seconds.').format(L.env.pollinterval),
+						' · ',
+						_('Click the log first, then Ctrl+A selects it all.')
+					])
 				)
 			])
 		])
