@@ -1393,7 +1393,12 @@ if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
 		tag: t,
 		detour: (t === 'dl-default') ? null : http_client_map[t]
 	}));
-	config.default_http_client = 'dl-default';
+	/* IMPORTANT: `default_http_client` belongs UNDER `route`, not at the top
+	   level — sing-box documents it as `route.default_http_client`. Emitting
+	   it as a top-level field makes sing-box abort at startup with
+	   `decode config: default_http_client: json: unknown field
+	   "default_http_client"`, which surfaces as "客户端配置有误". */
+	config.route.default_http_client = 'dl-default';
 }
 
 /* Experimental start */
