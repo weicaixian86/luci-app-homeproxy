@@ -1660,27 +1660,45 @@ const methods = {
 				fd.close();
 			}
 
-			/* The helper writes the real per-mirror errors (curl exit codes,
-			 * certificate failures, timeouts) to core_download.log rather than
-			 * stdout. Return its tail so the UI can show the actual cause
-			 * instead of a generic "see log" hint. */
-			let logtail = '';
-			try {
-				const raw = readfile(`${RUN_DIR}/core_download.log`);
-				if (raw) {
-					const lines = split(raw, '\n');
-					let n = 0;
-					for (let i = length(lines) - 1; i >= 0 && n < 12; i--) {
-						const l = trim(lines[i]);
-						if (length(l)) {
-							logtail = l + '\n' + logtail;
-							n++;
-						}
+		/* The helper writes the real per-mirror errors (curl exit codes,
+		 * certificate failures, timeouts) to core_download.log rather than
+		 * stdout. Return its tail so the UI can show the actual cause
+		 * instead of a generic "see log" hint. */
+		let logtail = '';
+		try {
+			const raw = readfile(`${RUN_DIR}/core_download.log`);
+			if (raw) {
+				const lines = split(raw, '\n');
+				let n = 0;
+				for (let i = length(lines) - 1; i >= 0 && n < 12; i--) {
+					const l = trim(lines[i]);
+					if (length(l)) {
+						logtail = l + '\n' + logtail;
+						n++;
 					}
 				}
-			} catch (e) {}
+			}
+		} catch (e) {}
 
-			return { result: (output || '').indexOf('ok') !== -1, output: trim(output), log: trim(logtail) };
+		let displayed_log = trim(logtail);
+
+		/* If the on-disk log is empty but the helper produced stdout/stderr
+		 * (e.g. a shell syntax error, a missing interpreter, or a permission
+		 * denial), surface that output instead — otherwise the user only sees
+		 * "see log" with an empty log and has no clue what went wrong. The
+		 * popen above already merged stderr into `output` via 2>&1. */
+		if (!length(displayed_log) && length(trim(output)))
+			displayed_log = trim(output);
+
+		/* Last-resort hint: nothing was captured at all. This almost always
+		 * means the helper did not actually execute (file missing, not
+		 * executable, or a fatal parse error before any log line). Give the
+		 * operator something actionable. */
+		if (!length(displayed_log))
+			displayed_log = '脚本没有产生任何输出或日志：请在路由器 SSH 执行 ' +
+				'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
+
+		return { result: (output || '').indexOf('ok') !== -1, output: trim(output), log: displayed_log };
 		}
 	}
 };

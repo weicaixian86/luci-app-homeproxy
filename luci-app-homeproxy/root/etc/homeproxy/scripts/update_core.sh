@@ -226,12 +226,18 @@ get_downloader() {
 # server is reachable, we proceed and the download fails with a clear curl
 # return code. Bounded to ~10s so an unreachable server never hangs the update.
 sync_time() {
-	local ntpd_bin servers
+	local ntpd_bin servers s args=''
 	ntpd_bin="$(command -v ntpd 2>/dev/null)" || return 0
 	servers="$(uci -q get system.ntp.server 2>/dev/null | tr '\n' ' ')"
 	if [ -n "$servers" ]; then
+		# Build the "-p <server>" args without relying on `printf --`, which
+		# some minimal BusyBox printf builds do not special-case; a plain loop
+		# is unambiguously ash-safe.
+		for s in $servers; do
+			args="$args -p $s"
+		done
 		# shellcheck disable=SC2086
-		$ntpd_bin -n -q $(printf -- '-p %s ' $servers) 2>/dev/null &
+		$ntpd_bin -n -q $args 2>/dev/null &
 	else
 		# No servers configured in UCI: fall back to public pools so the
 		# one-shot sync still has something to query on a freshly flashed box.
@@ -561,6 +567,11 @@ print_status() {
 
 main() {
 	local cmd="${1:-ensure}"
+	# Start marker: lets us tell "the helper never ran at all" (e.g. a fatal
+	# parse error before this point, or the file missing) apart from "it ran
+	# but failed early". On a fresh boot /var/run/homeproxy may not exist yet,
+	# so ensure_log() inside log_download creates it first.
+	log_download "==== 脚本启动：命令=${cmd} ===="
 	case "$cmd" in
 		ensure)  ensure_core ;;
 		update)  update_core ;;
