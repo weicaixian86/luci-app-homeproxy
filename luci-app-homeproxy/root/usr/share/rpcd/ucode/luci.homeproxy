@@ -102,6 +102,64 @@ function cleanupPanelBackup(backup_dir) {
 	system(`rm -rf ${shellquote(backup_dir)}`);
 }
 
+/* ---------------------------------------------------------------------------
+ * Async core update
+ *
+ * A 34 MB core tarball takes 4-33 minutes on the mirrors we ship, while the
+ * uhttpd request that triggers it survives tens of seconds at most. The update
+ * therefore runs detached (update_core_async.sh) and the UI polls
+ * singbox_core_progress: singbox_core_update returns immediately, so a dropped
+ * HTTP connection can no longer kill the download halfway through — which is
+ * what produced the earlier "failed, and the log is empty" reports.
+ * ------------------------------------------------------------------------ */
+
+function coreUpdateRunning() {
+	let pid = '';
+
+	try {
+		pid = trim(readfile(`${RUN_DIR}/core_update.pid`) || '');
+	} catch (e) {
+		return false;
+	}
+
+	/* Only a plain number may reach the shell. A pid file whose process is
+	 * gone (helper killed, router rebooted) reports "not running" so the UI
+	 * can never wait forever on a stale file. */
+	if (!length(pid) || !match(pid, /^[0-9]+$/))
+		return false;
+
+	return (system(`kill -0 ${pid} 2>/dev/null`) === 0);
+}
+
+function coreDownloadLogTail(count) {
+	let tail = '';
+
+	try {
+		const raw = readfile(`${RUN_DIR}/core_download.log`);
+		if (raw) {
+			const lines = split(raw, '\n');
+			let n = 0;
+			for (let i = length(lines) - 1; i >= 0 && n < count; i--) {
+				const l = trim(lines[i]);
+				if (length(l)) {
+					tail = l + '\n' + tail;
+					n++;
+				}
+			}
+		}
+	} catch (e) {}
+
+	return trim(tail);
+}
+
+function coreUpdateOutput() {
+	try {
+		return trim(readfile(`${RUN_DIR}/core_update.out`) || '');
+	} catch (e) {
+		return '';
+	}
+}
+
 const methods = {
 	acllist_read: {
 		args: { type: 'type' },
@@ -1652,53 +1710,97 @@ const methods = {
 
 	singbox_core_update: {
 		call: function() {
-			const fd = popen(`/bin/sh ${HP_DIR}/scripts/update_core.sh update 2>&1`);
-			let output = '';
-			if (fd) {
-				for (let line = fd.read('line'); line !== null && length(line); line = fd.read('line'))
-					output += line + '\n';
+			/* Already downloading: report the existing run instead of
+			 * launching a second one. Two concurrent helpers would fight over
+			 * the same cache directory and the same target binary. */
+			if (coreUpdateRunning())
+				return {
+					started: false,
+					running: true,
+					result: false,
+					log: coreDownloadLogTail(12)
+				};
+
+			/* Wipe the previous run's artefacts. A stale rc/out would
+			 * otherwise be read as this run's result before the helper has
+			 * written anything. The log is cleared too so the tail shown by
+			 * the UI always belongs to the current attempt. */
+			system(`mkdir -p ${shellquote(RUN_DIR)}`);
+			system(`rm -f ${shellquote(`${RUN_DIR}/core_update.rc`)} ` +
+				`${shellquote(`${RUN_DIR}/core_update.out`)} ` +
+				`${shellquote(`${RUN_DIR}/core_download.log`)}`);
+
+			try {
+				writefile(`${RUN_DIR}/core_update.started`, `${time()}`);
+			} catch (e) {}
+
+			/* `&` makes the outer sh exit at once, so popen returns
+			 * immediately while the wrapper keeps running detached; nohup
+			 * keeps it alive if the launching request goes away. */
+			const fd = popen(`nohup /bin/sh ${HP_DIR}/scripts/update_core_async.sh >/dev/null 2>&1 &`);
+			if (fd)
 				fd.close();
-			}
 
-		/* The helper writes the real per-mirror errors (curl exit codes,
-		 * certificate failures, timeouts) to core_download.log rather than
-		 * stdout. Return its tail so the UI can show the actual cause
-		 * instead of a generic "see log" hint. */
-		let logtail = '';
-		try {
-			const raw = readfile(`${RUN_DIR}/core_download.log`);
-			if (raw) {
-				const lines = split(raw, '\n');
-				let n = 0;
-				for (let i = length(lines) - 1; i >= 0 && n < 12; i--) {
-					const l = trim(lines[i]);
-					if (length(l)) {
-						logtail = l + '\n' + logtail;
-						n++;
-					}
-				}
-			}
-		} catch (e) {}
+			return {
+				started: true,
+				running: true,
+				result: false,
+				log: '已启动下载任务（34 MB 内核在慢速镜像下可能需数分钟到数十分钟，可离开本页，进度会保留）。'
+			};
+		}
+	},
 
-		let displayed_log = trim(logtail);
+	singbox_core_progress: {
+		call: function() {
+			const running = coreUpdateRunning();
+			let rc = null;
+			let started_at = 0;
 
-		/* If the on-disk log is empty but the helper produced stdout/stderr
-		 * (e.g. a shell syntax error, a missing interpreter, or a permission
-		 * denial), surface that output instead — otherwise the user only sees
-		 * "see log" with an empty log and has no clue what went wrong. The
-		 * popen above already merged stderr into `output` via 2>&1. */
-		if (!length(displayed_log) && length(trim(output)))
-			displayed_log = trim(output);
+			try {
+				const raw = trim(readfile(`${RUN_DIR}/core_update.rc`) || '');
+				if (length(raw) && match(raw, /^[0-9]+$/))
+					rc = +raw;
+			} catch (e) {}
 
-		/* Last-resort hint: nothing was captured at all. This almost always
-		 * means the helper did not actually execute (file missing, not
-		 * executable, or a fatal parse error before any log line). Give the
-		 * operator something actionable. */
-		if (!length(displayed_log))
-			displayed_log = '脚本没有产生任何输出或日志：请在路由器 SSH 执行 ' +
-				'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
+			try {
+				const raw = trim(readfile(`${RUN_DIR}/core_update.started`) || '');
+				if (length(raw) && match(raw, /^[0-9]+$/))
+					started_at = +raw;
+			} catch (e) {}
 
-		return { result: (output || '').indexOf('ok') !== -1, output: trim(output), log: displayed_log };
+			const output = coreUpdateOutput();
+			const log = coreDownloadLogTail(12);
+
+			/* Small race window: the RPC launches the wrapper through a
+			 * detached shell, so for a few hundred milliseconds the pid file
+			 * does not exist yet. Without a grace period the first poll would
+			 * report "finished" and show a bogus failure. */
+			const starting = (!running && rc === null &&
+				started_at > 0 && (time() - started_at) < 15);
+
+			const done = !running && !starting;
+			const ok = done && rc === 0;
+
+			let displayed = log;
+
+			/* Nothing in the log but something on stdout/stderr: a fatal
+			 * shell error, a missing interpreter or a permission problem
+			 * happened before the helper logged its start marker. */
+			if (!length(displayed) && length(output))
+				displayed = output;
+
+			if (done && !ok && !length(displayed))
+				displayed = '脚本没有产生任何输出或日志：请在路由器 SSH 执行 ' +
+					'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
+
+			return {
+				running: running || starting,
+				done: done,
+				result: ok,
+				rc: rc,
+				output: output,
+				log: displayed
+			};
 		}
 	}
 };

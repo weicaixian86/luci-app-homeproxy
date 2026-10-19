@@ -293,71 +293,149 @@ return view.extend({
 		expect: { '': {} }
 	});
 
+	const callCoreProgress = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'singbox_core_progress',
+		expect: { '': {} }
+	});
+
+	/* A 34 MB core tarball needs anywhere from 4 to 33 minutes on the mirrors
+	   we ship, so the update now runs detached on the router and this page
+	   polls for progress. Holding one request open for the whole transfer is
+	   what used to make the download fail halfway with an empty log. */
+	const CORE_POLL_INTERVAL = 3000;
+
+	function coreLastLogLine(text) {
+		const lines = (text || '').split('\n').map(l => l.trim()).filter(l => l);
+		return lines.length ? lines[lines.length - 1] : '';
+	}
+
 	o = s.option(form.DummyValue, '_singbox_core', _('reF1nd sing-box core'));
 	o.rawhtml = true;
 	o.render = function() {
 		const self = this;
-		let content = E('div', { 'style': 'cbi-value-field' }, [
-			E('button', {
-				'class': 'btn cbi-button cbi-button-action',
-				'click': ui.createHandlerFn(this, () => {
-					/* Immediate feedback: a 34 MB download over a slow mirror can
-					   take a while (or the rpc call can time out), so tell the
-					   user the click was received instead of leaving the button
-					   looking dead. */
-					ui.addNotification(null, E('p', _('Downloading / updating sing-box core, please wait…')), 'info');
+		let polling = false;
 
-					return L.resolveDefault(callCoreUpdate(), {}).then((res) => {
-						let msg, level;
-						if (res.result) {
-							msg = _('Download / update succeeded.');
-							level = 'info';
-						}
-						else if (res.output && res.output.indexOf('unsupported') !== -1) {
-							msg = _('Current architecture is not supported by reF1nd yet.');
-							level = 'danger';
-						}
-						else if (res.output && res.output.indexOf('no_asset') !== -1) {
-							msg = _('No matching binary for this architecture yet.');
-							level = 'danger';
-						}
-						else {
-							msg = _('Download / update failed. See log for details.');
-							const tail = (res.log || '').split('\n').filter(l => l.trim()).slice(-4).join(' ; ');
-							if (tail)
-								msg += ' ' + tail;
-							level = 'danger';
-						}
+		const statusEl = E('strong', { 'style': 'color:#7d8aa0' }, [ _('loading...') ]);
 
-						/* self.description is not rendered by this custom
-						   DummyValue render, so surface the outcome as a toast —
-						   otherwise a failed update looked like a dead button. */
-						ui.addNotification(null, E('p', msg), level);
-						return self.map.reset();
-					});
-				})
-			}, [ _('Download / update core') ]),
-			' ',
-			E('strong', { 'style': 'color:#7d8aa0' }, [ _('loading...') ])
-		]);
+		function showResult(res) {
+			polling = false;
+			btn.disabled = false;
 
-		L.resolveDefault(callCoreStatus(), {}).then((res) => {
-			let detail;
-			if (res.installed_version && res.installed_version !== '-')
-				detail = _('Installed: %s').format(res.installed_version);
-			else
-				detail = _('Not installed');
+			let msg, level;
+			if (res.result) {
+				msg = _('Download / update succeeded.');
+				level = 'info';
+			}
+			else if (res.output && res.output.indexOf('unsupported') !== -1) {
+				msg = _('Current architecture is not supported by reF1nd yet.');
+				level = 'danger';
+			}
+			else if (res.output && res.output.indexOf('no_asset') !== -1) {
+				msg = _('No matching binary for this architecture yet.');
+				level = 'danger';
+			}
+			else {
+				msg = _('Download / update failed. See log for details.');
+				const tail = (res.log || '').split('\n').filter(l => l.trim()).slice(-4).join(' ; ');
+				if (tail)
+					msg += ' ' + tail;
+				level = 'danger';
+			}
 
-			detail += ' / ' + _('Arch: %s').format(res.arch || '-');
+			/* self.description is not rendered by this custom DummyValue
+			   render, so surface the outcome as a toast — otherwise a failed
+			   update looked like a dead button. */
+			ui.addNotification(null, E('p', msg), level);
+			return self.map.reset();
+		}
 
-			if (res.asset_available)
-				detail += ' / ' + _('Target: %s').format(res.refind_version || '-');
-			else
-				detail += ' / ' + _('No binary for this arch yet');
+		function startPolling() {
+			if (polling)
+				return;
 
-			dom.content(content.lastElementChild, detail);
+			polling = true;
+			btn.disabled = true;
+			dom.content(statusEl, _('Downloading sing-box core…'));
+
+			const tick = () => {
+				L.resolveDefault(callCoreProgress(), {}).then((res) => {
+					if (res.running) {
+						const line = coreLastLogLine(res.log);
+						if (line)
+							dom.content(statusEl, line);
+						window.setTimeout(tick, CORE_POLL_INTERVAL);
+						return;
+					}
+					showResult(res);
+				}).catch(() => {
+					/* A transient rpc error (rpcd restart, page reload race)
+					   must not orphan a download that is still running on the
+					   router: keep polling instead of declaring failure. */
+					window.setTimeout(tick, CORE_POLL_INTERVAL);
+				});
+			};
+
+			/* Give the detached wrapper a moment to create its pid file. */
+			window.setTimeout(tick, 1500);
+		}
+
+		const btn = E('button', {
+			'class': 'btn cbi-button cbi-button-action',
+			'click': ui.createHandlerFn(this, () => {
+				if (polling)
+					return;
+
+				btn.disabled = true;
+				dom.content(statusEl, _('Starting download…'));
+
+				return L.resolveDefault(callCoreUpdate(), {}).then((res) => {
+					/* Running (freshly started, or already in progress from an
+					   earlier click) — switch to polling instead of waiting
+					   for a response that will not arrive for many minutes. */
+					if (res.running || res.started) {
+						startPolling();
+						return;
+					}
+
+					btn.disabled = false;
+					dom.content(statusEl, res.log || _('unavailable'));
+					ui.addNotification(null, E('p', res.log || _('Download / update failed. See log for details.')), 'danger');
+					return null;
+				}).catch(() => {
+					btn.disabled = false;
+				});
+			})
+		}, [ _('Download / update core') ]);
+
+		let content = E('div', { 'style': 'cbi-value-field' }, [ btn, ' ', statusEl ]);
+
+		/* Resume the display when the page is reopened mid-download: the
+		   helper keeps running detached, so a reload must not lose progress. */
+		L.resolveDefault(callCoreProgress(), {}).then((res) => {
+			if (res.running) {
+				startPolling();
+				return null;
+			}
+
+			return L.resolveDefault(callCoreStatus(), {}).then((sres) => {
+				let detail;
+				if (sres.installed_version && sres.installed_version !== '-')
+					detail = _('Installed: %s').format(sres.installed_version);
+				else
+					detail = _('Not installed');
+
+				detail += ' / ' + _('Arch: %s').format(sres.arch || '-');
+
+				if (sres.asset_available)
+					detail += ' / ' + _('Target: %s').format(sres.refind_version || '-');
+				else
+					detail += ' / ' + _('No binary for this arch yet');
+
+				dom.content(statusEl, detail);
+			});
 		}).catch(() => {
-			dom.content(content.lastElementChild, _('unavailable'));
+			dom.content(statusEl, _('unavailable'));
 		});
 
 		return content;

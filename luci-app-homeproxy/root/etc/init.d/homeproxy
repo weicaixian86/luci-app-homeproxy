@@ -141,15 +141,15 @@ ensure_panel() {
 	# /upgrade/ui is SYNCHRONOUS: the core downloads the whole archive before it
 	# answers, and sends no data at all in the meantime. The zashboard archive is
 	# ~9.5 MB, so the budget must cover the *slowest* mirror we ship, not the
-	# fastest — through gh-proxy.com (~22 KB/s measured on this router) it takes
-	# ~430 s, which would trip a shorter -T and report a bogus failure on a
-	# download that is actually progressing. -T is a socket inactivity timeout,
-	# not a total budget, so raising it only makes a stalled transfer take
-	# longer to give up.
+	# fastest — gh-proxy.com measured between 17 and 132 KB/s on the target
+	# router, i.e. 570 s at the low end. A shorter -T reports a bogus failure on
+	# a download that is actually progressing. -T is a socket inactivity
+	# timeout, not a total budget, so raising it only makes a stalled transfer
+	# take longer to give up.
 	if [ -n "$secret" ]; then
-		wget -qO- -T 600 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+		wget -qO- -T 1200 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
 	else
-		wget -qO- -T 600 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+		wget -qO- -T 1200 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
 	fi
 
 	if [ "$ok" = "1" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$tmp"; then
