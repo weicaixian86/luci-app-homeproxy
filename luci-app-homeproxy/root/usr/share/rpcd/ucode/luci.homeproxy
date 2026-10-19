@@ -51,7 +51,13 @@ function clashAPIRequest(api, method, path, timeout) {
 	if (!fd)
 		return null;
 
-	return readProcess(fd);
+	const payload = readProcess(fd);
+
+	/* An empty body means wget failed to connect (the core is not running, so
+	 * the Clash API on 127.0.0.1:<port> is down). Return null so callers report
+	 * "clash_api_unavailable" instead of letting a bogus empty JSON parse fail
+	 * and surface as a misleading "unknown error". */
+	return length(payload) ? payload : null;
 }
 
 function getPanelDir(uci) {
