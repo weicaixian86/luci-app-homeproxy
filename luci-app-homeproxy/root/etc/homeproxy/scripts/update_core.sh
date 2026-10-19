@@ -295,21 +295,44 @@ candidate_urls() {
 # Usage: download_file SOURCE_URL OUTPUT_PATH PURPOSE [MIRROR]
 download_file() {
 	local url="$1" out="$2" purpose="${3:-generic}" mirror="${4:-auto}"
-	local downloader rc actual_url connect_timeout transfer_timeout
+	local downloader rc actual_url connect_timeout
 
 	downloader="$(get_downloader "$purpose")" || return 1
 
-	case "$purpose" in
-		asset)    connect_timeout=20; transfer_timeout=240 ;;
-		checksum) connect_timeout=20; transfer_timeout=60 ;;
-		*)        connect_timeout=10; transfer_timeout=30 ;;
-	esac
+	if [ "$purpose" = "asset" ]; then
+		connect_timeout=15
+	else
+		connect_timeout=10
+	fi
 
+	# Timeouts are expressed as "no useful progress" rather than "total
+	# elapsed", because a total budget cannot be chosen sanely here: the
+	# release tarball is 34 MB and the mirrors run anywhere from ~22 KB/s to
+	# ~130 KB/s, i.e. 4 to 26 minutes for one healthy download. The old
+	# --max-time 240 cut off every attempt past ~5 MB, so the core could
+	# never be installed through a working mirror at all — the download was
+	# killed mid-transfer and reported as a mirror failure.
+	#
+	# --speed-limit/--speed-time instead abort only when throughput collapses:
+	# under 1 KB/s sustained for 60 s means the connection is dead. A slow but
+	# progressing transfer is allowed to finish. --max-time 3600 is a last
+	# resort so a pathologically slow trickle cannot hang forever.
+	#
+	# --retry-all-errors is deliberately NOT used: it needs curl >= 7.71 and
+	# an older build (common on embedded OpenWrt images) rejects the flag
+	# outright, which would fail every single download. Plain --retry already
+	# covers transient timeouts, connection failures and 5xx answers.
 	for actual_url in $(candidate_urls "$url" "$mirror"); do
+		# A 34 MB body at mirror speeds takes anywhere from 4 to 26 minutes,
+		# and nothing is logged until it finishes. Without this line the UI
+		# (which shows the tail of this log) looks frozen for the whole
+		# download and the user kills it halfway through.
+		log_download "正在下载（源：${actual_url}）"
 		case "$downloader" in
 			curl)
-				curl -fsSL --connect-timeout "$connect_timeout" --max-time "$transfer_timeout" \
-					--retry 2 --retry-delay 5 --retry-all-errors \
+				curl -fsSL --connect-timeout "$connect_timeout" \
+					--speed-limit 1024 --speed-time 60 --max-time 3600 \
+					--retry 2 --retry-delay 3 \
 					-A "luci-app-homeproxy" \
 					-o "$out" "$actual_url" >/dev/null 2>&1
 				rc=$?
@@ -317,8 +340,9 @@ download_file() {
 			wget)
 				# BusyBox wget is common on OpenWrt and rejects some GNU-only
 				# long options, so only universally supported flags are used.
-				wget -q -T "$transfer_timeout" \
-					-O "$out" "$actual_url" >/dev/null 2>&1
+				# Its -T is already a socket-inactivity timeout (not a total
+				# budget), which is the semantics we want for a 34 MB body.
+				wget -q -T 60 -O "$out" "$actual_url" >/dev/null 2>&1
 				rc=$?
 				;;
 			*)
