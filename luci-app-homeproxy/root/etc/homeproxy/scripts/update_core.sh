@@ -228,7 +228,7 @@ get_downloader() {
 sync_time() {
 	local ntpd_bin servers
 	ntpd_bin="$(command -v ntpd 2>/dev/null)" || return 0
-	servers="$(uci -q get system.@system[0].ntp_server 2>/dev/null | tr '\n' ' ')"
+	servers="$(uci -q get system.ntp.server 2>/dev/null | tr '\n' ' ')"
 	if [ -n "$servers" ]; then
 		# shellcheck disable=SC2086
 		$ntpd_bin -n -q $(printf -- '-p %s ' $servers) 2>/dev/null &

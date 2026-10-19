@@ -51,9 +51,18 @@ wait_for_time_sync() {
 	# Best-effort one-shot NTP correction so a fresh boot with a wrong
 	# (boot-time) clock can still validate TLS certificates for the core
 	# download (otherwise curl exits 60). Run detached so the wait loop is not
-	# blocked if no server is reachable.
+	# blocked if no server is reachable. NOTE: BusyBox ntpd requires at least
+	# one `-p PEER` (plain `ntpd -n -q` just prints usage), so servers must be
+	# passed explicitly — preferring the UCI-configured ones.
+	local srv
+	srv="$(uci -q get system.ntp.server 2>/dev/null | tr '\n' ' ')"
 	if command -v ntpd >/dev/null 2>&1; then
-		( ntpd -n -q 2>/dev/null ) &
+		if [ -n "$srv" ]; then
+			# shellcheck disable=SC2086
+			( ntpd -n -q $(printf -- '-p %s ' $srv) 2>/dev/null ) &
+		else
+			( ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
+		fi
 	fi
 	local i=0
 	while [ "$i" -lt 12 ]; do
