@@ -43,7 +43,14 @@ REFIND_VERSION="1.14.3-reF1nd"
 # place so it is easy to extend.
 GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
 
-. /lib/functions.sh 2>/dev/null || true
+# NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
+# its functions, and under `set -u` sourcing it is fatal: if that library
+# references a single undefined variable (which varies by firmware, e.g.
+# iStoreOS), the whole shell exits with "parameter not set". Because the line
+# was written as `. /lib/functions.sh 2>/dev/null || true`, the error was
+# swallowed and `|| true` could not help (set -u aborts the shell, not a
+# command), so the script died silently here: zero output, empty log, and
+# `status` returned nothing — which made the UI look like "download failed".
 
 # ---------- logging ----------
 ensure_log() {
