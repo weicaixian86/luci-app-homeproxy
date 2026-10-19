@@ -2500,16 +2500,16 @@ return view.extend({
 		};
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
-		/* Order follows speed measured ON THE TARGET ROUTER (15 s window,
-		   2026-10-19): direct GitHub ~89 KB/s, gh-proxy.com ~22 KB/s,
-		   ghproxy.net ~12 KB/s, remaining accelerators unreachable. Direct
-		   GitHub therefore leads; the mirrors stay as failover. */
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版（直连，推荐）');
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (gh-proxy)');
+		/* gh-proxy.com leads: direct GitHub measured faster (~89 KB/s vs
+		   ~22 KB/s) but is unreliable — usually unreachable, and a half-open
+		   connection stalls until the timeout expires, so the download never
+		   completes. Reliability beats peak throughput here. */
+		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (gh-proxy，推荐)');
 		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (ghproxy.net)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts（直连）');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版（直连）');
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
 		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (ghproxy.net)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts（直连）');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD (gh-proxy)');
@@ -2517,7 +2517,7 @@ return view.extend({
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
 		so.value('__custom__', _('Custom'));
-		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 		so.load = function(section_id) {
 			const value = uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default;
 			return (value in panelPresetUrls) ? value : '__custom__';

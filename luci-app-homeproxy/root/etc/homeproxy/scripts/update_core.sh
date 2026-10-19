@@ -40,17 +40,17 @@ REFIND_VERSION="1.14.3-reF1nd"
 # Accelerator prefixes. Order matters: a reachable-but-slow source still burns
 # its whole --max-time before we fail over, so the fastest wins the front slot.
 #
-# Measured ON THE TARGET ROUTER (iStoreOS, 2026-10-19, 15 s fixed window,
-# zashboard dist.zip — bytes received per 15 s):
-#   direct github.com   1,337,254   ~89 KB/s   <- fastest, and therefore FIRST
-#   gh-proxy.com          327,554   ~22 KB/s
-#   ghproxy.net           172,929   ~12 KB/s
-#   ghfast.top / hub.gitmirror.com / gh.llkk.cc / github.moeyy.xyz: 0 (unreachable)
+# Ordered by RELIABILITY first, throughput second. github.com direct is the
+# fastest when it works (~89 KB/s measured on the target router on 2026-10-19,
+# vs ~22 KB/s for gh-proxy.com and ~12 KB/s for ghproxy.net) but it is also
+# the least dependable: from mainland China it is frequently blocked outright
+# or drops mid-transfer, and a stalled direct connection burns the whole
+# --max-time before failing over. Peak throughput on a good day is worth less
+# than actually completing the download, so the mirrors lead and github.com is
+# tried last as the authoritative fallback.
 #
-# NOTE: measurements from a development machine on a different network gave
-# the exact opposite ranking (gh-proxy.com > ghproxy.net >> github). Only the
-# router's own numbers matter here, so direct GitHub is preferred and these
-# mirrors are kept purely as failover for networks where github.com is blocked.
+# gh-proxy.com leads because it was reachable on every network we measured
+# (router: ~22 KB/s; dev machine: ~114 KB/s on the 34 MB core).
 GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
 
 # NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
@@ -280,14 +280,15 @@ candidate_urls() {
 
 	[ "$mirror" = "github" ] && { printf '%s\n' "$url"; return 0; }
 
-	# Direct GitHub goes FIRST, not last. On the target router it measured
-	# ~89 KB/s against ~22 KB/s (gh-proxy.com) and ~12 KB/s (ghproxy.net), so
-	# going through an accelerator first can only slow things down. Mirrors are
-	# pure failover for networks where github.com itself is unreachable.
-	printf '%s\n' "$url"
+	# Mirrors FIRST, direct GitHub LAST. Direct is faster when it connects
+	# (~89 KB/s vs ~22 KB/s) but unreliable — usually unreachable from
+	# mainland China, and a half-open connection stalls until --max-time
+	# expires. Trying it first would add a long dead wait before every
+	# failover, so it stays the authoritative fallback.
 	for prefix in $GH_PROXY_PREFIXES; do
 		printf '%s\n' "${prefix}${url}"
 	done
+	printf '%s\n' "$url"
 }
 
 # Download a file with curl --retry 2 inside each mirror, then fail over.

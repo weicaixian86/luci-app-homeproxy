@@ -94,14 +94,15 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 		uci.delete(uciconfig, cfg['.name'], 'proxy_protocol');
 });
 
-/* Dashboard archive URLs. Earlier releases defaulted to an accelerator prefix;
-   measured on the target router (2026-10-19, 15 s window) direct GitHub was
-   ~89 KB/s versus ~22 KB/s for gh-proxy.com and ~12 KB/s for ghproxy.net, so
-   the direct URL is now the default and every previously shipped default is
-   migrated to it. */
+/* Dashboard archive URLs. Direct GitHub measured fastest on the target router
+   (2026-10-19, 15 s window: ~89 KB/s vs ~22 KB/s gh-proxy.com and ~12 KB/s
+   ghproxy.net) but it is also the least reliable — usually unreachable, and a
+   half-open connection stalls until it times out, so the panel never gets
+   installed. Reliability outweighs peak throughput, so gh-proxy.com is the
+   default and every previously shipped default is migrated to it. */
 const panel_zip = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 const panel_zip_fonts = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-const default_panel_url = panel_zip;
+const default_panel_url = 'https://gh-proxy.com/' + panel_zip;
 const legacy_panel_urls = [
 	panel_zip,
 	panel_zip_fonts,
