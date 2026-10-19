@@ -110,6 +110,32 @@ log() {
 		return $rc
 	}
 
+	# The OpenWrt sing-box package used to create this account. Since the core is
+	# now downloaded at runtime, only this package's postinst creates it — and a
+	# package installed from an older build, or a busybox whose adduser rejects
+	# the -S/-H flags, silently leaves it missing. The visible symptom is
+	# `chown: unknown user/group sing-box:sing-box` while EVERY procd instance
+	# refuses to start (procd cannot drop privileges to a nonexistent user), so
+	# the core never runs, the clash API never listens and the panel can never
+	# be downloaded. Create it here as a fallback so the service always starts.
+	have_sing_box_user() {
+		grep -qs '^sing-box:' /etc/passwd && grep -qs '^sing-box:' /etc/group
+	}
+
+	ensure_sing_box_user() {
+		have_sing_box_user && return 0
+		grep -qs '^sing-box:' /etc/group || addgroup -S sing-box 2>/dev/null || addgroup sing-box 2>/dev/null
+		if ! grep -qs '^sing-box:' /etc/passwd; then
+			# Older busybox lacks some flags: fall back progressively. Keep -D
+			# (no password) in every variant and feed /dev/null, otherwise
+			# adduser prompts interactively and start_service hangs forever.
+			adduser -S -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
+				|| adduser -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
+				|| adduser -D -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null
+		fi
+		have_sing_box_user
+	}
+
 # Auto-install the dashboard panel on service start, exactly like the kernel
 # is fetched by update_core.sh ensure: only when it is missing, and only in the
 # routing modes that actually use the panel. The sing-box core must be running
@@ -286,6 +312,10 @@ setup_auto_update_cron() {
 
 start_service() {
 	init_logs
+
+	# The jail drops privileges to this account; recreate it if the postinst did
+	# not run (see the comment above ensure_sing_box_user).
+	ensure_sing_box_user || log "警告：无法创建 sing-box 用户，内核将以 root 运行且不使用 ujail。"
 
 	# Avoid stamping startup log lines with the pre-NTP (sysfixtime) clock.
 	wait_for_time_sync
@@ -484,7 +514,7 @@ start_service() {
 		# hours behind the rest of the log and prefixed with "+0000".
 		procd_set_param env "TZ"="$tz_value"
 
-		if [ -x "/sbin/ujail" ] && [ "$routing_mode" != "custom" ] && ! grep -Eq '"type": "(wireguard|tun)"' "$RUN_DIR/sing-box-c.json"; then
+		if have_sing_box_user && [ -x "/sbin/ujail" ] && [ "$routing_mode" != "custom" ] && ! grep -Eq '"type": "(wireguard|tun)"' "$RUN_DIR/sing-box-c.json"; then
 			procd_add_jail "sing-box-c" log procfs
 			procd_add_jail_mount "$RUN_DIR/sing-box-c.json"
 			procd_add_jail_mount_rw "$RUN_DIR/sing-box-c.log"
@@ -533,7 +563,7 @@ start_service() {
 		# Same UTC-vs-local-time fix as the client instance above.
 		procd_set_param env "TZ"="$tz_value"
 
-		if [ -x "/sbin/ujail" ]; then
+		if have_sing_box_user && [ -x "/sbin/ujail" ]; then
 			procd_add_jail "sing-box-s" log procfs
 			procd_add_jail_mount "$RUN_DIR/sing-box-s.json"
 			procd_add_jail_mount_rw "$RUN_DIR/sing-box-s.log"
@@ -576,7 +606,7 @@ start_service() {
 	fi
 
 	# Update permissions for ujail
-	chown -R sing-box:sing-box "$RUN_DIR"
+	chown -R sing-box:sing-box "$RUN_DIR" 2>"/dev/null"
 
 	# Setup firewall
 	ucode "$HP_DIR/scripts/firewall_pre.uc"
