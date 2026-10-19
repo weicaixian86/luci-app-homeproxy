@@ -307,7 +307,14 @@ return view.extend({
 
 	function coreLastLogLine(text) {
 		const lines = (text || '').split('\n').map(l => l.trim()).filter(l => l);
-		return lines.length ? lines[lines.length - 1] : '';
+
+		if (!lines.length)
+			return '';
+
+		/* The progress lines contain full mirror URLs (100+ chars); showing
+		   one verbatim next to the button would blow out the row layout. */
+		const line = lines[lines.length - 1];
+		return (line.length > 90) ? line.slice(0, 90) + '…' : line;
 	}
 
 	o = s.option(form.DummyValue, '_singbox_core', _('reF1nd sing-box core'));
@@ -359,6 +366,15 @@ return view.extend({
 			dom.content(statusEl, _('Downloading sing-box core…'));
 
 			const tick = () => {
+				/* The user may have navigated away while a 30-minute download
+				   ran. Polling is detached from this view's lifecycle, so bail
+				   out once our node is gone instead of resetting a form that
+				   no longer exists. */
+				if (!document.body.contains(statusEl)) {
+					polling = false;
+					return;
+				}
+
 				L.resolveDefault(callCoreProgress(), {}).then((res) => {
 					if (res.running) {
 						const line = coreLastLogLine(res.log);
