@@ -155,7 +155,12 @@ ensure_panel() {
 	done
 
 	if [ "$ready" != "1" ]; then
-		panel_log "下载失败：等待 clash API 就绪超时（端口 ${port}），请稍后从页面手动更新面板。"
+		panel_log "下载失败：等待 clash API 就绪超时（端口 ${port}，已等待约 3 分钟），请稍后从页面手动更新面板。"
+		# A wrong secret is indistinguishable from a down API at this point
+		# (both make the probe fail), so call it out explicitly.
+		if [ -n "$secret" ]; then
+			panel_log "提示：已配置 API 密钥，就绪探测需携带该密钥；若密钥填写有误也会导致本超时。可临时清空 clash_api.secret 对比验证。"
+		fi
 		return 1
 	fi
 
