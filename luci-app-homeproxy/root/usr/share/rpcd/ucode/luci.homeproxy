@@ -1734,12 +1734,62 @@ const methods = {
 				writefile(`${RUN_DIR}/core_update.started`, `${time()}`);
 			} catch (e) {}
 
-			/* `&` makes the outer sh exit at once, so popen returns
-			 * immediately while the wrapper keeps running detached; nohup
-			 * keeps it alive if the launching request goes away. */
-			const fd = popen(`nohup /bin/sh ${HP_DIR}/scripts/update_core_async.sh >/dev/null 2>&1 &`);
-			if (fd)
+			/* The wrapper re-launches itself detached (`--detach`) and exits
+			 * at once, so this popen returns in milliseconds. Detaching is
+			 * the wrapper's job because the available helpers differ per
+			 * image: iStoreOS has no `nohup`, and calling it here failed with
+			 * exit 127 before the download ever started. */
+			let output = '';
+			const fd = popen(`/bin/sh ${HP_DIR}/scripts/update_core_async.sh --detach 2>&1`);
+
+			if (fd) {
+				for (let line = fd.read('line'); line !== null && length(line); line = fd.read('line'))
+					output += line;
 				fd.close();
+			}
+
+			output = trim(output);
+
+			/* Anything on stdout/stderr here means the detach stage itself
+			 * failed (script missing, not readable, wrong permissions).
+			 * Reporting "started" would make the UI poll for 15 s and then
+			 * show a vague failure, so surface the real message right away. */
+			if (length(output))
+				return {
+					started: false,
+					running: false,
+					result: false,
+					output: output,
+					log: output
+				};
+
+			/* Wait briefly for the detached worker to publish its pid file.
+			 * On success this returns in well under a second; on failure the
+			 * UI gets a precise message now instead of polling for 15 s and
+			 * then reporting a vague timeout.
+			 *
+			 * The rc file counts as success too: a cached/CDN-hit download
+			 * finishes in a few seconds, so the worker may already have
+			 * removed its pid and written its status by the time we look. */
+			let spawned = false;
+			for (let i = 0; i < 12 && !spawned; i++) {
+				if (coreUpdateRunning() || access(`${RUN_DIR}/core_update.rc`)) {
+					spawned = true;
+					break;
+				}
+				system('sleep 0.2');
+			}
+
+			if (!spawned)
+				return {
+					started: false,
+					running: false,
+					result: false,
+					output: '',
+					log: '后台任务启动失败：' + HP_DIR + '/scripts/update_core_async.sh 未能运行。' +
+						'请在路由器 SSH 执行 `sh ' + HP_DIR + '/scripts/update_core_async.sh` 查看具体错误' +
+						'（常见原因：文件缺失或没有可执行权限）。'
+				};
 
 			return {
 				started: true,
@@ -1790,8 +1840,11 @@ const methods = {
 				displayed = output;
 
 			if (done && !ok && !length(displayed))
-				displayed = '脚本没有产生任何输出或日志：请在路由器 SSH 执行 ' +
-					'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
+				displayed = (rc === null) ?
+					'后台任务未能启动：请确认 ' + HP_DIR + '/scripts/update_core_async.sh 存在且可执行，' +
+						'并在路由器 SSH 执行 `sh ' + HP_DIR + '/scripts/update_core_async.sh` 查看具体错误。' :
+					'脚本没有产生任何输出或日志：请在路由器 SSH 执行 ' +
+						'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
 
 			return {
 				running: running || starting,

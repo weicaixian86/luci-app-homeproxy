@@ -34,6 +34,30 @@ PID_FILE="${RUN_DIR}/core_update.pid"
 OUT_FILE="${RUN_DIR}/core_update.out"
 RC_FILE="${RUN_DIR}/core_update.rc"
 
+# --- detach stage -----------------------------------------------------------
+# Called as `update_core_async.sh --detach`, this forks the real worker and
+# exits at once, so the caller's popen() returns immediately.
+#
+# The detach helper is picked at runtime because the available set differs
+# between images: iStoreOS ships no `nohup` (the RPC used to call it directly,
+# which failed with exit 127 before anything ran), while stock OpenWrt has it.
+# `setsid` gives a new session when available; a plain `&` is the POSIX
+# last resort and is enough on Linux, where the orphan is reparented to init.
+if [ "${1:-}" = "--detach" ]; then
+	mkdir -p "$RUN_DIR" 2>/dev/null
+
+	if command -v nohup >/dev/null 2>&1; then
+		nohup /bin/sh "$0" >/dev/null 2>&1 &
+	elif command -v setsid >/dev/null 2>&1; then
+		setsid /bin/sh "$0" >/dev/null 2>&1 &
+	else
+		/bin/sh "$0" >/dev/null 2>&1 &
+	fi
+
+	exit 0
+fi
+# ---------------------------------------------------------------------------
+
 mkdir -p "$RUN_DIR" 2>/dev/null || exit 1
 
 # A previous run's status must never be mistaken for this run's result.
@@ -45,7 +69,13 @@ cleanup() {
 	rm -f "$PID_FILE" 2>/dev/null
 }
 trap cleanup EXIT
-trap 'exit 1' INT TERM HUP
+
+# Ignore SIGHUP instead of relying on `nohup` in the caller: minimal BusyBox
+# images (iStoreOS among them) do not always ship nohup, and the launcher then
+# dies with exit 127 before running anything — the download silently never
+# starts while the UI waits for a progress file that is never created.
+trap '' HUP
+trap 'exit 1' INT TERM
 
 # stdout carries the machine-readable verdict ("ok" / "unsupported" /
 # "no_asset" / "failed"); stderr is merged in so a fatal shell error (bad
