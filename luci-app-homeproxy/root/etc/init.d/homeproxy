@@ -105,7 +105,13 @@ ensure_panel() {
 	local routing_mode controller port secret panel_dir base_url tmp ok
 
 	routing_mode="$(uci -q get "$CONF.config.routing_mode" 2>/dev/null)"
-	[ "$routing_mode" = "custom" ] || [ "$routing_mode" = "bypass_mainland_china" ] || return 0
+	if [ "$routing_mode" != "custom" ] && [ "$routing_mode" != "bypass_mainland_china" ]; then
+		# Previously a silent `return 0` with no log — when routing_mode was
+		# unexpectedly empty or wrong, the panel simply never downloaded and
+		# there was zero trace of why. Log it so the panel log is never silent.
+		panel_log "面板自动下载跳过：routing_mode='${routing_mode:-空}'（仅 custom / bypass_mainland_china 模式需要面板）。"
+		return 0
+	fi
 
 	controller="$(uci -q get "$CONF.clash_api.external_controller" 2>/dev/null)"
 	port="${controller##*:}"
