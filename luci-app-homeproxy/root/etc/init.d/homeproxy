@@ -314,6 +314,18 @@ start_service() {
 	local server_enabled
 	config_get_bool server_enabled "server" "enabled" "0"
 
+	# POSIX TZ string passed to the core. sing-box is written in Go, which reads
+	# the TZ environment variable; BusyBox's /etc/TZ is not understood by Go and
+	# OpenWrt images rarely ship a TZif /etc/localtime, so with TZ unset the core
+	# logs in UTC — eight hours behind the rest of the log and prefixed with
+	# "+0000". Declared outside both instance blocks so either one can use it
+	# (referencing it under `set -u` before assignment would be fatal).
+	# Prefer /etc/TZ (what the system itself uses), then the UCI zone.
+	local tz_value
+	tz_value="$(cat /etc/TZ 2>/dev/null)"
+	[ -n "$tz_value" ] || tz_value="$(uci -q get system.@system[0].timezone 2>/dev/null)"
+	[ -n "$tz_value" ] || tz_value="CST-8"
+
 	if [ "$outbound_node" = "nil" ] && [ "$server_enabled" = "0" ]; then
 		return 1
 	fi
@@ -408,6 +420,11 @@ start_service() {
 		# QUIC-GO GSO is broken on kernel 6.6 currently
 		uname -r | grep -Eq "^6\.6" && procd_set_param env "QUIC_GO_DISABLE_GSO"="true"
 
+		# sing-box is Go: it reads the TZ environment variable, not BusyBox's
+		# /etc/TZ, so without this its log timestamps come out in UTC — eight
+		# hours behind the rest of the log and prefixed with "+0000".
+		procd_set_param env "TZ"="$tz_value"
+
 		if [ -x "/sbin/ujail" ] && [ "$routing_mode" != "custom" ] && ! grep -Eq '"type": "(wireguard|tun)"' "$RUN_DIR/sing-box-c.json"; then
 			procd_add_jail "sing-box-c" log procfs
 			procd_add_jail_mount "$RUN_DIR/sing-box-c.json"
@@ -452,6 +469,9 @@ start_service() {
 
 		# QUIC-GO GSO is broken on kernel 6.6 currently
 		uname -r | grep -Eq "^6\.6" && procd_set_param env "QUIC_GO_DISABLE_GSO"="true"
+
+		# Same UTC-vs-local-time fix as the client instance above.
+		procd_set_param env "TZ"="$tz_value"
 
 		if [ -x "/sbin/ujail" ]; then
 			procd_add_jail "sing-box-s" log procfs

@@ -49,6 +49,20 @@ const RULESET_DIR = HP_DIR + '/ruleset';
 
 let http_client_map = {};
 
+/* Forward declaration.
+ *
+ * ucode resolves identifiers at compile time, so a plain `function` declared
+ * further down is NOT visible to a function defined above it. filter_group_nodes()
+ * (line ~280) calls section_display_name(), which is defined at line ~382 —
+ * that produced at runtime:
+ *   Reference error: access to undeclared variable section_display_name
+ * which aborted the whole client config generation ("生成客户端配置失败")
+ * and left the service unable to start.
+ *
+ * Declaring the binding here and assigning the implementation at its original
+ * position keeps every call site bound without reordering the file. */
+let section_display_name = null;
+
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 
 function normalize_list(value) {
@@ -379,7 +393,8 @@ function normalize_outbound_tag(tag) {
 	return tag || null;
 }
 
-function section_display_name(section) {
+/* Assigned (not declared) here: see the forward declaration above for why. */
+section_display_name = function(section) {
 	if (type(section) !== 'object' || isEmpty(section))
 		return null;
 
@@ -396,7 +411,7 @@ function section_display_name(section) {
 	}
 
 	return null;
-}
+};
 
 function register_outbound_tag(section_id, display_name) {
 	if (isEmpty(section_id))

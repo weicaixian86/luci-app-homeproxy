@@ -109,7 +109,13 @@ function splitRecords(text) {
 		if (m) {
 			if (cur)
 				out.push(cur);
-			cur = { ts: m[1] + ' ' + m[2], lines: [ line ] };
+			/* sing-box prefixes every line with a UTC offset ("+0000 ") from
+			   Go's -0700 layout. TS_RE tolerates it for sorting, but the raw
+			   prefix is noise in the rendered text, so strip it here. */
+			cur = {
+				ts: m[1] + ' ' + m[2],
+				lines: [ line.replace(/^\s*[+-]\d{4}\s+/, '') ]
+			};
 		}
 		else if (cur) {
 			cur.lines.push(line);
