@@ -321,6 +321,7 @@ start_service() {
 		fi
 	else
 		log "错误：内核下载脚本 $CORE_SCRIPT 缺失。"
+		panel_log "面板未下载：内核下载脚本缺失，服务未启动（面板依赖内核运行）。"
 		return 1
 	fi
 
@@ -360,6 +361,10 @@ start_service() {
 	[ -n "$tz_value" ] || tz_value="CST-8"
 
 	if [ "$outbound_node" = "nil" ] && [ "$server_enabled" = "0" ]; then
+		# No entry node and no server: nothing to run, so start_service returns
+		# before the instances are created and long before ensure_panel().
+		# Say so in the panel log, otherwise its emptiness looks like a bug.
+		panel_log "面板未下载：未配置代理节点且服务端未启用，服务未启动（面板依赖内核运行）。"
 		return 1
 	fi
 
@@ -369,9 +374,15 @@ start_service() {
 
 		if [ ! -e "$RUN_DIR/sing-box-c.json" ]; then
 			log "错误：生成客户端配置失败。"
+			panel_log "面板未下载：生成客户端配置失败，服务未启动（面板依赖内核运行）。详情见 $LOG_PATH。"
 			return 1
 		elif ! "$PROG" check --config "$RUN_DIR/sing-box-c.json" 2>>"$LOG_PATH"; then
 			log "错误：检测到客户端配置有误。"
+			panel_log "面板未下载：sing-box 配置校验失败，服务未启动（面板依赖内核运行）。详情见 $LOG_PATH。"
+			# A config pasted from a backup that was saved as GBK/ANSI is the
+			# most common way to get here with a "working" config: the labels
+			# are invalid UTF-8, so the generated core config is rejected.
+			panel_log "提示：若配置是从备份粘贴的，请确认 /etc/config/$CONF 为 UTF-8 编码（GBK 备份会让生成的配置含非法字节）。"
 			return 1
 		fi
 
