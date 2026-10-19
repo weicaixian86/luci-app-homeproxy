@@ -217,6 +217,36 @@ get_downloader() {
 	return 1
 }
 
+# Best-effort NTP correction before downloading. A wrong-but-plausible clock
+# (e.g. a few days/weeks behind, yet still a "normal" year) is invisible to the
+# year-only clock_looks_unsynced heuristic in the init script, but it can still
+# break HTTPS certificate validation (curl exit 60) and thus the core download.
+# We attempt a bounded one-shot NTP step here so a mis-set clock gets a chance
+# to correct itself right before we hit GitHub. Failure is non-fatal: if no NTP
+# server is reachable, we proceed and the download fails with a clear curl
+# return code. Bounded to ~10s so an unreachable server never hangs the update.
+sync_time() {
+	local ntpd_bin servers
+	ntpd_bin="$(command -v ntpd 2>/dev/null)" || return 0
+	servers="$(uci -q get system.@system[0].ntp_server 2>/dev/null | tr '\n' ' ')"
+	if [ -n "$servers" ]; then
+		# shellcheck disable=SC2086
+		$ntpd_bin -n -q $(printf -- '-p %s ' $servers) 2>/dev/null &
+	else
+		# No servers configured in UCI: fall back to public pools so the
+		# one-shot sync still has something to query on a freshly flashed box.
+		$ntpd_bin -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null &
+	fi
+	local pid=$!
+	local i=0
+	while [ "$i" -lt 10 ]; do
+		sleep 1
+		i=$((i + 1))
+		kill -0 "$pid" 2>/dev/null || return 0
+	done
+	return 0
+}
+
 # Produce the ordered list of candidate URLs for a github release asset.
 # Auto mode tries gh-proxy first, then github (failover).
 candidate_urls() {
@@ -415,6 +445,7 @@ download_and_install() {
 ensure_core() {
 	local arch candidates asset cur_ver
 
+	sync_time
 	arch="$(detect_arch_name)"
 	log_download "检测到设备架构：${arch}"
 
@@ -471,6 +502,7 @@ ensure_core() {
 # Force a re-download regardless of the installed version.
 update_core() {
 	local arch candidates asset
+	sync_time
 	arch="$(detect_arch_name)"
 	if [ "$arch" = "unsupported" ]; then
 		log_download "当前架构暂不支持，reF1nd 尚未提供该架构二进制"
