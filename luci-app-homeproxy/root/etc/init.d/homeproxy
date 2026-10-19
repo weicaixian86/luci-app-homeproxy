@@ -123,8 +123,15 @@ ensure_panel() {
 	tmp="/tmp/homeproxy_panel_upgrade.res"
 
 	# Wait for the core's clash API to come up (procd launches it asynchronously).
+	#
+	# 90 tries, not 30: on startup the core fetches its rule-sets first, which
+	# the log shows taking a long time ("initialize rule-set take too much time
+	# to finish!"). During that window the API socket is not listening yet, and
+	# 30 tries (~60 s) expired before it ever came up — the panel was then never
+	# downloaded and the log only said "API not ready". A refused connection
+	# fails instantly, so this costs ~3 min only when the API really is down.
 	local i ready=0
-	for i in $(seq 1 30); do
+	for i in $(seq 1 90); do
 		if wget -qO- -T 3 "${base_url}/version" >/dev/null 2>&1; then
 			ready=1
 			break

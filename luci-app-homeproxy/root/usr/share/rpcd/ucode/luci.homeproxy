@@ -496,10 +496,17 @@ const methods = {
 			const download_url = uci.get('homeproxy', 'clash_api', 'external_ui_download_url') || '';
 			panelLog(sprintf('开始下载（第 %d 次尝试）：%s', attempt, shellquote(download_url)));
 
-			const payload = clashAPIRequest(getClashAPIConfig(uci), 'POST', '/upgrade/ui', 120);
+			/* /upgrade/ui is synchronous: the core downloads the whole 9.5 MB
+			 * archive before answering, and sends nothing in the meantime.
+			 * -T is a socket-inactivity timeout, so the budget must cover the
+			 * slowest mirror we ship — gh-proxy.com measured 17-132 KB/s, i.e.
+			 * up to ~570 s. The old 120 s aborted every download that was
+			 * actually progressing, which is why the panel "never downloads"
+			 * even when the core is up and reachable. Matches init.d. */
+			const payload = clashAPIRequest(getClashAPIConfig(uci), 'POST', '/upgrade/ui', 1200);
 			if (payload === null) {
 				restorePanelBackup(panel_dir, backup_dir);
-				panelLog(sprintf('下载失败（第 %d 次尝试）：Clash API 不可用（超时 120 秒）%s', attempt, manual_hint));
+				panelLog(sprintf('下载失败（第 %d 次尝试）：Clash API 不可用（超时 1200 秒）%s', attempt, manual_hint));
 				return { result: false, error: 'clash_api_unavailable' };
 			}
 
