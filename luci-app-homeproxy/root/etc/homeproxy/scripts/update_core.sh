@@ -313,10 +313,18 @@ download_file() {
 	# never be installed through a working mirror at all — the download was
 	# killed mid-transfer and reported as a mirror failure.
 	#
-	# --speed-limit/--speed-time instead abort only when throughput collapses:
-	# under 1 KB/s sustained for 60 s means the connection is dead. A slow but
-	# progressing transfer is allowed to finish. --max-time 3600 is a last
-	# resort so a pathologically slow trickle cannot hang forever.
+	# --speed-limit/--speed-time instead abort only when the transfer is too
+	# slow to be worth waiting for. The threshold is 6 KB/s, not "is it
+	# completely dead": a 34 MB body at 6 KB/s already takes 96 minutes, so
+	# anything slower is better spent trying the next mirror than sitting on
+	# a link that will need hours. Measured on the target router, throughput
+	# ranged from 3.2 KB/s to 8.5 MB/s for the same URL depending on whether
+	# the edge node had it cached, so a 1 KB/s floor (the old value) would
+	# happily wait out a 3 KB/s trickle for the full --max-time and then give
+	# up anyway.
+	#
+	# --max-time 7200 leaves enough room for a 6 KB/s transfer to actually
+	# finish (96 min) while still bounding a pathological trickle.
 	#
 	# --retry-all-errors is deliberately NOT used: it needs curl >= 7.71 and
 	# an older build (common on embedded OpenWrt images) rejects the flag
@@ -331,7 +339,7 @@ download_file() {
 		case "$downloader" in
 			curl)
 				curl -fsSL --connect-timeout "$connect_timeout" \
-					--speed-limit 1024 --speed-time 60 --max-time 3600 \
+					--speed-limit 6144 --speed-time 60 --max-time 7200 \
 					--retry 2 --retry-delay 3 \
 					-A "luci-app-homeproxy" \
 					-o "$out" "$actual_url" >/dev/null 2>&1
