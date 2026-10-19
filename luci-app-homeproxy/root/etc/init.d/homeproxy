@@ -89,12 +89,26 @@ log() {
 # Panel download log: mirror the RPC panelLog() format so the "Logs" page
 # shows one consistent timeline for both the UI-triggered and the
 # boot-time (service-start) panel downloads.
-panel_log() {
-	mkdir -p "$RUN_DIR" 2>/dev/null
-	local msg="面板: $*"
-	printf '%s %s\n' "$(date "+%Y-%m-%d %H:%M:%S")" "$msg" >> "$RUN_DIR/panel_download.log" 2>/dev/null
-	logger -t homeproxy "$msg" 2>/dev/null
-}
+	panel_log() {
+		mkdir -p "$RUN_DIR" 2>/dev/null
+		local msg="面板: $*"
+		printf '%s %s\n' "$(date "+%Y-%m-%d %H:%M:%S")" "$msg" >> "$RUN_DIR/panel_download.log" 2>/dev/null
+		logger -t homeproxy "$msg" 2>/dev/null
+	}
+
+	# sing-box / ucode emit ANSI color escapes ([31m ... [0m) on failures; the
+	# plain-text log (and the LuCI log viewer) should not show raw escape codes.
+	# Run a command and append its stderr to the main log with colors stripped.
+	append_err_stripped() {
+		"$@" 2> "$RUN_DIR/.stderr.tmp"
+		local rc=$?
+		if [ -s "$RUN_DIR/.stderr.tmp" ]; then
+			# busybox sed has no \xHH; embed a literal ESC via printf.
+			sed "s/$(printf '\033')\[[0-9;]*m//g" "$RUN_DIR/.stderr.tmp" >> "$LOG_PATH"
+		fi
+		rm -f "$RUN_DIR/.stderr.tmp"
+		return $rc
+	}
 
 # Auto-install the dashboard panel on service start, exactly like the kernel
 # is fetched by update_core.sh ensure: only when it is missing, and only in the
@@ -370,13 +384,14 @@ start_service() {
 
 	if [ "$outbound_node" != "nil" ]; then
 		# Generate/Validate client config
-		ucode -S "$HP_DIR/scripts/generate_client.uc" 2>>"$LOG_PATH"
+		# Capture ucode's stderr to the log with ANSI escapes stripped.
+		append_err_stripped ucode -S "$HP_DIR/scripts/generate_client.uc"
 
 		if [ ! -e "$RUN_DIR/sing-box-c.json" ]; then
 			log "错误：生成客户端配置失败。"
 			panel_log "面板未下载：生成客户端配置失败，服务未启动（面板依赖内核运行）。详情见 $LOG_PATH。"
 			return 1
-		elif ! "$PROG" check --config "$RUN_DIR/sing-box-c.json" 2>>"$LOG_PATH"; then
+		elif ! append_err_stripped "$PROG" check --config "$RUN_DIR/sing-box-c.json"; then
 			log "错误：检测到客户端配置有误。"
 			panel_log "面板未下载：sing-box 配置校验失败，服务未启动（面板依赖内核运行）。详情见 $LOG_PATH。"
 			# A config pasted from a backup that was saved as GBK/ANSI is the
@@ -495,12 +510,13 @@ start_service() {
 
 	if [ "$server_enabled" = "1" ]; then
 		# Generate/Validate server config
-		ucode -S "$HP_DIR/scripts/generate_server.uc" 2>>"$LOG_PATH"
+		# Capture ucode's stderr to the log with ANSI escapes stripped.
+		append_err_stripped ucode -S "$HP_DIR/scripts/generate_server.uc"
 
 		if [ ! -e "$RUN_DIR/sing-box-s.json" ]; then
 			log "错误：生成服务端配置失败。"
 			return 1
-		elif ! "$PROG" check --config "$RUN_DIR/sing-box-s.json" 2>>"$LOG_PATH"; then
+		elif ! append_err_stripped "$PROG" check --config "$RUN_DIR/sing-box-s.json"; then
 			log "错误：检测到服务端配置有误。"
 			return 1
 		fi
