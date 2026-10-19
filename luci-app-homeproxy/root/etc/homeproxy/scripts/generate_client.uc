@@ -1403,12 +1403,11 @@ if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
 
 /* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
-	/* proxy_providers is a top-level field: nesting it inside clash_api
-	   triggers `unknown field "proxy_providers"` on sing-box startup.
-	   Only emit it when there is at least one provider. */
-	const proxy_providers = build_proxy_providers();
-	if (!isEmpty(proxy_providers))
-		config.proxy_providers = proxy_providers;
+	/* NOTE: do NOT emit a top-level `proxy_providers`. It is a Clash.Meta
+	   concept, not part of sing-box's config schema; the strict decoder
+	   aborts at startup with `unknown field "proxy_providers"` and the
+	   service can never run. All subscription nodes are already expanded
+	   into `outbounds`, so dropping this field does not affect proxying. */
 
 	config.experimental = {
 		clash_api,
