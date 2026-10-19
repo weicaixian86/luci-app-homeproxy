@@ -41,7 +41,7 @@ REFIND_VERSION="1.14.3-reF1nd"
 # GitHub release downloads are frequently unreachable from mainland China, so
 # several public accelerators are attempted first; the list is kept in one
 # place so it is easy to extend.
-GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghfast.top/ https://ghproxy.net/ https://hub.gitmirror.com/"
+GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
 
 . /lib/functions.sh 2>/dev/null || true
 
@@ -157,14 +157,42 @@ detect_arch_name() {
 	esac
 }
 
-# Map a detected architecture to the reF1nd asset filename.
-# Returns non-zero (no output) when reF1nd does not publish that arch yet.
-asset_name_for_arch() {
+# Detect x86-64-v3 (AVX2 / BMI2 / FMA / F16C). reF1nd ships a dedicated amd64v3
+# build for this micro-architecture level; preferring it on capable CPUs yields
+# better performance, while the baseline amd64 build remains as a fallback. Each
+# flag is checked independently (no ordering assumption, /proc/cpuinfo lists
+# them alphabetically with varying gaps).
+cpu_supports_x86_64_v3() {
+	local f
+	f="$(grep -m1 '^flags' /proc/cpuinfo 2>/dev/null)"
+	[ -n "$f" ] || return 1
+	case " $f " in *" avx2 "*) ;; *) return 1 ;; esac
+	case " $f " in *" bmi2 "*) ;; *) return 1 ;; esac
+	case " $f " in *" fma "*)  ;; *) return 1 ;; esac
+	case " $f " in *" f16c "*) ;; *) return 1 ;; esac
+	return 0
+}
+
+# Return the ordered candidate asset filenames for an architecture (space
+# separated). On x86_64, when the CPU advertises x86-64-v3 we prefer the faster
+# amd64v3 build and fall back to the baseline amd64 build (which runs on every
+# x86_64 CPU); otherwise only the baseline amd64 build is used.
+asset_candidates_for_arch() {
 	local arch="$1"
 	case "$arch" in
-		x86_64)  echo "sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz" ;;
-		aarch64) echo "sing-box-${REFIND_VERSION}-linux-arm64-musl.tar.gz" ;;
-		*) return 1 ;;
+		x86_64)
+			if cpu_supports_x86_64_v3; then
+				echo "sing-box-${REFIND_VERSION}-linux-amd64v3-musl.tar.gz sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz"
+			else
+				echo "sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz"
+			fi
+			;;
+		aarch64)
+			echo "sing-box-${REFIND_VERSION}-linux-arm64-musl.tar.gz"
+			;;
+		*)
+			return 1
+			;;
 	esac
 }
 
@@ -328,10 +356,13 @@ extract_and_install() {
 	fi
 
 	chmod 0755 "$bin" 2>/dev/null
-	# Best-effort health check: a wrong-arch binary would fail to exec. If it
-	# fails for another reason we still install, since arch selection is correct.
+	# Health check: a wrong-arch binary (e.g. amd64v3 on a non-v3 CPU) would
+	# SIGILL here. Refuse to install so the caller can fall back to the next
+	# candidate (the baseline amd64 build) instead of leaving a dead binary.
 	if ! "$bin" version >/dev/null 2>&1; then
-		log_download "内核健康检查未通过（可能缺少运行依赖），仍尝试安装"
+		log_download "内核健康检查未通过（可能架构不匹配或缺少运行依赖），不安装此候选：${asset}"
+		rm -rf "$tmp_dir"
+		return 1
 	fi
 
 	if ! mv -f "$bin" "$CORE_BIN"; then
@@ -379,7 +410,7 @@ download_and_install() {
 # Ensure a usable reF1nd core is present. Returns 0 when /usr/bin/sing-box
 # exists (correct version, or at least an existing binary), 1 otherwise.
 ensure_core() {
-	local arch asset cur_ver
+	local arch candidates asset cur_ver
 
 	arch="$(detect_arch_name)"
 	log_download "检测到设备架构：${arch}"
@@ -390,7 +421,7 @@ ensure_core() {
 		return 1
 	fi
 
-	if ! asset="$(asset_name_for_arch "$arch")"; then
+	if ! candidates="$(asset_candidates_for_arch "$arch")"; then
 		log_download "架构 ${arch} 暂无可下载的 reF1nd 二进制程序（作者后续可能提供）"
 		[ -x "$CORE_BIN" ] && return 0
 		return 1
@@ -402,9 +433,12 @@ ensure_core() {
 		return 0
 	fi
 
-	if download_and_install "$arch" "$asset"; then
-		return 0
-	fi
+	for asset in $candidates; do
+		if download_and_install "$arch" "$asset"; then
+			return 0
+		fi
+		log_download "候选内核 ${asset} 下载/安装失败，尝试下一个候选（若存在）"
+	done
 
 	# Download failed: fall back to any existing binary so the service can still
 	# attempt to run (it may be a stale but working version).
@@ -432,22 +466,25 @@ ensure_core() {
 
 # Force a re-download regardless of the installed version.
 update_core() {
-	local arch asset
+	local arch candidates asset
 	arch="$(detect_arch_name)"
 	if [ "$arch" = "unsupported" ]; then
 		log_download "当前架构暂不支持，reF1nd 尚未提供该架构二进制"
 		echo "unsupported"
 		return 1
 	fi
-	if ! asset="$(asset_name_for_arch "$arch")"; then
+	if ! candidates="$(asset_candidates_for_arch "$arch")"; then
 		log_download "架构 ${arch} 暂无可下载的 reF1nd 二进制程序"
 		echo "no_asset"
 		return 1
 	fi
-	if download_and_install "$arch" "$asset"; then
-		echo "ok"
-		return 0
-	fi
+	for asset in $candidates; do
+		if download_and_install "$arch" "$asset"; then
+			echo "ok"
+			return 0
+		fi
+		log_download "候选内核 ${asset} 下载/安装失败，尝试下一个候选（若存在）"
+	done
 
 	# Same manual-archive fallback as ensure_core(), so the UI button can also
 	# recover when no mirror is reachable.
@@ -463,11 +500,15 @@ update_core() {
 
 # Print machine-readable status for the LuCI backend.
 print_status() {
-	local arch cur_ver asset
+	local arch cur_ver candidates asset
 	arch="$(detect_arch_name)"
 	cur_ver="$(installed_core_version)"
-	if asset="$(asset_name_for_arch "$arch")"; then
+	# Use the same candidate logic as ensure/update so the UI reflects what
+	# would actually be downloaded (on x86-64-v3 capable CPUs the preferred
+	# first candidate is the amd64v3 build, with baseline amd64 as fallback).
+	if candidates="$(asset_candidates_for_arch "$arch")"; then
 		asset_available="1"
+		asset="${candidates%% *}"
 	else
 		asset_available="0"
 		asset=""

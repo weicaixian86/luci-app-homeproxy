@@ -280,11 +280,11 @@ function validateDnsServerAddress(type, value) {
 	if (!value)
 		return false;
 
-	/* 各类型对应的协议头；HTTPS/HTTP/3 共用 https 协议头 */
-	const scheme = {
-		udp: 'udp', tcp: 'tcp', tls: 'tls', quic: 'quic',
-		https: 'https', h3: 'https'
-	}[type];
+	/* 各类型对应的协议头；HTTPS/HTTP/3 均可使用 https 或 h3 协议头 */
+	const allowedSchemes = {
+		udp: ['udp'], tcp: ['tcp'], tls: ['tls'], quic: ['quic'],
+		https: ['https'], h3: ['https', 'h3']
+	}[type] || [type];
 
 	if (value.includes('://')) {
 		let url;
@@ -293,7 +293,7 @@ function validateDnsServerAddress(type, value) {
 		} catch (e) {
 			return false;
 		}
-		if (url.protocol.replace(':', '').toLowerCase() !== scheme)
+		if (!allowedSchemes.includes(url.protocol.replace(':', '').toLowerCase()))
 			return false;
 
 		value = url.hostname;
@@ -699,6 +699,33 @@ return view.extend({
 		}
 
 		s = m.section(form.NamedSection, 'config', 'homeproxy');
+
+		/* The "Panel Settings" tab must be hidden *entirely* (not just left
+		   blank) in routing modes where the Clash API is not generated —
+		   everything except `custom` and `bypass_mainland_china`. LuCI only
+		   auto-hides a tab whose pane is empty; a depends-hidden option still
+		   leaves its node in the DOM, so the button stays visible over an
+		   empty pane. We strip the pane node ourselves based on the *live*
+		   routing mode, which also covers the case where the mode is changed
+		   and re-applied without a full page reload. */
+		const _configSectionRender = s.render.bind(s);
+		s.render = function () {
+			return Promise.resolve(_configSectionRender()).then((node) => {
+				let rm = routingMode;
+				try {
+					const live = this.formvalue('config', 'routing_mode');
+					if (live != null)
+						rm = live;
+				} catch (e) {}
+
+				if (rm !== 'custom' && rm !== 'bypass_mainland_china') {
+					const panes = node.querySelectorAll('[data-tab="panel"]');
+					for (let i = 0; i < panes.length; i++)
+						panes[i].parentNode.removeChild(panes[i]);
+				}
+				return node;
+			});
+		};
 
 		s.tab('routing', _('Routing Settings'));
 
@@ -1667,7 +1694,7 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('Address'),
-			_('示例：\nUDP：udp://223.5.5.5\nTCP：tcp://223.5.5.5\nTLS：tls://223.5.5.5\nHTTPS：https://223.5.5.5/dns-query\nHTTP/3：https://223.5.5.5/dns-query\nQUIC：quic://dns.alidns.com\n\n所有类型均可填写协议头（udp://、tcp://、tls://、quic://、https://）；HTTPS/HTTP/3 还需包含路径（如 /dns-query），省略时默认 /dns-query。不写协议头则按所选类型使用标准端口。'));
+			_('示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns.alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns.alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失败。'));
 		so.placeholder = '';
 		so.validate = function(section_id, value) {
 			let type = this.section.formvalue(section_id, 'type') ||
@@ -2444,7 +2471,10 @@ return view.extend({
 		/* Direct domain list end */
 		/* ACL settings end */
 
-		/* Panel settings start */
+		/* Panel settings start — only register the tab when the Clash API is
+		   actually generated (custom / bypass_mainland_china). In other modes
+		   the section render override above strips the (otherwise blank) pane. */
+		if (routingMode === 'custom' || routingMode === 'bypass_mainland_china') {
 		s.tab('panel', _('Panel Settings'));
 		o = s.taboption('panel', form.SectionValue, '_clash_api', form.NamedSection, 'clash_api', 'homeproxy');
 		o.depends({'routing_mode': /^(custom|bypass_mainland_china)$/});
@@ -2532,7 +2562,7 @@ return view.extend({
 		so.value('direct', _('Direct'));
 		so.default = 'rule';
 		so.rmempty = false;
-		/* Panel settings end */
+		} /* Panel settings end (tab only registered for Clash-API-enabled routing modes) */
 
 		/* After "Save & Apply" in custom mode, install the panel only when it is missing */
 		if (typeof m.handleSaveApply === 'function') {

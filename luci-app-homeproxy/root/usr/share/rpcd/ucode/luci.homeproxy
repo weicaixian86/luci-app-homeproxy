@@ -1580,7 +1580,7 @@ const methods = {
 				fd.close();
 			}
 
-			const sfd = popen(`${HP_DIR}/scripts/update_core.sh status 2>/dev/null`);
+			const sfd = popen(`/bin/sh ${HP_DIR}/scripts/update_core.sh status 2>/dev/null`);
 			if (sfd) {
 				for (let line = sfd.read('line'); length(line); line = sfd.read('line')) {
 					line = trim(line);
@@ -1615,7 +1615,7 @@ const methods = {
 
 	singbox_core_update: {
 		call: function() {
-			const fd = popen(`${HP_DIR}/scripts/update_core.sh update 2>&1`);
+			const fd = popen(`/bin/sh ${HP_DIR}/scripts/update_core.sh update 2>&1`);
 			let output = '';
 			if (fd) {
 				for (let line = fd.read('line'); line !== null && length(line); line = fd.read('line'))

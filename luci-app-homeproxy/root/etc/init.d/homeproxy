@@ -25,8 +25,53 @@ else
 	DNSMASQ_DIR="/tmp/dnsmasq.d/dnsmasq-homeproxy.d"
 fi
 
+# ---------- clock / time-sync helpers ----------
+# OpenWrt's sysfixtime sets the boot clock to the newest file mtime (usually the
+# firmware build / package install time) until NTP corrects it. If the service
+# starts before that correction, log lines would carry the stale boot time even
+# though the router's clock is correct a moment later. Detect that state so
+# startup logs are not silently misleading.
+time_sync_reference() {
+	local f newest=0 m
+	for f in /etc/init.d/homeproxy /usr/share/homeproxy/version /etc/config/homeproxy; do
+		[ -e "$f" ] || continue
+		m="$(stat -c %Y "$f" 2>/dev/null)" || continue
+		[ -n "$m" ] || continue
+		if [ "$m" -gt "$newest" ]; then
+			newest="$m"
+		fi
+	done
+	echo "$newest"
+}
+
+clock_looks_unsynced() {
+	local ref now
+	ref="$(time_sync_reference)"
+	[ "${ref:-0}" -gt 0 ] 2>/dev/null || return 1
+	now="$(date +%s 2>/dev/null)" || return 1
+	[ -n "$now" ] || return 1
+	# Within 5 minutes of the sysfixtime value => NTP has not moved the clock yet.
+	[ "$now" -le $((ref + 300)) ]
+}
+
+# Give NTP up to 10 seconds to correct a boot-time (sysfixtime) clock. Only
+# waits when the clock actually looks unsynced, so a normal boot is unaffected.
+wait_for_time_sync() {
+	local i=0
+	clock_looks_unsynced || return 0
+	while [ "$i" -lt 10 ]; do
+		sleep 1
+		i=$((i + 1))
+		clock_looks_unsynced || return 0
+	done
+	return 0
+}
+
 log() {
-	echo -e "$(date "+%Y-%m-%d %H:%M:%S") [DAEMON] $*" >> "$LOG_PATH"
+	local ts marker=""
+	ts="$(date "+%Y-%m-%d %H:%M:%S")"
+	clock_looks_unsynced && marker="（时间未同步）"
+	echo -e "$ts [DAEMON] ${marker}$*" >> "$LOG_PATH"
 }
 
 # Panel download log: mirror the RPC panelLog() format so the "Logs" page
@@ -161,13 +206,19 @@ setup_auto_update_cron() {
 start_service() {
 	init_logs
 
+	# Avoid stamping startup log lines with the pre-NTP (sysfixtime) clock.
+	wait_for_time_sync
+
 	# Ensure the reF1nd sing-box core for this architecture is installed.
 	# HomeProxy no longer bundles a single-arch binary; the correct build is
 	# fetched at runtime. If no binary exists and the architecture is not yet
 	# supported (or the download fails), do not start the service.
-	if [ -x "$CORE_SCRIPT" ]; then
-		if ! "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
-			log "错误：sing-box 内核不可用（架构不支持或下载失败）。"
+	if [ -f "$CORE_SCRIPT" ]; then
+		# Invoke through /bin/sh explicitly so a lost executable bit (e.g. a
+		# Windows checkout that dropped the mode) cannot silently disable the
+		# runtime core download.
+		if ! /bin/sh "$CORE_SCRIPT" ensure >>"$LOG_PATH" 2>&1; then
+			log "错误：sing-box 内核不可用：下载失败或架构暂不支持。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
 			return 1
 		fi
 	else
@@ -362,7 +413,7 @@ start_service() {
 
 	# log-cleaner
 	procd_open_instance "log-cleaner"
-	procd_set_param command "$HP_DIR/scripts/clean_log.sh"
+	procd_set_param command /bin/sh "$HP_DIR/scripts/clean_log.sh"
 	procd_set_param respawn
 	procd_close_instance
 

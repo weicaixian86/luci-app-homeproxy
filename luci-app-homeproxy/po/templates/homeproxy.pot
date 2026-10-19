@@ -372,6 +372,18 @@ msgstr ""
 msgid "Clean log"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:104
+msgid "Log level:"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:183
+msgid "Auto refresh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:107
+msgid "… (only the last %s lines are shown)"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:650
 msgid "Client"
 msgstr ""
@@ -2587,17 +2599,12 @@ msgstr ""
 msgid "The URL to test."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1669
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1697
 msgid ""
-"示例：\n"
-"UDP：udp://223.5.5.5\n"
-"TCP：tcp://223.5.5.5\n"
-"TLS：tls://223.5.5.5\n"
-"HTTPS：https://223.5.5.5/dns-query\n"
-"HTTP/3：https://223.5.5.5/dns-query\n"
-"QUIC：quic://dns.alidns.com\n"
-"\n"
-"所有类型均可填写协议头（udp://、tcp://、tls://、quic://、https://）；HTTPS/HTTP/3 还需包含路径（如 /dns-query），省略时默认 /dns-query。不写协议头则按所选类型使用标准端口。"
+"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns.alidns.com<br/>"
+"HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns.alidns.com/dns-query<br/>"
+"QUIC：quic://dns.alidns.com<br/>"
+"注：TLS/QUIC 类协议若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失败。"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:679
