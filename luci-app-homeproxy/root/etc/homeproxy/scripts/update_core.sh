@@ -37,17 +37,21 @@ REFIND_REPO="reF1nd/sing-box-releases"
 REFIND_TAG="v1.14.3-reF1nd"
 REFIND_VERSION="1.14.3-reF1nd"
 
-# Mirror prefixes tried in order before falling back to github.com itself.
-# GitHub release downloads are frequently unreachable from mainland China, so
-# several public accelerators are attempted first; the list is kept in one
-# place so it is easy to extend.
-# Order matters: the first reachable-but-slow mirror still burns its full
-# --max-time before we fail over. Measured from mainland China: ghproxy.net
-# sustained ~280 KB/s (33 MB core in ~2 min) while gh-proxy.com transferred
-# only ~1.4 MB in 300 s and ghfast.top hung outright — so ghproxy.net leads
-# and the slow/unreliable ones are pushed to the back. github.com is always
-# tried last as the authoritative fallback.
-GH_PROXY_PREFIXES="https://ghproxy.net/ https://gh-proxy.com/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
+# Accelerator prefixes. Order matters: a reachable-but-slow source still burns
+# its whole --max-time before we fail over, so the fastest wins the front slot.
+#
+# Measured ON THE TARGET ROUTER (iStoreOS, 2026-10-19, 15 s fixed window,
+# zashboard dist.zip — bytes received per 15 s):
+#   direct github.com   1,337,254   ~89 KB/s   <- fastest, and therefore FIRST
+#   gh-proxy.com          327,554   ~22 KB/s
+#   ghproxy.net           172,929   ~12 KB/s
+#   ghfast.top / hub.gitmirror.com / gh.llkk.cc / github.moeyy.xyz: 0 (unreachable)
+#
+# NOTE: measurements from a development machine on a different network gave
+# the exact opposite ranking (gh-proxy.com > ghproxy.net >> github). Only the
+# router's own numbers matter here, so direct GitHub is preferred and these
+# mirrors are kept purely as failover for networks where github.com is blocked.
+GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
 
 # NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
 # its functions, and under `set -u` sourcing it is fatal: if that library
@@ -276,10 +280,14 @@ candidate_urls() {
 
 	[ "$mirror" = "github" ] && { printf '%s\n' "$url"; return 0; }
 
+	# Direct GitHub goes FIRST, not last. On the target router it measured
+	# ~89 KB/s against ~22 KB/s (gh-proxy.com) and ~12 KB/s (ghproxy.net), so
+	# going through an accelerator first can only slow things down. Mirrors are
+	# pure failover for networks where github.com itself is unreachable.
+	printf '%s\n' "$url"
 	for prefix in $GH_PROXY_PREFIXES; do
 		printf '%s\n' "${prefix}${url}"
 	done
-	printf '%s\n' "$url"
 }
 
 # Download a file with curl --retry 2 inside each mirror, then fail over.

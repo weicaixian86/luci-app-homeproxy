@@ -94,15 +94,22 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 		uci.delete(uciconfig, cfg['.name'], 'proxy_protocol');
 });
 
-const legacy_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
-const legacy_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
-const old_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-const old_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-/* ghproxy.net measured ~280 KB/s from mainland China; gh-proxy.com managed
-   only ~1.4 MB in 300s, which times the panel download out. Existing configs
-   still pointing at the gh-proxy.com URLs are migrated (they are recognised
-   as legacy above). */
-const default_panel_url = 'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+/* Dashboard archive URLs. Earlier releases defaulted to an accelerator prefix;
+   measured on the target router (2026-10-19, 15 s window) direct GitHub was
+   ~89 KB/s versus ~22 KB/s for gh-proxy.com and ~12 KB/s for ghproxy.net, so
+   the direct URL is now the default and every previously shipped default is
+   migrated to it. */
+const panel_zip = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+const panel_zip_fonts = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
+const default_panel_url = panel_zip;
+const legacy_panel_urls = [
+	panel_zip,
+	panel_zip_fonts,
+	'https://gh-proxy.com/' + panel_zip,
+	'https://gh-proxy.com/' + panel_zip_fonts,
+	'https://ghproxy.net/' + panel_zip,
+	'https://ghproxy.net/' + panel_zip_fonts
+];
 
 /* clash api panel options were introduced */
 if (!uci.get(uciconfig, uciclashapi))
@@ -112,7 +119,11 @@ if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui')))
 	uci.set(uciconfig, uciclashapi, 'external_ui', '/etc/homeproxy/run/ui');
 
 const panel_url = uci.get(uciconfig, uciclashapi, 'external_ui_download_url');
-if (isEmpty(panel_url) || panel_url === legacy_panel_url || panel_url === legacy_panel_proxy_url || panel_url === old_panel_url || panel_url === old_panel_proxy_url)
+let panel_url_is_legacy = false;
+for (let legacy_url in legacy_panel_urls)
+	if (legacy_panel_urls[legacy_url] === panel_url)
+		panel_url_is_legacy = true;
+if (isEmpty(panel_url) || panel_url_is_legacy)
 	uci.set(uciconfig, uciclashapi, 'external_ui_download_url', default_panel_url);
 
 if (isEmpty(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')))

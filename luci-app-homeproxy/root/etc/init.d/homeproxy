@@ -138,10 +138,16 @@ ensure_panel() {
 	fi
 
 	panel_log "开始下载（服务启动自动触发）"
+	# /upgrade/ui is SYNCHRONOUS: the core downloads the whole archive before it
+	# answers, and sends no data at all in the meantime. The zashboard archive is
+	# ~9.5 MB, which is ~107 s even at the ~89 KB/s measured on this router, so
+	# the previous -T 120 could fire on an otherwise healthy download and report
+	# a bogus failure. -T is a socket inactivity timeout, not a total budget, so
+	# raising it only makes a stalled transfer take longer to give up.
 	if [ -n "$secret" ]; then
-		wget -qO- -T 120 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+		wget -qO- -T 300 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
 	else
-		wget -qO- -T 120 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
+		wget -qO- -T 300 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
 	fi
 
 	if [ "$ok" = "1" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$tmp"; then
