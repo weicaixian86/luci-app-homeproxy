@@ -2572,17 +2572,21 @@ return view.extend({
 		so.rmempty = false;
 		} /* Panel settings end (tab only registered for Clash-API-enabled routing modes) */
 
-		/* After "Save & Apply" in custom mode, install the panel only when it is missing */
+		/* After "Save & Apply" in custom mode, make sure the panel is installed.
+		 * The real download is triggered by the init script in the background
+		 * when the service restarts (ensure_panel in /etc/init.d/homeproxy), so
+		 * we must NOT await the synchronous /upgrade/ui call here: on a slow
+		 * mirror that download takes ~10 minutes and would freeze this screen
+		 * the whole time. Fire it off without blocking Save & Apply. */
 		if (typeof m.handleSaveApply === 'function') {
 			const handleSaveApply = m.handleSaveApply;
 
 			m.handleSaveApply = function(ev, mode) {
 				const result = handleSaveApply.call(this, ev, mode);
-				const afterApply = () => ensurePanelInstalled();
-
-				return (result && typeof result.then === 'function')
-					? result.then(afterApply)
-					: afterApply();
+				// Non-blocking: the panel auto-installs in the background via
+				// the init script, so just kick this off and return immediately.
+				ensurePanelInstalled();
+				return result;
 			};
 		}
 
