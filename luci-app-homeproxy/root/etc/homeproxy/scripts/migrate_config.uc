@@ -98,7 +98,11 @@ const legacy_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest
 const legacy_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 const old_panel_url = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
 const old_panel_proxy_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip';
-const default_panel_url = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+/* ghproxy.net measured ~280 KB/s from mainland China; gh-proxy.com managed
+   only ~1.4 MB in 300s, which times the panel download out. Existing configs
+   still pointing at the gh-proxy.com URLs are migrated (they are recognised
+   as legacy above). */
+const default_panel_url = 'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 
 /* clash api panel options were introduced */
 if (!uci.get(uciconfig, uciclashapi))

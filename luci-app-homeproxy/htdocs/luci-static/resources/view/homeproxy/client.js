@@ -2485,6 +2485,8 @@ return view.extend({
 		so.default = '/etc/homeproxy/run/ui';
 
 		const panelPresetUrls = {
+			'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版 (ghproxy.net)',
+			'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts (ghproxy.net)',
 			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts (gh-proxy)',
 			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts',
 			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版 (gh-proxy)',
@@ -2498,6 +2500,11 @@ return view.extend({
 		};
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
+		/* ghproxy.net is listed first: measured against the mirrors below it
+		   sustained ~280 KB/s from mainland China while gh-proxy.com managed
+		   only ~1.4 MB in 300s, which makes the panel download time out. */
+		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (ghproxy.net)');
+		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (ghproxy.net)');
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (gh-proxy)');
 		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版');
 		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
@@ -2509,7 +2516,7 @@ return view.extend({
 		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
 		so.value('__custom__', _('Custom'));
-		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+		so.default = 'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 		so.load = function(section_id) {
 			const value = uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default;
 			return (value in panelPresetUrls) ? value : '__custom__';

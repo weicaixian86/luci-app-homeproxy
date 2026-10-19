@@ -150,7 +150,20 @@ ensure_panel() {
 		return 0
 	fi
 
-	panel_log "下载失败：clash API 未返回成功状态，请稍后从页面手动更新面板。"
+	# The core answers {"error":"..."} on failure — e.g. it could not fetch the
+	# dashboard archive through the configured mirror, or `external_ui` is not
+	# enabled. Surface that reason instead of a generic message: without it the
+	# cause is invisible from LuCI and the user has to SSH in and read the
+	# core log, which is exactly how the earlier "unknown error" reports read.
+	local detail
+	detail="$(tr -d '\r\n' < "$tmp" 2>/dev/null \
+		| sed -n 's/.*"error"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+	if [ -z "$detail" ]; then
+		detail="$(tr -d '\r\n' < "$tmp" 2>/dev/null | cut -c1-160)"
+	fi
+	[ -n "$detail" ] || detail="clash API 未返回成功状态（响应为空，通常是下载镜像超时）"
+	panel_log "下载失败：${detail}"
+	panel_log "提示：可在「面板」设置里换一个更快的下载镜像；也可手动下载面板 zip 解压到 ${panel_dir}。"
 	rm -f "$tmp"
 	return 1
 }

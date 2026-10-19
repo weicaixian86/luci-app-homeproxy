@@ -41,7 +41,13 @@ REFIND_VERSION="1.14.3-reF1nd"
 # GitHub release downloads are frequently unreachable from mainland China, so
 # several public accelerators are attempted first; the list is kept in one
 # place so it is easy to extend.
-GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
+# Order matters: the first reachable-but-slow mirror still burns its full
+# --max-time before we fail over. Measured from mainland China: ghproxy.net
+# sustained ~280 KB/s (33 MB core in ~2 min) while gh-proxy.com transferred
+# only ~1.4 MB in 300 s and ghfast.top hung outright — so ghproxy.net leads
+# and the slow/unreliable ones are pushed to the back. github.com is always
+# tried last as the authoritative fallback.
+GH_PROXY_PREFIXES="https://ghproxy.net/ https://gh-proxy.com/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
 
 # NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
 # its functions, and under `set -u` sourcing it is fatal: if that library
