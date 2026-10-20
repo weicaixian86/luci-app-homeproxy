@@ -124,15 +124,32 @@ log() {
 
 	ensure_sing_box_user() {
 		have_sing_box_user && return 0
-		grep -qs '^sing-box:' /etc/group || addgroup -S sing-box 2>/dev/null || addgroup sing-box 2>/dev/null
+
+		# iStoreOS ships a busybox build WITHOUT the adduser/addgroup applets
+		# (verified on a real box: `addgroup: not found` / `adduser: not found`,
+		# so every busybox variant below fails with 127). Try the shadow-tools
+		# names and the explicit `busybox <applet>` form too; when all of them
+		# are missing the service simply keeps running as root (the jail block
+		# requires have_sing_box_user), which still works.
+		if ! grep -qs '^sing-box:' /etc/group; then
+			addgroup -S sing-box 2>/dev/null \
+				|| busybox addgroup -S sing-box 2>/dev/null \
+				|| groupadd -r sing-box 2>/dev/null \
+				|| groupadd sing-box 2>/dev/null
+		fi
+
 		if ! grep -qs '^sing-box:' /etc/passwd; then
 			# Older busybox lacks some flags: fall back progressively. Keep -D
 			# (no password) in every variant and feed /dev/null, otherwise
 			# adduser prompts interactively and start_service hangs forever.
 			adduser -S -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
 				|| adduser -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
-				|| adduser -D -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null
+				|| adduser -D -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
+				|| busybox adduser -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
+				|| useradd -r -M -s /sbin/nologin -G sing-box sing-box </dev/null 2>/dev/null \
+				|| useradd -r -M -s /sbin/nologin sing-box </dev/null 2>/dev/null
 		fi
+
 		have_sing_box_user
 	}
 
@@ -170,12 +187,15 @@ ensure_panel() {
 
 	# Wait for the core's clash API to come up (procd launches it asynchronously).
 	#
-	# 90 tries, not 30: on startup the core fetches its rule-sets first, which
-	# the log shows taking a long time ("initialize rule-set take too much time
-	# to finish!"). During that window the API socket is not listening yet, and
-	# 30 tries (~60 s) expired before it ever came up — the panel was then never
-	# downloaded and the log only said "API not ready". A refused connection
-	# fails instantly, so this costs ~3 min only when the API really is down.
+	# 300 tries (~10 min), not 30/90: on startup the core initialises its
+	# rule-sets BEFORE it starts the clash API listener, and on a slow line that
+	# phrase alone ("initialize rule-set take too much time to finish!") can run
+	# for many minutes. 30 tries (~60 s) and then 90 tries (~3 min) both expired
+	# before the socket existed, the panel was never downloaded, and the log only
+	# said "API not ready" — even though `ps` showed the core happily starting.
+	# A refused connection fails instantly, so a long loop is free when the core
+	# is really down; it only costs wall-clock time when the core is coming up.
+	# A progress line is written every minute so the log never looks frozen.
 	# The readiness probe MUST carry the same Authorization header as the real
 	# request. sing-box installs `authentication(secret)` as a global router
 	# middleware (experimental/clashapi/server.go), so /version is gated too:
@@ -192,16 +212,21 @@ ensure_panel() {
 	}
 
 	local i ready=0
-	for i in $(seq 1 90); do
+	for i in $(seq 1 300); do
 		if probe_version; then
 			ready=1
 			break
+		fi
+		# Every 30 tries (about one minute) leave a trace, so that a long
+		# rule-set warm-up does not look like a dead panel download.
+		if [ $((i % 30)) -eq 0 ]; then
+			panel_log "等待 clash API 就绪（端口 ${port}，已等 $((i * 2)) 秒）…"
 		fi
 		sleep 2
 	done
 
 	if [ "$ready" != "1" ]; then
-		panel_log "下载失败：等待 clash API 就绪超时（端口 ${port}，已等待约 3 分钟），请稍后从页面手动更新面板。"
+		panel_log "下载失败：等待 clash API 就绪超时（端口 ${port}，已等待约 10 分钟），请稍后从页面手动更新面板。"
 		# A wrong secret is indistinguishable from a down API at this point
 		# (both make the probe fail), so call it out explicitly.
 		if [ -n "$secret" ]; then
