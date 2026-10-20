@@ -48,6 +48,31 @@ log_msg() {
 	return 0
 }
 
+# 把字节数格式化为可读字符串（B/KB/MB/GB），便于日志阅读。
+human_size() {
+	local n="$1"
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	if [ "$n" -ge 1073741824 ]; then
+		echo "$((n / 1073741824)) GB"
+	elif [ "$n" -ge 1048576 ]; then
+		echo "$((n / 1048576)) MB"
+	elif [ "$n" -ge 1024 ]; then
+		echo "$((n / 1024)) KB"
+	else
+		echo "${n} B"
+	fi
+	return 0
+}
+
+# 返回某目录所在分区的可用字节数（拿不到时返回 0，调用方应放行）。
+disk_free_bytes() {
+	local dir="$1" kb
+	kb="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')"
+	case "$kb" in ''|*[!0-9]*) echo 0; return ;; esac
+	echo $((kb * 1024))
+	return 0
+}
+
 usage() {
 	cat <<'EOF'
 Usage: fetch_rulesets.sh [options]
@@ -282,6 +307,13 @@ fi
 
 mkdir -p "$RUN_DIR" "$RULESET_DIR" 2>/dev/null
 
+# 下载磁盘空间预检：规则集虽单条不大，但一次性拉取 N 条仍需要余量。
+# 可用空间拿不到（df 缺失）时放行，不阻断下载。
+free="$(disk_free_bytes "$RULESET_DIR")"
+if [ "$free" -gt 0 ] && [ "$free" -lt 52428800 ]; then
+	log_msg "警告：磁盘可用空间仅 $(human_size "$free")，低于 50MB，规则集下载可能失败（磁盘满时部分 .srs 会写入不完整）。"
+fi
+
 sections="$(list_sections)"
 if [ -z "$sections" ]; then
 	log_msg "没有启用的远程规则集，跳过。"
@@ -299,10 +331,16 @@ fail_summary=""
 deadline=$(( $(date +%s) + BUDGET ))
 out_of_time=0
 
-log_msg "==== 规则集预下载开始（预算 ${BUDGET}s）===="
+# 规则集是「多条小文件」，用「已完成条数 / 总条数」代表整体下载进度。
+idx=0
+total_sections=0
+for __s in $sections; do total_sections=$((total_sections + 1)); done
+
+log_msg "==== 规则集预下载开始（共 ${total_sections} 条，预算 ${BUDGET}s）===="
 
 for sec in $sections; do
 	total=$((total + 1))
+	idx=$((idx + 1))
 
 	fmt="$(uci -q get "$CONF.$sec.format")"
 	[ -n "$fmt" ] || fmt="binary"
@@ -310,6 +348,8 @@ for sec in $sections; do
 	tag="$(uci -q get "$CONF.$sec.tag")"
 	[ -n "$tag" ] || tag="cfg-$sec-rule"
 	path="$(resolve_path "$sec" "$tag" "$fmt")"
+
+	log_msg "规则集下载进度 $(( idx * 100 / total_sections ))%（第 $idx/$total_sections 条）：$tag"
 
 	if [ -z "$url" ]; then
 		log_msg "跳过 $tag：未配置 URL。"
@@ -350,7 +390,7 @@ for sec in $sections; do
 				ok=$((ok + 1))
 				done_one=1
 				rm -f "$path.unavailable" 2>/dev/null
-				log_msg "已更新 $tag（$u）"
+				log_msg "已更新 $tag（$(human_size "$(wc -c < "$path" 2>/dev/null | tr -d ' ')")）：$u"
 			fi
 			break
 		fi

@@ -44,6 +44,31 @@ log_msg() {
 	return 0
 }
 
+# 把字节数格式化为可读字符串（B/KB/MB/GB），便于日志阅读。
+human_size() {
+	local n="$1"
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	if [ "$n" -ge 1073741824 ]; then
+		echo "$((n / 1073741824)) GB"
+	elif [ "$n" -ge 1048576 ]; then
+		echo "$((n / 1048576)) MB"
+	elif [ "$n" -ge 1024 ]; then
+		echo "$((n / 1024)) KB"
+	else
+		echo "${n} B"
+	fi
+	return 0
+}
+
+# 返回某目录所在分区的可用字节数（拿不到时返回 0，调用方应放行）。
+disk_free_bytes() {
+	local dir="$1" kb
+	kb="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')"
+	case "$kb" in ''|*[!0-9]*) echo 0; return ;; esac
+	echo $((kb * 1024))
+	return 0
+}
+
 usage() {
 	cat <<'EOF'
 Usage: fetch_panel.sh [options]
@@ -146,6 +171,52 @@ download_to() {
 	wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
 	return $?
 }
+# 带进度显示的下载：后台运行 curl 并轮询已下载字节，按百分比/可读字节数
+# 写日志，避免单文件大下载（面板约 9.5MB）期间日志长时间无输出、看起来像卡死。
+download_with_progress() {
+	local url="$1" out="$2" max="$3" label="$4"
+	LAST_HTTP=""
+	local total=0 cur=0 pct=0 last_pct=0 last_time=0 last_cur=0 pid rc codefile now
+
+	if command -v curl >/dev/null 2>&1; then
+		codefile="$out.code"
+		# HEAD 探测总大小；部分镜像（如 gh-proxy）可能不支持 HEAD，
+		# 此时 total=0，退化为只显示已下载字节数。
+		total="$(curl -sI --connect-timeout 20 "$url" 2>/dev/null \
+			| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+		rm -f "$codefile" "$out"
+		curl -fsSL --connect-timeout 20 \
+			--speed-limit 6144 --speed-time 60 --max-time "$max" \
+			-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
+		pid=$!
+		while kill -0 "$pid" 2>/dev/null; do
+			cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
+			[ -z "$cur" ] && cur=0
+			now=$(date +%s)
+			if [ "$total" -gt 0 ]; then
+				pct=$(( cur * 100 / total ))
+				if [ "$pct" -ge "$((last_pct + 5))" ] || [ "$pct" -ge 100 ] || [ "$((now - last_time))" -ge 10 ]; then
+					log_msg "$label 下载进度 ${pct}%（$(human_size "$cur")/$(human_size "$total")）：$url"
+					last_pct=$pct; last_time=$now
+				fi
+			else
+				if [ "$cur" -ge "$((last_cur + 1048576))" ] || [ "$((now - last_time))" -ge 10 ]; then
+					log_msg "$label 已下载 $(human_size "$cur")（总大小未知）：$url"
+					last_cur=$cur; last_time=$now
+				fi
+			fi
+			sleep 2
+		done
+		wait "$pid"; rc=$?
+		LAST_HTTP="$(cat "$codefile" 2>/dev/null | tr -d ' \r\n')"
+		rm -f "$codefile"
+	else
+		wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
+		rc=$?
+	fi
+	return $rc
+}
+
 
 # A real zip starts with "PK\x03\x04". Mirror error pages are HTML and would
 # otherwise be extracted into "nothing" with a confusing failure later.
@@ -168,7 +239,14 @@ unzip_cmd() {
 # Download pass
 # ---------------------------------------------------------------------------
 
-work="/tmp/homeproxy_panel.$$"
+# 下载盘预检：面板先下载到临时目录再解压，临时目录默认在 /tmp（内存盘）。
+# 内存盘空间有限（尤其是小内存路由器），不足时改到 /etc/homeproxy（overlay 闪存）。
+if [ "$(disk_free_bytes /tmp)" -lt 31457280 ]; then
+	work="${HP_DIR}/run/panel_tmp.$$"
+	log_msg "面板：/tmp 可用空间不足 30MB，临时目录改用 ${work}。"
+else
+	work="/tmp/homeproxy_panel.$$"
+fi
 zip="$work/dist.zip"
 extract="$work/extract"
 stage="$work/stage"
@@ -198,17 +276,18 @@ for u in $(build_candidates "$panel_url" | awk '!seen[$0]++'); do
 		break
 	fi
 	rm -f "$zip" 2>/dev/null
-	if download_to "$u" "$zip" "$left"; then
+		log_msg "面板：开始从镜像下载：$u"
+	if download_with_progress "$u" "$zip" "$left" "面板"; then
 		if valid_zip "$zip"; then
 			got=1
 			used_url="$u"
-			log_msg "已取到面板包（$(wc -c < "$zip" | tr -d ' ') 字节）：$u"
+			log_msg "已取到面板包（$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")）：$u"
 			break
 		fi
 		# Exit status 0 but not a zip: a mirror that answers 200 with an HTML
 		# placeholder page. Installing that is exactly how a "downloaded"
 		# dashboard ends up as a blank screen, so drop it and move on.
-		log_msg "镜像返回的不是 zip（HTTP ${LAST_HTTP:-000}，$(wc -c < "$zip" | tr -d ' ') 字节），已丢弃：$u"
+		log_msg "镜像返回的不是 zip（HTTP ${LAST_HTTP:-000}，$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")），已丢弃：$u"
 	else
 		log_msg "镜像不可用或传输中断（HTTP ${LAST_HTTP:-000}）：$u"
 	fi

@@ -71,6 +71,31 @@ log_download() {
 	ensure_log
 	printf '%s download : %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${DOWNLOAD_LOG}" 2>/dev/null
 }
+# 把字节数格式化为可读字符串（B/KB/MB/GB），便于日志阅读。
+human_size() {
+	local n="$1"
+	case "$n" in ''|*[!0-9]*) n=0 ;; esac
+	if [ "$n" -ge 1073741824 ]; then
+		echo "$((n / 1073741824)) GB"
+	elif [ "$n" -ge 1048576 ]; then
+		echo "$((n / 1048576)) MB"
+	elif [ "$n" -ge 1024 ]; then
+		echo "$((n / 1024)) KB"
+	else
+		echo "${n} B"
+	fi
+	return 0
+}
+
+# 返回某目录所在分区的可用字节数（拿不到时返回 0，调用方应放行）。
+disk_free_bytes() {
+	local dir="$1" kb
+	kb="$(df -Pk "$dir" 2>/dev/null | awk 'NR==2{print $4}')"
+	case "$kb" in ''|*[!0-9]*) echo 0; return ;; esac
+	echo $((kb * 1024))
+	return 0
+}
+
 
 # ---------- ELF / arch detection (BusyBox safe) ----------
 is_elf_binary() {
@@ -293,9 +318,12 @@ candidate_urls() {
 
 # Download a file with curl --retry 2 inside each mirror, then fail over.
 # Usage: download_file SOURCE_URL OUTPUT_PATH PURPOSE [MIRROR]
+# 下载文件并在日志中显示进度百分比与可读字节数。
+# transfer 在后台运行，同时轮询已下载字节大小，使 UI（tail core_download.log）
+# 能看到稳定推进，而不是在 4~33 分钟的下载里长时间无输出。
 download_file() {
 	local url="$1" out="$2" purpose="${3:-generic}" mirror="${4:-auto}"
-	local downloader rc actual_url connect_timeout
+	local downloader rc actual_url connect_timeout codefile LAST_HTTP=""
 
 	downloader="$(get_downloader "$purpose")" || return 1
 
@@ -305,51 +333,47 @@ download_file() {
 		connect_timeout=10
 	fi
 
-	# Timeouts are expressed as "no useful progress" rather than "total
-	# elapsed", because a total budget cannot be chosen sanely here: the
-	# release tarball is 34 MB and the mirrors run anywhere from ~22 KB/s to
-	# ~130 KB/s, i.e. 4 to 26 minutes for one healthy download. The old
-	# --max-time 240 cut off every attempt past ~5 MB, so the core could
-	# never be installed through a working mirror at all — the download was
-	# killed mid-transfer and reported as a mirror failure.
-	#
-	# --speed-limit/--speed-time instead abort only when the transfer is too
-	# slow to be worth waiting for. The threshold is 6 KB/s, not "is it
-	# completely dead": a 34 MB body at 6 KB/s already takes 96 minutes, so
-	# anything slower is better spent trying the next mirror than sitting on
-	# a link that will need hours. Measured on the target router, throughput
-	# ranged from 3.2 KB/s to 8.5 MB/s for the same URL depending on whether
-	# the edge node had it cached, so a 1 KB/s floor (the old value) would
-	# happily wait out a 3 KB/s trickle for the full --max-time and then give
-	# up anyway.
-	#
-	# --max-time 7200 leaves enough room for a 6 KB/s transfer to actually
-	# finish (96 min) while still bounding a pathological trickle.
-	#
-	# --retry-all-errors is deliberately NOT used: it needs curl >= 7.71 and
-	# an older build (common on embedded OpenWrt images) rejects the flag
-	# outright, which would fail every single download. Plain --retry already
-	# covers transient timeouts, connection failures and 5xx answers.
 	for actual_url in $(candidate_urls "$url" "$mirror"); do
-		# A 34 MB body at mirror speeds takes anywhere from 4 to 26 minutes,
-		# and nothing is logged until it finishes. Without this line the UI
-		# (which shows the tail of this log) looks frozen for the whole
-		# download and the user kills it halfway through.
+		# 34MB 的包按镜像速度需 4~26 分钟。先打印源地址，避免首条进度
+		# （慢链路上可能要等约 10 秒）之前 UI 看起来像卡死。
 		log_download "正在下载（源：${actual_url}）"
 		case "$downloader" in
 			curl)
+				local total=0 cur=0 pct=0 last_pct=0 last_time=0 last_cur=0 pid now
+				codefile="${out}.code"
+				# HEAD 探测总大小；部分镜像不支持 HEAD 时 total=0，
+				# 退化为只显示已下载字节数。
+				total="$(curl -sI --connect-timeout "$connect_timeout" "$actual_url" 2>/dev/null \
+					| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+				rm -f "$codefile" "$out"
 				curl -fsSL --connect-timeout "$connect_timeout" \
 					--speed-limit 6144 --speed-time 60 --max-time 7200 \
-					--retry 2 --retry-delay 3 \
 					-A "luci-app-homeproxy" \
-					-o "$out" "$actual_url" >/dev/null 2>&1
-				rc=$?
+					-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
+				pid=$!
+				while kill -0 "$pid" 2>/dev/null; do
+					cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
+					[ -z "$cur" ] && cur=0
+					now=$(date +%s)
+					if [ "$total" -gt 0 ]; then
+						pct=$(( cur * 100 / total ))
+						if [ "$pct" -ge "$((last_pct + 5))" ] || [ "$pct" -ge 100 ] || [ "$((now - last_time))" -ge 10 ]; then
+							log_download "下载进度 ${pct}%（$(human_size "$cur")/$(human_size "$total")）：${actual_url}"
+							last_pct=$pct; last_time=$now
+						fi
+					else
+						if [ "$cur" -ge "$((last_cur + 1048576))" ] || [ "$((now - last_time))" -ge 10 ]; then
+							log_download "已下载 $(human_size "$cur")（总大小未知）：${actual_url}"
+							last_cur=$cur; last_time=$now
+						fi
+					fi
+					sleep 2
+				done
+				wait "$pid"; rc=$?
+				LAST_HTTP="$(cat "$codefile" 2>/dev/null | tr -d ' \r\n')"
+				rm -f "$codefile"
 				;;
 			wget)
-				# BusyBox wget is common on OpenWrt and rejects some GNU-only
-				# long options, so only universally supported flags are used.
-				# Its -T is already a socket-inactivity timeout (not a total
-				# budget), which is the semantics we want for a 34 MB body.
 				wget -q -T 60 -O "$out" "$actual_url" >/dev/null 2>&1
 				rc=$?
 				;;
@@ -360,17 +384,8 @@ download_file() {
 
 		if [ "$rc" -eq 0 ] && [ -s "$out" ]; then
 			if [ "$purpose" = "asset" ]; then
-				# Validate that the mirror really returned a gzip-compressed
-				# tarball. A misbehaving mirror may answer with an HTML error
-				# page and HTTP 200, so the content must be checked.
-				#
-				# IMPORTANT: do NOT check the gzip magic via `od`. Many minimal
-				# BusyBox builds (e.g. some iStoreOS images) ship WITHOUT `od`;
-				# the old `od`-based check then produced an empty string, which
-				# never equals "1f8b", so EVERY valid download was rejected as
-				# "not gzip" and deleted — making the core impossible to install
-				# even with a perfectly healthy mirror. `tar -tzf` is portable
-				# (busybox tar handles -z) and validates the archive for real.
+				# 校验镜像确实返回了 gzip 压缩的 tar 包。错误镜像可能以
+				# HTTP 200 返回 HTML 错误页，必须校验内容。
 				if ! tar -tzf "$out" >/dev/null 2>&1; then
 					log_download "下载内容不是有效的 tar.gz 包（疑似错误页面），继续尝试下一个源：${actual_url}"
 					rm -f "$out"
@@ -380,7 +395,7 @@ download_file() {
 			log_download "下载成功：${actual_url}"
 			return 0
 		fi
-		log_download "下载失败（返回码 ${rc}）：${actual_url}"
+		log_download "下载失败（返回码 ${rc}，HTTP ${LAST_HTTP:-000}）：${actual_url}"
 		rm -f "$out"
 	done
 
@@ -492,11 +507,27 @@ extract_and_install() {
 	return 0
 }
 
+# 选择可用空间足够的缓存目录。默认的 /tmp 在 OpenWrt 上是 tmpfs（内存盘），
+# 在小内存路由器上可能小于 34MB 内核包 + 解压所需，导致下载报
+# “No space left on device”。/tmp 空间不足时改到 /etc/homeproxy（overlay 闪存），
+# 通常空间更充裕。
+setup_cache_dir() {
+	local tmp_free need=104857600  # 100MB 余量：34MB tar 包 + 解压
+	tmp_free="$(disk_free_bytes /tmp)"
+	if [ "$tmp_free" -lt "$need" ]; then
+		CACHE_DIR="${HP_DIR}/core-dl"
+		log_download "提示：/tmp（内存盘）可用空间仅 $(human_size "$tmp_free")，不足 100MB，缓存目录改用 ${CACHE_DIR}（/etc/homeproxy 在闪存 overlay 上空间通常更足）。"
+	else
+		CACHE_DIR="/tmp/homeproxy-core-dl"
+	fi
+}
+
 # Download and install the matching reF1nd core for the given arch/asset.
 download_and_install() {
 	local arch="$1" asset="$2"
 	local asset_url rc
 
+	setup_cache_dir
 	clear_cache
 
 	asset_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}"
