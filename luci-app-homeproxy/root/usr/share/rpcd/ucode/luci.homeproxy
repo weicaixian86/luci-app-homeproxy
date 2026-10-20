@@ -7,6 +7,7 @@
 
 'use strict';
 
+import { md5 } from 'digest';
 import { access, lstat, popen, readfile, writefile } from 'fs';
 import { cursor } from 'uci';
 
@@ -30,6 +31,7 @@ function getClashAPIConfig(uci) {
 
 	return {
 		base_url: `http://127.0.0.1:${port}`,
+		port,
 		secret
 	};
 }
@@ -58,6 +60,63 @@ function clashAPIRequest(api, method, path, timeout) {
 	 * "clash_api_unavailable" instead of letting a bogus empty JSON parse fail
 	 * and surface as a misleading "unknown error". */
 	return length(payload) ? payload : null;
+}
+
+/* Only the proxy endpoints are reachable through ubus. The path is validated
+   here (and percent-encoded by the caller) so a request from the LuCI page
+   cannot smuggle in another endpoint or shell metacharacters. */
+function validClashPath(path) {
+	if (type(path) !== 'string' || length(path) < 2 || length(path) > 1024)
+		return false;
+
+	if (!match(path, /^\/[A-Za-z0-9%._~!$&'()*+,;=:@\/?-]+$/))
+		return false;
+
+	return !match(path, /\.\./);
+}
+
+/* BusyBox wget can only POST, while the Clash API switches a Selector member
+   with PUT. Speak HTTP over netcat for that single call: stage the request in
+   /tmp, pipe it to the core and read the status line back. */
+function clashAPIPut(api, path, body) {
+	const payload = body ? sprintf('%J', body) : '';
+	const request = sprintf(
+		'PUT %s HTTP/1.1\r\nHost: 127.0.0.1\r\n%sContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s',
+		path,
+		api.secret ? sprintf('Authorization: Bearer %s\r\n', api.secret) : '',
+		length(payload), payload);
+	const file = '/tmp/.homeproxy-clash-api.req';
+
+	if (!writefile(file, request))
+		return { error: 'request_failed' };
+
+	const nc = access('/bin/nc') ? '/bin/nc'
+		: (access('/usr/bin/nc') ? '/usr/bin/nc' : 'nc');
+	const fd = popen(sprintf('%s -w 5 127.0.0.1 %s < %s 2>"/dev/null"', nc, api.port, file));
+
+	if (!fd)
+		return { error: 'clash_api_unavailable' };
+
+	const response = readProcess(fd);
+	system(sprintf('rm -f %s', file));
+
+	const matched = match(response, /^HTTP\/1\.[01]\s+(\d{3})/);
+
+	if (!matched)
+		return { error: 'clash_api_unavailable' };
+
+	return { status: int(matched[1]) };
+}
+
+/* UCI list options come back either as an array or as a lone string. */
+function optionList(value) {
+	if (type(value) === 'array')
+		return value;
+
+	if (value === null || value === undefined || value === '')
+		return [];
+
+	return [ value ];
 }
 
 function getPanelDir(uci) {
@@ -466,6 +525,155 @@ const methods = {
 			};
 		}
 	},
+	/* Read-only proxy over the Clash API for the LuCI panel page. Going
+	   through rpcd keeps the admin secret on the router: the browser talks to
+	   /cgi-bin/luci on the LuCI origin, so no CORS header and no API password
+	   are needed in the front end. */
+	clash_api_get: {
+		args: { path: 'path' },
+		call: function(req) {
+			const path = req.args?.path || '/proxies';
+
+			if (!validClashPath(path))
+				return { error: 'invalid_path' };
+
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const payload = clashAPIRequest(getClashAPIConfig(uci), 'GET', path, 8);
+
+			if (payload === null)
+				return { error: 'clash_api_unavailable' };
+
+			try {
+				return { data: json(payload) };
+			} catch (e) {
+				return { error: 'invalid_response' };
+			}
+		}
+	},
+
+	/* Switch the selected member of a Selector group. */
+	clash_api_select: {
+		args: { path: 'path', name: 'name' },
+		call: function(req) {
+			const path = req.args?.path || '',
+			      name = trim(sprintf('%s', req.args?.name || ''));
+
+			if (!validClashPath(path) || isEmpty(name))
+				return { error: 'invalid_argument' };
+
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const ret = clashAPIPut(getClashAPIConfig(uci), path, { name });
+
+			if (ret.error)
+				return ret;
+
+			if (ret.status >= 200 && ret.status < 300)
+				return { result: true };
+
+			return { error: 'selector_rejected', status: ret.status };
+		}
+	},
+
+	/* URL test a single outbound (or a whole group) through the Clash API. */
+	clash_api_delay: {
+		args: { path: 'path' },
+		call: function(req) {
+			const path = req.args?.path || '';
+
+			if (!validClashPath(path))
+				return { error: 'invalid_path' };
+
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const payload = clashAPIRequest(getClashAPIConfig(uci), 'GET', path, 15);
+
+			if (payload === null)
+				return { error: 'clash_api_unavailable' };
+
+			let data = null;
+
+			try {
+				data = json(payload);
+			} catch (e) {
+				return { error: 'invalid_response' };
+			}
+
+			const delay = int(data?.delay ?? 0);
+
+			return (delay > 0) ? { delay } : { error: 'timeout' };
+		}
+	},
+
+	/* Subscription list for the "proxy providers" tab. sing-box never
+	   implements /providers/proxies (the endpoint is an empty stub kept for
+	   dashboard compatibility) and its config schema has no proxy_providers
+	   field, so the provider cards are built from what HomeProxy itself
+	   knows: the subscription names, the node sections that belong to each
+	   subscription hash, and the Subscription-Userinfo stored on update. */
+	subscription_list: {
+		call: function() {
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const names = optionList(uci.get('homeproxy', 'subscription', 'subscription_name')),
+			      urls = optionList(uci.get('homeproxy', 'subscription', 'subscription_url'));
+
+			let list = [], slot = 0;
+
+			for (let url in urls) {
+				const name = trim(names[slot] || '');
+				slot++;
+
+				if (isEmpty(url))
+					continue;
+
+				const clean = replace(url, /#.*$/, ''),
+				      hash = md5(clean);
+
+				let info = null;
+
+				try {
+					const raw = uci.get('homeproxy', 'subscription', 'subinfo_' + substr(hash, 0, 16));
+					info = raw ? json(raw) : null;
+				} catch (e) {
+					info = null;
+				}
+
+				let nodes = [];
+
+				uci.foreach('homeproxy', 'node', (cfg) => {
+					if (cfg.grouphash !== hash)
+						return;
+
+					const address = trim(cfg.override_address || cfg.address || ''),
+					      port = trim(sprintf('%s', cfg.override_port || cfg.port || '')),
+					      label = trim(cfg.label || '') || (address ? `${address}${port ? ':' + port : ''}` : '');
+
+					if (!isEmpty(label) && index(nodes, label) === -1)
+						push(nodes, label);
+				});
+
+				push(list, {
+					name: name || substr(hash, 0, 8),
+					count: length(nodes),
+					nodes,
+					upload: info?.upload,
+					download: info?.download,
+					total: info?.total,
+					expire: info?.expire,
+					updated_at: info?.updated_at
+				});
+			}
+
+			return { subscriptions: list };
+		}
+	},
+
 	clash_api_update_panel: {
 		args: { only_if_missing: true, attempt: 1, total: 1 },
 		call: function(request) {

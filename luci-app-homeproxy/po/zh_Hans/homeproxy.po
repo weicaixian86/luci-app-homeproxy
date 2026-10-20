@@ -3574,3 +3574,107 @@ msgstr "作为 DNS 规则的显示名，支持中文。需唯一。"
 
 msgid "Used as the displayed server name. Chinese is supported. It must be unique."
 msgstr "作为服务器的显示名，支持中文。需唯一。"
+
+msgid "Proxy Panel"
+msgstr "代理面板"
+
+msgid "Proxies"
+msgstr "代理"
+
+msgid "Proxy providers"
+msgstr "代理供应商"
+
+msgid "Search groups | Regex"
+msgstr "搜索代理组 | 正则"
+
+msgid "Refresh"
+msgstr "刷新"
+
+msgid "Test latency of every node"
+msgstr "全部节点测速"
+
+msgid "Test latency of this group"
+msgstr "测速本组节点"
+
+msgid "Manual selection"
+msgstr "手动选择"
+
+msgid "Automatic selection"
+msgstr "自动选择"
+
+msgid "%d nodes"
+msgstr "%d 个节点"
+
+msgid "Timeout"
+msgstr "超时"
+
+msgid "Unlimited"
+msgstr "不限期"
+
+msgid "Loading…"
+msgstr "正在载入…"
+
+msgid "Loading subscriptions…"
+msgstr "正在载入订阅…"
+
+msgid "Invalid request."
+msgstr "请求无效。"
+
+msgid "unknown error"
+msgstr "未知错误"
+
+msgid "Clash API is unreachable. It is only generated in the \"Custom\" and \"Bypass mainland China\" modes, and the service has to be running."
+msgstr "Clash API 不可用：仅在「自定义路由模式」与「绕过中国大陆模式」下生成，且服务需运行中。"
+
+msgid "Failed to read the Clash API: %s"
+msgstr "读取 Clash API 失败：%s"
+
+msgid "No proxy group matches \"%s\"."
+msgstr "没有匹配「%s」的代理组。"
+
+msgid "No proxy group found. Add policy groups in \"Node Settings\" first."
+msgstr "未找到代理组。请先在「节点设置」中添加策略组。"
+
+msgid "This group selects its node automatically; nothing to switch."
+msgstr "该策略组为自动选择，无需手动切换。"
+
+msgid "Switched to %s."
+msgstr "已切换到 %s。"
+
+msgid "Failed to switch node: %s"
+msgstr "切换节点失败：%s"
+
+msgid "This subscription reports no traffic information."
+msgstr "该订阅未上报流量信息。"
+
+msgid "%s of %s used (%d%%)"
+msgstr "已用 %s / %s（%d%%）"
+
+msgid "Expires: %s"
+msgstr "到期：%s"
+
+msgid "Updated: %s"
+msgstr "更新于：%s"
+
+msgid "No subscription configured. Add one in \"Node Settings\" to see it here."
+msgstr "尚未配置订阅。请在「节点设置」中添加订阅后查看。"
+
+msgid "%d subscriptions"
+msgstr "%d 个订阅"
+
+msgid "Update subscriptions"
+msgstr "更新订阅"
+
+msgid "Updating…"
+msgstr "更新中…"
+
+msgid "Subscriptions updated."
+msgstr "订阅已更新。"
+
+msgid "Updating subscriptions failed. See the runtime log for details."
+msgstr "更新订阅失败，详见运行日志。"
+
+msgid "Updating subscriptions failed: %s"
+msgstr "更新订阅失败：%s"
+
+

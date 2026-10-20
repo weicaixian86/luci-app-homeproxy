@@ -1305,7 +1305,30 @@ if (!isEmpty(main_node)) {
 			outbound: 'main-udp-out'
 		});
 
-	config.route.final = 'main-out';
+	/* Bypass mainland China: route everything that is NOT mainland (by IP or
+	   by geosite) through the proxy; the rest — mainland + unknown — falls
+	   through to direct-out below. Without this rule the mode name is
+	   misleading: traffic would all go to the proxy (final = main-out). */
+	if (routing_mode === 'bypass_mainland_china')
+		push(config.route.rules, {
+			rule_set: ['geoip-cn', 'geosite-cn'],
+			invert: true,
+			action: 'route',
+			outbound: 'main-out'
+		});
+
+	/* GFWList: route foreign geosites through the proxy, everything else
+	   direct. */
+	if (routing_mode === 'gfwlist')
+		push(config.route.rules, {
+			rule_set: 'geosite-noncn',
+			action: 'route',
+			outbound: 'main-out'
+		});
+
+	/* In these two modes the catch-all must be direct; only the matched
+	   foreign/mainland-excluded traffic is proxied. */
+	config.route.final = (routing_mode === 'bypass_mainland_china' || routing_mode === 'gfwlist') ? 'direct-out' : 'main-out';
 
 	/* Rule set */
 	/* Direct list */
@@ -1349,6 +1372,11 @@ if (!isEmpty(main_node)) {
 			path: ruleset_default_path('geosite-cn', 'binary'),
 			http_client: dl_tag_for('main-out')
 		});
+	}
+
+	/* geosite-noncn is needed by BOTH bypass (DNS logical rule) and GFWList
+	   (routing rule), so register it for either mode. */
+	if (routing_mode === 'bypass_mainland_china' || routing_mode === 'gfwlist') {
 		push(config.route.rule_set, {
 			type: 'remote',
 			tag: 'geosite-noncn',
