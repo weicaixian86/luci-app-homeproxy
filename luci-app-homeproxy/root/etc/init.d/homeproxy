@@ -438,6 +438,24 @@ start_service() {
 	fi
 
 	if [ "$outbound_node" != "nil" ]; then
+		# Refresh the local rule-set cache BEFORE the config is generated.
+		#
+		# generate_client.uc emits `type: local` whenever a validated copy
+		# exists; otherwise the rule-set stays `remote` and sing-box downloads
+		# it while initialising — that is, BEFORE the Clash API listener comes
+		# up. With 20+ enabled rule-sets on a slow mirror that pushed the API
+		# past every readiness window, so the panel was never downloaded at
+		# all. Only fetch when something is actually missing or invalid, so a
+		# warm cache costs nothing at start-up.
+		local ruleset_script="$HP_DIR/scripts/fetch_rulesets.sh"
+		if [ -f "$ruleset_script" ]; then
+			if ! /bin/sh "$ruleset_script" --check >/dev/null 2>&1; then
+				log "规则集缓存不完整，正在预下载（最多约 4 分钟，进度见 $RUN_DIR/ruleset_download.log）…"
+				/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1 \
+					|| log "警告：规则集预下载未全部成功，失败项将由内核按 remote 方式下载；这可能拖慢启动，若该 URL 返回 404 还会导致内核启动失败。详情见 $RUN_DIR/ruleset_download.log。"
+			fi
+		fi
+
 		# Generate/Validate client config
 		# Capture ucode's stderr to the log with ANSI escapes stripped.
 		append_err_stripped ucode -S "$HP_DIR/scripts/generate_client.uc"

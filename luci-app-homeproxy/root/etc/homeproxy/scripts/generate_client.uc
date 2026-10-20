@@ -8,7 +8,7 @@
 'use strict';
 
 import { md5 } from 'digest';
-import { readfile, writefile } from 'fs';
+import { open, readfile, writefile } from 'fs';
 import { isnan } from 'math';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
@@ -83,6 +83,42 @@ function ruleset_file_name(tag, format) {
 
 function ruleset_default_path(tag, format) {
 	return RULESET_DIR + '/' + ruleset_file_name(tag, format);
+}
+
+/* True when a *validated* local copy of a remote rule-set exists, so the
+   generator can emit `type: local` instead of `type: remote`.
+   Checking the magic number (not just the size) matters: a mirror error page
+   is small but non-empty, sing-box saves it verbatim and then the binary
+   decoder aborts the whole instance while initialising. fetch_rulesets.sh
+   fills this cache out of band, before start-up. */
+function ruleset_local_ready(path, format) {
+	if (isEmpty(path))
+		return false;
+
+	let fp = null;
+	try {
+		fp = open(path, 'r');
+	} catch (e) {
+		return false;
+	}
+	if (!fp)
+		return false;
+
+	let head = null;
+	try {
+		head = fp.read(8);
+	} catch (e) {
+		head = null;
+	}
+	try { fp.close(); } catch (e) {}
+
+	if (!head || length(head) < 1)
+		return false;
+
+	if (format === 'source')
+		return match(head, /^\s*[{\[]/) !== null;
+
+	return substr(head, 0, 3) === 'SRS';
 }
 
 function ruleset_remote_path(path, tag, format) {
@@ -1387,13 +1423,32 @@ if (!isEmpty(main_node)) {
 			return null;
 
 		const tag = !isEmpty(cfg.tag) ? cfg.tag : ('cfg-' + cfg['.name'] + '-rule');
+		const path = (cfg.type === 'remote')
+			? ruleset_remote_path(cfg.remote_path || cfg.path, tag, cfg.format)
+			: cfg.path;
+
+		/* A validated local copy wins over a remote fetch. sing-box loads
+		   remote rule-sets while initialising — BEFORE it starts the Clash API
+		   listener — so with 20+ enabled rule-sets start-up blocks for minutes
+		   on a slow mirror and the panel is judged "API not ready" and never
+		   downloaded. fetch_rulesets.sh keeps this cache populated. */
+		if (cfg.type === 'remote' && ruleset_local_ready(path, cfg.format)) {
+			push(config.route.rule_set, {
+				type: 'local',
+				tag: tag,
+				format: cfg.format,
+				path: path
+			});
+
+			return null;
+		}
 
 		push(config.route.rule_set, {
 			type: cfg.type,
 			tag: tag,
 			format: cfg.format,
 			url: cfg.url,
-			path: (cfg.type === 'remote') ? ruleset_remote_path(cfg.remote_path || cfg.path, tag, cfg.format) : cfg.path,
+			path: path,
 			http_client: dl_tag_for(get_outbound(cfg.outbound)),
 			update_interval: (cfg.type === 'remote') ? '87600h' : null
 		});
