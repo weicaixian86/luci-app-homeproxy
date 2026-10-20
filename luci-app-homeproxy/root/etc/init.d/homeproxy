@@ -182,6 +182,26 @@ ensure_panel() {
 		return 0
 	fi
 
+	# Download the dashboard ourselves FIRST, through a mirror chain, and only
+	# fall back to the core's /upgrade/ui when that fails.
+	#
+	# The core endpoint is single-source (one detour, no fallback), silent and
+	# synchronous, and — worst of all — only exists once the Clash API is
+	# listening, which happens after every remote rule-set has been
+	# initialised. That coupling is why a slow rule-set warm-up used to leave
+	# the panel undownloaded for no reason at all. fetch_panel.sh needs neither
+	# the core nor the API: it downloads, validates the zip magic, unpacks and
+	# installs into external_ui, which the core serves statically.
+	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900; then
+			if [ -f "$panel_dir/index.html" ]; then
+				panel_log "下载成功（本地预下载，未依赖 clash API）"
+				return 0
+			fi
+		fi
+		panel_log "本地预下载未成功，改由核心的 /upgrade/ui 下载（需等待内核就绪）。"
+	fi
+
 	base_url="http://127.0.0.1:${port}"
 	tmp="/tmp/homeproxy_panel_upgrade.res"
 

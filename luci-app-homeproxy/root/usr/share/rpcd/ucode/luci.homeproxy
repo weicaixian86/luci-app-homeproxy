@@ -490,6 +490,26 @@ const methods = {
 					return { result: true, skipped: true };
 			}
 
+			/* Try the local fetcher FIRST, before touching the installed panel.
+			 * It walks a mirror chain, checks the zip magic before unpacking and
+			 * does its own backup/rollback, and it needs neither the core nor the
+			 * Clash API — whereas /upgrade/ui is single-source, silent and only
+			 * reachable once the core is up. On a line where the configured CDN is
+			 * flaky, the fetcher is the only path that can succeed.
+			 * Running it before preparePanelBackup() keeps the two backup schemes
+			 * from colliding: the script uses the same `<panel_dir>.backup` name. */
+			const fetcher = `${HP_DIR}/scripts/fetch_panel.sh`;
+			if (system(`test -x ${shellquote(fetcher)}`) === 0) {
+				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900`) === 0) {
+					const installed = lstat(`${panel_dir}/index.html`);
+					if (installed && installed.type === 'file') {
+						panelLog(sprintf('下载成功（第 %d 次尝试，本地预下载）', attempt));
+						return { result: true };
+					}
+				}
+				panelLog(sprintf('本地预下载未成功（第 %d 次尝试），改由 Clash API 下载', attempt));
+			}
+
 			if (!preparePanelBackup(panel_dir, backup_dir))
 				return { result: false, error: 'panel_backup_failed' };
 
