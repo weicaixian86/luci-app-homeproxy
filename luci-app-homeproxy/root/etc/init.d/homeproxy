@@ -110,14 +110,9 @@ log() {
 		return $rc
 	}
 
-	# The OpenWrt sing-box package used to create this account. Since the core is
-	# now downloaded at runtime, only this package's postinst creates it — and a
-	# package installed from an older build, or a busybox whose adduser rejects
-	# the -S/-H flags, silently leaves it missing. The visible symptom is
-	# `chown: unknown user/group sing-box:sing-box` while EVERY procd instance
-	# refuses to start (procd cannot drop privileges to a nonexistent user), so
-	# the core never runs, the clash API never listens and the panel can never
-	# be downloaded. Create it here as a fallback so the service always starts.
+	# 判断系统是否已存在 sing-box 专用用户/组。iStoreOS 等 busybox 环境通常
+	# 不存在该账户，此时内核以 root 运行（不进 ujail）。仅当官方 OpenWrt 上
+	# 确实存在该用户时，下方 ujail 分支才会自动降权——本函数只做判断、不创建。
 	have_sing_box_user() {
 		grep -qs '^sing-box:' /etc/passwd && grep -qs '^sing-box:' /etc/group
 	}
