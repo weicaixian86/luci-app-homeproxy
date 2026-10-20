@@ -367,9 +367,12 @@ download_file() {
 							last_cur=$cur; last_time=$now
 						fi
 					fi
-					sleep 2
+					sleep 1
 				done
 				wait "$pid"; rc=$?
+		if [ "$rc" -eq 0 ] && [ "$total" -gt 0 ]; then
+			log_download "下载进度 100%（$(human_size "$total")/$(human_size "$total")）：${actual_url}"
+		fi
 				LAST_HTTP="$(cat "$codefile" 2>/dev/null | tr -d ' \r\n')"
 				rm -f "$codefile"
 				;;

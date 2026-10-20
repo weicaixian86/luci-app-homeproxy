@@ -294,6 +294,38 @@ ensure_panel() {
 	return 1
 }
 
+# 提前下载面板：与 ensure_panel 不同，本函数只走「本地多镜像预下载」
+# （fetch_panel.sh），不等待 Clash API，因此不需要内核运行。它被 start_service
+# 在「无节点/服务端未启用」提前返回之前调用，避免半配置路由器永远下不到面板。
+# 末尾的 ensure_panel（含 Clash API 兜底）仍会执行，但通常此时面板已就位而跳过。
+prefetch_panel() {
+	local routing_mode panel_dir
+
+	routing_mode="$(uci -q get "$CONF.config.routing_mode" 2>/dev/null)"
+	case "$routing_mode" in
+		custom|bypass_mainland_china) ;;
+		*)
+			# 非面板模式不需要面板，但留一条记录便于排查。
+			panel_log "面板自动下载跳过：routing_mode='${routing_mode:-空}'（仅 custom / bypass_mainland_china 模式需要面板）。"
+			return 0
+			;;
+	esac
+
+	panel_dir="$(uci -q get "$CONF.clash_api.external_ui" 2>/dev/null)"
+	[ -n "$panel_dir" ] || panel_dir="$HP_DIR/run/ui"
+	[ -f "$panel_dir/index.html" ] && return 0
+
+	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900; then
+			if [ -f "$panel_dir/index.html" ]; then
+				panel_log "面板已提前下载（本地预下载，不依赖服务启动）。"
+			fi
+		else
+			panel_log "面板提前下载未成功（服务启动后会再尝试）。"
+		fi
+	fi
+}
+
 init_logs() {
 	mkdir -p "$RUN_DIR"
 	mkdir -p "$HP_DIR/run/ui"
@@ -413,6 +445,10 @@ start_service() {
 		panel_log "面板未下载：内核下载脚本缺失，服务未启动（面板依赖内核运行）。"
 		return 1
 	fi
+
+	# 提前下载面板：本地预下载不依赖服务是否真正启动，放在「无节点/服务端未启用」
+	# 提前返回之前，避免半配置路由器永远下不到面板。后台执行以免拖慢服务启动。
+	( prefetch_panel ) &
 
 	config_load "$CONF"
 	setup_auto_update_cron
