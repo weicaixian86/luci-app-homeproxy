@@ -307,7 +307,12 @@ function renderUnifiedLog() {
 	   over plain http (the usual way LuCI is reached on a LAN address), so
 	   fall back to the execCommand path, which works everywhere. */
 	function copyLogText() {
-		const text = (log_body.textContent || '').trim();
+		/* innerText preserves the line breaks that block elements (one <div>
+		   per log line) render between rows — textContent concatenates them
+		   without newlines, which is why copy gave one long line while Ctrl+A
+		   (browser-rendered selection) kept the breaks. Fall back to
+		   textContent only if innerText is unavailable. */
+		const text = (log_body.innerText || log_body.textContent || '').trim();
 
 		if (!text.length)
 			return false;
