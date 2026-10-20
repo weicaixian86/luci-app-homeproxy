@@ -122,36 +122,10 @@ log() {
 		grep -qs '^sing-box:' /etc/passwd && grep -qs '^sing-box:' /etc/group
 	}
 
-	ensure_sing_box_user() {
-		have_sing_box_user && return 0
-
-		# iStoreOS ships a busybox build WITHOUT the adduser/addgroup applets
-		# (verified on a real box: `addgroup: not found` / `adduser: not found`,
-		# so every busybox variant below fails with 127). Try the shadow-tools
-		# names and the explicit `busybox <applet>` form too; when all of them
-		# are missing the service simply keeps running as root (the jail block
-		# requires have_sing_box_user), which still works.
-		if ! grep -qs '^sing-box:' /etc/group; then
-			addgroup -S sing-box 2>/dev/null \
-				|| busybox addgroup -S sing-box 2>/dev/null \
-				|| groupadd -r sing-box 2>/dev/null \
-				|| groupadd sing-box 2>/dev/null
-		fi
-
-		if ! grep -qs '^sing-box:' /etc/passwd; then
-			# Older busybox lacks some flags: fall back progressively. Keep -D
-			# (no password) in every variant and feed /dev/null, otherwise
-			# adduser prompts interactively and start_service hangs forever.
-			adduser -S -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
-				|| adduser -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
-				|| adduser -D -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
-				|| busybox adduser -D -H -G sing-box -s /sbin/nologin sing-box </dev/null 2>/dev/null \
-				|| useradd -r -M -s /sbin/nologin -G sing-box sing-box </dev/null 2>/dev/null \
-				|| useradd -r -M -s /sbin/nologin sing-box </dev/null 2>/dev/null
-		fi
-
-		have_sing_box_user
-	}
+	# 历史上曾在此主动创建 sing-box 专用用户并走 ujail 沙箱，但 iStoreOS 的
+	# busybox 不带 adduser/addgroup，创建必然失败。现已改为默认以 root 运行，
+	# 不再主动创建用户。若系统已存在 sing-box 用户，下方 ujail 分支
+	# （have_sing_box_user 判断）仍会自动降权，无需在此预创建。
 
 # Auto-install the dashboard panel on service start, exactly like the kernel
 # is fetched by update_core.sh ensure: only when it is missing, and only in the
@@ -390,9 +364,10 @@ setup_auto_update_cron() {
 start_service() {
 	init_logs
 
-	# The jail drops privileges to this account; recreate it if the postinst did
-	# not run (see the comment above ensure_sing_box_user).
-	ensure_sing_box_user || log "sing-box 用户不可用，内核将以 root 运行（iStoreOS 上属正常，不影响代理功能）。"
+	# sing-box 默认以 root 运行即可（iStoreOS 等 busybox 环境无 adduser/
+	# addgroup，创建专用用户必然失败）；不再主动创建用户，也不打印提示。
+	# 若系统已存在 sing-box 用户，下方 ujail 分支（have_sing_box_user 判断）
+	# 仍会自动降权。
 
 	# Avoid stamping startup log lines with the pre-NTP (sysfixtime) clock.
 	wait_for_time_sync
