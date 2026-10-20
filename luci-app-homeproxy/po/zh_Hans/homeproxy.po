@@ -3583,8 +3583,3 @@ msgstr "未知错误"
 
 
 
-msgid "Proxy providers in panel"
-msgstr "面板显示代理供应商"
-
-msgid "Serve the panel's proxy-provider requests through a LuCI gateway so the \"Proxy providers\" page lists every subscription with its traffic usage and expiry date. Turn this off to let the panel talk to the Clash API directly; the panel then works as before, without a providers page."
-msgstr "由 LuCI 网关响应面板的「代理供应商」请求，使该页能列出每个订阅的用量与到期日期。关闭后由面板直连 Clash API，行为与之前一致，但没有代理供应商页。"

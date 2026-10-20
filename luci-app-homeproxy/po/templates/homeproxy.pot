@@ -3526,9 +3526,3 @@ msgstr ""
 
 msgid "unknown error"
 msgstr ""
-
-msgid "Proxy providers in panel"
-msgstr ""
-
-msgid "Serve the panel's proxy-provider requests through a LuCI gateway so the \"Proxy providers\" page lists every subscription with its traffic usage and expiry date. Turn this off to let the panel talk to the Clash API directly; the panel then works as before, without a providers page."
-msgstr ""

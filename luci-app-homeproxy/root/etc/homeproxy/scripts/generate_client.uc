@@ -769,44 +769,12 @@ function get_subscription_info(group_hash) {
 	}
 }
 
-/* Clash proxy type names, as consumed by dashboards (they pick the node icon
-   and the latency-dot rendering from this string). Unknown types fall back to
-   'Http' so a new node type never renders as a broken card. */
-const provider_proxy_types = {
-	ss: 'Shadowsocks',
-	vmess: 'Vmess',
-	vless: 'Vless',
-	trojan: 'Trojan',
-	hysteria: 'Hysteria',
-	hysteria2: 'Hysteria2',
-	tuic: 'Tuic',
-	wireguard: 'WireGuard',
-	anytls: 'AnyTLS',
-	shadowtls: 'ShadowTLS',
-	socks: 'Socks5',
-	http: 'Http',
-	ssh: 'Ssh'
-};
-
-/* One entry of the `proxies` array of a Clash proxy provider. `history` stays
-   empty on purpose: the latency samples live in the running core (Clash API
-   /proxies), and the dashboard fills the dots from there once it tests them. */
-function provider_proxy_entry(node) {
-	const tag = get_section_outbound_tag(node['.name']);
-
-	if (isEmpty(tag))
-		return null;
-
-	return {
-		name: tag,
-		type: provider_proxy_types[node.type] || 'Http',
-		udp: true,
-		history: []
-	};
-}
-
-/* Build the provider list in the shape of the Clash API `/providers/proxies`
-   response. Returns an array so duplicate names can be made unique first. */
+/* Build the `proxy_providers` list for the (patched) reF1nd kernel's native
+   Clash API `/providers/proxies` endpoint. The patched kernel synthesises the
+   provider objects from this config and resolves each member to a real
+   outbound by its tag, so `proxies` is an array of outbound tags (strings),
+   not proxy objects. Keys follow sing-box's snake_case Clash API options:
+   `vehicle_type`, `updated_at`, `update_id`, `subscription_info`. */
 function build_proxy_providers() {
 	let providers = [],
 	    used_names = {},
@@ -830,12 +798,12 @@ function build_proxy_providers() {
 			if (cfg.grouphash !== group_hash)
 				return;
 
-			const proxy = provider_proxy_entry(cfg);
-			if (proxy == null || seen[proxy.name])
+			const tag = get_section_outbound_tag(cfg['.name']);
+			if (isEmpty(tag) || seen[tag])
 				return;
 
-			seen[proxy.name] = true;
-			push(proxies, proxy);
+			seen[tag] = true;
+			push(proxies, tag);
 		});
 
 		if (isEmpty(proxies))
@@ -846,66 +814,27 @@ function build_proxy_providers() {
 
 		if (info?.subscription_info != null)
 			subscription_info = {
-				Upload: info.subscription_info.upload,
-				Download: info.subscription_info.download,
-				Total: info.subscription_info.total,
-				Expire: info.subscription_info.expire
+				upload: info.subscription_info.upload,
+				download: info.subscription_info.download,
+				total: info.subscription_info.total,
+				expire: info.subscription_info.expire
 			};
 
 		push(providers, {
 			name: unique_provider_name(subscription_provider_name(subscription_name), used_names),
 			type: 'Proxy',
-			vehicleType: 'HTTP',
+			vehicle_type: 'HTTP',
 			proxies: proxies,
-			/* Reused by the gateway to trigger a single-subscription
-			   refresh through update_provider.sh. */
-			updateId: group_hash,
-			updatedAt: info?.updated_at,
-			subscriptionInfo: subscription_info
+			/* 32-hex group hash; the kernel passes it to
+			   /etc/homeproxy/scripts/update_provider.sh on a panel
+			   "update provider" request. */
+			update_id: group_hash,
+			updated_at: info?.updated_at,
+			subscription_info: subscription_info
 		});
 	}
 
 	return providers;
-}
-
-const PROVIDER_DIR = RUN_DIR + '/providers';
-
-/* Persist the provider list for the LuCI-side Clash API gateway
-   (/www/cgi-bin/hpapi), which serves `/providers/proxies` because sing-box
-   only ships an empty stub for it. Written on every config generation so the
-   snapshot always matches the running config.
-
-   Besides the full list, one file per provider is written under
-   `providers/<md5(name)>.json` (plus `.id` holding the subscription hash):
-   the gateway is plain shell and can then answer `/providers/proxies/<name>`
-   with a `cat` instead of parsing JSON for a name that may contain spaces,
-   '|' and Chinese characters. */
-function write_provider_snapshot() {
-	let snapshot = { providers: {} };
-
-	system('rm -rf ' + PROVIDER_DIR);
-	system('mkdir -p ' + PROVIDER_DIR);
-
-	if (routing_mode in ['bypass_mainland_china', 'custom']) {
-		for (let provider in build_proxy_providers()) {
-			if (isEmpty(provider.name))
-				continue;
-
-			const key = md5(provider.name);
-
-			/* The subscription hash stays inside the .id file: the panel
-			   does not need it, and it is what update_provider.sh takes. */
-			writefile(sprintf('%s/%s.id', PROVIDER_DIR, key), provider.updateId);
-			delete provider.updateId;
-
-			snapshot.providers[provider.name] = provider;
-
-			writefile(sprintf('%s/%s.json', PROVIDER_DIR, key),
-				sprintf('%.J\n', removeBlankAttrs(provider)));
-		}
-	}
-
-	writefile(RUN_DIR + '/providers.json', sprintf('%.J\n', removeBlankAttrs(snapshot)));
 }
 
 clash_api = {
@@ -914,7 +843,10 @@ clash_api = {
 	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
-	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule'
+	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
+	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
+	   /providers/proxies from this list; empty in non-subscription modes. */
+	proxy_providers: build_proxy_providers()
 };
 /* Config helper end */
 
@@ -1654,11 +1586,12 @@ if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
 
 /* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
-	/* NOTE: do NOT emit a top-level `proxy_providers`. It is a Clash.Meta
-	   concept, not part of sing-box's config schema; the strict decoder
-	   aborts at startup with `unknown field "proxy_providers"` and the
-	   service can never run. All subscription nodes are already expanded
-	   into `outbounds`, so dropping this field does not affect proxying. */
+	/* `proxy_providers` now lives inside `clash_api` (not at the top level):
+	   it is consumed by the patched reF1nd kernel, which synthesises the
+	   /providers/proxies objects from it. A stock (unpatched) sing-box would
+	   reject the unknown field, so this branch is only correct together with
+	   the kernel patch. All subscription nodes are still expanded into
+	   `outbounds`; the list above only teaches the panel about providers. */
 
 	config.experimental = {
 		clash_api,
@@ -1674,13 +1607,3 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 system('mkdir -p ' + RUN_DIR);
 system('mkdir -p ' + RULESET_DIR);
 writefile(RUN_DIR + '/sing-box-c.json', sprintf('%.J\n', removeBlankAttrs(config)));
-
-/* The provider snapshot only feeds the panel's provider page. A failure here
-   must never look like a broken client config, so it is contained and logged
-   instead of aborting the generator. */
-try {
-	write_provider_snapshot();
-} catch (e) {
-	system(sprintf('logger -t homeproxy %s',
-		shellQuote('Warning: failed to write the proxy provider snapshot for the panel; the providers page will be empty.')));
-}

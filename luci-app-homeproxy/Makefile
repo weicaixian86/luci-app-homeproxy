@@ -54,11 +54,6 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/passwd" 2>/dev/null && ! grep -qs '^sing-box:' /etc/passwd 2>/dev/null; then
 		adduser -S -D -H -G sing-box -s /sbin/nologin sing-box 2>/dev/null || true
 	fi
-	# /www/cgi-bin/hpapi is a CGI script served by uhttpd. Windows checkouts
-	# can lose the executable bit (core.filemode=false) and uhttpd refuses to
-	# run a non-executable CGI, which would silently disable the panel's
-	# proxy provider page. Re-assert the mode at install time.
-	chmod 755 /www/cgi-bin/hpapi 2>/dev/null || true
 fi
 endef
 
