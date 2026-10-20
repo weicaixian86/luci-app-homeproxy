@@ -392,7 +392,7 @@ start_service() {
 
 	# The jail drops privileges to this account; recreate it if the postinst did
 	# not run (see the comment above ensure_sing_box_user).
-	ensure_sing_box_user || log "警告：无法创建 sing-box 用户，内核将以 root 运行且不使用 ujail。"
+	ensure_sing_box_user || log "sing-box 用户不可用，内核将以 root 运行（iStoreOS 上属正常，不影响代理功能）。"
 
 	# Avoid stamping startup log lines with the pre-NTP (sysfixtime) clock.
 	wait_for_time_sync
