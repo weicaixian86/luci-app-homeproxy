@@ -3521,104 +3521,14 @@ msgstr ""
 msgid "Used as the displayed server name. Chinese is supported. It must be unique."
 msgstr ""
 
-msgid "Proxy Panel"
-msgstr ""
-
-msgid "Proxies"
-msgstr ""
-
-msgid "Proxy providers"
-msgstr ""
-
-msgid "Search groups | Regex"
-msgstr ""
-
-msgid "Refresh"
-msgstr ""
-
-msgid "Test latency of every node"
-msgstr ""
-
-msgid "Test latency of this group"
-msgstr ""
-
-msgid "Manual selection"
-msgstr ""
-
-msgid "Automatic selection"
-msgstr ""
-
-msgid "%d nodes"
-msgstr ""
-
 msgid "Timeout"
-msgstr ""
-
-msgid "Unlimited"
-msgstr ""
-
-msgid "Loading…"
-msgstr ""
-
-msgid "Loading subscriptions…"
-msgstr ""
-
-msgid "Invalid request."
 msgstr ""
 
 msgid "unknown error"
 msgstr ""
 
-msgid "Clash API is unreachable. It is only generated in the \"Custom\" and \"Bypass mainland China\" modes, and the service has to be running."
+msgid "Proxy providers in panel"
 msgstr ""
 
-msgid "Failed to read the Clash API: %s"
-msgstr ""
-
-msgid "No proxy group matches \"%s\"."
-msgstr ""
-
-msgid "No proxy group found. Add policy groups in \"Node Settings\" first."
-msgstr ""
-
-msgid "This group selects its node automatically; nothing to switch."
-msgstr ""
-
-msgid "Switched to %s."
-msgstr ""
-
-msgid "Failed to switch node: %s"
-msgstr ""
-
-msgid "This subscription reports no traffic information."
-msgstr ""
-
-msgid "%s of %s used (%d%%)"
-msgstr ""
-
-msgid "Expires: %s"
-msgstr ""
-
-msgid "Updated: %s"
-msgstr ""
-
-msgid "No subscription configured. Add one in \"Node Settings\" to see it here."
-msgstr ""
-
-msgid "%d subscriptions"
-msgstr ""
-
-msgid "Update subscriptions"
-msgstr ""
-
-msgid "Updating…"
-msgstr ""
-
-msgid "Subscriptions updated."
-msgstr ""
-
-msgid "Updating subscriptions failed. See the runtime log for details."
-msgstr ""
-
-msgid "Updating subscriptions failed: %s"
+msgid "Serve the panel's proxy-provider requests through a LuCI gateway so the \"Proxy providers\" page lists every subscription with its traffic usage and expiry date. Turn this off to let the panel talk to the Clash API directly; the panel then works as before, without a providers page."
 msgstr ""

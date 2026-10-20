@@ -56,6 +56,7 @@ config homeproxy 'clash_api'
 	option external_controller '0.0.0.0:9095'
 	option secret 'homeproxy'
 	option default_mode 'rule'
+	option gateway '1'
 
 config homeproxy 'ntp'
 	option enabled '1'

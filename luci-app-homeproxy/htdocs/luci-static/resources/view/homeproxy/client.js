@@ -155,6 +155,27 @@ function parseControllerPort(externalController) {
 	return (idx >= 0) ? value.substring(idx + 1) : '9090';
 }
 
+/* LuCI-side Clash API gateway (see /www/cgi-bin/hpapi). sing-box answers
+   /providers/proxies with an empty stub, so the dashboard's "proxy
+   providers" page has no data source; the gateway serves that endpoint from
+   the provider snapshot generated with the config and proxies every other
+   API call to sing-box unchanged. */
+const GATEWAY_PATH = '/cgi-bin/hpapi';
+
+function gatewayEnabled() {
+	return (uci.get('homeproxy', 'clash_api', 'gateway') || '1') !== '0';
+}
+
+function getGatewayApiInfo() {
+	const secure = (window.location.protocol === 'https:');
+	const port = window.location.port || (secure ? '443' : '80');
+
+	return {
+		port,
+		secure
+	};
+}
+
 function getClashApiInfo() {
 	let port = parseControllerPort(uci.get('homeproxy', 'clash_api', 'external_controller')),
 	    secret = uci.get('homeproxy', 'clash_api', 'secret') || '';
@@ -232,14 +253,29 @@ function ensurePanelInstalled() {
 
 function openDashboard() {
 	let api = getClashApiInfo();
-	let query = new URLSearchParams({
+	let params = new URLSearchParams({
 		host: window.location.hostname,
 		hostname: window.location.hostname,
-		port: api.port,
 		secret: api.secret
-	}).toString();
+	});
 
-	window.open(api.baseUrl + '/ui/?' + query, '_blank');
+	if (gatewayEnabled()) {
+		/* Route the panel's API calls through the LuCI gateway so the
+		   "proxy providers" page can list the subscriptions. The panel
+		   itself keeps being served by sing-box, hence the explicit
+		   secondaryPath and the cross-origin calls it implies. */
+		const gw = getGatewayApiInfo();
+
+		params.set('port', gw.port);
+		params.set('secondaryPath', GATEWAY_PATH);
+
+		if (gw.secure)
+			params.set('https', '1');
+	} else {
+		params.set('port', api.port);
+	}
+
+	window.open(api.baseUrl + '/ui/?' + params.toString(), '_blank');
 	return Promise.resolve();
 }
 
@@ -2563,6 +2599,11 @@ return view.extend({
 
 		so = ss.option(form.Value, 'secret', _('API password'));
 		so.password = true;
+
+		so = ss.option(form.Flag, 'gateway', _('Proxy providers in panel'),
+			_('Serve the panel\'s proxy-provider requests through a LuCI gateway so the "Proxy providers" page lists every subscription with its traffic usage and expiry date. Turn this off to let the panel talk to the Clash API directly; the panel then works as before, without a providers page.'));
+		so.default = '1';
+		so.rmempty = false;
 
 		so = ss.option(form.ListValue, 'default_mode', _('Default mode'));
 		so.value('rule', _('Rule'));
