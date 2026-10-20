@@ -115,10 +115,16 @@ function ruleset_local_ready(path, format) {
 	if (!head || length(head) < 1)
 		return false;
 
+	/* `head` is a `bytes` value (fp.read returns bytes). Coerce it to a plain
+	   string view so the magic-number / JSON checks do not depend on ucode's
+	   bytes<->string equality semantics — `substr(bytes,0,3) === 'SRS'` would
+	   otherwise be undefined behaviour and could silently fail, defeating the
+	   whole local-cache optimisation (and falling back to remote downloads). */
+	let s = sprintf('%s', head);
 	if (format === 'source')
-		return match(head, /^\s*[{\[]/) !== null;
+		return match(s, /^\s*[{\[]/) !== null;
 
-	return substr(head, 0, 3) === 'SRS';
+	return substr(s, 0, 3) === 'SRS';
 }
 
 function ruleset_remote_path(path, tag, format) {
