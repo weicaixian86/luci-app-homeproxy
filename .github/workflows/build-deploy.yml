@@ -256,6 +256,7 @@ jobs:
             d="homeproxy-deploy-$arch-$version"
             mkdir -p "$d"
             cp -f "artifacts/luci-ipk/luci-app-homeproxy.ipk" "$d/"
+            cp -f "artifacts/luci-apk/luci-app-homeproxy.apk" "$d/"
             cp -f "artifacts/sing-box-$arch/sing-box-$arch"        "$d/sing-box"
             cp -f deploy/install.sh                                "$d/"
             cp -f deploy/README.md                                 "$d/"

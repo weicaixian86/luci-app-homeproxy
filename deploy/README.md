@@ -63,16 +63,19 @@ cd /tmp && unzip -o homeproxy-deploy-amd64-2.0.0.zip && cd homeproxy-deploy-amd6
 
 ## 四、重要注意事项
 
-1. **不要点面板「更新内核」**：homeproxy 的 `update_core.sh` 会从此包之外的官方源
-   重新下载原版内核并覆盖 `/usr/bin/sing-box`，补丁会丢失。要升级请重新跑 `install.sh`。
+1. **面板「更新内核」现在可用且安全（amd64/arm64）**：`update_core.sh` 的 `REFIND_REPO`
+   已指向本仓库（`weicaixian86/luci-app-homeproxy`）的 `v1.14.3-reF1nd` Release，里面是
+   **带补丁**的内核。点「更新内核」会从你的仓库拉补丁版，不会丢补丁。
+   armv7/mipsle 不在自动下载名单中，仍请用 `install.sh` 升级（zip 内已含对应内核）。
 2. **版本钉死的意义**：二进制版本号被编译为 `1.14.3-reF1nd`，与官方原版一致，因此
    homeproxy 启动时的 `ensure_core` 会判定「已是最新」并**跳过下载**，从而保留补丁。
    若用裸 `go build` 编译导致版本为 `unknown`，会被判定需更新而被覆盖。
-3. **luci 依赖**：`opkg install` 会自动拉 `firewall4 / dnsmasq-full / kmod-tun /
+3. **luci 依赖**：`opkg install` / `apk add` 会自动拉 `firewall4 / dnsmasq-full / kmod-tun /
    kmod-nft-tproxy / curl / jsonfilter / ucode-*` 等；若你的镜像缺少源，安装会警告，
    需先配好软件源或手动补齐依赖，否则面板/分流不可用。
-4. **apk 镜像（OpenWrt 25.12+）**：本包提供的是 `.ipk`（opkg）。apk 镜像请改用仓库
-   自带 `build.yml` 出的 `.apk`，再单独部署内核；或后续版本会追加 `.apk` 支持。
+4. **apk 镜像（OpenWrt 25.12+）**：每个 zip 内已同时含 `.ipk` 与 `.apk`，`install.sh` 会
+   按当前包管理器自动选对文件安装，无需额外操作。`deploy-<ver>` Release 也单独提供了
+   `luci-app-homeproxy.apk`，可直接 `apk add --allow-untrusted` 安装后再走自动下载内核。
 
 ---
 
