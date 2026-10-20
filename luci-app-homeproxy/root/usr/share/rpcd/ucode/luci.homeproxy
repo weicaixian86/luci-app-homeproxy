@@ -79,7 +79,7 @@ function validClashPath(path) {
    with PUT. Speak HTTP over netcat for that single call: stage the request in
    /tmp, pipe it to the core and read the status line back. */
 function clashAPIPut(api, path, body) {
-	const payload = body ? sprintf('%J', body) : '';
+	const payload = body ? sprintf('%.J', body) : '';
 	const request = sprintf(
 		'PUT %s HTTP/1.1\r\nHost: 127.0.0.1\r\n%sContent-Type: application/json\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s',
 		path,
