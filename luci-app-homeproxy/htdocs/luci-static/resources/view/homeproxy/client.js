@@ -1200,7 +1200,7 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
-			_('List of policy groups.'));
+			_('List of policy groups. The ticking order decides the node order in the panel, and the first ticked node is used by default.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;

@@ -2219,7 +2219,7 @@ msgstr ""
 msgid "Policy nodes"
 msgstr ""
 
-msgid "List of policy groups."
+msgid "List of policy groups. The ticking order decides the node order in the panel, and the first ticked node is used by default."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js

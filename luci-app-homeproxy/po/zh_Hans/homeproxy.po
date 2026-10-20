@@ -2258,8 +2258,8 @@ msgstr "自定义URL"
 msgid "Policy nodes"
 msgstr "策略节点"
 
-msgid "List of policy groups."
-msgstr "策略组列表。"
+msgid "List of policy groups. The ticking order decides the node order in the panel, and the first ticked node is used by default."
+msgstr "策略组列表。勾选顺序决定面板中的节点排列顺序，第一个勾选的节点为默认节点。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js
 msgid "Subscription links"

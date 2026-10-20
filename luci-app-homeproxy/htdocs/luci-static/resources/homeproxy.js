@@ -164,6 +164,97 @@ function renderCronEditor(input) {
 	return wrap;
 }
 
+/* LuCI 原生多选下拉（ui.Dropdown multiple）保存时，是按选项在列表中的固定
+   顺序（choices/keylist 顺序）遍历 li[selected] 生成隐藏域的，与用户勾选的
+   先后无关。于是"先勾美国自动、再勾香港自动"在配置里仍然是原始列表顺序，
+   面板里的节点顺序自然也跟勾选顺序无关。
+
+   这里重写 saveValues()：用 this.order 记录勾选先后——仍被勾选的项保持原有
+   相对顺序，新勾选的项追加到末尾；随后按该顺序重建隐藏域，使 getValue()
+   （也就是 LuCI 表单的 formvalue）返回勾选顺序。折叠状态下露出的标签也按
+   勾选顺序排列，用户勾完即可看出谁是第一个。 */
+const OrderedMultiDropdown = ui.Dropdown.extend({
+	__name__: 'LuCI.HomeProxyOrderedMultiDropdown',
+
+	__init__(value, choices, options) {
+		this.super('__init__', [ value, choices, options ]);
+
+		/* 初始顺序沿用配置里已保存的顺序 */
+		this.order = Array.isArray(this.values) ? this.values.slice() : [];
+	},
+
+	/* 代码赋值（重新载入、迁移）时以给定顺序为准 */
+	setValue(values) {
+		if (Array.isArray(values))
+			this.order = values.slice();
+		else
+			this.order = (values != null && values !== '') ? [ values ] : [];
+
+		return this.super('setValue', [ values ]);
+	},
+
+	saveValues(sb, ul) {
+		this.super('saveValues', [ sb, ul ]);
+
+		const div = sb.lastElementChild,
+		      inputs = div.querySelectorAll('input[type="hidden"]'),
+		      selected = [];
+
+		for (let i = 0; i < inputs.length; i++)
+			selected.push(inputs[i].value);
+
+		/* 仍被勾选的保持原相对顺序，新勾选的追加到末尾 */
+		const order = [];
+
+		for (let i = 0; i < this.order.length; i++) {
+			const value = this.order[i];
+
+			if (selected.indexOf(value) > -1 && order.indexOf(value) < 0)
+				order.push(value);
+		}
+
+		for (let i = 0; i < selected.length; i++) {
+			const value = selected[i];
+
+			if (order.indexOf(value) < 0)
+				order.push(value);
+		}
+
+		this.order = order;
+
+		/* 按勾选顺序重建隐藏域 */
+		while (div.lastElementChild)
+			div.removeChild(div.lastElementChild);
+
+		for (let i = 0; i < order.length; i++)
+			div.appendChild(E('input', {
+				type: 'hidden',
+				name: this.options.name,
+				value: order[i]
+			}));
+
+		/* 折叠状态下的标签按勾选顺序显示：这里用 flex 的 order 控制，
+		   不改动 li 的 DOM 位置——展开时 ul 是 block 布局、order 不生效，
+		   选项列表因此不会在勾选过程中跳来跳去。 */
+		const items = ul.querySelectorAll('li[data-value]'),
+		      map = {};
+
+		for (let i = 0; i < items.length; i++) {
+			if (items[i].style)
+				items[i].style.order = '';
+
+			map[items[i].getAttribute('data-value')] = items[i];
+		}
+
+		for (let i = 0; i < order.length; i++) {
+			const li = map[order[i]];
+
+			if (li && li.style)
+				li.style.order = String(i);
+		}
+	}
+});
+
 return baseclass.extend({
 	dns_strategy: {
 		'': _('Default'),
@@ -244,7 +335,7 @@ return baseclass.extend({
 		renderWidget(section_id, _option_index, cfgvalue) {
 			let value = (cfgvalue != null) ? cfgvalue : this.default,
 			    choices = this.transformChoices() || {},
-			    widget = new ui.Dropdown(L.toArray(value), choices, {
+			    widget = new OrderedMultiDropdown(L.toArray(value), choices, {
 				id: this.cbid(section_id),
 				sort: this.keylist,
 				multiple: true,
