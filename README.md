@@ -1,8 +1,8 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面。
-HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装包内不预置任何单一架构的 sing-box 二进制**。运行时由插件根据设备架构，从 reF1nd 的第三方 sing-box 发布（`reF1nd/sing-box-releases`）下载对应架构的官方二进制压缩包，校验后安装到 `/usr/bin/sing-box`。
+HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装包内不预置任何单一架构的 sing-box 二进制**。运行时由插件根据设备架构，从本仓库的 Release（`weicaixian86/luci-app-homeproxy`，标签 `v1.14.3-reF1nd`）下载对应架构的打补丁内核压缩包（含 clash proxy-providers 补丁），校验后安装到 `/usr/bin/sing-box`。
 当前固定使用 reF1nd 定制内核：
 - 版本：`1.14.3-reF1nd`
-- 发布地址：`https://github.com/reF1nd/sing-box-releases/releases/tag/v1.14.3-reF1nd`
+- 发布地址：`https://github.com/weicaixian86/luci-app-homeproxy/releases/tag/v1.14.3-reF1nd`
 reF1nd 目前已发布 Linux musl 构建的架构：
 - `x86_64`（`linux-amd64-musl`）
 - `aarch64`（`linux-arm64-musl`）
@@ -46,6 +46,7 @@ rm -rf /tmp/luci-modulecache/*
 ## 三、维护工作流
 
 - `build.yml`：手动触发，输入 Release tag 与（可选的）描述后，编译 24.10 的 IPK 与 25.12 的 APK，并仅上传 `luci-app-homeproxy` 的 IPK 与 APK。
+- `build-deploy.yml`（Build All-in-One Deploy ZIP）：手动触发，输入版本号后，云端编译打补丁的 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci IPK，打包成每架构一个 zip 发到 `deploy-<版本>` Release；**同时**把 amd64/arm64 的内核压缩包发到 `v1.14.3-reF1nd` Release，供插件的「更新内核」按钮自动下载打补丁内核。
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 
@@ -84,5 +85,5 @@ https://github.com/immortalwrt/homeproxy
 VIKINGYFY
 https://github.com/VIKINGYFY/homeproxy
 
-reF1nd（第三方 sing-box 内核）
+reF1nd（第三方 sing-box 内核源码 / 原始发布）
 https://github.com/reF1nd/sing-box-releases

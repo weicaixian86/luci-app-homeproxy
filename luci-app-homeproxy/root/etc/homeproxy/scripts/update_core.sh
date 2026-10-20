@@ -9,7 +9,8 @@
 # the matching reF1nd sing-box build, verifies its SHA-256 when a checksum is
 # published, and installs it to /usr/bin/sing-box.
 #
-# reF1nd/sing-box-releases currently publishes Linux musl builds for:
+# weicaixian86/luci-app-homeproxy（本仓库 Release, tag v1.14.3-reF1nd）发布打补丁的
+# Linux musl 内核构建，供运行时自动下载：
 #   - x86_64  -> linux-amd64-musl
 #   - aarch64 -> linux-arm64-musl
 # Other architectures (armv7, arm, mips, mipsel) are not published yet; for
@@ -33,7 +34,7 @@ CACHE_DIR="/tmp/homeproxy-core-dl"
 
 # Pinned reF1nd release. Only the leading 'v' differs between the git tag and
 # the download path; the version string itself is reused verbatim.
-REFIND_REPO="reF1nd/sing-box-releases"
+REFIND_REPO="weicaixian86/luci-app-homeproxy"
 REFIND_TAG="v1.14.3-reF1nd"
 REFIND_VERSION="1.14.3-reF1nd"
 

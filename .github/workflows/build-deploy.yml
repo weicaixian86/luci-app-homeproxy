@@ -252,6 +252,21 @@ jobs:
             ls -la "$d.zip"
           done
 
+      - name: Build core tarballs for runtime auto-update
+        run: |
+          set -e
+          VER="1.14.3-reF1nd"
+          # amd64（基线二进制，兼容所有 x86_64，含 x86-64-v3）
+          cp -f "artifacts/sing-box-amd64/sing-box-amd64" sing-box
+          tar -czf "sing-box-${VER}-linux-amd64-musl.tar.gz" sing-box
+          # amd64v3 候选：复用同一基线二进制（update_core.sh 优先尝试 v3 名，失败回退到上面的 amd64）
+          cp -f "sing-box-${VER}-linux-amd64-musl.tar.gz" "sing-box-${VER}-linux-amd64v3-musl.tar.gz"
+          # arm64
+          cp -f "artifacts/sing-box-arm64/sing-box-arm64" sing-box
+          tar -czf "sing-box-${VER}-linux-arm64-musl.tar.gz" sing-box
+          rm -f sing-box
+          ls -la sing-box-${VER}-*.tar.gz
+
       - name: Prepare release body
         run: |
           {
@@ -273,3 +288,11 @@ jobs:
           name: Deploy ${{ inputs.tag }}
           body_path: release_body.md
           files: homeproxy-deploy-*.zip
+
+      - name: Publish patched core to auto-update release (v1.14.3-reF1nd)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.14.3-reF1nd
+          name: sing-box core 1.14.3-reF1nd (patched)
+          body: "打补丁的 reF1nd sing-box 内核（clash proxy-providers 补丁），供 luci-app-homeproxy 运行时「更新内核」自动下载。REFIND_REPO=weicaixian86/luci-app-homeproxy"
+          files: sing-box-1.14.3-reF1nd-*.tar.gz
