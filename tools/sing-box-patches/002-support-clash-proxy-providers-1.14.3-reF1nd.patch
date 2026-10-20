@@ -1,0 +1,469 @@
+diff --git a/experimental/clashapi/provider.go b/experimental/clashapi/provider.go
+index e2c7713..e719e73 100644
+--- a/experimental/clashapi/provider.go
++++ b/experimental/clashapi/provider.go
+@@ -3,10 +3,14 @@ package clashapi
+ import (
+ 	"context"
+ 	"net/http"
++	"os/exec"
++	"regexp"
++	"time"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
+-	C "github.com/sagernet/sing-box/constant"
+-	"github.com/sagernet/sing/common/json/badjson"
++	"github.com/sagernet/sing-box/common/urltest"
++	"github.com/sagernet/sing-box/protocol/group"
++	"github.com/sagernet/sing-box/option"
+ 
+ 	"github.com/go-chi/chi/v5"
+ 	"github.com/go-chi/render"
+@@ -19,10 +23,10 @@ func proxyProviderRouter(server *Server) http.Handler {
+ 	r.Route("/{name}", func(r chi.Router) {
+ 		r.Use(parseProviderName, findProviderByName(server))
+ 		r.Get("/", getProvider(server))
+-		r.Put("/", updateProvider)
+-		r.Get("/healthcheck", healthCheckProvider)
++		r.Put("/", updateProvider(server))
++		r.Get("/healthcheck", healthCheckProvider(server))
+ 		r.Route("/{proxyName}", func(r chi.Router) {
+-			r.Use(parseProviderProxyName, findProviderProxyByName)
++			r.Use(parseProviderProxyName, findProviderProxyByName(server))
+ 			r.Get("/healthcheck", getProxyDelay(server))
+ 		})
+ 	})
+@@ -31,56 +35,123 @@ func proxyProviderRouter(server *Server) http.Handler {
+ 
+ func getProviders(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 	return func(w http.ResponseWriter, r *http.Request) {
+-		providerMap := make(render.M)
+-		for _, provider := range server.provider.Providers() {
+-			providerMap[provider.Tag()] = providerInfo(server, provider)
++		providers := render.M{}
++		for _, provider := range server.proxyProviders {
++			if provider.Name == "" {
++				continue
++			}
++			providers[provider.Name] = proxyProviderInfo(server, provider)
+ 		}
+ 		render.JSON(w, r, render.M{
+-			"providers": providerMap,
++			"providers": providers,
+ 		})
+ 	}
+ }
+ 
+ func getProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 	return func(w http.ResponseWriter, r *http.Request) {
+-		provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
+-		render.JSON(w, r, providerInfo(server, provider))
++		provider := r.Context().Value(CtxKeyProvider).(option.ClashProxyProviderOptions)
++		render.JSON(w, r, proxyProviderInfo(server, provider))
+ 	}
+ }
+ 
+-func providerInfo(server *Server, p adapter.Provider) *badjson.JSONObject {
+-	var info badjson.JSONObject
+-	proxies := make([]*badjson.JSONObject, 0)
+-	for _, detour := range p.Outbounds() {
+-		proxies = append(proxies, proxyInfo(server, detour))
++func proxyProviderInfo(server *Server, provider option.ClashProxyProviderOptions) render.M {
++	providerType := provider.Type
++	if providerType == "" {
++		providerType = "Proxy"
++	}
++	vehicleType := provider.VehicleType
++	if vehicleType == "" {
++		vehicleType = "HTTP"
++	}
++
++	proxies := make([]any, 0, len(provider.Proxies))
++	for _, proxyName := range provider.Proxies {
++		proxy, exists := lookupProxyByName(server, proxyName)
++		if !exists {
++			continue
++		}
++		proxies = append(proxies, proxyInfo(server, proxy))
++	}
++
++	info := render.M{
++		"name":        provider.Name,
++		"type":        providerType,
++		"vehicleType": vehicleType,
++		"proxies":     proxies,
+ 	}
+-	info.Put("type", "Proxy")                                // Proxy, Rule
+-	info.Put("vehicleType", C.ProviderDisplayName(p.Type())) // HTTP, File, Compatible
+-	info.Put("name", p.Tag())
+-	info.Put("proxies", proxies)
+-	info.Put("updatedAt", p.UpdatedAt())
+-	if p, ok := p.(adapter.ProviderSubscriptionInfo); ok {
+-		info.Put("subscriptionInfo", p.SubscriptionInfo())
++	if provider.UpdatedAt != "" {
++		info["updatedAt"] = provider.UpdatedAt
+ 	}
+-	return &info
++	if provider.SubscriptionInfo != nil {
++		info["subscriptionInfo"] = render.M{
++			"Upload":   provider.SubscriptionInfo.Upload,
++			"Download": provider.SubscriptionInfo.Download,
++			"Total":    provider.SubscriptionInfo.Total,
++			"Expire":   provider.SubscriptionInfo.Expire,
++		}
++	}
++	return info
+ }
+ 
+-func updateProvider(w http.ResponseWriter, r *http.Request) {
+-	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
+-	if provider, isUpdater := provider.(adapter.ProviderUpdater); isUpdater {
+-		if err := provider.Update(); err != nil {
++func updateProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
++	return func(w http.ResponseWriter, r *http.Request) {
++		provider := r.Context().Value(CtxKeyProvider).(option.ClashProxyProviderOptions)
++		if !regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(provider.UpdateID) {
++			render.Status(r, http.StatusServiceUnavailable)
++			render.JSON(w, r, newError("Provider update is unavailable"))
++			return
++		}
++
++		command := exec.Command("/bin/sh", "/etc/homeproxy/scripts/update_provider.sh", provider.UpdateID)
++		if err := command.Start(); err != nil {
+ 			render.Status(r, http.StatusServiceUnavailable)
+ 			render.JSON(w, r, newError(err.Error()))
+ 			return
+ 		}
++		_ = command.Process.Release()
++		render.NoContent(w, r)
+ 	}
+-	render.NoContent(w, r)
+ }
+ 
+-func healthCheckProvider(w http.ResponseWriter, r *http.Request) {
+-	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
+-	provider.HealthCheck(r.Context())
+-	render.NoContent(w, r)
++func healthCheckProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
++	return func(w http.ResponseWriter, r *http.Request) {
++		provider := r.Context().Value(CtxKeyProvider).(option.ClashProxyProviderOptions)
++		for _, proxyName := range provider.Proxies {
++			proxy, exist := lookupProxyByName(server, proxyName)
++			if !exist {
++				continue
++			}
++			testProxyDelay(server, proxy)
++		}
++		render.NoContent(w, r)
++	}
++}
++
++func testProxyDelay(server *Server, proxy adapter.Outbound) {
++	const testURL = "https://www.gstatic.com/generate_204"
++	ctx, cancel := context.WithTimeout(urltest.ContextWithUnifiedDelay(server.ctx, urltest.UnifiedDelayFromContext(server.ctx)), 10*time.Second)
++	defer cancel()
++	delay, err := urltest.URLTest(ctx, testURL, proxy)
++	realTag := group.RealTag(server.outbound, proxy)
++	if err != nil {
++		server.urlTestHistory.DeleteURLTestHistory(realTag)
++	} else {
++		server.urlTestHistory.StoreURLTestHistory(realTag, &adapter.URLTestHistory{
++			Time:  time.Now(),
++			Delay: delay,
++		})
++	}
++	for _, detour := range server.outbound.Outbounds() {
++		urlTestGroup, isURLTestGroup := detour.(adapter.URLTestGroup)
++		if !isURLTestGroup {
++			continue
++		}
++		if !groupContains(server.outbound, urlTestGroup, realTag, map[string]bool{detour.Tag(): true}) {
++			continue
++		}
++		urlTestGroup.PerformUpdateCheck()
++	}
+ }
+ 
+ func parseProviderName(next http.Handler) http.Handler {
+@@ -95,15 +166,15 @@ func findProviderByName(server *Server) func(next http.Handler) http.Handler {
+ 	return func(next http.Handler) http.Handler {
+ 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 			name := r.Context().Value(CtxKeyProviderName).(string)
+-			provider, exist := server.provider.Get(name)
+-			if !exist {
+-				render.Status(r, http.StatusNotFound)
+-				render.JSON(w, r, ErrNotFound)
+-				return
++			for _, provider := range server.proxyProviders {
++				if provider.Name == name {
++					ctx := context.WithValue(r.Context(), CtxKeyProvider, provider)
++					next.ServeHTTP(w, r.WithContext(ctx))
++					return
++				}
+ 			}
+-
+-			ctx := context.WithValue(r.Context(), CtxKeyProvider, provider)
+-			next.ServeHTTP(w, r.WithContext(ctx))
++			render.Status(r, http.StatusNotFound)
++			render.JSON(w, r, ErrNotFound)
+ 		})
+ 	}
+ }
+@@ -116,18 +187,19 @@ func parseProviderProxyName(next http.Handler) http.Handler {
+ 	})
+ }
+ 
+-func findProviderProxyByName(next http.Handler) http.Handler {
+-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+-		name := r.Context().Value(CtxKeyProxyName).(string)
+-		provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
+-		proxy, exist := provider.Outbound(name)
+-		if !exist {
+-			render.Status(r, http.StatusNotFound)
+-			render.JSON(w, r, ErrNotFound)
+-			return
+-		}
++func findProviderProxyByName(server *Server) func(next http.Handler) http.Handler {
++	return func(next http.Handler) http.Handler {
++		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++			name := r.Context().Value(CtxKeyProxyName).(string)
++			proxy, exist := lookupProxyByName(server, name)
++			if !exist {
++				render.Status(r, http.StatusNotFound)
++				render.JSON(w, r, ErrNotFound)
++				return
++			}
+ 
+-		ctx := context.WithValue(r.Context(), CtxKeyProxy, proxy)
+-		next.ServeHTTP(w, r.WithContext(ctx))
+-	})
++			ctx := context.WithValue(r.Context(), CtxKeyProxy, proxy)
++			next.ServeHTTP(w, r.WithContext(ctx))
++		})
++	}
+ }
+diff --git a/experimental/clashapi/proxies.go b/experimental/clashapi/proxies.go
+index 2c40db1..15f7537 100644
+--- a/experimental/clashapi/proxies.go
++++ b/experimental/clashapi/proxies.go
+@@ -21,6 +21,50 @@ import (
+ 	"github.com/go-chi/render"
+ )
+ 
++func proxyDisplayName(tag string) string {
++	switch tag {
++	case "GLOBAL":
++		return "GLOBAL"
++	case "main-out":
++		return "主代理"
++	case "main-udp-out":
++		return "UDP 主代理"
++	case "direct-out":
++		return "直连"
++	case "block-out":
++		return "拦截"
++	default:
++		return tag
++	}
++}
++
++func lookupProxyByName(server *Server, name string) (adapter.Outbound, bool) {
++	proxy, exist := server.outbound.Outbound(name)
++	if exist {
++		return proxy, true
++	}
++
++	for _, detour := range server.outbound.Outbounds() {
++		if proxyDisplayName(detour.Tag()) == name {
++			return detour, true
++		}
++	}
++
++	for _, endpoint := range server.endpoint.Endpoints() {
++		if proxyDisplayName(endpoint.Tag()) == name {
++			return endpoint, true
++		}
++	}
++
++	return nil, false
++}
++
++func proxyDisplayNames(tags []string) []string {
++	return common.Map(tags, func(tag string) string {
++		return proxyDisplayName(tag)
++	})
++}
++
+ func proxyRouter(server *Server, router adapter.Router) http.Handler {
+ 	r := chi.NewRouter()
+ 	r.Get("/", getProxies(server))
+@@ -29,7 +73,7 @@ func proxyRouter(server *Server, router adapter.Router) http.Handler {
+ 		r.Use(parseProxyName, findProxyByName(server))
+ 		r.Get("/", getProxy(server))
+ 		r.Get("/delay", getProxyDelay(server))
+-		r.Put("/", updateProxy)
++		r.Put("/", updateProxy(server))
+ 	})
+ 	return r
+ }
+@@ -46,7 +90,7 @@ func findProxyByName(server *Server) func(next http.Handler) http.Handler {
+ 	return func(next http.Handler) http.Handler {
+ 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+ 			name := r.Context().Value(CtxKeyProxyName).(string)
+-			proxy, exist := server.outbound.Outbound(name)
++			proxy, exist := lookupProxyByName(server, name)
+ 			if !exist {
+ 				render.Status(r, http.StatusNotFound)
+ 				render.JSON(w, r, ErrNotFound)
+@@ -68,7 +112,7 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
+ 		clashType = C.ProxyDisplayName(detour.Type())
+ 	}
+ 	info.Put("type", clashType)
+-	info.Put("name", detour.Tag())
++	info.Put("name", proxyDisplayName(detour.Tag()))
+ 	info.Put("udp", common.Contains(detour.Network(), N.NetworkUDP))
+ 	delayHistory := server.urlTestHistory.LoadURLTestHistory(group.RealTag(server.outbound, detour))
+ 	if delayHistory != nil {
+@@ -77,8 +121,8 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
+ 		info.Put("history", []*adapter.URLTestHistory{})
+ 	}
+ 	if group, isGroup := detour.(adapter.OutboundGroup); isGroup {
+-		info.Put("now", group.Now())
+-		info.Put("all", group.All())
++		info.Put("now", proxyDisplayName(group.Now()))
++		info.Put("all", proxyDisplayNames(group.All()))
+ 	}
+ 	return &info
+ }
+@@ -102,10 +146,10 @@ func getProxies(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 			case C.TypeDirect, C.TypeBlock, C.TypeDNS:
+ 				continue
+ 			}
+-			allProxies = append(allProxies, detour.Tag())
++			allProxies = append(allProxies, proxyDisplayName(detour.Tag()))
+ 		}
+ 
+-		defaultTag := server.outbound.Default().Tag()
++		defaultTag := proxyDisplayName(server.outbound.Default().Tag())
+ 
+ 		sort.SliceStable(allProxies, func(i, j int) bool {
+ 			return allProxies[i] == defaultTag
+@@ -126,7 +170,7 @@ func getProxies(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 			if detour.Tag() == "" {
+ 				tag = F.ToString(i)
+ 			} else {
+-				tag = detour.Tag()
++				tag = proxyDisplayName(detour.Tag())
+ 			}
+ 			proxyMap.Put(tag, proxyInfo(server, detour))
+ 		}
+@@ -159,29 +203,36 @@ type UpdateProxyRequest struct {
+ 	Name string `json:"name"`
+ }
+ 
+-func updateProxy(w http.ResponseWriter, r *http.Request) {
+-	req := UpdateProxyRequest{}
+-	if err := render.DecodeJSON(r.Body, &req); err != nil {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, ErrBadRequest)
+-		return
+-	}
++func updateProxy(server *Server) func(w http.ResponseWriter, r *http.Request) {
++	return func(w http.ResponseWriter, r *http.Request) {
++		req := UpdateProxyRequest{}
++		if err := render.DecodeJSON(r.Body, &req); err != nil {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, ErrBadRequest)
++			return
++		}
+ 
+-	proxy := r.Context().Value(CtxKeyProxy).(adapter.Outbound)
+-	selector, ok := proxy.(*group.Selector)
+-	if !ok {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, newError("Must be a Selector"))
+-		return
+-	}
++		proxy := r.Context().Value(CtxKeyProxy).(adapter.Outbound)
++		selector, ok := proxy.(*group.Selector)
++		if !ok {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, newError("Must be a Selector"))
++			return
++		}
+ 
+-	if !selector.SelectOutbound(req.Name) {
+-		render.Status(r, http.StatusBadRequest)
+-		render.JSON(w, r, newError("Selector update error: not found"))
+-		return
+-	}
++		selectedName := req.Name
++		if targetProxy, exist := lookupProxyByName(server, req.Name); exist {
++			selectedName = targetProxy.Tag()
++		}
++
++		if !selector.SelectOutbound(selectedName) {
++			render.Status(r, http.StatusBadRequest)
++			render.JSON(w, r, newError("Selector update error: not found"))
++			return
++		}
+ 
+-	render.NoContent(w, r)
++		render.NoContent(w, r)
++	}
+ }
+ 
+ func groupContains(outboundManager adapter.OutboundManager, outboundGroup adapter.OutboundGroup, tag string, visited map[string]bool) bool {
+diff --git a/experimental/clashapi/server.go b/experimental/clashapi/server.go
+index e1c50ee..cc8b8c8 100644
+--- a/experimental/clashapi/server.go
++++ b/experimental/clashapi/server.go
+@@ -48,6 +48,7 @@ type Server struct {
+ 	dnsRouter      adapter.DNSRouter
+ 	outbound       adapter.OutboundManager
+ 	provider       adapter.ProviderManager
++	proxyProviders []option.ClashProxyProviderOptions
+ 	endpoint       adapter.EndpointManager
+ 	logger         log.Logger
+ 	httpServer     *http.Server
+@@ -102,6 +103,7 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
+ 		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
+ 		outbound:  service.FromContext[adapter.OutboundManager](ctx),
+ 		provider:  service.FromContext[adapter.ProviderManager](ctx),
++		proxyProviders: options.ProxyProviders,
+ 		endpoint:  service.FromContext[adapter.EndpointManager](ctx),
+ 		logger:    logFactory.NewLogger("clash-api"),
+ 		httpServer: &http.Server{
+diff --git a/option/experimental.go b/option/experimental.go
+index 7efdfd9..5d25866 100644
+--- a/option/experimental.go
++++ b/option/experimental.go
+@@ -37,6 +37,7 @@ type ClashAPIOptions struct {
+ 	ExternalUIUpdateInterval         badoption.Duration         `json:"external_ui_update_interval,omitempty"`
+ 	Secret                           string                     `json:"secret,omitempty"`
+ 	DefaultMode                      string                     `json:"default_mode,omitempty"`
++	ProxyProviders                   []ClashProxyProviderOptions `json:"proxy_providers,omitempty"`
+ 	AccessControlAllowOrigin         badoption.Listable[string] `json:"access_control_allow_origin,omitempty"`
+ 	AccessControlAllowPrivateNetwork bool                       `json:"access_control_allow_private_network,omitempty"`
+ 
+@@ -65,3 +66,20 @@ type V2RayStatsServiceOptions struct {
+ 	Outbounds []string `json:"outbounds,omitempty"`
+ 	Users     []string `json:"users,omitempty"`
+ }
++
++type ClashProxyProviderOptions struct {
++	Name             string                              `json:"name,omitempty"`
++	Type             string                              `json:"type,omitempty"`
++	VehicleType      string                              `json:"vehicle_type,omitempty"`
++	Proxies          []string                            `json:"proxies,omitempty"`
++	UpdatedAt        string                              `json:"updated_at,omitempty"`
++	UpdateID         string                              `json:"update_id,omitempty"`
++	SubscriptionInfo *ClashProxyProviderSubscriptionInfo `json:"subscription_info,omitempty"`
++}
++
++type ClashProxyProviderSubscriptionInfo struct {
++	Upload   uint64 `json:"upload,omitempty"`
++	Download uint64 `json:"download,omitempty"`
++	Total    uint64 `json:"total,omitempty"`
++	Expire   int64  `json:"expire,omitempty"`
++}
