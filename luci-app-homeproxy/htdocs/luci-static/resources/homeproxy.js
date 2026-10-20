@@ -164,15 +164,20 @@ function renderCronEditor(input) {
 	return wrap;
 }
 
-/* LuCI 原生多选下拉（ui.Dropdown multiple）保存时，是按选项在列表中的固定
+/* LuCI 原生多选下拉（ui.Dropdown multiple）在保存时，是按选项在列表中的固定
    顺序（choices/keylist 顺序）遍历 li[selected] 生成隐藏域的，与用户勾选的
-   先后无关。于是"先勾美国自动、再勾香港自动"在配置里仍然是原始列表顺序，
-   面板里的节点顺序自然也跟勾选顺序无关。
+   先后无关；折叠状态下露出的标签、展开后的预览条，同样是按 li 在 DOM 里的
+   位置排列的。于是"先勾默认代理、再勾日本自动"在配置和面板里都还是原始列表
+   顺序，"第一个勾选的节点为默认出口"自然也就不成立。
 
-   这里重写 saveValues()：用 this.order 记录勾选先后——仍被勾选的项保持原有
-   相对顺序，新勾选的项追加到末尾；随后按该顺序重建隐藏域，使 getValue()
-   （也就是 LuCI 表单的 formvalue）返回勾选顺序。折叠状态下露出的标签也按
-   勾选顺序排列，用户勾完即可看出谁是第一个。 */
+   这里重写 saveValues()，做两件事：
+   1) 用 this.order 记录勾选先后——仍被勾选的项保持原有相对顺序，新勾选的项
+      追加到末尾；按该顺序重建隐藏域，使 getValue()（LuCI 表单的 formvalue）
+      返回勾选顺序，后端照抄数组顺序生成 outbounds 即可；
+   2) 按同一顺序把已勾选的 li 重排到最前（未勾选的保持原有相对顺序），并重新
+      分配 display 属性、同步重建展开时的 ul.preview 副本。因为 LuCI 的折叠
+      标签和预览条都只看 DOM 位置，只有真正挪动节点才能让界面上的顺序跟着变。
+      副作用是已勾选的项会聚拢在选项列表前部，正好也方便看出谁是第一个。 */
 const OrderedMultiDropdown = ui.Dropdown.extend({
 	__name__: 'LuCI.HomeProxyOrderedMultiDropdown',
 
@@ -181,16 +186,32 @@ const OrderedMultiDropdown = ui.Dropdown.extend({
 
 		/* 初始顺序沿用配置里已保存的顺序 */
 		this.order = Array.isArray(this.values) ? this.values.slice() : [];
+		this._assigning = false;
 	},
 
 	/* 代码赋值（重新载入、迁移）时以给定顺序为准 */
 	setValue(values) {
-		if (Array.isArray(values))
-			this.order = values.slice();
-		else
-			this.order = (values != null && values !== '') ? [ values ] : [];
+		let list;
 
-		return this.super('setValue', [ values ]);
+		if (Array.isArray(values))
+			list = values.slice();
+		else
+			list = (values != null && values !== '') ? [ values ] : [];
+
+		/* LuCI 的 setValue() → setValues() 会逐项 toggleItem()，每一轮都回调
+		   saveValues()；那时新顺序还没落定，重排只会白做（还可能被逐项收窄的
+		   中间态污染）。先挂起，等底层赋值完成后统一按 list 重排。 */
+		this._assigning = true;
+
+		const ret = this.super('setValue', [ values ]);
+
+		this._assigning = false;
+		this.order = list;
+
+		if (this.node)
+			this.saveValues(this.node, this.node.querySelector('ul'));
+
+		return ret;
 	},
 
 	saveValues(sb, ul) {
@@ -222,6 +243,9 @@ const OrderedMultiDropdown = ui.Dropdown.extend({
 
 		this.order = order;
 
+		if (this._assigning)
+			return;
+
 		/* 按勾选顺序重建隐藏域 */
 		while (div.lastElementChild)
 			div.removeChild(div.lastElementChild);
@@ -233,24 +257,75 @@ const OrderedMultiDropdown = ui.Dropdown.extend({
 				value: order[i]
 			}));
 
-		/* 折叠状态下的标签按勾选顺序显示：这里用 flex 的 order 控制，
-		   不改动 li 的 DOM 位置——展开时 ul 是 block 布局、order 不生效，
-		   选项列表因此不会在勾选过程中跳来跳去。 */
+		this.applyOrder(sb, ul);
+	},
+
+	/* 把已勾选的 li 按 this.order 排到最前，并同步 display 属性与预览副本。
+	   LuCI 折叠标签/预览条的顺序完全取决于 li 的 DOM 位置和 display 属性，
+	   所以必须真正挪节点，改 CSS order 是不生效的（预览条是 block 布局）。 */
+	applyOrder(sb, ul) {
+		if (!ul || !this.options.multiple)
+			return;
+
 		const items = ul.querySelectorAll('li[data-value]'),
-		      map = {};
+		      rank = {},
+		      all = [],
+		      picked = [];
+
+		for (let i = 0; i < this.order.length; i++)
+			rank[this.order[i]] = i;
 
 		for (let i = 0; i < items.length; i++) {
-			if (items[i].style)
-				items[i].style.order = '';
+			all.push(items[i]);
 
-			map[items[i].getAttribute('data-value')] = items[i];
+			if (items[i].hasAttribute('selected'))
+				picked.push(items[i]);
 		}
 
-		for (let i = 0; i < order.length; i++) {
-			const li = map[order[i]];
+		/* 只有一个（或零个）已选项时无所谓顺序，不必动 DOM */
+		if (picked.length < 2)
+			return;
 
-			if (li && li.style)
-				li.style.order = String(i);
+		/* 记住 DOM 中最靠前的已选项，重排后就以它为锚点 */
+		const anchor = picked[0];
+
+		picked.sort((a, b) => {
+			const ra = rank[a.getAttribute('data-value')] ?? 9999,
+			      rb = rank[b.getAttribute('data-value')] ?? 9999;
+
+			return ra - rb;
+		});
+
+		/* 已选项聚拢在锚点位置，未选项相对顺序不变 */
+		const at = all.indexOf(anchor),
+		      rest = all.filter(li => picked.indexOf(li) < 0);
+
+		/* 锚点之前的项都是未选项，故锚点在 rest 中的落点就是它在 DOM 中的下标 */
+		rest.splice(at, 0, ...picked);
+
+		for (let i = 0; i < rest.length; i++)
+			ul.appendChild(rest[i]);
+
+		/* 重新分配 display：只有前 display_items 个已选项在折叠状态可见 */
+		let ndisplay = this.options.display_items;
+
+		for (let i = 0; i < rest.length; i++)
+			rest[i].removeAttribute('display');
+
+		for (let i = 0; i < picked.length && ndisplay > 0; i++, ndisplay--)
+			picked[i].setAttribute('display', i);
+
+		/* 展开时露出的标签是 ul.preview 的克隆，由 toggleItem() 按旧顺序拼好，
+		   这里按新顺序重建，保证展开/折叠两种状态看到的一致 */
+		const preview = sb.querySelector('ul.preview');
+
+		if (preview) {
+			while (preview.firstElementChild)
+				preview.removeChild(preview.firstElementChild);
+
+			for (let i = 0; i < picked.length && i < this.options.display_items; i++)
+				if (picked[i].hasAttribute('display'))
+					preview.appendChild(picked[i].cloneNode(true));
 		}
 	}
 });
