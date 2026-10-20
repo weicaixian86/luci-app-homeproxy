@@ -46,7 +46,7 @@ rm -rf /tmp/luci-modulecache/*
 ## 三、维护工作流
 
 - `build.yml`：手动触发，输入 Release tag 与（可选的）描述后，编译 24.10 的 IPK 与 25.12 的 APK，并仅上传 `luci-app-homeproxy` 的 IPK 与 APK。
-- `build-deploy.yml`（Build All-in-One Deploy ZIP）：手动触发，输入版本号后，云端编译打补丁的 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci IPK，打包成每架构一个 zip 发到 `deploy-<版本>` Release；**同时**把 amd64/arm64 的内核压缩包发到 `v1.14.3-reF1nd` Release，供插件的「更新内核」按钮自动下载打补丁内核。
+- `build-deploy.yml`（Build & Release All-in-One）：手动触发，输入版本号后，云端编译打补丁的 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci 包（24.10 IPK 与 25.12 APK）。产出全部发到 `deploy-<版本>` Release，包含：每架构一个一体化 zip（luci IPK + 内核 + install.sh）、独立可装的 `luci-app-homeproxy.ipk` / `.apk`；**同时**把 amd64/arm64 的内核压缩包发到 `v1.14.3-reF1nd` Release，供「更新内核」按钮自动下载打补丁内核。只跑这一个 workflow 即可覆盖所有安装方式。
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 

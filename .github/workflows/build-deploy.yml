@@ -1,13 +1,19 @@
-name: Build All-in-One Deploy ZIP
+name: Build & Release All-in-One
 
-# 一体化部署包构建：
-#   - luci job：用 OpenWrt SDK 编译 luci-app-homeproxy 的 all 架构 .ipk（含中文 lmo）
+# 一体化构建与发布（只跑这一个 workflow 即覆盖全部安装方式）：
+#   - luci job（matrix）：用 OpenWrt SDK 分别编译
+#       · OpenWrt 24.10.0 的 .ipk（opkg 安装）
+#       · OpenWrt 25.12.0 的 .apk（apk 安装）
+#     两者均含中文 lmo；独立产物随 Release 发布，可直接 opkg/apk 安装。
 #   - core job（matrix）：clone reF1nd/sing-box @ v1.14.3-reF1nd，打补丁，Go 交叉编译
 #     多架构静态内核（amd64 / arm64 / armv7 / mipsle）
-#   - package job：把 luci .ipk + 各架构内核 + install.sh + README 打包成每架构一个 zip，
-#     发到 Release（tag: deploy-<version>）
+#   - package job：
+#       · 把 luci .ipk + 各架构内核 + install.sh + README 打包成每架构一个 zip；
+#       · 把打补丁内核打包成 sing-box-1.14.3-reF1nd-linux-{amd64,amd64v3,arm64}-musl.tar.gz；
+#       · 发到 Release（tag: deploy-<version>），含 zip + 独立 IPK + 独立 APK；
+#       · 另发 v1.14.3-reF1nd Release（仅内核 tar.gz），供面板「更新内核」自动下载补丁版。
 #
-# 触发：手动（workflow_dispatch）填版本号。Release tag 与现有 luci-only 的 build.yml 互不冲突。
+# 触发：手动（workflow_dispatch）填版本号（不需要 v 前缀）。
 
 on:
   workflow_dispatch:
@@ -31,13 +37,21 @@ env:
 
 jobs:
   # ===========================================================================
-  # 1) 编译 luci IPK（all 架构，仅需一次）
+  # 1) 编译 luci 包（matrix：24.10 IPK + 25.12 APK，均含中文 lmo）
   # ===========================================================================
   luci:
-    name: Build luci IPK
+    name: Build luci ${{ matrix.name }}
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.version.outputs.version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: IPK (OpenWrt 24.10.0)
+            sdk_url: https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
+            ext: ipk
+          - name: APK (OpenWrt 25.12.0)
+            sdk_url: https://downloads.openwrt.org/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
+            ext: apk
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -68,7 +82,6 @@ jobs:
           echo "package source directory: $found"
 
       - name: Update package version from tag
-        id: version
         run: |
           set -e
           pkg_dir="${{ steps.pkgdir.outputs.dir }}"
@@ -76,12 +89,11 @@ jobs:
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" "$pkg_dir/Makefile"
           sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$pkg_dir/Makefile"
           grep -E '^PKG_(VERSION|RELEASE):=' "$pkg_dir/Makefile"
-          echo "version=$version" >>"$GITHUB_OUTPUT"
 
-      - name: Download and extract SDK (OpenWrt 24.10.0, x86_64)
+      - name: Download and extract SDK (${{ matrix.name }})
         run: |
           set -e
-          sdk_url="https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
+          sdk_url="${{ matrix.sdk_url }}"
           sdk_rel="${sdk_url#*downloads.openwrt.org}"
           MIRRORS="https://mirror-03.infra.openwrt.org https://mirrors.kernel.org/openwrt https://ftp.halifax.rwth-aachen.de/openwrt https://downloads.openwrt.org https://openwrt.proxy.ustclug.org https://mirrors.ustc.edu.cn/openwrt https://mirrors.tuna.tsinghua.edu.cn/openwrt"
           got=0
@@ -124,20 +136,20 @@ jobs:
           make package/luci-app-homeproxy/clean
           make package/luci-app-homeproxy/compile V=s -j"$(nproc)"
 
-      - name: Collect IPK
+      - name: Collect ${{ matrix.ext }}
         run: |
           set -e
-          version="${{ steps.version.outputs.version }}"
-          src="$(find sdk/bin -type f -name 'luci-app-homeproxy*.ipk' | head -n1)"
-          [ -n "$src" ] || { echo "::error::luci ipk not found"; exit 1; }
-          cp -f "$src" luci-app-homeproxy.ipk
-          ls -la luci-app-homeproxy.ipk
+          ext="${{ matrix.ext }}"
+          src="$(find sdk/bin -type f -name "luci-app-homeproxy*.${ext}" | head -n1)"
+          [ -n "$src" ] || { echo "::error::luci .${ext} not found"; exit 1; }
+          cp -f "$src" "luci-app-homeproxy.${ext}"
+          ls -la "luci-app-homeproxy.${ext}"
 
-      - name: Upload luci IPK artifact
+      - name: Upload luci ${{ matrix.ext }} artifact
         uses: actions/upload-artifact@v4
         with:
-          name: luci-ipk
-          path: luci-app-homeproxy.ipk
+          name: luci-${{ matrix.ext }}
+          path: luci-app-homeproxy.${{ matrix.ext }}
 
   # ===========================================================================
   # 2) 编译打补丁的 reF1nd 内核（多架构）
@@ -217,7 +229,7 @@ jobs:
           path: sing-box-${{ matrix.arch }}
 
   # ===========================================================================
-  # 3) 打包成每架构一个 zip，并发布到 Release
+  # 3) 打包 zip + 独立 IPK/APK + 内核 tar.gz，并发布到 Release
   # ===========================================================================
   package:
     name: Package and Release
@@ -238,7 +250,7 @@ jobs:
       - name: Build per-architecture ZIPs
         run: |
           set -e
-          version="${{ needs.luci.outputs.version }}"
+          version="${{ inputs.tag }}"
           echo "version=$version"
           for arch in amd64 arm64 armv7 mipsle; do
             d="homeproxy-deploy-$arch-$version"
@@ -281,13 +293,23 @@ jobs:
           sed -i -e '/./,$!d' release_body.md
           sed -i -e :a -e '/^\n*$/{$d;N;}; /\n$/ba' release_body.md
 
+      - name: Stage standalone luci packages
+        run: |
+          set -e
+          cp -f "artifacts/luci-ipk/luci-app-homeproxy.ipk" ./luci-app-homeproxy.ipk
+          cp -f "artifacts/luci-apk/luci-app-homeproxy.apk" ./luci-app-homeproxy.apk
+          ls -la luci-app-homeproxy.*
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: deploy-${{ inputs.tag }}
           name: Deploy ${{ inputs.tag }}
           body_path: release_body.md
-          files: homeproxy-deploy-*.zip
+          files: |
+            homeproxy-deploy-*.zip
+            luci-app-homeproxy.ipk
+            luci-app-homeproxy.apk
 
       - name: Publish patched core to auto-update release (v1.14.3-reF1nd)
         uses: softprops/action-gh-release@v2
