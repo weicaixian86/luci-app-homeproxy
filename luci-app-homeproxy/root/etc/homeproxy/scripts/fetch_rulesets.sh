@@ -292,6 +292,10 @@ total=0
 ok=0
 cached=0
 failed=0
+# Human-readable list of every failing rule-set, surfaced on stdout at the
+# end so callers that redirect our output (init.d main log, cron mail) show
+# the failures directly instead of hiding them in ruleset_download.log.
+fail_summary=""
 deadline=$(( $(date +%s) + BUDGET ))
 out_of_time=0
 
@@ -309,6 +313,7 @@ for sec in $sections; do
 
 	if [ -z "$url" ]; then
 		log_msg "跳过 $tag：未配置 URL。"
+		fail_summary="$fail_summary  - $tag：未配置 URL（请在 LuCI 规则集页面填写下载地址）\n"
 		failed=$((failed + 1))
 		continue
 	fi
@@ -358,6 +363,7 @@ for sec in $sections; do
 		# Keep whatever valid copy was already there (if any); the generator
 		# will keep using `local` for it. Otherwise it stays `remote`.
 		log_msg "下载失败 $tag：所有镜像均不可用（HTTP 状态：${last_codes# }）。保留原有文件。"
+		fail_summary="$fail_summary  - $tag：所有镜像均不可用（HTTP 状态：${last_codes# }）\n"
 		case "$last_codes" in
 			*404*)
 				# 404 is decisive: the file does not exist upstream. Remember
@@ -369,6 +375,7 @@ for sec in $sections; do
 				case "$tag" in
 					geoip-*)
 						log_msg "提示：$tag 在 sing-geoip 中不存在（geoip-* 只收录国家/地区 IP 段）。若本意是公司/服务类域名规则，应改用 geosite-${tag#geoip-}。"
+						fail_summary="$fail_summary    提示：$tag 在 sing-geoip 中不存在，应改用 geosite-${tag#geoip-}（geoip-* 仅含国家/地区 IP 段）\n"
 						;;
 				esac
 				;;
@@ -385,5 +392,16 @@ log_msg "==== 规则集预下载结束：共 ${total} 条，新下载 ${ok}，�
 # Any unresolved rule-set is a real problem: the core will try to fetch it as
 # `remote` while initialising, and a 404 there aborts the whole instance. Report
 # it so init.d can warn instead of silently pretending everything is fine.
-[ "$failed" -gt 0 ] && exit 1
+if [ "$failed" -gt 0 ]; then
+	# Echo a self-contained failure summary to stdout. Callers that redirect
+	# our output (init.d -> homeproxy.log, cron mail) therefore surface the
+	# failure directly, instead of the user having to open ruleset_download.log.
+	printf '[homeproxy-ruleset] 规则集预下载有 %s 条失败，明细见 %s：\n' "$failed" "$LOG_FILE"
+	printf '%b' "$fail_summary"
+	printf '[homeproxy-ruleset] 失败项将由内核按 remote 方式下载；若对应 URL 返回 404，\n'
+	printf '内核会把这些 HTML 错误页当成 .srs 载入并崩溃，导致服务起不来。\n'
+	printf '处理办法：检查失败项 URL（geoip-* 公司/服务类域名规则应改为 geosite-*），\n'
+	printf '或手动下载正确的 .srs 放到 %s。\n' "$RULESET_DIR"
+	exit 1
+fi
 exit 0

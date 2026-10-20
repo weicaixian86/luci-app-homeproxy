@@ -470,9 +470,23 @@ start_service() {
 		local ruleset_script="$HP_DIR/scripts/fetch_rulesets.sh"
 		if [ -f "$ruleset_script" ]; then
 			if ! /bin/sh "$ruleset_script" --check >/dev/null 2>&1; then
-				log "规则集缓存不完整，正在预下载（最多约 4 分钟，进度见 $RUN_DIR/ruleset_download.log）…"
-				/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1 \
-					|| log "警告：规则集预下载未全部成功，失败项将由内核按 remote 方式下载；这可能拖慢启动，若该 URL 返回 404 还会导致内核启动失败。详情见 $RUN_DIR/ruleset_download.log。"
+				log "规则集缓存不完整，正在预下载（最多约 4 分钟）…"
+				# Snapshot the detail log length so we can pull out only this
+				# run's failures into the main log afterwards.
+				local rs_before rs_rc
+				rs_before=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
+				# fetch_rulesets.sh now prints its failure summary to stdout,
+				# so redirecting it here lands it in homeproxy.log directly.
+				/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1
+				rs_rc=$?
+				if [ -f "$RUN_DIR/ruleset_download.log" ]; then
+					tail -n +$((rs_before + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null \
+						| grep -E '下载失败|提示：|警告|HTTP 状态|不存在|404' >> "$LOG_PATH" 2>/dev/null
+				fi
+				if [ "$rs_rc" -ne 0 ]; then
+					log "【规则集下载失败】预下载未全部成功（失败项见上方明细及 $RUN_DIR/ruleset_download.log）。失败项将由内核按 remote 方式下载；若 URL 返回 404，内核会把它当 .srs 载入并崩溃，导致服务起不来。请检查失败项 URL：geoip-* 公司/服务类域名规则应改为 geosite-*，或手动下载正确 .srs 放到 $HP_DIR/ruleset。"
+					panel_log "规则集有下载失败项，已在主日志提示处理办法（geoip-* 公司/服务类应改为 geosite-*）。"
+				fi
 			fi
 		fi
 
@@ -491,6 +505,15 @@ start_service() {
 			# most common way to get here with a "working" config: the labels
 			# are invalid UTF-8, so the generated core config is rejected.
 			panel_log "提示：若配置是从备份粘贴的，请确认 /etc/config/$CONF 为 UTF-8 编码（GBK 备份会让生成的配置含非法字节）。"
+			# A remote rule-set whose URL 404s earlier is the classic cause of
+			# a config that looks valid in LuCI but aborts the core on load
+			# (the HTML error page is stored as a bogus .srs and crashes the
+			# binary decoder). Point the user at it instead of leaving a bare
+			# "config error" with no actionable cause.
+			if grep -qE '下载失败|404|不存在' "$RUN_DIR/ruleset_download.log" 2>/dev/null; then
+				log "提示：规则集下载日志中存在失败/404 记录，内核校验失败很可能是某条 remote 规则集 URL 无效（如 geoip-* 公司/服务类应改 geosite-*）所致。请检查 $RUN_DIR/ruleset_download.log。"
+				panel_log "提示：规则集下载失败/404 可能导致内核校验失败，请检查失败项 URL（geoip-* 公司/服务类应改 geosite-*）。"
+			fi
 			return 1
 		fi
 
