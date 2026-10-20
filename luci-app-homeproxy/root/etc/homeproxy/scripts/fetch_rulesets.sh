@@ -382,17 +382,29 @@ for sec in $sections; do
 	tmp="$path.part.$$"
 	done_one=0
 	last_codes=""
+	bad_content=0
+	bad_sample=""
 
 	for u in $(build_candidates "$url" | awk '!seen[$0]++'); do
 		rm -f "$tmp" 2>/dev/null
-		if download_to "$u" "$tmp" "$left" && valid_ruleset "$tmp" "$fmt"; then
-			if mv -f "$tmp" "$path" 2>/dev/null; then
-				ok=$((ok + 1))
-				done_one=1
-				rm -f "$path.unavailable" 2>/dev/null
-				log_msg "已更新 $tag（$(human_size "$(wc -c < "$path" 2>/dev/null | tr -d ' ')")）：$u"
+		if download_to "$u" "$tmp" "$left"; then
+			if valid_ruleset "$tmp" "$fmt"; then
+				if mv -f "$tmp" "$path" 2>/dev/null; then
+					ok=$((ok + 1))
+					done_one=1
+					rm -f "$path.unavailable" 2>/dev/null
+					log_msg "已更新 $tag（$(human_size "$(wc -c < "$path" 2>/dev/null | tr -d ' ')")）：$u"
+				fi
+				break
 			fi
-			break
+			# HTTP OK but the body is not a rule-set: a mirror error page,
+			# an HTML login/redirect page, or a source/binary format mismatch.
+			# Keep the first sample so the failure message can show what
+			# actually came back instead of a confusing bare "HTTP 200".
+			bad_content=1
+			if [ -z "$bad_sample" ]; then
+				bad_sample="$(head -c 32 "$tmp" 2>/dev/null | tr -d '\r\n' | sed 's/[^[:print:]]/./g' | cut -c1-24)"
+			fi
 		fi
 		last_codes="$last_codes ${LAST_HTTP:-000}"
 	done
@@ -402,13 +414,29 @@ for sec in $sections; do
 		failed=$((failed + 1))
 		# Keep whatever valid copy was already there (if any); the generator
 		# will keep using `local` for it. Otherwise it stays `remote`.
-		log_msg "下载失败 $tag：所有镜像均不可用（HTTP 状态：${last_codes# }）。保留原有文件。"
-		fail_summary="$fail_summary  - $tag：所有镜像均不可用（HTTP 状态：${last_codes# }）\n"
+		#
+		# Distinguish the two very different failure modes: the HTTP request
+		# itself failed (non-2xx / network error) versus a 200 whose body is
+		# not a rule-set at all (mirror error page, HTML redirect, or a
+		# source/binary format mismatch). Reporting the latter as
+		# "HTTP 状态：200" reads like a success and confuses the user.
+		if [ "$bad_content" = "1" ]; then
+			fail_reason="服务器返回 200 但内容不是有效的 .srs（开头为「${bad_sample:-?}」），URL 可能指向 HTML 页面/错误页，或规则集格式（binary/source）与配置不符"
+		else
+			fail_reason="所有镜像均不可用（HTTP 状态：${last_codes# }）"
+		fi
 		case "$last_codes" in
 			*404*)
 				# 404 is decisive: the file does not exist upstream. Remember
 				# it so the next start-up does not spend another ~15 s on it.
+				fail_reason="URL 不存在（HTTP 404），请检查规则集下载地址"
 				mark_unavailable "$path.unavailable" "$url"
+				;;
+		esac
+		log_msg "下载失败 $tag：$fail_reason。保留原有文件。"
+		fail_summary="$fail_summary  - $tag：$fail_reason\n"
+		case "$last_codes" in
+			*404*)
 				# sing-geoip only carries country/region IP lists, so a 404 on
 				# `geoip-<company>` is almost always a naming mistake. Say so
 				# instead of leaving the user with a bare status code.
