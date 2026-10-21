@@ -9,7 +9,7 @@ msgstr ""
 msgid "%s nodes removed"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:969
+#: htdocs/luci-static/resources/homeproxy.js:1010
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr ""
 
@@ -266,7 +266,7 @@ msgstr ""
 msgid "Backend execution failed"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:929
+#: htdocs/luci-static/resources/homeproxy.js:970
 #: htdocs/luci-static/resources/view/homeproxy/client.js:178
 #: htdocs/luci-static/resources/view/homeproxy/client.js:222
 msgid "Backup panel failed."
@@ -424,8 +424,8 @@ msgstr ""
 msgid "Client version"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:873
-#: htdocs/luci-static/resources/homeproxy.js:875
+#: htdocs/luci-static/resources/homeproxy.js:914
+#: htdocs/luci-static/resources/homeproxy.js:916
 msgid "Close"
 msgstr ""
 
@@ -962,16 +962,16 @@ msgstr ""
 msgid "Every day"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:816
-#: htdocs/luci-static/resources/homeproxy.js:961
-#: htdocs/luci-static/resources/homeproxy.js:969
-#: htdocs/luci-static/resources/homeproxy.js:987
-#: htdocs/luci-static/resources/homeproxy.js:996
-#: htdocs/luci-static/resources/homeproxy.js:1007
-#: htdocs/luci-static/resources/homeproxy.js:1018
-#: htdocs/luci-static/resources/homeproxy.js:1021
-#: htdocs/luci-static/resources/homeproxy.js:1029
-#: htdocs/luci-static/resources/homeproxy.js:1031
+#: htdocs/luci-static/resources/homeproxy.js:857
+#: htdocs/luci-static/resources/homeproxy.js:1002
+#: htdocs/luci-static/resources/homeproxy.js:1010
+#: htdocs/luci-static/resources/homeproxy.js:1028
+#: htdocs/luci-static/resources/homeproxy.js:1037
+#: htdocs/luci-static/resources/homeproxy.js:1048
+#: htdocs/luci-static/resources/homeproxy.js:1059
+#: htdocs/luci-static/resources/homeproxy.js:1062
+#: htdocs/luci-static/resources/homeproxy.js:1070
+#: htdocs/luci-static/resources/homeproxy.js:1072
 #: htdocs/luci-static/resources/view/homeproxy/client.js:445
 #: htdocs/luci-static/resources/view/homeproxy/client.js:458
 #: htdocs/luci-static/resources/view/homeproxy/client.js:808
@@ -1031,8 +1031,8 @@ msgstr ""
 msgid "Failed to generate %s, error: %s."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:913
-#: htdocs/luci-static/resources/homeproxy.js:951
+#: htdocs/luci-static/resources/homeproxy.js:954
+#: htdocs/luci-static/resources/homeproxy.js:992
 msgid "Failed to upload %s, error: %s."
 msgstr ""
 
@@ -1410,7 +1410,7 @@ msgstr ""
 msgid "Info"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:939
+#: htdocs/luci-static/resources/homeproxy.js:980
 msgid "Install panel failed."
 msgstr ""
 
@@ -1449,7 +1449,7 @@ msgstr ""
 msgid "Invalid node"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:937
+#: htdocs/luci-static/resources/homeproxy.js:978
 msgid "Invalid panel ZIP file."
 msgstr ""
 
@@ -2035,7 +2035,7 @@ msgstr ""
 msgid "Panel Settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:933
+#: htdocs/luci-static/resources/homeproxy.js:974
 msgid "Panel ZIP file is empty."
 msgstr ""
 
@@ -2397,7 +2397,7 @@ msgstr ""
 msgid "Restart Service"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:931
+#: htdocs/luci-static/resources/homeproxy.js:972
 #: htdocs/luci-static/resources/view/homeproxy/client.js:180
 #: htdocs/luci-static/resources/view/homeproxy/client.js:224
 msgid "Restore panel failed."
@@ -3012,7 +3012,7 @@ msgid ""
 "closed."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:935
+#: htdocs/luci-static/resources/homeproxy.js:976
 msgid "The unzip command is unavailable."
 msgstr ""
 
@@ -3383,8 +3383,8 @@ msgstr ""
 msgid "YouTube Connection"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:911
-#: htdocs/luci-static/resources/homeproxy.js:949
+#: htdocs/luci-static/resources/homeproxy.js:952
+#: htdocs/luci-static/resources/homeproxy.js:990
 msgid "Your %s was successfully uploaded. Size: %sB."
 msgstr ""
 
@@ -3439,9 +3439,9 @@ msgstr ""
 msgid "loading..."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:996
-#: htdocs/luci-static/resources/homeproxy.js:1018
-#: htdocs/luci-static/resources/homeproxy.js:1029
+#: htdocs/luci-static/resources/homeproxy.js:1037
+#: htdocs/luci-static/resources/homeproxy.js:1059
+#: htdocs/luci-static/resources/homeproxy.js:1070
 #: htdocs/luci-static/resources/view/homeproxy/client.js:808
 #: htdocs/luci-static/resources/view/homeproxy/client.js:842
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1076
@@ -3468,8 +3468,8 @@ msgstr ""
 msgid "packet addr (v2ray-core v5+)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:949
-#: htdocs/luci-static/resources/homeproxy.js:951
+#: htdocs/luci-static/resources/homeproxy.js:990
+#: htdocs/luci-static/resources/homeproxy.js:992
 msgid "panel ZIP package"
 msgstr ""
 
@@ -3512,14 +3512,14 @@ msgstr ""
 msgid "unchecked"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:816
-#: htdocs/luci-static/resources/homeproxy.js:1007
+#: htdocs/luci-static/resources/homeproxy.js:857
+#: htdocs/luci-static/resources/homeproxy.js:1048
 #: htdocs/luci-static/resources/view/homeproxy/client.js:458
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2148
 msgid "unique value"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:941
+#: htdocs/luci-static/resources/homeproxy.js:982
 msgid "unknown error"
 msgstr ""
 
@@ -3554,7 +3554,7 @@ msgstr ""
 msgid "valid URL"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:961
+#: htdocs/luci-static/resources/homeproxy.js:1002
 msgid "valid base64 key with %d characters"
 msgstr ""
 
@@ -3572,7 +3572,7 @@ msgstr ""
 msgid "valid hostname"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:987
+#: htdocs/luci-static/resources/homeproxy.js:1028
 msgid "valid port range (port1:port2)"
 msgstr ""
 
@@ -3580,13 +3580,13 @@ msgstr ""
 msgid "valid port value"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1021
+#: htdocs/luci-static/resources/homeproxy.js:1062
 #: htdocs/luci-static/resources/view/homeproxy/client.js:445
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2139
 msgid "valid tag"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1031
+#: htdocs/luci-static/resources/homeproxy.js:1072
 msgid "valid uuid"
 msgstr ""
 
