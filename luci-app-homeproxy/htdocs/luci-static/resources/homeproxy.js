@@ -609,17 +609,19 @@ return baseclass.extend({
 		return label ? title + ' » ' + label : addtitle;
 	},
 
-	/* luci-base 在部分版本里会在 GridSection 的表格行行首额外插入一个
-	   sectiontitle 名称单元格（其表头单元格是空的），而 `label` 选项本身
-	   也会渲染出一列名称，两者内容完全一样，于是表格最左边多出一列重复的
-	   名称且表头整体右移错位。
+	/* GridSection 的重复名称列有两种成因，需分别处理：
 
-	   由于不同 luci-base 版本对 `modalonly`、`max_cols`、`sectiontitle` 的
-	   处理并不一致，这里不去改这些属性，而是在渲染结果上做一次精确判定：
-	   「首列文本非空且与次列文本完全相同」的行，其首列即为多余列，删除它；
-	   同时按「表头单元格数是否等于删除前的数据列数」判断表头首格是否属于
-	   该列，属于才删除，使表头与数据行严格对齐（不同版本表头首格分别是
-	   空串或「名称」，不能靠文字判断）。 */
+	   一、OpenWrt 25.12 起的 luci-base：`renderContents` 已经把 sectiontitle
+	   渲染成真实的 <td class="... cbi-section-table-titles">，同时 <tr> 上仍
+	   带着 data-title；不少第三方主题（Argon 等）会用
+	   `tr.cbi-section-table-row[data-title]::before { content: attr(data-title) }`
+	   把这个名称再画一遍。该重复列是伪元素，删除 td 无效，必须清掉 tr 的
+	   data-title 并禁用该 ::before 才能去掉。
+
+	   二、部分旧版 luci-base：sectiontitle 与 `label` 都会渲染成真实 td，
+	   前两列文本完全相同。此时删除首列 td，并按「表头单元格数是否等于删除
+	   前的数据列数」判断表头首格是否属于该列，属于才删除，使表头与数据行
+	   对齐（不同版本表头首格分别是空串或「名称」，不能靠文字判断）。 */
 	dedupeNameColumn(section) {
 		const orig = section.renderContents;
 
@@ -637,51 +639,90 @@ return baseclass.extend({
 			return input ? (input.value || '').trim() : '';
 		};
 
+		const isTitleCell = function(td) {
+			return !!(td && td.classList && td.classList.contains('cbi-section-table-titles'));
+		};
+
+		/* 25.12 起 sectiontitle 是真实 td，重复的那列是主题用 ::before
+		   画的伪元素。一次性注入作用域样式，把这类行的伪元素关掉
+		   （content:none 直接不生成伪元素）。 */
+		const ensureTitleRealStyle = function() {
+			if (window.__hpTitleRealStyle)
+				return;
+
+			window.__hpTitleRealStyle = true;
+
+			try {
+				document.head.appendChild(E('style', [ `
+					.hp-title-real tr.cbi-section-table-row::before,
+					.hp-title-real tr.cbi-section-table-titles::before { content: none !important; }
+				` ]));
+			}
+			catch (e) {}
+		};
+
 		section.renderContents = function() {
 			const el = orig.apply(this, arguments);
 
 			try {
-				/* 只取数据行：表头行只有 TH，会被自然跳过；表格底部的
-				   「添加」行首列是控件，不参与判定。 */
 				const rows = [];
 
 				for (const tr of el.querySelectorAll('tr')) {
 					const cells = Array.from(tr.children).filter((c) => c.tagName === 'TD');
 
-					if (cells.length < 2)
+					if (cells.length === 0)
 						continue;
 
-					if (cells[0].querySelector('input, select, button, textarea'))
-						continue;
-
-					rows.push(cells);
+					rows.push({ tr: tr, cells: cells });
 				}
 
 				if (rows.length === 0)
 					return el;
 
-				/* 首列文本非空且与次列完全相同 → 首列是多余的那列重复名称 */
-				const matched = rows.filter((cells) => {
-					const first = cellText(cells[0]),
-					      second = cellText(cells[1]);
+				/* 情形一：首列是真实 title td（25.12+），去掉重复的 ::before 名称 */
+				let hasRealTitle = false;
+
+				for (const row of rows) {
+					if (!isTitleCell(row.cells[0]))
+						continue;
+
+					hasRealTitle = true;
+					row.tr.removeAttribute('data-title');
+				}
+
+				if (hasRealTitle) {
+					ensureTitleRealStyle();
+					el.classList.add('hp-title-real');
+				}
+
+				/* 情形二：首列与次列文本完全相同的，首列即多余重复列。
+				   25.12 正常结构里次列是控件（文本为空）不会命中，故此处
+				   只会作用于「两个都是真实文本 td」的旧版重复场景。 */
+				const dataRows = rows.filter((row) => {
+					return row.cells.length >= 2 &&
+					       !row.cells[0].querySelector('input, select, button, textarea');
+				});
+
+				if (dataRows.length === 0)
+					return el;
+
+				const matched = dataRows.filter((row) => {
+					const first = cellText(row.cells[0]),
+					      second = cellText(row.cells[1]);
 
 					return first !== '' && first === second;
 				});
 
 				/* 全有或全无：只有所有数据行都判定为冗余时才删除，
 				   避免各行删除情况不同导致行与行列数错位。 */
-				if (matched.length === 0 || matched.length !== rows.length)
+				if (matched.length === 0 || matched.length !== dataRows.length)
 					return el;
 
-				const tdBefore = Math.max(...rows.map((cells) => cells.length));
+				const tdBefore = Math.max(...dataRows.map((row) => row.cells.length));
 
-				for (const cells of matched)
-					cells[0].remove();
+				for (const row of matched)
+					row.cells[0].remove();
 
-				/* 表头对齐：仅当表头单元格数等于删除前的数据列数，说明
-				   表头首格确实对应被删的那一列（不同版本分别是空串或
-				   「名称」），才删掉它。若表头本来就比数据行少一格，
-				   说明它并不包含首列，此时删了反而错位。 */
 				const heads = el.querySelectorAll('th');
 
 				if (heads.length === tdBefore)
