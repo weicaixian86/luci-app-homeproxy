@@ -2336,6 +2336,13 @@ return view.extend({
 		so.rmempty = false;
 		so.depends('enabled', '1');
 
+		so = ss.option(form.ListValue, 'store_selected', _('Save Proxy Selection'));
+		so.value('1', _('Enable'));
+		so.value('0', _('Disable'));
+		so.default = '1';
+		so.rmempty = false;
+		so.depends('enabled', '1');
+
 		/* Cache settings end */
 
 		/* ACL settings start */

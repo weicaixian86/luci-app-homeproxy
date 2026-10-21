@@ -3343,6 +3343,10 @@ msgid "Persist DNS cache"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Save Proxy Selection"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr ""
 

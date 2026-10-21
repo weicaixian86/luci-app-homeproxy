@@ -167,7 +167,7 @@ if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
 
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
-let cache_file_enabled, cache_file_path, cache_store_dns,
+let cache_file_enabled, cache_file_path, cache_store_dns, cache_store_selected,
     main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
     dns_default_server, dns_disable_cache, dns_disable_cache_expire,
@@ -250,6 +250,7 @@ const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'info';
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');
 cache_store_dns = uci.get(uciconfig, ucicache, 'store_dns');
+cache_store_selected = uci.get(uciconfig, ucicache, 'store_selected');
 
 let clash_api = null;
 /* UCI config end */
@@ -844,6 +845,10 @@ clash_api = {
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
+	/* Persist the selector choice made in the dashboard across kernel
+	   restarts. Only effective while the cache file is enabled (see below);
+	   the kernel no-ops it otherwise. */
+	store_selected: cache_store_selected !== '0',
 	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
 	   /providers/proxies from this list; empty in non-subscription modes. */
 	proxy_providers: build_proxy_providers()

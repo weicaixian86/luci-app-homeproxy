@@ -3394,6 +3394,10 @@ msgid "Persist DNS cache"
 msgstr "持久化 DNS 缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Save Proxy Selection"
+msgstr "保存代理选择"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr "状态"
 
