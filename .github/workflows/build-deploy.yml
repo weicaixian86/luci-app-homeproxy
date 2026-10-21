@@ -318,7 +318,7 @@ jobs:
           cp -f "artifacts/sing-box-mipsle/sing-box-mipsle" sing-box
           tar -czf "sing-box-${VER}_${version}-linux-mipsle-musl.tar.gz" sing-box
           rm -f sing-box
-          ls -la sing-box-${VER}-*.tar.gz
+          ls -la sing-box-${VER}_*.tar.gz
 
       - name: Prepare release body
         run: |
@@ -354,4 +354,4 @@ jobs:
             homeproxy-deploy*.zip
             luci-app-homeproxy_*-all.ipk
             luci-app-homeproxy_*-all.apk
-            sing-box-1.14.3-reF1nd-*.tar.gz
+            sing-box-1.14.3-refind_*.tar.gz
