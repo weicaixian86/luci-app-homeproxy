@@ -2323,6 +2323,14 @@ return view.extend({
 		so.value('0', _('Disable'));
 		so.default = '1';
 		so.rmempty = false;
+		/* 规则1：缓存文件关闭时，持久化 DNS 缓存 / 保存代理选择 自动关闭 */
+		var o_cache_enabled = so;
+		o_cache_enabled.onchange = function(ev, section_id, value) {
+			if (value === '0') {
+				o_cache_store_dns.setValue(section_id, '0');
+				o_cache_store_selected.setValue(section_id, '0');
+			}
+		};
 
 		so = ss.option(form.Value, 'path', _('Persistent cache file path'));
 		so.placeholder = '/etc/homeproxy/cache.db';
@@ -2335,6 +2343,12 @@ return view.extend({
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
+		/* 规则2：持久化 DNS 缓存启用时，缓存文件自动启用（与保存代理选择无关） */
+		var o_cache_store_dns = so;
+		o_cache_store_dns.onchange = function(ev, section_id, value) {
+			if (value === '1')
+				o_cache_enabled.setValue(section_id, '1');
+		};
 
 		so = ss.option(form.ListValue, 'store_selected', _('Save Proxy Selection'));
 		so.value('1', _('Enable'));
@@ -2342,6 +2356,12 @@ return view.extend({
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
+		/* 规则3：保存代理选择启用时，缓存文件自动启用（与持久化 DNS 缓存无关） */
+		var o_cache_store_selected = so;
+		o_cache_store_selected.onchange = function(ev, section_id, value) {
+			if (value === '1')
+				o_cache_enabled.setValue(section_id, '1');
+		};
 
 		/* Cache settings end */
 
