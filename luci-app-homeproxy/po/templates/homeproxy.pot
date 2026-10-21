@@ -241,7 +241,7 @@ msgstr ""
 msgid "Authentication type"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:387
+#: htdocs/luci-static/resources/view/homeproxy/log.js:384
 msgid "Auto refresh"
 msgstr ""
 
@@ -400,11 +400,11 @@ msgstr ""
 msgid "Clash API unavailable."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:396
+#: htdocs/luci-static/resources/view/homeproxy/log.js:393
 msgid "Clean log"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:416
+#: htdocs/luci-static/resources/view/homeproxy/log.js:413
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr ""
 
@@ -438,7 +438,7 @@ msgid "CloudFlare Public DNS (DoH)"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:693
-#: htdocs/luci-static/resources/view/homeproxy/log.js:285
+#: htdocs/luci-static/resources/view/homeproxy/log.js:282
 #: htdocs/luci-static/resources/view/homeproxy/server.js:144
 msgid "Collecting data..."
 msgstr ""
@@ -456,7 +456,7 @@ msgstr ""
 msgid "Connection check"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:407
+#: htdocs/luci-static/resources/view/homeproxy/log.js:404
 msgid "Copy log"
 msgstr ""
 
@@ -537,7 +537,7 @@ msgid ""
 "protection is required."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:242
+#: htdocs/luci-static/resources/view/homeproxy/log.js:241
 msgid "Debug"
 msgstr ""
 
@@ -925,7 +925,7 @@ msgstr ""
 msgid "Encrypt method"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:245
+#: htdocs/luci-static/resources/view/homeproxy/log.js:244
 #: htdocs/luci-static/resources/view/homeproxy/node.js:697
 msgid "Error"
 msgstr ""
@@ -1034,10 +1034,6 @@ msgstr ""
 #: htdocs/luci-static/resources/homeproxy.js:954
 #: htdocs/luci-static/resources/homeproxy.js:992
 msgid "Failed to upload %s, error: %s."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:246
-msgid "Fatal"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1199
@@ -1406,7 +1402,7 @@ msgid ""
 "seconds."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:243
+#: htdocs/luci-static/resources/view/homeproxy/log.js:242
 msgid "Info"
 msgstr ""
 
@@ -1561,7 +1557,7 @@ msgstr ""
 msgid "Listen port"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:283
+#: htdocs/luci-static/resources/view/homeproxy/log.js:280
 msgid "Loading"
 msgstr ""
 
@@ -1573,7 +1569,7 @@ msgstr ""
 msgid "Local address"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:404
+#: htdocs/luci-static/resources/view/homeproxy/log.js:401
 msgid "Log copied to clipboard."
 msgstr ""
 
@@ -1585,7 +1581,7 @@ msgstr ""
 msgid "Log is empty."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:382
+#: htdocs/luci-static/resources/view/homeproxy/log.js:379
 msgid "Log level:"
 msgstr ""
 
@@ -1938,7 +1934,7 @@ msgstr ""
 msgid "Not installed"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:404
+#: htdocs/luci-static/resources/view/homeproxy/log.js:401
 msgid "Nothing to copy."
 msgstr ""
 
@@ -2052,10 +2048,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:212
 msgid "Panel downloaded."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:247
-msgid "Panic"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1113
@@ -2340,7 +2332,7 @@ msgstr ""
 msgid "Redirect TCP + Tun UDP"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:414
+#: htdocs/luci-static/resources/view/homeproxy/log.js:411
 msgid "Refresh every %s seconds."
 msgstr ""
 
@@ -3059,10 +3051,6 @@ msgid ""
 "<code>kmod-tun</code>"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:241
-msgid "Trace"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1417
 #: htdocs/luci-static/resources/view/homeproxy/server.js:406
 msgid "Transport"
@@ -3334,7 +3322,7 @@ msgstr ""
 msgid "WAN IP Policy"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:244
+#: htdocs/luci-static/resources/view/homeproxy/log.js:243
 msgid "Warn"
 msgstr ""
 
