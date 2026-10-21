@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'htdocs/**'
-      - 'root/**'
+      - 'luci-app-homeproxy/htdocs/**'
+      - 'luci-app-homeproxy/root/**'
 
 env:
   GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
@@ -25,6 +25,9 @@ jobs:
         run: |
           sudo -E apt -yqq update
           sudo -E apt -yqq install gettext
+
+          # 本仓库 luci-app 文件位于 luci-app-homeproxy/ 子目录下（非仓库根）
+          cd luci-app-homeproxy
 
           curl -LO "https://github.com/openwrt/luci/raw/master/build/i18n-scan.pl"
           curl -LO "https://github.com/openwrt/luci/raw/master/build/i18n-update.pl"
