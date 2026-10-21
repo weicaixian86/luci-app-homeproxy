@@ -177,6 +177,13 @@ jobs:
             goarch: mipsle
             goarm: ""
             gomips: softfloat
+    env:
+      # 国内可达的 Go 模块代理（goproxy.cn 优先），并关闭 HTTP/2 客户端，
+      # 规避 proxy.golang.org 并发下载大模块时偶发的
+      # "stream error: INTERNAL_ERROR; received from peer" 下载中断。
+      GOPROXY: https://goproxy.cn,https://proxy.golang.org,direct
+      GOSUMDB: "off"
+      GODEBUG: checklinkname=0,http2client=0
     steps:
       - name: Checkout (for the patch)
         uses: actions/checkout@v4
@@ -199,6 +206,21 @@ jobs:
           cd src
           git apply ../tools/sing-box-patches/002-support-clash-proxy-providers-1.14.3-reF1nd.patch
 
+      - name: Download Go modules (retry on transient proxy errors)
+        working-directory: src
+        run: |
+          set -e
+          for i in 1 2 3 4 5 6; do
+            echo "==> go mod download attempt $i"
+            if go mod download; then
+              echo "MODULE_DOWNLOAD_OK"
+              break
+            fi
+            echo "download attempt $i failed, retrying in 8s..."
+            sleep 8
+          done
+          go mod verify || true
+
       - name: Build static binary (CGO_ENABLED=0, musl-free)
         working-directory: src
         env:
@@ -207,7 +229,6 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           GOMIPS: ${{ matrix.gomips }}
-          GODEBUG: checklinkname=0
         run: |
           set -e
           go build -trimpath -o "../sing-box-${{ matrix.arch }}" \
