@@ -617,47 +617,75 @@ return baseclass.extend({
 	   由于不同 luci-base 版本对 `modalonly`、`max_cols`、`sectiontitle` 的
 	   处理并不一致，这里不去改这些属性，而是在渲染结果上做一次精确判定：
 	   「首列文本非空且与次列文本完全相同」的行，其首列即为多余列，删除它；
-	   同时删除表头中对应的首列单元格，使名称等字段整体左移对齐。 */
+	   同时按「表头单元格数是否等于删除前的数据列数」判断表头首格是否属于
+	   该列，属于才删除，使表头与数据行严格对齐（不同版本表头首格分别是
+	   空串或「名称」，不能靠文字判断）。 */
 	dedupeNameColumn(section) {
 		const orig = section.renderContents;
+
+		/* 取单元格可见文本：GridSection 里 Value 选项通常渲染成只读
+		   文本，但个别 luci-base 版本会渲染成 <input>，此时 textContent
+		   为空、真正的值在 input.value 上。 */
+		const cellText = function(td) {
+			const text = (td.textContent || '').trim();
+
+			if (text !== '')
+				return text;
+
+			const input = td.querySelector('input[type="text"], input:not([type])');
+
+			return input ? (input.value || '').trim() : '';
+		};
 
 		section.renderContents = function() {
 			const el = orig.apply(this, arguments);
 
 			try {
-				const rows = el.querySelectorAll('tr.cbi-section-table-row');
-				let removed = 0;
+				/* 只取数据行：表头行只有 TH，会被自然跳过；表格底部的
+				   「添加」行首列是控件，不参与判定。 */
+				const rows = [];
 
-				for (const tr of rows) {
+				for (const tr of el.querySelectorAll('tr')) {
 					const cells = Array.from(tr.children).filter((c) => c.tagName === 'TD');
 
 					if (cells.length < 2)
 						continue;
 
-					/* 首列若是控件列则不可能是重复的名称列 */
 					if (cells[0].querySelector('input, select, button, textarea'))
 						continue;
 
-					const first = (cells[0].textContent || '').trim(),
-					      second = (cells[1].textContent || '').trim();
+					rows.push(cells);
+				}
 
-					if (first === '' || first !== second)
-						continue;
+				if (rows.length === 0)
+					return el;
 
+				/* 首列文本非空且与次列完全相同 → 首列是多余的那列重复名称 */
+				const matched = rows.filter((cells) => {
+					const first = cellText(cells[0]),
+					      second = cellText(cells[1]);
+
+					return first !== '' && first === second;
+				});
+
+				/* 全有或全无：只有所有数据行都判定为冗余时才删除，
+				   避免各行删除情况不同导致行与行列数错位。 */
+				if (matched.length === 0 || matched.length !== rows.length)
+					return el;
+
+				const tdBefore = Math.max(...rows.map((cells) => cells.length));
+
+				for (const cells of matched)
 					cells[0].remove();
-					removed++;
-				}
 
-				if (removed > 0) {
-					const head = el.querySelector('thead > tr > th');
+				/* 表头对齐：仅当表头单元格数等于删除前的数据列数，说明
+				   表头首格确实对应被删的那一列（不同版本分别是空串或
+				   「名称」），才删掉它。若表头本来就比数据行少一格，
+				   说明它并不包含首列，此时删了反而错位。 */
+				const heads = el.querySelectorAll('th');
 
-					/* 只有当表头首格为空（即它确实是那个重复名称列的
-					   占位表头）时才删。部分 luci-base 版本会把首格
-					   写成「名称」，此时它正好可以继续标注左移后的
-					   名称列，不能删。 */
-					if (head && (head.textContent || '').trim() === '')
-						head.remove();
-				}
+				if (heads.length === tdBefore)
+					heads[0].remove();
 			}
 			catch (e) {
 				/* 渲染后处理失败时保持原样，不影响表单功能 */

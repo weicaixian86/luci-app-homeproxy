@@ -156,8 +156,10 @@ return view.extend({
 		s.sortable = true;
 		s.nodescriptions = true;
 		s.modaltitle = L.bind(hp.loadModalTitle, this, _('Server'), _('Add a server'), data[0]);
-		s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		s.renderSectionAdd = L.bind(hp.renderSectionAdd, this, s, null,
+	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
+	/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+	hp.dedupeNameColumn(s);
+	s.renderSectionAdd = L.bind(hp.renderSectionAdd, this, s, null,
 			_('Used as the displayed server name. Chinese is supported. It must be unique.'));
 
 		o = s.option(form.Value, 'label', _('Label'));

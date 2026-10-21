@@ -1568,10 +1568,10 @@ msgstr "匹配进程路径。"
 msgid "Match query type."
 msgstr "匹配请求类型。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:670
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1143
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1407
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1913
 msgid "Match rule set."
-msgstr "匹配规则集。"
+msgstr "选择先后不分匹配优先级，如想分优先级请新建单条规则。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:846
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1283
@@ -2259,7 +2259,7 @@ msgid "Policy nodes"
 msgstr "策略节点"
 
 msgid "List of policy groups. The ticking order decides the node order in the panel, and the first ticked node is used by default."
-msgstr "策略组列表。勾选顺序决定面板中的节点排列顺序，第一个勾选的节点为默认节点。"
+msgstr "选择先后决定节点先后顺序，默认为首选节点。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js
 msgid "Subscription links"

@@ -845,10 +845,10 @@ clash_api = {
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
-	/* Persist the selector choice made in the dashboard across kernel
-	   restarts. Only effective while the cache file is enabled (see below);
-	   the kernel no-ops it otherwise. */
-	store_selected: cache_store_selected !== '0',
+	/* NOTE: the selector choice is persisted via experimental.cache_file.store_selected
+	   below, NOT here. In sing-box 1.12+ the clash_api.*_store_* fields are rejected at
+	   startup (deprecated since 1.8.0, see experimental/clashapi/server.go), so keeping
+	   it here would make the Clash API fail to start. */
 	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
 	   /providers/proxies from this list; empty in non-subscription modes. */
 	proxy_providers: build_proxy_providers()
@@ -1600,11 +1600,12 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 
 	config.experimental = {
 		clash_api,
-		cache_file: {
-			enabled: cache_file_enabled !== '0',
-			path: cache_file_path || (HP_DIR + '/cache.db'),
-			store_dns: strToBool(cache_store_dns),
-		}
+	cache_file: {
+		enabled: cache_file_enabled !== '0',
+		path: cache_file_path || (HP_DIR + '/cache.db'),
+		store_dns: strToBool(cache_store_dns),
+		store_selected: cache_store_selected !== '0',
+	}
 	};
 }
 /* Experimental end */

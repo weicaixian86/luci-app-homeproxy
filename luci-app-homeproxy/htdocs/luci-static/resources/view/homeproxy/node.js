@@ -927,6 +927,8 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	s.max_cols = 7;
 	s.modaltitle = L.bind(hp.loadModalTitle, this, _('Node'), _('Add a node'), data[0]);
 	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
+	/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+	hp.dedupeNameColumn(s);
 	s.node_latency_row_state = node_latency_row_state;
 	s.getNodeLatencyRowState = function(section_id) {
 		return node_latency_row_state.get(section_id);
