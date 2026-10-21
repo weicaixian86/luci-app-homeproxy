@@ -3,7 +3,7 @@
 # HomeProxy 一体化部署脚本
 #   本目录必须包含：
 #     - luci-app-homeproxy_<版本>-all.ipk / .apk   （本仓库 CI 编译的 all 架构包；按包管理器自动选用）
-#     - sing-box                 （打补丁的 reF1nd 内核，版本钉为 1.14.3-reF1nd）
+#     - sing-box                 （打补丁的 reF1nd 内核，版本为 1.14.3-reF1nd_<插件版本>）
 #     - install.sh / README.md   （本脚本与说明）
 #
 # 用法（在路由器上，本脚本所在目录内执行）：
@@ -67,7 +67,7 @@ if ! $PKG_INSTALL "$PKG_FILE"; then
 fi
 
 # ---- 4. 部署打补丁的 sing-box 内核 ------------------------------------------
-echo "==> [3/5] 部署打补丁的 sing-box 内核（版本钉 1.14.3-reF1nd）"
+echo "==> [3/5] 部署打补丁的 sing-box 内核（版本 1.14.3-reF1nd_<插件版本>）"
 if [ ! -x ./sing-box ]; then
   echo ":: 错误：当前目录缺少可执行的 ./sing-box"
   exit 1
@@ -86,7 +86,7 @@ rm -rf /tmp/luci-indexcache /tmp/luci-modulecache 2>/dev/null || true
 
 echo ""
 echo "===== 部署完成，开始校验 ====="
-echo "-- sing-box 版本（应为 1.14.3-reF1nd，与运行时下载跳过条件一致，不会被官方原版覆盖）--"
+echo "-- sing-box 版本（应为 1.14.3-reF1nd_<插件版本>，如 1.14.3-reF1nd_0.1.3；下载跳过条件只比对下划线前的基础版本）--"
 /usr/bin/sing-box version 2>/dev/null || echo "(sing-box version 读取失败)"
 echo ""
 echo "-- 配置里是否生成 proxy_providers（内核补丁生效标志）--"

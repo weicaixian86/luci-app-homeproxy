@@ -34,6 +34,10 @@ CACHE_DIR="/tmp/homeproxy-core-dl"
 
 # Pinned reF1nd release. Only the leading 'v' differs between the git tag and
 # the download path; the version string itself is reused verbatim.
+# NOTE: the shipped binary reports "<REFIND_VERSION>_<plugin-version>" (e.g.
+# 1.14.3-reF1nd_0.1.3) so the UI can distinguish our patched build from the
+# upstream reF1nd release. ensure_core() only compares the part before '_',
+# hence REFIND_VERSION stays the plain base version on purpose.
 REFIND_REPO="weicaixian86/luci-app-homeproxy"
 REFIND_TAG="v1.14.3-reF1nd"
 REFIND_VERSION="1.14.3-reF1nd"
@@ -568,7 +572,7 @@ download_and_install() {
 # Ensure a usable reF1nd core is present. Returns 0 when /usr/bin/sing-box
 # exists (correct version, or at least an existing binary), 1 otherwise.
 ensure_core() {
-	local arch candidates asset cur_ver
+	local arch candidates asset cur_ver cur_base
 
 	sync_time
 	arch="$(detect_arch_name)"
@@ -587,7 +591,14 @@ ensure_core() {
 	fi
 
 	cur_ver="$(installed_core_version)"
-	if [ -x "$CORE_BIN" ] && [ "$cur_ver" = "$REFIND_VERSION" ]; then
+	# The shipped binary reports "<base>_<plugin-version>" (e.g.
+	# 1.14.3-reF1nd_0.1.3). Only the base part is compared so that:
+	#   · an older core installed by a previous release, or a plain "<base>"
+	#     string, is still recognised as up-to-date and never overwritten with
+	#     an official (unpatched) reF1nd binary;
+	#   · the plugin-version suffix stays purely informational for the UI.
+	cur_base="${cur_ver%%_*}"
+	if [ -x "$CORE_BIN" ] && [ "$cur_base" = "$REFIND_VERSION" ]; then
 		log_download "reF1nd 内核已是最新版本：${cur_ver}"
 		return 0
 	fi
