@@ -3583,11 +3583,5 @@ msgstr "作为 DNS 规则的显示名，支持中文。需唯一。"
 msgid "Used as the displayed server name. Chinese is supported. It must be unique."
 msgstr "作为服务器的显示名，支持中文。需唯一。"
 
-msgid "Timeout"
-msgstr "超时"
-
-msgid "unknown error"
-msgstr "未知错误"
-
 
 
