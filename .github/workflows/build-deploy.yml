@@ -323,13 +323,7 @@ jobs:
       - name: Prepare release body
         run: |
           {
-            printf 'HomeProxy 一体化部署包（luci + 打补丁 reF1nd 内核）\n'
             printf '编译时间：%s\n' "$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S CST')"
-            printf '\n包含：\n'
-            printf '  - 各架构一体化 zip（luci 包 + 打补丁内核 + install.sh）\n'
-            printf '  - 独立 luci-app-homeproxy_<版本>-all.ipk / .apk（可 opkg/apk 直接安装）\n'
-            printf '  - sing-box-1.14.3-refind_<版本>-linux-*-musl.tar.gz（供「更新内核」自动下载）\n'
-            printf '架构：amd64 / arm64 / armv7 / mipsle（按路由器 uname -m 选对应 zip）\n'
             if [ -n "${{ inputs.description }}" ]; then
               printf '\n%s\n' "${{ inputs.description }}"
             fi
@@ -348,7 +342,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ inputs.tag }}
-          name: HomeProxy ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
           body_path: release_body.md
           files: |
             homeproxy-deploy*.zip
