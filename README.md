@@ -2,9 +2,9 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面（基于 immortalwrt/homeproxy 修改）。
 
 ## 版本说明
-支持架构：amd64 / arm64 / armv7 / mipsle（Linux musl  
+支持架构：amd64 / arm64 / armv7 / mipsle
 luci-app-homeproxy_<版本>-all.ipk Openwrt 24.10版本LUCI安装包  
-luci-app-homeproxy_<版本>-all.apk Openwrt 25.12版本LUCI安装包
+luci-app-homeproxy_<版本>-all.apk Openwrt 25.12版本LUCI安装包  
 sing-box-1.14.3-refind_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核  
 homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁内核）
 
