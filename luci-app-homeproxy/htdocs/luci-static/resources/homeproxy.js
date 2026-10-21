@@ -651,7 +651,11 @@ return baseclass.extend({
 				if (removed > 0) {
 					const head = el.querySelector('thead > tr > th');
 
-					if (head)
+					/* 只有当表头首格为空（即它确实是那个重复名称列的
+					   占位表头）时才删。部分 luci-base 版本会把首格
+					   写成「名称」，此时它正好可以继续标注左移后的
+					   名称列，不能删。 */
+					if (head && (head.textContent || '').trim() === '')
 						head.remove();
 				}
 			}
