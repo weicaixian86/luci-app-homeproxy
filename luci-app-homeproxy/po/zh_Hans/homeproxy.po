@@ -3383,7 +3383,7 @@ msgstr "启用缓存"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Enable cache file"
-msgstr "启用缓存文件"
+msgstr "缓存文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Persistent cache file path"
