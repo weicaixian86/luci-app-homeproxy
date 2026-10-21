@@ -1010,11 +1010,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Routing node'), _('Add a routing node'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		/* The name is already drawn by the sectiontitle cell above, every other
-		   field lives in the modal. Keep the table free of option columns so
-		   that builds whose luci-base ignores `modalonly` in grid sections can
-		   not render the label option as a second, identical name column. */
-		ss.max_cols = 0;
+		/* 去掉 luci-base 额外插入的那列重复名称，名称列左移对齐 */
+		hp.dedupeNameColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 
@@ -1341,8 +1338,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('Routing rule'), _('Add a routing rule'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		/* Name comes from sectiontitle only, see routing_node. */
-		ss.max_cols = 0;
+		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+		hp.dedupeNameColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Used as the displayed routing rule name. Chinese is supported. It must be unique.'));
 
@@ -1677,8 +1674,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('DNS server'), _('Add a DNS server'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		/* Name comes from sectiontitle only, see routing_node. */
-		ss.max_cols = 0;
+		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+		hp.dedupeNameColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Used as the displayed DNS server name. Chinese is supported. It must be unique.'));
 
@@ -1854,8 +1851,8 @@ return view.extend({
 		ss.nodescriptions = true;
 		ss.modaltitle = L.bind(hp.loadModalTitle, this, _('DNS rule'), _('Add a DNS rule'), data[0]);
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
-		/* Name comes from sectiontitle only, see routing_node. */
-		ss.max_cols = 0;
+		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+		hp.dedupeNameColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Used as the displayed DNS rule name. Chinese is supported. It must be unique.'));
 
@@ -2111,8 +2108,8 @@ return view.extend({
 			return uci.get(data[0], section_id, 'tag') ||
 				uci.get(data[0], section_id, 'label') || section_id;
 		};
-		/* Name comes from sectiontitle only, see routing_node. */
-		ss.max_cols = 0;
+		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
+		hp.dedupeNameColumn(ss);
 		ss.renderSectionAdd = L.bind(renderRuleSetAdd, this, ss);
 
 		so = ss.option(form.Value, 'tag', _('Label'),

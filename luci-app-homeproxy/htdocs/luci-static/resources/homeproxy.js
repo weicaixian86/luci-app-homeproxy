@@ -609,6 +609,62 @@ return baseclass.extend({
 		return label ? title + ' » ' + label : addtitle;
 	},
 
+	/* luci-base 在部分版本里会在 GridSection 的表格行行首额外插入一个
+	   sectiontitle 名称单元格（其表头单元格是空的），而 `label` 选项本身
+	   也会渲染出一列名称，两者内容完全一样，于是表格最左边多出一列重复的
+	   名称且表头整体右移错位。
+
+	   由于不同 luci-base 版本对 `modalonly`、`max_cols`、`sectiontitle` 的
+	   处理并不一致，这里不去改这些属性，而是在渲染结果上做一次精确判定：
+	   「首列文本非空且与次列文本完全相同」的行，其首列即为多余列，删除它；
+	   同时删除表头中对应的首列单元格，使名称等字段整体左移对齐。 */
+	dedupeNameColumn(section) {
+		const orig = section.renderContents;
+
+		section.renderContents = function() {
+			const el = orig.apply(this, arguments);
+
+			try {
+				const rows = el.querySelectorAll('tr.cbi-section-table-row');
+				let removed = 0;
+
+				for (const tr of rows) {
+					const cells = Array.from(tr.children).filter((c) => c.tagName === 'TD');
+
+					if (cells.length < 2)
+						continue;
+
+					/* 首列若是控件列则不可能是重复的名称列 */
+					if (cells[0].querySelector('input, select, button, textarea'))
+						continue;
+
+					const first = (cells[0].textContent || '').trim(),
+					      second = (cells[1].textContent || '').trim();
+
+					if (first === '' || first !== second)
+						continue;
+
+					cells[0].remove();
+					removed++;
+				}
+
+				if (removed > 0) {
+					const head = el.querySelector('thead > tr > th');
+
+					if (head)
+						head.remove();
+				}
+			}
+			catch (e) {
+				/* 渲染后处理失败时保持原样，不影响表单功能 */
+			}
+
+			return el;
+		};
+
+		return section;
+	},
+
 	normalizeSectionId(label, prefix) {
 		let section_id = (label || '').trim().replace(/[^A-Za-z0-9_]/g, '_').replace(/^_+|_+$/g, '');
 		return (prefix || 'cfg') + '_' + (section_id || 'section');
