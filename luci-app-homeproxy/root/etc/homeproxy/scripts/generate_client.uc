@@ -167,7 +167,7 @@ if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
 
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
-let cache_file_enabled, cache_file_path, cache_store_dns,
+let cache_file_enabled, cache_file_path, cache_store_dns, cache_store_selected,
     main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
     dns_default_server, dns_disable_cache, dns_disable_cache_expire,
@@ -250,6 +250,7 @@ const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'info';
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');
 cache_store_dns = uci.get(uciconfig, ucicache, 'store_dns');
+cache_store_selected = uci.get(uciconfig, ucicache, 'store_selected');
 
 let clash_api = null;
 /* UCI config end */
@@ -435,6 +436,34 @@ function normalize_outbound_tag(tag) {
 	return tag || null;
 }
 
+/* Airport (subscription) name per subscription group hash.
+ *
+ * Clash dashboards (zashboard & co.) only ever display the sing-box outbound
+ * tag, so an airport marker has to live inside the tag itself. Every node
+ * imported from a subscription carries the md5 of its (fragment-stripped) URL
+ * in `grouphash`, which is exactly what update_subscriptions.uc and the LuCI
+ * web UI use to map a node back to its subscription. Keys are built the same
+ * way as in build_proxy_providers() below. */
+function resolve_subscription_group_names() {
+	let names = {},
+	    urls = normalize_list(uci.get(uciconfig, 'subscription', 'subscription_url')),
+	    labels = normalize_list(uci.get(uciconfig, 'subscription', 'subscription_name'));
+
+	for (let i = 0; i < length(urls); i++) {
+		const url = replace(trim(urls[i] || ''), /#.*$/, ''),
+		      name = normalize_outbound_tag(labels[i]);
+
+		if (isEmpty(url) || isEmpty(name))
+			continue;
+
+		names[md5(url)] = name;
+	}
+
+	return names;
+}
+
+const subscription_group_names = resolve_subscription_group_names();
+
 /* Assigned (not declared) here: see the forward declaration above for why. */
 section_display_name = function(section) {
 	if (type(section) !== 'object' || isEmpty(section))
@@ -464,12 +493,23 @@ function register_outbound_tag(section_id, display_name) {
 		return tag;
 
 	const fallback_tag = `cfg-${section_id}-out`;
-	const base_tag = normalize_outbound_tag(display_name) || fallback_tag;
+	let base_tag = normalize_outbound_tag(display_name) || fallback_tag;
 
 	/* No readable label/address: the internal tag leaks into Clash
 	   dashboards (e.g. zashboard). Log it so it can be traced back. */
 	if (base_tag === fallback_tag)
 		system(sprintf('logger -t homeproxy "Warning: outbound %s has no label or address; falling back to internal tag %s, it will show as-is in Clash dashboards."', shellQuote(section_id), shellQuote(fallback_tag)));
+	else {
+		/* Subscription nodes are tagged "[<airport>] <node name>" so the
+		   airport stays visible in Clash dashboards, which can only show
+		   the tag. The LuCI web UI keeps its own "[<airport>] " prefix on
+		   top of the raw label, so users see it exactly once in both UIs. */
+		const group_hash = uci.get(uciconfig, section_id, 'grouphash'),
+		      airport = isEmpty(group_hash) ? null : subscription_group_names[group_hash];
+
+		if (!isEmpty(airport))
+			base_tag = `[${airport}] ${base_tag}`;
+	}
 
 	tag = base_tag;
 	let suffix = 2;
@@ -844,14 +884,16 @@ clash_api = {
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
-	/* NOTE: selector choice persistence (store_selected) is intentionally NOT emitted
-	   here nor in cache_file. In sing-box 1.12+ the clash_api.store_selected is rejected
-	   at startup (deprecated since 1.8.0, see experimental/clashapi/server.go), and the
-	   reF1nd 1.14.3-reF1nd kernel's experimental.cache_file struct also has no
-	   store_selected field (only store_dns / store_fakeip / store_rdrc). Emitting it in
-	   either place makes sing-box abort at startup with `unknown field "store_selected"`
-	   or the clash-api deprecation error — which is exactly what broke the service.
-	   Proxy selection therefore resets on restart on this kernel. */
+	/* NOTE: selector choice persistence (store_selected) is emitted ONLY under
+	   experimental.cache_file (see the cache_file block below), NEVER under clash_api.
+	   In sing-box 1.12+ clash_api.store_selected is rejected at startup (deprecated
+	   since 1.8.0, see experimental/clashapi/server.go) — emitting it there makes the
+	   Clash API abort. The stock reF1nd 1.14.3-reF1nd kernel's cache_file also lacked
+	   the field, but this repo's build-deploy.yml applies
+	   tools/sing-box-patches/003-add-cache-file-store-selected.patch which adds it back,
+	   so the patched kernel accepts cache_file.store_selected and persists the selected
+	   outbound across restarts. Outdated stock kernels without that patch would reject
+	   it as an unknown field. */
 	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
 	   /providers/proxies from this list; empty in non-subscription modes. */
 	proxy_providers: build_proxy_providers()
@@ -1606,7 +1648,8 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 		cache_file: {
 			enabled: cache_file_enabled !== '0',
 			path: cache_file_path || (HP_DIR + '/cache.db'),
-			store_dns: strToBool(cache_store_dns)
+			store_dns: strToBool(cache_store_dns),
+			store_selected: cache_store_selected !== '0'
 		}
 	};
 }

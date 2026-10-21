@@ -1,0 +1,52 @@
+diff --git a/experimental/cachefile/cache.go b/experimental/cachefile/cache.go
+index 149d964..edebf34 100644
+--- a/experimental/cachefile/cache.go
++++ b/experimental/cachefile/cache.go
+@@ -54,6 +54,7 @@ type CacheFile struct {
+ 	storeFakeIP             bool
+ 	storeRDRC               bool
+ 	storeDNS                bool
++	storeSelected           bool
+ 	disableExpire           bool
+ 	rdrcTimeout             time.Duration
+ 	optimisticTimeout       time.Duration
+@@ -123,6 +124,7 @@ func New(ctx context.Context, logger logger.Logger, options option.CacheFileOpti
+ 		storeFakeIP:  options.StoreFakeIP,
+ 		storeRDRC:    options.StoreRDRC,
+ 		storeDNS:     options.StoreDNS,
++		storeSelected: options.StoreSelected,
+ 		rdrcTimeout:  rdrcTimeout,
+ 		saveDomain:   make(map[netip.Addr]string),
+ 		saveAddress4: make(map[string]netip.Addr),
+@@ -394,6 +396,9 @@ func (c *CacheFile) createBucket(t *bbolt.Tx, key []byte) (*bbolt.Bucket, error)
+ }
+ 
+ func (c *CacheFile) LoadSelected(group string) string {
++	if !c.storeSelected {
++		return ""
++	}
+ 	var selected string
+ 	c.view(func(t *bbolt.Tx) error {
+ 		bucket := c.bucket(t, bucketSelected)
+@@ -410,6 +415,9 @@ func (c *CacheFile) LoadSelected(group string) string {
+ }
+ 
+ func (c *CacheFile) StoreSelected(group, selected string) error {
++	if !c.storeSelected {
++		return nil
++	}
+ 	return c.batch(func(t *bbolt.Tx) error {
+ 		bucket, err := c.createBucket(t, bucketSelected)
+ 		if err != nil {
+diff --git a/option/experimental.go b/option/experimental.go
+index 7efdfd9..de2e210 100644
+--- a/option/experimental.go
++++ b/option/experimental.go
+@@ -27,6 +27,7 @@ type CacheFileOptions struct {
+ 	StoreRDRC   bool               `json:"store_rdrc,omitempty" schema:"omit"`
+ 	RDRCTimeout badoption.Duration `json:"rdrc_timeout,omitempty"`
+ 	StoreDNS    bool               `json:"store_dns,omitempty"`
++	StoreSelected bool                     `json:"store_selected,omitempty"`
+ }
+ 
+ type ClashAPIOptions struct {

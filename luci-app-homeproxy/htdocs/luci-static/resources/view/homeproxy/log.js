@@ -238,13 +238,10 @@ function renderUnifiedLog() {
 	];
 
 	const log_level_choices = {
-		trace: _('Trace'),
 		debug: _('Debug'),
 		info:  _('Info'),
 		warn:  _('Warn'),
-		error: _('Error'),
-		fatal: _('Fatal'),
-		panic: _('Panic')
+		error: _('Error')
 	};
 
 	const selected = uci.get('homeproxy', 'config', 'log_level') || 'info';

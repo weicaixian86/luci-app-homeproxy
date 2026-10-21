@@ -212,11 +212,14 @@ jobs:
           cd src
           git checkout v1.14.3-reF1nd
 
-      - name: Apply clash proxy-providers patch
+      - name: Apply sing-box patches
         run: |
           set -e
           cd src
-          git apply ../tools/sing-box-patches/002-support-clash-proxy-providers-1.14.3-reF1nd.patch
+          for p in ../tools/sing-box-patches/*.patch; do
+            echo "==> applying $p"
+            git apply "$p"
+          done
 
       - name: Download Go modules (retry on transient proxy errors)
         working-directory: src
