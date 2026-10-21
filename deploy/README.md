@@ -2,7 +2,7 @@
 
 本 ZIP 由 GitHub Actions 自动构建，内含：
 
-- `luci-app-homeproxy.ipk` —— 本仓库用 OpenWrt SDK 编译的 **all 架构** luci 包（含中文 lmo）
+- `luci-app-homeproxy_<版本>-all.ipk` / `.apk` —— 本仓库用 OpenWrt SDK 编译的 **all 架构** luci 包（含中文 lmo；按包管理器二选一）
 - `sing-box` —— **打过补丁的 reF1nd sing-box 1.14.3-reF1nd** 静态二进制（对应架构）
 - `install.sh` —— 一键部署脚本
 - `README.md` —— 本说明
@@ -16,19 +16,18 @@
 
 1. 打开你的仓库 **Actions** 页面：
    `https://github.com/<你>/luci-app-homeproxy/actions`
-2. 选择工作流 **Build All-in-One Deploy ZIP** → **Run workflow**
+2. 选择工作流 **Build & Release All-in-One** → **Run workflow**
 3. 填写：
-   - `tag`：版本号，例如 `2.0.0`（不需要 `v` 前缀，它会作为包版本与 Release 名）
+   - `tag`：版本号，例如 `0.1.01`（建议不带 `v` 前缀；它就是 Release 标签与包版本）
    - `description`：Release 描述（可选）
 4. 等待所有 job 完成（luci 编译 + 4 个架构内核 + 打包，约 15–30 分钟）
-5. 到 **Releases** 页面下载对应架构的 zip：
-   - `homeproxy-deploy-amd64-<ver>.zip`   → x86_64 路由器
-   - `homeproxy-deploy-arm64-<ver>.zip`   → aarch64 路由器
-   - `homeproxy-deploy-armv7-<ver>.zip`   → armv7（如 N1、部分 ARM 软路由）
-   - `homeproxy-deploy-mipsle-<ver>.zip`  → mipsel（如 MTK 7621/7620 等）
+5. 到 **Releases** 页面，该版本只有一个 Release（标签即你填的版本号），内含：
+   - `homeproxy-deploy-amd64-<ver>.zip` / `-arm64-` / `-armv7-` / `-mipsle-`：各架构一体化部署包
+   - `luci-app-homeproxy_<ver>-all.ipk` / `.apk`：独立 luci 包（不含内核，装后自动下载）
+   - `sing-box-1.14.3-reF1nd-linux-*-musl.tar.gz`：打补丁内核（供「更新内核」自动下载）
 
 > 说明：luci 包是架构无关的（all），每个 zip 只是内核二进制不同。
-> Release tag 为 `deploy-<ver>`，与现有 luci-only 的 Release 互不冲突。
+> 一个版本 = 一个 Release 标签（如 `0.1.01`），所有产物都在里面。
 
 ---
 
@@ -36,11 +35,11 @@
 
 ```bash
 # 在本机把 zip 传到路由器
-scp homeproxy-deploy-amd64-2.0.0.zip root@路由器IP:/tmp/
+scp homeproxy-deploy-amd64-0.1.01.zip root@路由器IP:/tmp/
 
 # SSH 进路由器，一条复合命令：解压 + 进入目录 + 执行安装
 ssh root@路由器IP
-cd /tmp && unzip -o homeproxy-deploy-amd64-2.0.0.zip && cd homeproxy-deploy-amd64-2.0.0 && sh install.sh
+cd /tmp && unzip -o homeproxy-deploy-amd64-0.1.01.zip && cd homeproxy-deploy-amd64-0.1.01 && sh install.sh
 ```
 
 `install.sh` 会自动：停服务 → 用 opkg/apk 安装 luci（自动解决依赖，需联网或已配源）→
@@ -63,10 +62,11 @@ cd /tmp && unzip -o homeproxy-deploy-amd64-2.0.0.zip && cd homeproxy-deploy-amd6
 
 ## 四、重要注意事项
 
-1. **面板「更新内核」现在可用且安全（amd64/arm64）**：`update_core.sh` 的 `REFIND_REPO`
-   已指向本仓库（`weicaixian86/luci-app-homeproxy`）的 `v1.14.3-reF1nd` Release，里面是
-   **带补丁**的内核。点「更新内核」会从你的仓库拉补丁版，不会丢补丁。
-   armv7/mipsle 不在自动下载名单中，仍请用 `install.sh` 升级（zip 内已含对应内核）。
+1. **面板「更新内核」可用且安全（全架构）**：`update_core.sh` 的 `REFIND_REPO` 指向本仓库
+   （`weicaixian86/luci-app-homeproxy`），`REFIND_TAG` 在构建时被改写为该版本的 Release 标签
+   （如 `0.1.01`），里面是**带补丁**的内核。点「更新内核」会从同一个 Release 拉补丁版，不会丢补丁；
+   amd64 / arm64 / armv7 / mipsle 均已纳入自动下载（大端 mips 与 armv5/6 暂未构建）。
+   ⚠️ 不要删除已发布的 Release——旧版 luci 的自动下载仍指向它。
 2. **版本钉死的意义**：二进制版本号被编译为 `1.14.3-reF1nd`，与官方原版一致，因此
    homeproxy 启动时的 `ensure_core` 会判定「已是最新」并**跳过下载**，从而保留补丁。
    若用裸 `go build` 编译导致版本为 `unknown`，会被判定需更新而被覆盖。
@@ -74,8 +74,8 @@ cd /tmp && unzip -o homeproxy-deploy-amd64-2.0.0.zip && cd homeproxy-deploy-amd6
    kmod-nft-tproxy / curl / jsonfilter / ucode-*` 等；若你的镜像缺少源，安装会警告，
    需先配好软件源或手动补齐依赖，否则面板/分流不可用。
 4. **apk 镜像（OpenWrt 25.12+）**：每个 zip 内已同时含 `.ipk` 与 `.apk`，`install.sh` 会
-   按当前包管理器自动选对文件安装，无需额外操作。`deploy-<ver>` Release 也单独提供了
-   `luci-app-homeproxy.apk`，可直接 `apk add --allow-untrusted` 安装后再走自动下载内核。
+   按当前包管理器自动选对文件安装，无需额外操作。同一 Release 也单独提供了
+   `luci-app-homeproxy_<ver>-all.apk`，可直接 `apk add --allow-untrusted` 安装后再走自动下载内核。
 
 ---
 

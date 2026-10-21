@@ -2,7 +2,7 @@
 # =============================================================================
 # HomeProxy 一体化部署脚本
 #   本目录必须包含：
-#     - luci-app-homeproxy.ipk / .apk   （本仓库 CI 用 OpenWrt SDK 编译的 all 架构包；按包管理器选其一）
+#     - luci-app-homeproxy_<版本>-all.ipk / .apk   （本仓库 CI 编译的 all 架构包；按包管理器自动选用）
 #     - sing-box                 （打补丁的 reF1nd 内核，版本钉为 1.14.3-reF1nd）
 #     - install.sh / README.md   （本脚本与说明）
 #
@@ -31,7 +31,7 @@ elif command -v opkg >/dev/null 2>&1; then
   PKG_REMOVE="opkg remove"
 else
   echo ":: 错误：未找到 opkg 或 apk，无法安装 luci。"
-  echo "   请先手动安装 ./luci-app-homeproxy.ipk，再单独部署内核（把 ./sing-box 拷到 /usr/bin/sing-box）。"
+  echo "   请先手动安装 ./luci-app-homeproxy_*-all.ipk，再单独部署内核（把 ./sing-box 拷到 /usr/bin/sing-box）。"
   exit 1
 fi
 echo "==> 包管理器: $PKG"
@@ -43,14 +43,19 @@ sleep 1
 
 # ---- 3. 安装 / 重装 luci-app-homeproxy --------------------------------------
 echo "==> [2/5] 安装 luci-app-homeproxy（自动解决依赖，需联网或已配置软件源）"
-# 按当前包管理器选择对应的包文件（zip 内同时含 .ipk 与 .apk）
+# 按当前包管理器选择对应的包文件（zip 内同时含 .ipk 与 .apk；文件名带版本号）
 case "$PKG" in
-  apk)  PKG_FILE="./luci-app-homeproxy.apk" ;;
-  opkg) PKG_FILE="./luci-app-homeproxy.ipk" ;;
-  *)    PKG_FILE="" ;;
+  apk)  PKG_EXT="apk" ;;
+  opkg) PKG_EXT="ipk" ;;
+  *)    PKG_EXT="" ;;
 esac
-if [ -z "$PKG_FILE" ] || [ ! -f "$PKG_FILE" ]; then
-  echo ":: 错误：当前目录缺少 $PKG_FILE"
+PKG_FILE=""
+if [ -n "$PKG_EXT" ]; then
+  # 兼容 luci-app-homeproxy_<版本>-all.ipk / 不带版本号的旧命名
+  PKG_FILE="$(ls ./luci-app-homeproxy*.${PKG_EXT} 2>/dev/null | head -n1)"
+fi
+if [ -z "$PKG_FILE" ]; then
+  echo ":: 错误：当前目录缺少 luci-app-homeproxy*.${PKG_EXT}"
   echo "   请确认下载的是与本机包管理器匹配的部署包（opkg→.ipk，apk→.apk）。"
   exit 1
 fi
@@ -89,7 +94,7 @@ grep -A2 proxy_providers /var/run/homeproxy/sing-box-c.json 2>/dev/null \
   || echo "(配置尚未生成：请到面板『保存并应用』一次，再重启 homeproxy 后重试)"
 echo ""
 echo "提示："
-echo "  1) 面板『更新内核』现在已指向本仓库的 v1.14.3-reF1nd Release（含补丁内核）："
+echo "  1) 面板『更新内核』指向本次发布标签的 Release（如 0.1.01，含补丁内核）："
 echo "     amd64/arm64 点它会从你的仓库拉补丁版，安全；armv7/mipsle 不在自动下载名单，"
 echo "     仍请用本脚本升级（zip 内已含对应内核）。"
 echo "  2) 要升级内核/面板时，重新跑本脚本即可（它会再次覆盖 /usr/bin/sing-box 并重装 luci）。"

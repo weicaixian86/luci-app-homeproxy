@@ -7,13 +7,14 @@ name: Build & Release All-in-One
 #     两者均含中文 lmo；独立产物随 Release 发布，可直接 opkg/apk 安装。
 #   - core job（matrix）：clone reF1nd/sing-box @ v1.14.3-reF1nd，打补丁，Go 交叉编译
 #     多架构静态内核（amd64 / arm64 / armv7 / mipsle）
-#   - package job：
-#       · 把 luci .ipk + 各架构内核 + install.sh + README 打包成每架构一个 zip；
-#       · 把打补丁内核打包成 sing-box-1.14.3-reF1nd-linux-{amd64,amd64v3,arm64}-musl.tar.gz；
-#       · 发到 Release（tag: deploy-<version>），含 zip + 独立 IPK + 独立 APK；
-#       · 另发 v1.14.3-reF1nd Release（仅内核 tar.gz），供面板「更新内核」自动下载补丁版。
+#   - package job：只发一个 Release，tag 即输入版本号（如 0.1.01），包含：
+#       · 每架构一个一体化 zip（luci 包 + 内核 + install.sh + README）
+#       · 独立 luci-app-homeproxy_<ver>-all.ipk / .apk
+#       · sing-box-1.14.3-reF1nd-linux-{amd64,amd64v3,arm64,armv7,mipsle}-musl.tar.gz
+#     构建时会把 update_core.sh 的 REFIND_TAG 改写为该 Release 标签，
+#     使「更新内核」按钮从同一个 Release 自动下载打补丁内核。
 #
-# 触发：手动（workflow_dispatch）填版本号（不需要 v 前缀）。
+# 触发：手动（workflow_dispatch）填版本号（如 0.1.01；建议不带 v 前缀）。
 
 on:
   workflow_dispatch:
@@ -82,13 +83,20 @@ jobs:
           echo "package source directory: $found"
 
       - name: Update package version from tag
+        id: version
         run: |
           set -e
           pkg_dir="${{ steps.pkgdir.outputs.dir }}"
-          version="${{ inputs.tag }}"
+          tag="${{ inputs.tag }}"
+          version="${tag#v}"; version="${version#V}"
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$version/" "$pkg_dir/Makefile"
           sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" "$pkg_dir/Makefile"
+          # 单一 Release 方案：把运行时内核下载标签改写为本次发布标签（tag 原样保留），
+          # 使「更新内核」从同一个 Release 拉取打补丁内核。
+          sed -i "s|^REFIND_TAG=.*|REFIND_TAG=\"$tag\"|" "$pkg_dir/root/etc/homeproxy/scripts/update_core.sh"
           grep -E '^PKG_(VERSION|RELEASE):=' "$pkg_dir/Makefile"
+          grep -E '^REFIND_TAG=' "$pkg_dir/root/etc/homeproxy/scripts/update_core.sh"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
 
       - name: Download and extract SDK (${{ matrix.name }})
         run: |
@@ -140,16 +148,18 @@ jobs:
         run: |
           set -e
           ext="${{ matrix.ext }}"
+          version="${{ steps.version.outputs.version }}"
           src="$(find sdk/bin -type f -name "luci-app-homeproxy*.${ext}" | head -n1)"
           [ -n "$src" ] || { echo "::error::luci .${ext} not found"; exit 1; }
-          cp -f "$src" "luci-app-homeproxy.${ext}"
-          ls -la "luci-app-homeproxy.${ext}"
+          out="luci-app-homeproxy_${version}-all.${ext}"
+          cp -f "$src" "$out"
+          ls -la "$out"
 
       - name: Upload luci ${{ matrix.ext }} artifact
         uses: actions/upload-artifact@v4
         with:
           name: luci-${{ matrix.ext }}
-          path: luci-app-homeproxy.${{ matrix.ext }}
+          path: luci-app-homeproxy_*-all.${{ matrix.ext }}
 
   # ===========================================================================
   # 2) 编译打补丁的 reF1nd 内核（多架构）
@@ -271,13 +281,14 @@ jobs:
       - name: Build per-architecture ZIPs
         run: |
           set -e
-          version="${{ inputs.tag }}"
+          tag="${{ inputs.tag }}"
+          version="${tag#v}"; version="${version#V}"
           echo "version=$version"
           for arch in amd64 arm64 armv7 mipsle; do
             d="homeproxy-deploy-$arch-$version"
             mkdir -p "$d"
-            cp -f "artifacts/luci-ipk/luci-app-homeproxy.ipk" "$d/"
-            cp -f "artifacts/luci-apk/luci-app-homeproxy.apk" "$d/"
+            cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk "$d/"
+            cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk "$d/"
             cp -f "artifacts/sing-box-$arch/sing-box-$arch"        "$d/sing-box"
             cp -f deploy/install.sh                                "$d/"
             cp -f deploy/README.md                                 "$d/"
@@ -312,7 +323,10 @@ jobs:
           {
             printf 'HomeProxy 一体化部署包（luci + 打补丁 reF1nd 内核）\n'
             printf '编译时间：%s\n' "$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S CST')"
-            printf '\n包含：luci-app-homeproxy(.ipk) + sing-box(1.14.3-reF1nd, 打补丁) + install.sh\n'
+            printf '\n包含：\n'
+            printf '  - 各架构一体化 zip（luci 包 + 打补丁内核 + install.sh）\n'
+            printf '  - 独立 luci-app-homeproxy_<版本>-all.ipk / .apk（可 opkg/apk 直接安装）\n'
+            printf '  - sing-box-1.14.3-reF1nd-linux-*-musl.tar.gz（供「更新内核」自动下载）\n'
             printf '架构：amd64 / arm64 / armv7 / mipsle（按路由器 uname -m 选对应 zip）\n'
             if [ -n "${{ inputs.description }}" ]; then
               printf '\n%s\n' "${{ inputs.description }}"
@@ -324,25 +338,18 @@ jobs:
       - name: Stage standalone luci packages
         run: |
           set -e
-          cp -f "artifacts/luci-ipk/luci-app-homeproxy.ipk" ./luci-app-homeproxy.ipk
-          cp -f "artifacts/luci-apk/luci-app-homeproxy.apk" ./luci-app-homeproxy.apk
-          ls -la luci-app-homeproxy.*
+          cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk ./
+          cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk ./
+          ls -la luci-app-homeproxy_*
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: deploy-${{ inputs.tag }}
-          name: Deploy ${{ inputs.tag }}
+          tag_name: ${{ inputs.tag }}
+          name: HomeProxy ${{ inputs.tag }}
           body_path: release_body.md
           files: |
             homeproxy-deploy-*.zip
-            luci-app-homeproxy.ipk
-            luci-app-homeproxy.apk
-
-      - name: Publish patched core to auto-update release (v1.14.3-reF1nd)
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.14.3-reF1nd
-          name: sing-box core 1.14.3-reF1nd (patched)
-          body: "打补丁的 reF1nd sing-box 内核（clash proxy-providers 补丁），供 luci-app-homeproxy 运行时「更新内核」自动下载。REFIND_REPO=weicaixian86/luci-app-homeproxy"
-          files: sing-box-1.14.3-reF1nd-*.tar.gz
+            luci-app-homeproxy_*-all.ipk
+            luci-app-homeproxy_*-all.apk
+            sing-box-1.14.3-reF1nd-*.tar.gz

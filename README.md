@@ -1,12 +1,13 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面。
-HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装包内不预置任何单一架构的 sing-box 二进制**。运行时由插件根据设备架构，从本仓库的 Release（`weicaixian86/luci-app-homeproxy`，标签 `v1.14.3-reF1nd`）下载对应架构的打补丁内核压缩包（含 clash proxy-providers 补丁），校验后安装到 `/usr/bin/sing-box`。
-当前固定使用 reF1nd 定制内核：
-- 版本：`1.14.3-reF1nd`
-- 发布地址：`https://github.com/weicaixian86/luci-app-homeproxy/releases/tag/v1.14.3-reF1nd`
-reF1nd 目前已发布 Linux musl 构建的架构：
+HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装包内不预置任何单一架构的 sing-box 二进制**。运行时由插件根据设备架构，从本仓库的 Release（`weicaixian86/luci-app-homeproxy`）下载对应架构的打补丁内核压缩包（含 clash proxy-providers 补丁），校验后安装到 `/usr/bin/sing-box`。
+
+内核版本固定为 reF1nd 定制内核 `1.14.3-reF1nd`。该内核由本仓库的 `build-deploy.yml` 工作流云端编译（amd64 / arm64 / armv7 / mipsle 四种 Linux musl 架构），并随每个版本发布到**对应版本号的 Release 标签**（例如 `0.1.01`）。注意：发布标签不再固定为 `v1.14.3-reF1nd`，而是每次发布时你输入的版本号；工作流会自动把 `update_core.sh` 里的 `REFIND_TAG` 改写为该标签，因此「更新内核」会从该版本的 Release 拉取打补丁内核（已发布的版本 Release 请不要删除，否则旧版 luci 的自动下载会失效）。
+
+已提供 Linux musl 构建的架构：
 - `x86_64`（`linux-amd64-musl`）
 - `aarch64`（`linux-arm64-musl`）
-其余架构（armv7-musleabihf / armv7-musleabi / arm-musleabihf / arm-musleabi / mips / mipsel）reF1nd 暂未发布对应构建，插件会在日志中提示“暂无可下载的二进制程序”，作者后续可能会补充；已安装的内核（若有）仍可继续使用。
+- `armv7`（如 `linux-armv7-musleabihf`）
+- `mipsel`（`linux-mipsle-musl`）
 
 ## 一、安装
 
@@ -45,7 +46,7 @@ rm -rf /tmp/luci-modulecache/*
 
 ## 三、维护工作流
 
-- `build-deploy.yml`（Build & Release All-in-One）：手动触发，输入版本号后，云端编译打补丁的 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci 包（24.10 IPK 与 25.12 APK）。产出全部发到 `deploy-<版本>` Release，包含：每架构一个一体化 zip（luci IPK + 内核 + install.sh）、独立可装的 `luci-app-homeproxy.ipk` / `.apk`；**同时**把 amd64/arm64 的内核压缩包发到 `v1.14.3-reF1nd` Release，供「更新内核」按钮自动下载打补丁内核。只跑这一个 workflow 即可覆盖所有安装方式。
+- `build-deploy.yml`（Build & Release All-in-One）：手动触发，输入版本号（如 `0.1.01`）后，云端编译打补丁的 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci 包（24.10 IPK 与 25.12 APK）。只发**一个** Release，标签即该版本号，包含：每架构一个一体化 zip（luci 包 + 内核 + install.sh）、独立可装的 `luci-app-homeproxy_<版本>-all.ipk` / `.apk`、以及 `sing-box-1.14.3-reF1nd-linux-*-musl.tar.gz`（供「更新内核」自动下载）。构建时会把 `update_core.sh` 的 `REFIND_TAG` 改写为该 Release 标签，因此装 IPK/APK 后也能自动从同一 Release 拉到打补丁内核。
 - `Rescan-Translation.yml`：代码变更后自动重新扫描并更新翻译文件，也支持手动运行。
 - `Update-Geodata.yml`：每周自动更新内置 geodata 资源，也支持手动运行。
 
