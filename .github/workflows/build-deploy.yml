@@ -10,7 +10,7 @@ name: Build & Release All-in-One
 #   - package job：只发一个 Release，tag 即输入版本号（如 0.1.01），包含：
 #       · 每架构一个一体化 zip（luci 包 + 内核 + install.sh + README）
 #       · 独立 luci-app-homeproxy_<ver>-all.ipk / .apk
-#       · sing-box-1.14.3-reF1nd-linux_<版本>-{amd64,amd64v3,arm64,armv7,mipsle}-musl.tar.gz
+#       · sing-box-1.14.3-refind_<版本>-linux-{amd64,amd64v3,arm64,armv7,mipsle}-musl.tar.gz
 #     构建时会把 update_core.sh 的 REFIND_TAG 改写为该 Release 标签，
 #     使「更新内核」按钮从同一个 Release 自动下载打补丁内核。
 #
@@ -300,23 +300,23 @@ jobs:
       - name: Build core tarballs for runtime auto-update
         run: |
           set -e
-          VER="1.14.3-reF1nd"
+          VER="1.14.3-refind"
           tag="${{ inputs.tag }}"
           version="${tag#v}"; version="${version#V}"
           # amd64（基线二进制，兼容所有 x86_64，含 x86-64-v3）
           cp -f "artifacts/sing-box-amd64/sing-box-amd64" sing-box
-          tar -czf "sing-box-${VER}-linux_${version}-amd64-musl.tar.gz" sing-box
+          tar -czf "sing-box-${VER}_${version}-linux-amd64-musl.tar.gz" sing-box
           # amd64v3 候选：复用同一基线二进制（update_core.sh 优先尝试 v3 名，失败回退到上面的 amd64）
-          cp -f "sing-box-${VER}-linux_${version}-amd64-musl.tar.gz" "sing-box-${VER}-linux_${version}-amd64v3-musl.tar.gz"
+          cp -f "sing-box-${VER}_${version}-linux-amd64-musl.tar.gz" "sing-box-${VER}_${version}-linux-amd64v3-musl.tar.gz"
           # arm64
           cp -f "artifacts/sing-box-arm64/sing-box-arm64" sing-box
-          tar -czf "sing-box-${VER}-linux_${version}-arm64-musl.tar.gz" sing-box
+          tar -czf "sing-box-${VER}_${version}-linux-arm64-musl.tar.gz" sing-box
           # armv7（对应 armv7-musleabihf / armv7-musleabi，供 update_core.sh 自动下载）
           cp -f "artifacts/sing-box-armv7/sing-box-armv7" sing-box
-          tar -czf "sing-box-${VER}-linux_${version}-armv7-musl.tar.gz" sing-box
+          tar -czf "sing-box-${VER}_${version}-linux-armv7-musl.tar.gz" sing-box
           # mipsle（小端 mips；大端 mips 暂不发布）
           cp -f "artifacts/sing-box-mipsle/sing-box-mipsle" sing-box
-          tar -czf "sing-box-${VER}-linux_${version}-mipsle-musl.tar.gz" sing-box
+          tar -czf "sing-box-${VER}_${version}-linux-mipsle-musl.tar.gz" sing-box
           rm -f sing-box
           ls -la sing-box-${VER}-*.tar.gz
 
@@ -328,7 +328,7 @@ jobs:
             printf '\n包含：\n'
             printf '  - 各架构一体化 zip（luci 包 + 打补丁内核 + install.sh）\n'
             printf '  - 独立 luci-app-homeproxy_<版本>-all.ipk / .apk（可 opkg/apk 直接安装）\n'
-            printf '  - sing-box-1.14.3-reF1nd-linux_<版本>-*-musl.tar.gz（供「更新内核」自动下载）\n'
+            printf '  - sing-box-1.14.3-refind_<版本>-linux-*-musl.tar.gz（供「更新内核」自动下载）\n'
             printf '架构：amd64 / arm64 / armv7 / mipsle（按路由器 uname -m 选对应 zip）\n'
             if [ -n "${{ inputs.description }}" ]; then
               printf '\n%s\n' "${{ inputs.description }}"
