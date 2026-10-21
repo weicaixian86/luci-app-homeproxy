@@ -22,7 +22,7 @@
    - `description`：Release 描述（可选）
 4. 等待所有 job 完成（luci 编译 + 4 个架构内核 + 打包，约 15–30 分钟）
 5. 到 **Releases** 页面，该版本只有一个 Release（标签即你填的版本号），内含：
-   - `homeproxy-deploy-amd64-<ver>.zip` / `-arm64-` / `-armv7-` / `-mipsle-`：各架构一体化部署包
+   - `homeproxy-deploy_<ver>-amd64.zip` / `-arm64` / `-armv7` / `-mipsle`：各架构一体化部署包（命名与 luci 包一致：版本号在前、架构在后）
    - `luci-app-homeproxy_<ver>-all.ipk` / `.apk`：独立 luci 包（不含内核，装后自动下载）
    - `sing-box-1.14.3-reF1nd-linux-*-musl.tar.gz`：打补丁内核（供「更新内核」自动下载）
 
@@ -35,11 +35,11 @@
 
 ```bash
 # 在本机把 zip 传到路由器
-scp homeproxy-deploy-amd64-0.1.01.zip root@路由器IP:/tmp/
+scp homeproxy-deploy_0.1.01-amd64.zip root@路由器IP:/tmp/
 
 # SSH 进路由器，一条复合命令：解压 + 进入目录 + 执行安装
 ssh root@路由器IP
-cd /tmp && unzip -o homeproxy-deploy-amd64-0.1.01.zip && cd homeproxy-deploy-amd64-0.1.01 && sh install.sh
+cd /tmp && unzip -o homeproxy-deploy_0.1.01-amd64.zip && cd homeproxy-deploy_0.1.01-amd64 && sh install.sh
 ```
 
 `install.sh` 会自动：停服务 → 用 opkg/apk 安装 luci（自动解决依赖，需联网或已配源）→

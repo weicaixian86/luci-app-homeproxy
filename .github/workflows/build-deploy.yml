@@ -285,7 +285,7 @@ jobs:
           version="${tag#v}"; version="${version#V}"
           echo "version=$version"
           for arch in amd64 arm64 armv7 mipsle; do
-            d="homeproxy-deploy-$arch-$version"
+            d="homeproxy-deploy-$version-$arch"
             mkdir -p "$d"
             cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk "$d/"
             cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk "$d/"
@@ -349,7 +349,7 @@ jobs:
           name: HomeProxy ${{ inputs.tag }}
           body_path: release_body.md
           files: |
-            homeproxy-deploy-*.zip
+            homeproxy-deploy*.zip
             luci-app-homeproxy_*-all.ipk
             luci-app-homeproxy_*-all.apk
             sing-box-1.14.3-reF1nd-*.tar.gz

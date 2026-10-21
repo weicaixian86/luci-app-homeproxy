@@ -41,16 +41,16 @@ HomeProxy 提供两种安装方式。**先确认路由器系统版本**：OpenWr
 适合无法联网拉取内核、或希望一次性铺好「面板 + 内核」的路由器。每个架构一个 zip，内含 luci 包（`.ipk` 与 `.apk` 都有）、打补丁内核 `sing-box`、`install.sh` 与说明。
 
 1. 到 Releases 下载对应架构的 zip（按 `uname -m` 选择；`<版本>` 为实际发布号）：
-   - `x86_64`  → `homeproxy-deploy-amd64-<版本>.zip`
-   - `aarch64` → `homeproxy-deploy-arm64-<版本>.zip`
-   - `armv7`   → `homeproxy-deploy-armv7-<版本>.zip`
-   - `mipsel`  → `homeproxy-deploy-mipsle-<版本>.zip`
+   - `x86_64`  → `homeproxy-deploy_<版本>-amd64.zip`
+   - `aarch64` → `homeproxy-deploy_<版本>-arm64.zip`
+   - `armv7`   → `homeproxy-deploy_<版本>-armv7.zip`
+   - `mipsel`  → `homeproxy-deploy_<版本>-mipsle.zip`
 2. 传到路由器并安装（`install.sh` 会自动识别当前包管理器、选用 zip 内对应的 `.ipk` 或 `.apk`）：
 
    ```sh
-   scp homeproxy-deploy-amd64-<版本>.zip root@路由器IP:/tmp/
+   scp homeproxy-deploy_<版本>-amd64.zip root@路由器IP:/tmp/
    ssh root@路由器IP
-   cd /tmp && unzip -o homeproxy-deploy-amd64-<版本>.zip && cd homeproxy-deploy-amd64-<版本> && sh install.sh
+   cd /tmp && unzip -o homeproxy-deploy_<版本>-amd64.zip && cd homeproxy-deploy_<版本>-amd64 && sh install.sh
    ```
 
 3. `install.sh` 会自动执行：停服务 → 安装 luci（opkg/apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
