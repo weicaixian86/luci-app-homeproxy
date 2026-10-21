@@ -2628,6 +2628,21 @@ return view.extend({
 			};
 		}
 
-		return m.render();
+		const node = m.render();
+
+		/* 表格列文字统一居中：名称列原本左对齐，与「启用/节点/出站」等
+		   已居中的列不一致。只作用于本页表格单元格，弹窗（modal）在
+		   独立 overlay 中，不受影响。 */
+		if (node && node.nodeType === 1) {
+			node.classList.add('homeproxy-client-form');
+			node.insertBefore(E('style', [ `
+				.homeproxy-client-form .cbi-section-table th,
+				.homeproxy-client-form .cbi-section-table td { text-align: center; }
+				.homeproxy-client-form .cbi-section-table td input,
+				.homeproxy-client-form .cbi-section-table td select { text-align: center; }
+			` ]), node.firstChild);
+		}
+
+		return node;
 	}
 });
