@@ -11,16 +11,51 @@ HomeProxy 本身为架构无关的 LuCI 包（`LUCI_PKGARCH:=all`），**安装�
 
 ## 一、安装
 
-上传ipk或apk至tmp目录：
-- OpenWrt 24.10 使用 `opkg` 安装 `.ipk`：
-  ```sh
-  opkg update && opkg install /tmp/luci-app-homeproxy_<版本>-all.ipk
-  ```
-- OpenWrt 25.12 使用 `apk` 安装 `.apk`：
-  ```sh
-  apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
-  ```
-安装后首次启动服务时，插件会按设备架构自动下载并安装 reF1nd sing-box 内核；也可以在 LuCI 状态页「sing-box 内核管理」中手动点击「下载 / 更新内核」。
+HomeProxy 提供两种安装方式。**先确认路由器系统版本**：OpenWrt 24.10 用 `opkg` + `.ipk`，OpenWrt 25.12 用 `apk` + `.apk`。所有安装包均来自本仓库的 **Releases** 页面（每个版本一个 Release 标签，如 `0.1.01`）。
+
+### 方式一：安装 IPK / APK，内核自动下载（推荐，在线）
+
+适合能联网、已配置软件源的路由器。装好面板后，打补丁的 reF1nd 内核会按设备架构自动下载并安装。
+
+1. 到 Releases 下载与系统对应的包（`<版本>` 替换成实际发布号，如 `0.1.01`）：
+   - OpenWrt **24.10** → `luci-app-homeproxy_<版本>-all.ipk`
+   - OpenWrt **25.12** → `luci-app-homeproxy_<版本>-all.apk`
+2. 上传到路由器 `/tmp`，按系统安装：
+
+   - 24.10（`opkg`）：
+     ```sh
+     opkg update && opkg install /tmp/luci-app-homeproxy_<版本>-all.ipk
+     ```
+   - 25.12（`apk`）：
+     ```sh
+     apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
+     ```
+
+3. 首次启动服务时，插件会按架构自动下载并安装 reF1nd sing-box 内核（`1.14.3-reF1nd`，含 clash proxy-providers 补丁）；也可以在 LuCI 状态页「sing-box 内核管理」中手动点「下载 / 更新内核」。
+4. 刷新浏览器（必要时清缓存，或 `rm -f /tmp/luci-indexcache && rm -rf /tmp/luci-modulecache/* && /etc/init.d/rpcd restart && /etc/init.d/uhttpd restart`）即可看到 HomeProxy 菜单。
+
+> 说明：方式一装好后，面板「更新内核」会从**本仓库对应版本 Release**（即你装包时那个标签）拉补丁版内核，不会覆盖补丁；amd64 / arm64 / armv7 / mipsle 四种架构均已纳入自动下载。
+
+### 方式二：下载 ZIP 离线安装（含内核，无需额外下载）
+
+适合无法联网拉取内核、或希望一次性铺好「面板 + 内核」的路由器。每个架构一个 zip，内含 luci 包（`.ipk` 与 `.apk` 都有）、打补丁内核 `sing-box`、`install.sh` 与说明。
+
+1. 到 Releases 下载对应架构的 zip（按 `uname -m` 选择；`<版本>` 为实际发布号）：
+   - `x86_64`  → `homeproxy-deploy-amd64-<版本>.zip`
+   - `aarch64` → `homeproxy-deploy-arm64-<版本>.zip`
+   - `armv7`   → `homeproxy-deploy-armv7-<版本>.zip`
+   - `mipsel`  → `homeproxy-deploy-mipsle-<版本>.zip`
+2. 传到路由器并安装（`install.sh` 会自动识别当前包管理器、选用 zip 内对应的 `.ipk` 或 `.apk`）：
+
+   ```sh
+   scp homeproxy-deploy-amd64-<版本>.zip root@路由器IP:/tmp/
+   ssh root@路由器IP
+   cd /tmp && unzip -o homeproxy-deploy-amd64-<版本>.zip && cd homeproxy-deploy-amd64-<版本> && sh install.sh
+   ```
+
+3. `install.sh` 会自动执行：停服务 → 安装 luci（opkg/apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
+
+> 两种方式下内核版本都钉死为 `1.14.3-reF1nd`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
 
 ## 二、卸载
 
