@@ -167,7 +167,7 @@ if (isEmpty(ntp_enabled) && isEmpty(ntp_server)) {
 
 const ipv6_support = uci.get(uciconfig, ucimain, 'ipv6_support') || '0';
 
-let cache_file_enabled, cache_file_path, cache_store_dns, cache_store_selected,
+let cache_file_enabled, cache_file_path, cache_store_dns,
     main_node, main_udp_node, dedicated_udp_node, default_outbound, default_outbound_dns,
     domain_strategy, sniff_override, dns_server, china_dns_server, dns_default_strategy,
     dns_default_server, dns_disable_cache, dns_disable_cache_expire,
@@ -250,7 +250,6 @@ const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'info';
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');
 cache_store_dns = uci.get(uciconfig, ucicache, 'store_dns');
-cache_store_selected = uci.get(uciconfig, ucicache, 'store_selected');
 
 let clash_api = null;
 /* UCI config end */
@@ -845,10 +844,14 @@ clash_api = {
 	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
-	/* NOTE: the selector choice is persisted via experimental.cache_file.store_selected
-	   below, NOT here. In sing-box 1.12+ the clash_api.*_store_* fields are rejected at
-	   startup (deprecated since 1.8.0, see experimental/clashapi/server.go), so keeping
-	   it here would make the Clash API fail to start. */
+	/* NOTE: selector choice persistence (store_selected) is intentionally NOT emitted
+	   here nor in cache_file. In sing-box 1.12+ the clash_api.store_selected is rejected
+	   at startup (deprecated since 1.8.0, see experimental/clashapi/server.go), and the
+	   reF1nd 1.14.3-reF1nd kernel's experimental.cache_file struct also has no
+	   store_selected field (only store_dns / store_fakeip / store_rdrc). Emitting it in
+	   either place makes sing-box abort at startup with `unknown field "store_selected"`
+	   or the clash-api deprecation error — which is exactly what broke the service.
+	   Proxy selection therefore resets on restart on this kernel. */
 	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
 	   /providers/proxies from this list; empty in non-subscription modes. */
 	proxy_providers: build_proxy_providers()
@@ -1600,12 +1603,11 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 
 	config.experimental = {
 		clash_api,
-	cache_file: {
-		enabled: cache_file_enabled !== '0',
-		path: cache_file_path || (HP_DIR + '/cache.db'),
-		store_dns: strToBool(cache_store_dns),
-		store_selected: cache_store_selected !== '0',
-	}
+		cache_file: {
+			enabled: cache_file_enabled !== '0',
+			path: cache_file_path || (HP_DIR + '/cache.db'),
+			store_dns: strToBool(cache_store_dns)
+		}
 	};
 }
 /* Experimental end */

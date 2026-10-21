@@ -2321,12 +2321,12 @@ return view.extend({
 		so.default = '1';
 		so.rmempty = false;
 		so.description = _('Master switch for Persist DNS cache and Save Proxy Selection');
-		/* 规则1：缓存文件关闭时，持久化 DNS 缓存 / 保存代理选择 自动关闭 */
+		/* 规则1：缓存文件关闭时，持久化 DNS 缓存 自动关闭
+		   （保存代理选择 当前内核不支持、已禁用，不再联动） */
 		var o_cache_enabled = so;
 		o_cache_enabled.onchange = function(ev, section_id, value) {
 			if (value === '0') {
 				o_cache_store_dns.setValue(section_id, '0');
-				o_cache_store_selected.setValue(section_id, '0');
 			}
 		};
 
@@ -2354,12 +2354,12 @@ return view.extend({
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');
-		/* 规则3：保存代理选择启用时，缓存文件自动启用（与持久化 DNS 缓存无关） */
-		var o_cache_store_selected = so;
-		o_cache_store_selected.onchange = function(ev, section_id, value) {
-			if (value === '1')
-				o_cache_enabled.setValue(section_id, '1');
-		};
+		/* 当前 reF1nd 1.14.3-reF1nd 内核的 experimental.cache_file 无 store_selected
+		   字段（clash_api 里的同名项已 deprecated 且会令 Clash API 启动失败），故该
+		   内核无法持久化代理选择。此选项暂禁用，仅占位，避免生成非法配置使
+		   sing-box 启动失败；重启后代理选择会重置。 */
+		so.readonly = true;
+		so.description = '当前 reF1nd 1.14.3-reF1nd 内核不支持持久化代理选择（cache_file 无 store_selected 字段），该选项暂不可用，重启后选择会重置。';
 
 		/* Cache settings end */
 
