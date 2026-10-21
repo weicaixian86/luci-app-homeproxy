@@ -3347,6 +3347,10 @@ msgid "Save Proxy Selection"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Master switch for Persist DNS cache and Save Proxy Selection"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr ""
 

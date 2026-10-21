@@ -3398,6 +3398,10 @@ msgid "Save Proxy Selection"
 msgstr "保存代理选择"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Master switch for Persist DNS cache and Save Proxy Selection"
+msgstr "持久化 DNS 缓存、保存代理选择的总开关"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Status"
 msgstr "状态"
 

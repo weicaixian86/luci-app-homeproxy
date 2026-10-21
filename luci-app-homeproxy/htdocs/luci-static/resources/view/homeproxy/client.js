@@ -2323,6 +2323,7 @@ return view.extend({
 		so.value('0', _('Disable'));
 		so.default = '1';
 		so.rmempty = false;
+		so.description = _('Master switch for Persist DNS cache and Save Proxy Selection');
 		/* 规则1：缓存文件关闭时，持久化 DNS 缓存 / 保存代理选择 自动关闭 */
 		var o_cache_enabled = so;
 		o_cache_enabled.onchange = function(ev, section_id, value) {
