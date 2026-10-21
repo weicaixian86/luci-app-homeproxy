@@ -298,6 +298,12 @@ jobs:
           # arm64
           cp -f "artifacts/sing-box-arm64/sing-box-arm64" sing-box
           tar -czf "sing-box-${VER}-linux-arm64-musl.tar.gz" sing-box
+          # armv7（对应 armv7-musleabihf / armv7-musleabi，供 update_core.sh 自动下载）
+          cp -f "artifacts/sing-box-armv7/sing-box-armv7" sing-box
+          tar -czf "sing-box-${VER}-linux-armv7-musl.tar.gz" sing-box
+          # mipsle（小端 mips；大端 mips 暂不发布）
+          cp -f "artifacts/sing-box-mipsle/sing-box-mipsle" sing-box
+          tar -czf "sing-box-${VER}-linux-mipsle-musl.tar.gz" sing-box
           rm -f sing-box
           ls -la sing-box-${VER}-*.tar.gz
 

@@ -11,11 +11,11 @@
 #
 # weicaixian86/luci-app-homeproxy（本仓库 Release, tag v1.14.3-reF1nd）发布打补丁的
 # Linux musl 内核构建，供运行时自动下载：
-#   - x86_64  -> linux-amd64-musl
+#   - x86_64  -> linux-amd64-musl      （含 x86-64-v3 优先候选）
 #   - aarch64 -> linux-arm64-musl
-# Other architectures (armv7, arm, mips, mipsel) are not published yet; for
-# those the script logs a clear notice and leaves any already-installed binary
-# in place (the author may add more builds later).
+#   - armv7*  -> linux-armv7-musl
+#   - mipsel* -> linux-mipsle-musl      （仅小端 mips；大端 mips 暂无构建）
+# armv5/armv6（arm-* 而非 armv7-*）与 大端 mips 暂不发布，脚本会给出明确提示并保留已有内核。
 #
 # Download methodology follows luci-app-vnt2cli:
 #   - curl is the preferred downloader, with --retry 2 inside a single mirror;
@@ -238,6 +238,12 @@ asset_candidates_for_arch() {
 			;;
 		aarch64)
 			echo "sing-box-${REFIND_VERSION}-linux-arm64-musl.tar.gz"
+			;;
+		armv7*)
+			echo "sing-box-${REFIND_VERSION}-linux-armv7-musl.tar.gz"
+			;;
+		mipsel*|*mipsle*)
+			echo "sing-box-${REFIND_VERSION}-linux-mipsle-musl.tar.gz"
 			;;
 		*)
 			return 1
