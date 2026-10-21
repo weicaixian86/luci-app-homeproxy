@@ -16,7 +16,7 @@ msgstr "%s ms"
 msgid "%s nodes removed"
 msgstr "移除了 %s 个节点"
 
-#: htdocs/luci-static/resources/homeproxy.js:969
+#: htdocs/luci-static/resources/homeproxy.js:1010
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr "/etc/homeproxy/certs/...，/etc/acme/...，/etc/ssl/..."
 
@@ -277,7 +277,7 @@ msgstr "BBR"
 msgid "Backend execution failed"
 msgstr "后端执行失败"
 
-#: htdocs/luci-static/resources/homeproxy.js:929
+#: htdocs/luci-static/resources/homeproxy.js:970
 #: htdocs/luci-static/resources/view/homeproxy/client.js:178
 #: htdocs/luci-static/resources/view/homeproxy/client.js:222
 msgid "Backup panel failed."
@@ -435,8 +435,8 @@ msgstr "客户端设置"
 msgid "Client version"
 msgstr "客户端版本"
 
-#: htdocs/luci-static/resources/homeproxy.js:873
-#: htdocs/luci-static/resources/homeproxy.js:875
+#: htdocs/luci-static/resources/homeproxy.js:914
+#: htdocs/luci-static/resources/homeproxy.js:916
 msgid "Close"
 msgstr "关闭"
 
@@ -988,16 +988,16 @@ msgstr "每周三"
 msgid "Every day"
 msgstr "每天"
 
-#: htdocs/luci-static/resources/homeproxy.js:816
-#: htdocs/luci-static/resources/homeproxy.js:961
-#: htdocs/luci-static/resources/homeproxy.js:969
-#: htdocs/luci-static/resources/homeproxy.js:987
-#: htdocs/luci-static/resources/homeproxy.js:996
-#: htdocs/luci-static/resources/homeproxy.js:1007
-#: htdocs/luci-static/resources/homeproxy.js:1018
-#: htdocs/luci-static/resources/homeproxy.js:1021
-#: htdocs/luci-static/resources/homeproxy.js:1029
-#: htdocs/luci-static/resources/homeproxy.js:1031
+#: htdocs/luci-static/resources/homeproxy.js:857
+#: htdocs/luci-static/resources/homeproxy.js:1002
+#: htdocs/luci-static/resources/homeproxy.js:1010
+#: htdocs/luci-static/resources/homeproxy.js:1028
+#: htdocs/luci-static/resources/homeproxy.js:1037
+#: htdocs/luci-static/resources/homeproxy.js:1048
+#: htdocs/luci-static/resources/homeproxy.js:1059
+#: htdocs/luci-static/resources/homeproxy.js:1062
+#: htdocs/luci-static/resources/homeproxy.js:1070
+#: htdocs/luci-static/resources/homeproxy.js:1072
 #: htdocs/luci-static/resources/view/homeproxy/client.js:445
 #: htdocs/luci-static/resources/view/homeproxy/client.js:458
 #: htdocs/luci-static/resources/view/homeproxy/client.js:808
@@ -1057,8 +1057,8 @@ msgstr "附加记录"
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
 
-#: htdocs/luci-static/resources/homeproxy.js:913
-#: htdocs/luci-static/resources/homeproxy.js:951
+#: htdocs/luci-static/resources/homeproxy.js:954
+#: htdocs/luci-static/resources/homeproxy.js:992
 msgid "Failed to upload %s, error: %s."
 msgstr "上传 %s 失败，错误：%s。"
 
@@ -1443,7 +1443,7 @@ msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）
 msgid "Info"
 msgstr "信息"
 
-#: htdocs/luci-static/resources/homeproxy.js:939
+#: htdocs/luci-static/resources/homeproxy.js:980
 msgid "Install panel failed."
 msgstr "安装面板失败。"
 
@@ -1482,7 +1482,7 @@ msgstr "发送心跳包以保持连接存活的时间间隔（单位：秒）。
 msgid "Invalid node"
 msgstr "无效节点"
 
-#: htdocs/luci-static/resources/homeproxy.js:937
+#: htdocs/luci-static/resources/homeproxy.js:978
 msgid "Invalid panel ZIP file."
 msgstr "面板 ZIP 文件无效。"
 
@@ -2077,7 +2077,7 @@ msgstr "填充方案"
 msgid "Panel Settings"
 msgstr "面板设置"
 
-#: htdocs/luci-static/resources/homeproxy.js:933
+#: htdocs/luci-static/resources/homeproxy.js:974
 msgid "Panel ZIP file is empty."
 msgstr "面板 ZIP 文件为空。"
 
@@ -2439,7 +2439,7 @@ msgstr "资源管理"
 msgid "Restart Service"
 msgstr "重启服务"
 
-#: htdocs/luci-static/resources/homeproxy.js:931
+#: htdocs/luci-static/resources/homeproxy.js:972
 #: htdocs/luci-static/resources/view/homeproxy/client.js:180
 #: htdocs/luci-static/resources/view/homeproxy/client.js:224
 msgid "Restore panel failed."
@@ -3070,7 +3070,7 @@ msgstr ""
 "经过一段时间（单位：秒）之后，客户端将执行 keepalive 检查并等待活动。如果没有"
 "检测到任何活动，则会关闭连接。"
 
-#: htdocs/luci-static/resources/homeproxy.js:935
+#: htdocs/luci-static/resources/homeproxy.js:976
 msgid "The unzip command is unavailable."
 msgstr "unzip 命令不可用。"
 
@@ -3450,8 +3450,8 @@ msgstr "Xudp (Xray-core)"
 msgid "YouTube Connection"
 msgstr "YouTube 连接"
 
-#: htdocs/luci-static/resources/homeproxy.js:911
-#: htdocs/luci-static/resources/homeproxy.js:949
+#: htdocs/luci-static/resources/homeproxy.js:952
+#: htdocs/luci-static/resources/homeproxy.js:990
 msgid "Your %s was successfully uploaded. Size: %sB."
 msgstr "您的 %s 已成功上传。大小：%sB。"
 
@@ -3506,9 +3506,9 @@ msgstr "gVisor"
 msgid "loading..."
 msgstr "加载中..."
 
-#: htdocs/luci-static/resources/homeproxy.js:996
-#: htdocs/luci-static/resources/homeproxy.js:1018
-#: htdocs/luci-static/resources/homeproxy.js:1029
+#: htdocs/luci-static/resources/homeproxy.js:1037
+#: htdocs/luci-static/resources/homeproxy.js:1059
+#: htdocs/luci-static/resources/homeproxy.js:1070
 #: htdocs/luci-static/resources/view/homeproxy/client.js:808
 #: htdocs/luci-static/resources/view/homeproxy/client.js:842
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1076
@@ -3535,8 +3535,8 @@ msgstr "无"
 msgid "packet addr (v2ray-core v5+)"
 msgstr "packet addr (v2ray-core v5+)"
 
-#: htdocs/luci-static/resources/homeproxy.js:949
-#: htdocs/luci-static/resources/homeproxy.js:951
+#: htdocs/luci-static/resources/homeproxy.js:990
+#: htdocs/luci-static/resources/homeproxy.js:992
 msgid "panel ZIP package"
 msgstr "面板ZIP压缩包"
 
@@ -3580,14 +3580,14 @@ msgstr "不可用"
 msgid "unchecked"
 msgstr "未检查"
 
-#: htdocs/luci-static/resources/homeproxy.js:816
-#: htdocs/luci-static/resources/homeproxy.js:1007
+#: htdocs/luci-static/resources/homeproxy.js:857
+#: htdocs/luci-static/resources/homeproxy.js:1048
 #: htdocs/luci-static/resources/view/homeproxy/client.js:458
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2148
 msgid "unique value"
 msgstr "独立值"
 
-#: htdocs/luci-static/resources/homeproxy.js:941
+#: htdocs/luci-static/resources/homeproxy.js:982
 msgid "unknown error"
 msgstr "未知错误"
 
@@ -3622,7 +3622,7 @@ msgstr "有效 DNS 服务器地址"
 msgid "valid URL"
 msgstr "有效网址"
 
-#: htdocs/luci-static/resources/homeproxy.js:961
+#: htdocs/luci-static/resources/homeproxy.js:1002
 msgid "valid base64 key with %d characters"
 msgstr "包含 %d 个字符的有效 base64 密钥"
 
@@ -3640,7 +3640,7 @@ msgstr "有效时间格式"
 msgid "valid hostname"
 msgstr "有效主机名"
 
-#: htdocs/luci-static/resources/homeproxy.js:987
+#: htdocs/luci-static/resources/homeproxy.js:1028
 msgid "valid port range (port1:port2)"
 msgstr "有效端口范围（port1:port2）"
 
@@ -3648,13 +3648,13 @@ msgstr "有效端口范围（port1:port2）"
 msgid "valid port value"
 msgstr "有效端口值"
 
-#: htdocs/luci-static/resources/homeproxy.js:1021
+#: htdocs/luci-static/resources/homeproxy.js:1062
 #: htdocs/luci-static/resources/view/homeproxy/client.js:445
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2139
 msgid "valid tag"
 msgstr "有效标签"
 
-#: htdocs/luci-static/resources/homeproxy.js:1031
+#: htdocs/luci-static/resources/homeproxy.js:1072
 msgid "valid uuid"
 msgstr "有效 uuid"
 
