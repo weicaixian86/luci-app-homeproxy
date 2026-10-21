@@ -75,8 +75,8 @@ include $(TOPDIR)/feeds/luci/luci.mk
 # `$(Package/.../install)` at that moment -- before any definition placed
 # after the include can take effect (verified against openwrt include/
 # package.mk). The .lmo is therefore precompiled into the package's root/
-# tree by CI (.github/workflows/build.yml) right before the build, so
-# luci.mk's own Build/Prepare copies it into the package. See build.yml.
+# tree by CI (.github/workflows/build-deploy.yml) right before the build, so
+# luci.mk's own Build/Prepare copies it into the package. See build-deploy.yml.
 # ---------------------------------------------------------------------------
 
 # call BuildPackage - OpenWrt buildroot signature
