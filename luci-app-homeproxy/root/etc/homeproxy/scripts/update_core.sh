@@ -9,12 +9,12 @@
 # the matching reF1nd sing-box build, verifies its SHA-256 when a checksum is
 # published, and installs it to /usr/bin/sing-box.
 #
-# weicaixian86/luci-app-homeproxy（本仓库 Release, tag v1.14.3-reF1nd）发布打补丁的
-# Linux musl 内核构建，供运行时自动下载：
-#   - x86_64  -> linux-amd64-musl      （含 x86-64-v3 优先候选）
-#   - aarch64 -> linux-arm64-musl
-#   - armv7*  -> linux-armv7-musl
-#   - mipsel* -> linux-mipsle-musl      （仅小端 mips；大端 mips 暂无构建）
+# weicaixian86/luci-app-homeproxy（本仓库 Release, tag = 发布版本号如 0.1.01）发布打补丁的
+# Linux musl 内核构建，文件名带发布版本号（linux_<发布版本>-<架构>-musl），供运行时自动下载：
+#   - x86_64  -> linux_<发布版本>-amd64-musl      （含 x86-64-v3 优先候选）
+#   - aarch64 -> linux_<发布版本>-arm64-musl
+#   - armv7*  -> linux_<发布版本>-armv7-musl
+#   - mipsel* -> linux_<发布版本>-mipsle-musl      （仅小端 mips；大端 mips 暂无构建）
 # armv5/armv6（arm-* 而非 armv7-*）与 大端 mips 暂不发布，脚本会给出明确提示并保留已有内核。
 #
 # Download methodology follows luci-app-vnt2cli:
@@ -231,19 +231,19 @@ asset_candidates_for_arch() {
 	case "$arch" in
 		x86_64)
 			if cpu_supports_x86_64_v3; then
-				echo "sing-box-${REFIND_VERSION}-linux-amd64v3-musl.tar.gz sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz"
+				echo "sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-amd64v3-musl.tar.gz sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-amd64-musl.tar.gz"
 			else
-				echo "sing-box-${REFIND_VERSION}-linux-amd64-musl.tar.gz"
+				echo "sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-amd64-musl.tar.gz"
 			fi
 			;;
 		aarch64)
-			echo "sing-box-${REFIND_VERSION}-linux-arm64-musl.tar.gz"
+			echo "sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-arm64-musl.tar.gz"
 			;;
 		armv7*)
-			echo "sing-box-${REFIND_VERSION}-linux-armv7-musl.tar.gz"
+			echo "sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-armv7-musl.tar.gz"
 			;;
 		mipsel*|*mipsle*)
-			echo "sing-box-${REFIND_VERSION}-linux-mipsle-musl.tar.gz"
+			echo "sing-box-${REFIND_VERSION}-linux_${REFIND_TAG}-mipsle-musl.tar.gz"
 			;;
 		*)
 			return 1
@@ -608,7 +608,7 @@ ensure_core() {
 
 	# Last resort: an archive placed manually by the user, e.g. copied over
 	# SSH when every mirror is unreachable:
-	#   scp sing-box-*-linux-amd64-musl.tar.gz root@router:/etc/homeproxy/sing-box.tar.gz
+	#   scp sing-box-*-linux_*-amd64-musl.tar.gz root@router:/etc/homeproxy/sing-box.tar.gz
 	if [ -f "${HP_DIR}/sing-box.tar.gz" ]; then
 		log_download "尝试安装手动放置的内核：${HP_DIR}/sing-box.tar.gz"
 		if extract_and_install "${HP_DIR}/sing-box.tar.gz"; then

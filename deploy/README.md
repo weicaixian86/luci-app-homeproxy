@@ -24,7 +24,7 @@
 5. 到 **Releases** 页面，该版本只有一个 Release（标签即你填的版本号），内含：
    - `homeproxy-deploy_<ver>-amd64.zip` / `-arm64` / `-armv7` / `-mipsle`：各架构一体化部署包（命名与 luci 包一致：版本号在前、架构在后）
    - `luci-app-homeproxy_<ver>-all.ipk` / `.apk`：独立 luci 包（不含内核，装后自动下载）
-   - `sing-box-1.14.3-reF1nd-linux-*-musl.tar.gz`：打补丁内核（供「更新内核」自动下载）
+   - `sing-box-1.14.3-reF1nd-linux_<版本>-*-musl.tar.gz`：打补丁内核（供「更新内核」自动下载）
 
 > 说明：luci 包是架构无关的（all），每个 zip 只是内核二进制不同。
 > 一个版本 = 一个 Release 标签（如 `0.1.01`），所有产物都在里面。
