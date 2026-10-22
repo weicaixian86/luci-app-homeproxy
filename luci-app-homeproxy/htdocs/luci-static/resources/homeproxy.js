@@ -743,7 +743,7 @@ return baseclass.extend({
 		return (prefix || 'cfg') + '_' + (section_id || 'section');
 	},
 
-	renderSectionAdd(section, extra_class, hint) {
+	renderSectionAdd(section, extra_class, hint, topHint) {
 		const baseHint = hint || '';
 
 		let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
@@ -779,6 +779,10 @@ return baseclass.extend({
 		row.appendChild(button);    /* add button, same row as the input */
 		el.appendChild(row);
 		el.appendChild(hintEl);     /* hint below the row */
+
+		/* 顶部说明（如路由规则的匹配顺序提示），显示在输入行上方 */
+		if (topHint)
+			el.insertBefore(E('div', { 'class': 'cbi-value-description hp-top-hint' }, topHint), row);
 
 		/* The original wrapper is now empty; drop it so it cannot affect layout. */
 		if (wrapper && wrapper.parentNode === el && wrapper.childElementCount === 0)
@@ -896,6 +900,328 @@ return baseclass.extend({
 		});
 
 		return el;
+	},
+
+	/* 表格增强所需的少量全局样式，一次性注入（建议4/6/7/9/10）。 */
+	ensureUIStyles() {
+		if (window.__hpUIStyles)
+			return;
+
+		window.__hpUIStyles = true;
+
+		try {
+			document.head.appendChild(E('style', [ `
+				.hp-top-hint { margin: .2rem 0 .4rem 0; }
+				.hp-index-cell { opacity: .65; }
+				.hp-chips { display: inline-flex; flex-wrap: wrap; gap: 4px;
+					justify-content: center; max-width: 280px; }
+				.hp-chip { display: inline-block; padding: 1px 8px; border-radius: 10px;
+					background: rgba(96, 60, 190, .12); border: 1px solid rgba(96, 60, 190, .28);
+					font-size: .85rem; line-height: 1.5; white-space: nowrap; }
+				.hp-rs-status { display: inline-flex; align-items: center; gap: 5px;
+					font-size: .85rem; white-space: nowrap; }
+				.hp-rs-dot { display: inline-block; width: 8px; height: 8px;
+					border-radius: 50%; flex: none; }
+				.hp-dot-ok { background: #2eb872; }
+				.hp-dot-bad { background: #e4574c; }
+				.hp-dot-none { background: #9aa0a6; }
+				.hp-dns-banner { margin: 0 0 .8rem 0; padding: .55rem .9rem;
+					border: 1px solid rgba(96, 60, 190, .35); border-left: 4px solid rgba(96, 60, 190, .65);
+					border-radius: 6px; font-size: .9rem; line-height: 1.8; }
+			` ]));
+		}
+		catch (e) {}
+	},
+
+	/* 名称列左侧插入序号列（建议4）。必须在 dedupeNameColumn() 之后调用，
+	   使本包装位于外层：dedupe 先按原始表格分析首列，序号列随后再插入。
+	   表头行取「首个子元素为 TH 且不含 TD」的 tr；数据行跳过空表占位行。 */
+	prependIndexColumn(section, headerLabel) {
+		const orig = section.renderContents;
+
+		section.renderContents = function() {
+			const el = orig.apply(this, arguments);
+
+			try {
+				const dataRows = [];
+
+				for (const tr of el.querySelectorAll('tr')) {
+					if (tr.classList.contains('cbi-section-table-row') &&
+					    !tr.classList.contains('placeholder'))
+						dataRows.push(tr);
+				}
+
+				if (dataRows.length === 0)
+					return el;
+
+				for (const tr of el.querySelectorAll('tr')) {
+					if (tr.children.length === 0 || tr.children[0].tagName !== 'TH' ||
+					    tr.querySelector('td'))
+						continue;
+
+					tr.insertBefore(E('th', { 'class': 'th' }, headerLabel || ''),
+						tr.firstElementChild);
+				}
+
+				let index = 0;
+
+				for (const tr of dataRows) {
+					index++;
+					tr.insertBefore(E('td', { 'class': 'td hp-index-cell' }, String(index)),
+						tr.firstElementChild);
+				}
+			}
+			catch (e) {
+				/* 渲染后处理失败时保持原样，不影响表单功能 */
+			}
+
+			return el;
+		};
+
+		return section;
+	},
+
+	/* 表格末尾（操作按钮列之前）追加自定义列（建议6/7/9）。
+	   columns: [{ header: '列头文本', renderCell: function(sid) → Node|String }]，
+	   数据行通过 data-sid 属性取 section id，缺失时跳过不影响原表格。 */
+	appendTableColumns(section, columns) {
+		const orig = section.renderContents;
+
+		section.renderContents = function() {
+			const el = orig.apply(this, arguments);
+
+			try {
+				for (const tr of el.querySelectorAll('tr')) {
+					if (!tr.classList.contains('cbi-section-table-row') ||
+					    tr.classList.contains('placeholder'))
+						continue;
+
+					const sid = tr.getAttribute('data-sid');
+
+					if (!sid)
+						continue;
+
+					let anchor = null;
+
+					for (const td of tr.children) {
+						if (td.classList && td.classList.contains('cbi-section-actions')) {
+							anchor = td;
+							break;
+						}
+					}
+
+					for (const col of columns) {
+						const content = col.renderCell(sid),
+						      td = E('td', { 'class': 'td cbi-value-field hp-extra-col' });
+
+						td.appendChild((content instanceof Node)
+							? content
+							: document.createTextNode((content != null) ? String(content) : ''));
+
+						if (anchor)
+							tr.insertBefore(td, anchor);
+						else
+							tr.appendChild(td);
+					}
+				}
+
+				for (const tr of el.querySelectorAll('tr')) {
+					if (tr.children.length === 0 || tr.children[0].tagName !== 'TH' ||
+					    tr.querySelector('td'))
+						continue;
+
+					for (const col of columns)
+						tr.appendChild(E('th', { 'class': 'th' }, col.header || ''));
+				}
+			}
+			catch (e) {
+				/* 渲染后处理失败时保持原样，不影响表单功能 */
+			}
+
+			return el;
+		};
+
+		return section;
+	},
+
+	/* 「启用」列移动到名称列左侧（全局改进）。启用单元格以表格单元格
+	   标准属性 td[data-name="enabled"] 定位；名称列兼容三种 luci-base 形态：
+	   一、25.12：真实 td.cbi-section-table-titles；
+	   二、旧版重复列：dedupeNameColumn 去重后首列即名称
+	       （首列文本与 tr[data-title] 相同）；
+	   三、24.10 分支：无真实名称列，名称仅是主题用 tr[data-title]::before
+	       画的伪元素（永远在最左）——先就地转成真实名称单元格（含表头），
+	       再移动，否则「启用」永远到不了名称左侧。
+	   必须在 dedupeNameColumn() 之后调用。 */
+	moveEnableColumn(section) {
+		const orig = section.renderContents;
+
+		/* 取单元格可见文本（与 dedupeNameColumn 的 cellText 同思路） */
+		const cellText = function(td) {
+			const text = (td.textContent || '').trim();
+
+			if (text !== '')
+				return text;
+
+			const input = td.querySelector('input[type="text"], input:not([type])');
+
+			return input ? (input.value || '').trim() : '';
+		};
+
+		/* 行内首个非序号单元格（序号列由 prependIndexColumn 注入） */
+		const firstContentCell = function(tr, tag) {
+			for (const cell of tr.children) {
+				if (cell.tagName !== tag || cell.classList.contains('hp-index-cell'))
+					continue;
+
+				return cell;
+			}
+
+			return null;
+		};
+
+		section.renderContents = function() {
+			const el = orig.apply(this, arguments);
+
+			try {
+				const dataRows = [],
+				      headerRows = [];
+
+				for (const tr of el.querySelectorAll('tr')) {
+					if (tr.classList.contains('cbi-section-table-row') &&
+					    !tr.classList.contains('placeholder'))
+						dataRows.push(tr);
+					else if (tr.children.length > 0 && tr.children[0].tagName === 'TH' &&
+					         !tr.querySelector('td'))
+						headerRows.push(tr);
+				}
+
+				if (dataRows.length === 0)
+					return el;
+
+				const ref = dataRows[0],
+				      refEnabled = ref.querySelector('td[data-name="enabled"]');
+
+				if (!refEnabled)
+					return el;
+
+				let nameTd = ref.querySelector('td.cbi-section-table-titles');
+
+				if (!nameTd) {
+					const titleAttr = ref.getAttribute('data-title'),
+					      firstTd = firstContentCell(ref, 'TD');
+
+					if (titleAttr && (!firstTd || cellText(firstTd) !== titleAttr)) {
+						/* 形态三：伪元素名称转真实名称列。样式守卫与
+						   dedupeNameColumn 共用同一标记，避免重复注入。 */
+						if (!window.__hpTitleRealStyle) {
+							window.__hpTitleRealStyle = true;
+
+							try {
+								document.head.appendChild(E('style', [ `
+									.hp-title-real tr.cbi-section-table-row::before,
+									.hp-title-real tr.cbi-section-table-titles::before { content: none !important; }
+								` ]));
+							}
+							catch (e) {}
+						}
+
+						for (const tr of dataRows) {
+							const t = tr.getAttribute('data-title');
+
+							if (!t)
+								continue;
+
+							tr.insertBefore(
+								E('td', { 'class': 'td cbi-value-field cbi-section-table-titles' }, [ t ]),
+								firstContentCell(tr, 'TD') || tr.firstElementChild);
+							tr.removeAttribute('data-title');
+						}
+
+						for (const tr of headerRows) {
+							const t = tr.getAttribute('data-title');
+
+							if (!t)
+								continue;
+
+							tr.insertBefore(
+								E('th', { 'class': 'th cbi-section-table-cell' }, [ t ]),
+								firstContentCell(tr, 'TH') || tr.firstElementChild);
+							tr.removeAttribute('data-title');
+						}
+
+						el.classList.add('hp-title-real');
+
+						nameTd = ref.querySelector('td.cbi-section-table-titles');
+					}
+					else {
+						/* 形态二（或无标题表）：首列即名称 */
+						nameTd = firstTd;
+					}
+				}
+
+				if (!nameTd || nameTd === refEnabled ||
+				    refEnabled.previousElementSibling === nameTd)
+					return el;
+
+				const enabledIdx = Array.prototype.indexOf.call(ref.children, refEnabled),
+				      nameIdx = Array.prototype.indexOf.call(ref.children, nameTd),
+				      cellCount = ref.children.length;
+
+				if (enabledIdx < 0 || nameIdx < 0 || enabledIdx < nameIdx)
+					return el;
+
+				/* 数据行：启用单元格移到名称单元格之前 */
+				for (const tr of dataRows) {
+					const td = tr.querySelector('td[data-name="enabled"]');
+
+					if (!td)
+						continue;
+
+					const cell = tr.querySelector('td.cbi-section-table-titles') ||
+						firstContentCell(tr, 'TD');
+
+					if (cell && td !== cell)
+						tr.insertBefore(td, cell);
+				}
+
+				/* 表头行：按数据行索引对齐移动（表头与数据行列数一致） */
+				for (const tr of headerRows) {
+					if (tr.children.length !== cellCount)
+						continue;
+
+					const th = tr.children[enabledIdx],
+					      target = tr.children[nameIdx];
+
+					if (th && th.tagName === 'TH' && target && target !== th)
+						tr.insertBefore(th, target);
+				}
+			}
+			catch (e) {
+				/* 渲染后处理失败时保持原样，不影响表单功能 */
+			}
+
+			return el;
+		};
+
+		return section;
+	},
+
+	/* cron（本插件限定的 "M H * * D" 形式）转可读文本（建议8）。
+	   解析失败时原样返回，避免显示空白。 */
+	cronToHuman(value) {
+		const parsed = parseCron(value);
+
+		if (!parsed)
+			return String(value || '');
+
+		const time = parsed.hour + ':' + parsed.minute,
+		      days = [ _('Sun'), _('Mon'), _('Tue'), _('Wed'),
+		               _('Thu'), _('Fri'), _('Sat') ];
+
+		return (parsed.day === '*')
+			? _('Every day %s').format(time)
+			: _('Every %s %s').format(days[+parsed.day % 7], time);
 	},
 
 	installCloseButtonText() {

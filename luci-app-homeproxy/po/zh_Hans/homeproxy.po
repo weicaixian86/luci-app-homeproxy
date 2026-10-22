@@ -427,6 +427,14 @@ msgstr "点我检测"
 msgid "Client"
 msgstr "客户端"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1919
+msgid ""
+"Client DNS queries match DNS rules from top to bottom; matching stops at "
+"the first hit, and unmatched queries go to the default DNS server."
+msgstr ""
+"客户端 DNS 查询按从上到下的顺序匹配 DNS 规则，命中即停止；未命中任何规则的查询"
+"交给默认 DNS 服务器。"
+
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:14
 msgid "Client Settings"
 msgstr "客户端设置"
@@ -583,6 +591,14 @@ msgstr ""
 "填写国内DNS，Sing-box在连接这个代理节点前，需要先解析节点域名，这里就决定用哪"
 "个DNS去解析这个“代理服务器域名”，不要选走代理的国外 DNS，否则可能出现“代理还"
 "没连上，却要先通过代理解析代理服务器”的循环问题。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1922
+msgid "Default DNS server: %s"
+msgstr "默认 DNS 服务器：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1921
+msgid "Default DNS server: %s (via outbound: %s)"
+msgstr "默认 DNS 服务器：%s（出站：%s）"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1630
 msgid "Default DNS strategy"
@@ -779,6 +795,10 @@ msgstr "下载带宽"
 msgid "Download bandwidth in Mbps."
 msgstr "下载带宽（单位：Mbps）。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2185
+msgid "Download failed"
+msgstr "下载失败"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:366
 msgid "Downloading sing-box core…"
 msgstr "正在下载 sing-box 内核…"
@@ -956,6 +976,10 @@ msgstr "加密方式"
 msgid "Error"
 msgstr "错误"
 
+#: htdocs/luci-static/resources/homeproxy.js:1061
+msgid "Every %s %s"
+msgstr "每周%s %s"
+
 #: htdocs/luci-static/resources/homeproxy.js:141
 msgid "Every Friday"
 msgstr "每周五"
@@ -987,6 +1011,10 @@ msgstr "每周三"
 #: htdocs/luci-static/resources/homeproxy.js:136
 msgid "Every day"
 msgstr "每天"
+
+#: htdocs/luci-static/resources/homeproxy.js:1060
+msgid "Every day %s"
+msgstr "每天 %s"
 
 #: htdocs/luci-static/resources/homeproxy.js:857
 #: htdocs/luci-static/resources/homeproxy.js:1002
@@ -1057,10 +1085,18 @@ msgstr "附加记录"
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2231
+msgid "Failed to update rule set: %s"
+msgstr "规则集更新失败：%s"
+
 #: htdocs/luci-static/resources/homeproxy.js:954
 #: htdocs/luci-static/resources/homeproxy.js:992
 msgid "Failed to upload %s, error: %s."
 msgstr "上传 %s 失败，错误：%s。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2193
+msgid "File missing"
+msgstr "文件缺失"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1199
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2005
@@ -1105,6 +1141,10 @@ msgstr "分片 TLS 握手。由于性能较差，请先尝试 <code>%s</code>。
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1495
 msgid "Fragment fallback delay"
 msgstr "分片回退延迟"
+
+#: htdocs/luci-static/resources/homeproxy.js:1057
+msgid "Fri"
+msgstr "五"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1486
 msgid "GET"
@@ -1472,6 +1512,10 @@ msgid ""
 "seconds)."
 msgstr "发送心跳包以保持连接存活的时间间隔（单位：秒）。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2188
+msgid "Invalid file"
+msgstr "文件无效"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:635
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1257
 #: htdocs/luci-static/resources/view/homeproxy/node.js:689
@@ -1603,6 +1647,10 @@ msgstr "本地"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1540
 msgid "Local address"
 msgstr "本地地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2203
+msgid "Local file"
+msgstr "本地文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:483
 msgid "Log copied to clipboard."
@@ -1841,6 +1889,10 @@ msgstr "混合<code>系统</code> TCP 栈和 <code>gVisor</code> UDP 栈。"
 msgid "Mode"
 msgstr "模式"
 
+#: htdocs/luci-static/resources/homeproxy.js:1056
+msgid "Mon"
+msgstr "一"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1809
 #: htdocs/luci-static/resources/view/homeproxy/server.js:857
 msgid "MultiPath TCP"
@@ -1968,6 +2020,10 @@ msgstr "未运行"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:716
 msgid "Not Tested"
 msgstr "未测试"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2193
+msgid "Not downloaded"
+msgstr "未下载"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:442
 msgid "Not installed"
@@ -2516,6 +2572,16 @@ msgstr "规则集 IP CIDR 作为源 IP"
 msgid "Rule set URL"
 msgstr "规则集 URL"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2229
+msgid "Rule set updated successfully."
+msgstr "规则集更新成功。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1361
+msgid ""
+"Rules are matched by sequence number from top to bottom; matching stops at "
+"the first hit."
+msgstr "规则按序号从上到下匹配，命中即停止。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:149
 msgid "Running"
 msgstr "运行中"
@@ -2576,6 +2642,10 @@ msgstr "保存订阅设置"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1861
 msgid "Self-built nodes"
 msgstr "自建节点"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1358
+msgid "Sequence"
+msgstr "序号"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1941
 #: htdocs/luci-static/resources/view/homeproxy/server.js:158
@@ -2714,6 +2784,10 @@ msgid ""
 "commas."
 msgstr "指定需要被代理的目标端口。多个端口必须用逗号隔开。"
 
+#: htdocs/luci-static/resources/homeproxy.js:1057
+msgid "Sat"
+msgstr "六"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:406
 msgid "Starting download…"
 msgstr "正在启动下载…"
@@ -2760,6 +2834,10 @@ msgstr "成功导入 %s 个节点，共 %s 个。"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:189
 msgid "Successfully updated."
 msgstr "更新成功。"
+
+#: htdocs/luci-static/resources/homeproxy.js:1056
+msgid "Sun"
+msgstr "日"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1877
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1994
@@ -3086,6 +3164,10 @@ msgstr ""
 msgid "ThreatBook Public DNS (DoH)"
 msgstr "微步 公共DNS (DoH)"
 
+#: htdocs/luci-static/resources/homeproxy.js:1057
+msgid "Thu"
+msgstr "四"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2297
 msgid "Time format examples: 1m = 1 minute, 1h = 1 hour, 1d = 1 day."
 msgstr "时间格式示例：1m = 1分钟，1h = 1小时，1d = 1天。"
@@ -3123,6 +3205,10 @@ msgstr "传输层"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:191
 msgid "Trojan"
 msgstr "Trojan"
+
+#: htdocs/luci-static/resources/homeproxy.js:1056
+msgid "Tue"
+msgstr "二"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1089
 #: htdocs/luci-static/resources/view/homeproxy/server.js:193
@@ -3243,6 +3329,10 @@ msgstr "更新失败。"
 msgid "Update nodes from subscriptions"
 msgstr "从订阅更新节点"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2217
+msgid "Update now"
+msgstr "立即更新"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:174
 msgid "Update panel failed."
 msgstr "更新面板失败"
@@ -3263,6 +3353,10 @@ msgstr "更新时间(每周)"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1982
 msgid "Update via proxy"
 msgstr "使用代理更新"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2221
+msgid "Updating..."
+msgstr "更新中…"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1749
 msgid "Upload ECH config"
@@ -3397,6 +3491,10 @@ msgstr "警告"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:413
 msgid "WebSocket"
 msgstr "WebSocket"
+
+#: htdocs/luci-static/resources/homeproxy.js:1056
+msgid "Wed"
+msgstr "三"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1192
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2001

@@ -159,6 +159,8 @@ return view.extend({
 	s.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 	/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
 	hp.dedupeNameColumn(s);
+	/* 「启用」列移到名称列左侧 */
+	hp.moveEnableColumn(s);
 	s.renderSectionAdd = L.bind(hp.renderSectionAdd, this, s, null,
 			_('Used as the displayed server name. Chinese is supported. It must be unique.'));
 

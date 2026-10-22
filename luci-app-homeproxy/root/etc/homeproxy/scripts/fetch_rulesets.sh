@@ -40,6 +40,7 @@ PER_FILE_MAX=120
 FORCE=0
 CHECK_ONLY=0
 QUIET=0
+ONLY=""
 
 log_msg() {
 	mkdir -p "$RUN_DIR" 2>/dev/null
@@ -82,6 +83,8 @@ Usage: fetch_rulesets.sh [options]
   --check        verify only; exit 1 when some enabled rule-set has no valid
                  local copy (nothing is downloaded, nothing is written)
   --quiet        do not log to syslog
+  --only SEC     download pass only handles the named rule-set section
+                 (LuCI「立即更新」按钮使用；--check 模式忽略此参数)
 EOF
 }
 
@@ -90,6 +93,13 @@ while [ $# -gt 0 ]; do
 		--force) FORCE=1 ;;
 		--check) CHECK_ONLY=1 ;;
 		--quiet) QUIET=1 ;;
+		--only)
+			shift
+			case "$1" in
+				''|*[!A-Za-z0-9_]*) log_msg "错误：--only 需要一个规则集 section 名"; exit 2 ;;
+			esac
+			ONLY="$1"
+			;;
 		--budget)
 			shift
 			case "$1" in
@@ -318,6 +328,20 @@ sections="$(list_sections)"
 if [ -z "$sections" ]; then
 	log_msg "没有启用的远程规则集，跳过。"
 	exit 0
+fi
+
+# --only：只处理指定的规则集 section（须在「已启用的远程规则集」列表中，
+# 否则视为配置错误退出 2）。列表以空白分隔，用前后加空格的 case 匹配。
+if [ -n "$ONLY" ]; then
+	case "$(printf ' %s ' $sections)" in
+		*" $ONLY "*)
+			sections="$ONLY"
+			;;
+		*)
+			log_msg "错误：--only 指定的规则集 '$ONLY' 不存在或未启用。"
+			exit 2
+			;;
+	esac
 fi
 
 total=0

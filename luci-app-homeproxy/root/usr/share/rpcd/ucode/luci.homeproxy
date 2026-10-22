@@ -1464,6 +1464,104 @@ const methods = {
 		}
 	},
 
+	/* 规则集本地文件状态（建议7）：路径解析与 fetch_rulesets.sh 的
+	   resolve_path()/ruleset_file_name() 保持一致，魔数校验与
+	   valid_ruleset() 一致（binary→"SRS"，source→"{" 或 "["）。 */
+	ruleset_status: {
+		call: function() {
+			const uci = cursor();
+			const result = {};
+
+			uci.foreach('homeproxy', 'ruleset', (sec) => {
+				const sid = sec['.name'],
+				      stype = sec.type || 'remote',
+				      fmt = sec.format || 'binary';
+
+				let path;
+
+				if (stype === 'local') {
+					path = trim(sec.path || '');
+				} else {
+					let p = trim(sec.remote_path || '') || trim(sec.path || ''),
+					    tag = sec.tag || ('cfg-' + sid + '-rule'),
+					    name = replace(tag, /[^A-Za-z0-9_.-]/g, '_');
+
+					if (!length(name))
+						name = 'ruleset';
+
+					const fname = name + ((fmt === 'source') ? '.json' : '.srs');
+
+					if (!length(p))
+						path = '/etc/homeproxy/ruleset/' + fname;
+					else if (substr(p, length(p) - 1) === '/')
+						path = p + fname;
+					else
+						path = p;
+				}
+
+				const entry = { exists: false, valid: false, size: 0, mtime: 0, unavailable: false };
+
+				if (length(path)) {
+					const st = lstat(path);
+
+					if (st) {
+						entry.exists = true;
+						entry.size = st.size || 0;
+
+						let mt = st.mtime;
+						if (type(mt) === 'object')
+							mt = mt?.sec ?? 0;
+						entry.mtime = mt || 0;
+
+						const head = readfile(path, 4) || '';
+
+						if (fmt === 'source')
+							entry.valid = (substr(head, 0, 1) === '{' || substr(head, 0, 1) === '[');
+						else
+							entry.valid = (substr(head, 0, 3) === 'SRS');
+					}
+
+					if (!entry.exists && stype === 'remote' && access(path + '.unavailable'))
+						entry.unavailable = true;
+				}
+
+				result[sid] = entry;
+			});
+
+			return result;
+		}
+	},
+
+	/* 立即更新单个远程规则集（建议9）：同步执行 fetch_rulesets.sh
+	   --force --only <section>，rc === 0 即成功。单条 90 秒预算。 */
+	ruleset_update: {
+		args: { section: 'section' },
+		call: function(req) {
+			const section = req.args?.section || '';
+
+			if (!match(section, /^[A-Za-z0-9_]+$/))
+				return { result: false, error: 'illegal section' };
+
+			const uci = cursor();
+			let stype = null;
+
+			uci.foreach('homeproxy', 'ruleset', (sec) => {
+				if (sec['.name'] === section)
+					stype = sec.type || 'remote';
+			});
+
+			if (stype === null)
+				return { result: false, error: 'no such section' };
+
+			if (stype !== 'remote')
+				return { result: false, error: 'not a remote rule set' };
+
+			const rc = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/fetch_rulesets.sh')} --force --only ${shellquote(section)} --quiet --budget 90`);
+
+			return { result: rc === 0, rc: rc };
+		}
+	},
+
 	singbox_generator: {
 		args: { type: 'type', params: 'params' },
 		call: function(req) {

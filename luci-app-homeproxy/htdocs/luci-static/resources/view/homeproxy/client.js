@@ -65,6 +65,19 @@ const callUpdatePanel = rpc.declare({
 	expect: { '': {} }
 });
 
+const callRulesetStatus = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'ruleset_status',
+	expect: { '': {} }
+});
+
+const callRulesetUpdate = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'ruleset_update',
+	params: ['section'],
+	expect: { '': {} }
+});
+
 const statusCss = `
 #homeproxy_status_panel {
 	margin-bottom: 1rem;
@@ -515,6 +528,7 @@ return view.extend({
 
 		installKnownErrorTranslator();
 		hp.installCloseButtonText();
+		hp.ensureUIStyles();
 
 		let features = data[1],
 		    hosts = data[2]?.hosts,
@@ -1012,6 +1026,8 @@ return view.extend({
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 		/* 去掉 luci-base 额外插入的那列重复名称，名称列左移对齐 */
 		hp.dedupeNameColumn(ss);
+		/* 「启用」列移到名称列左侧 */
+		hp.moveEnableColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 
@@ -1340,8 +1356,32 @@ return view.extend({
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
 		hp.dedupeNameColumn(ss);
+		/* 「启用」列移到名称列左侧 */
+		hp.moveEnableColumn(ss);
+		/* 建议4：名称列左侧显示序号列（列头「序号」）；添加框上方说明匹配顺序 */
+		hp.prependIndexColumn(ss, _('Sequence'));
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
-			_('Used as the displayed routing rule name. Chinese is supported. It must be unique.'));
+			_('Used as the displayed routing rule name. Chinese is supported. It must be unique.'),
+			_('Rules are matched by sequence number from top to bottom; matching stops at the first hit.'));
+		/* 建议6：表格末尾以 chip 标签直观显示本条规则引用的规则集 */
+		hp.appendTableColumns(ss, [{
+			header: _('Rule set'),
+			renderCell: function(sid) {
+				let values = normalizeFormList(uci.get(data[0], sid, 'rule_set'));
+
+				if (!values.length)
+					return '—';
+
+				let labels = {};
+
+				uci.sections(data[0], 'ruleset', (res) => {
+					labels[res['.name']] = res.tag || res.label || res['.name'];
+				});
+
+				return E('span', { 'class': 'hp-chips' },
+					values.map((v) => E('span', { 'class': 'hp-chip' }, labels[v] || v)));
+			}
+		}]);
 
 		ss.tab('field_other', _('Other fields'));
 		ss.tab('field_host', _('Host/IP fields'));
@@ -1676,6 +1716,8 @@ return view.extend({
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
 		hp.dedupeNameColumn(ss);
+		/* 「启用」列移到名称列左侧 */
+		hp.moveEnableColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Used as the displayed DNS server name. Chinese is supported. It must be unique.'));
 
@@ -1841,6 +1883,51 @@ return view.extend({
 
 		/* DNS rules start */
 		s.tab('dns_rule', _('DNS Rules'));
+		/* 建议10：DNS 解析流程横幅——说明 DNS 规则自上而下按序匹配、
+		   未命中的查询交给哪个默认 DNS 服务器及其出站。 */
+		o = s.taboption('dns_rule', form.DummyValue, '_dns_resolve_banner');
+		o.depends('routing_mode', 'custom');
+		o.render = function() {
+			const server_id = uci.get(data[0], 'dns', 'default_server') || 'default-dns';
+
+			let server_label = null,
+			    outbound_label = null;
+
+			if (server_id === 'default-dns') {
+				server_label = _('Default DNS (issued by WAN)');
+			} else if (server_id === 'system-dns') {
+				server_label = _('System DNS');
+			} else {
+				uci.sections(data[0], 'dns_server', (res) => {
+					if (res['.name'] === server_id)
+						server_label = res.label || server_id;
+				});
+
+				if (!server_label)
+					server_label = server_id;
+
+				const outbound_id = uci.get(data[0], server_id, 'outbound') || 'direct-out';
+
+				if (outbound_id === 'direct-out') {
+					outbound_label = _('Direct');
+				} else {
+					uci.sections(data[0], 'routing_node', (res) => {
+						if (res['.name'] === outbound_id)
+							outbound_label = res.label || outbound_id;
+					});
+
+					if (!outbound_label)
+						outbound_label = outbound_id;
+				}
+			}
+
+			return E('div', { 'class': 'hp-dns-banner' }, [
+				E('div', {}, _('Client DNS queries match DNS rules from top to bottom; matching stops at the first hit, and unmatched queries go to the default DNS server.')),
+				E('div', {}, (outbound_label != null)
+					? _('Default DNS server: %s (via outbound: %s)').format(server_label, outbound_label)
+					: _('Default DNS server: %s').format(server_label))
+			]);
+		};
 		o = s.taboption('dns_rule', form.SectionValue, '_dns_rule', form.GridSection, 'dns_rule');
 		o.depends('routing_mode', 'custom');
 
@@ -1853,6 +1940,8 @@ return view.extend({
 		ss.sectiontitle = L.bind(hp.loadDefaultLabel, this, data[0]);
 		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
 		hp.dedupeNameColumn(ss);
+		/* 「启用」列移到名称列左侧 */
+		hp.moveEnableColumn(ss);
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Used as the displayed DNS rule name. Chinese is supported. It must be unique.'));
 
@@ -2110,7 +2199,115 @@ return view.extend({
 		};
 		/* 去掉 luci-base 额外插入的那列重复名称，见 hp.dedupeNameColumn */
 		hp.dedupeNameColumn(ss);
+		/* 「启用」列移到名称列左侧 */
+		hp.moveEnableColumn(ss);
 		ss.renderSectionAdd = L.bind(renderRuleSetAdd, this, ss);
+
+		/* 建议7/9：本地文件状态列 + 立即更新按钮列。状态由 rpcd ruleset_status
+		   异步填充（绿点=有效·时间·大小，红点=下载失败/文件无效，灰点=未下载）；
+		   更新按钮调用 rpcd ruleset_update，内部执行
+		   fetch_rulesets.sh --force --only <section>，单条预算 90 秒。 */
+		const rulesetHumanSize = function(n) {
+			n = +n || 0;
+			if (n >= 1048576)
+				return (n / 1048576).toFixed(1) + ' MB';
+			else if (n >= 1024)
+				return (n / 1024).toFixed(1) + ' KB';
+			return n + ' B';
+		};
+
+		const refreshRulesetStatus = function(container) {
+			L.resolveDefault(callRulesetStatus(), {}).then((status) => {
+				for (const span of container.querySelectorAll('.hp-rs-status[data-sid]')) {
+					const sid = span.getAttribute('data-sid'),
+					      info = status ? status[sid] : null;
+
+					span.textContent = '';
+
+					if (!info) {
+						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-none' }));
+						continue;
+					}
+
+					if (info.valid) {
+						const d = new Date((info.mtime || 0) * 1000);
+						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-ok' }));
+						span.appendChild(document.createTextNode(String.format(
+							'%02d-%02d %02d:%02d', d.getMonth() + 1, d.getDate(),
+							d.getHours(), d.getMinutes()) + ' · ' + rulesetHumanSize(info.size)));
+					} else if (info.unavailable) {
+						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-bad' }));
+						span.appendChild(document.createTextNode(_('Download failed')));
+					} else if (info.exists) {
+						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-bad' }));
+						span.appendChild(document.createTextNode(_('Invalid file')));
+					} else {
+						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-none' }));
+						span.appendChild(document.createTextNode(
+							((uci.get(data[0], sid, 'type') || 'remote') === 'local')
+								? _('File missing') : _('Not downloaded')));
+					}
+				}
+			});
+		};
+
+		let rulesetTableEl = null;
+
+		hp.appendTableColumns(ss, [
+			{
+				header: _('Local file'),
+				renderCell: function(sid) {
+					return E('span', { 'class': 'hp-rs-status', 'data-sid': sid }, [ '…' ]);
+				}
+			},
+			{
+				header: '',
+				renderCell: function(sid) {
+					if ((uci.get(data[0], sid, 'type') || 'remote') !== 'remote')
+						return '—';
+
+					const btn = E('button', {
+						'class': 'btn cbi-button hp-rs-update',
+						'data-sid': sid
+					}, [ _('Update now') ]);
+
+					btn.addEventListener('click', function() {
+						this.disabled = true;
+						this.textContent = _('Updating...');
+
+						L.resolveDefault(callRulesetUpdate(this.getAttribute('data-sid')), {})
+							.then((ret) => {
+								this.disabled = false;
+								this.textContent = _('Update now');
+
+								if (ret && ret.result === true)
+									ui.addNotification(null, E('p', _('Rule set updated successfully.')), 'info');
+								else
+									ui.addNotification(null, E('p', _('Failed to update rule set: %s')
+										.format((ret && ret.error) || _('unknown error'))), 'error');
+
+								if (rulesetTableEl)
+									refreshRulesetStatus(rulesetTableEl);
+							})
+							.catch(() => {
+								this.disabled = false;
+								this.textContent = _('Update now');
+							});
+					});
+
+					return btn;
+				}
+			}
+		]);
+
+		const rulesetOrigRenderContents = ss.renderContents;
+
+		ss.renderContents = function() {
+			const el = rulesetOrigRenderContents.apply(this, arguments);
+			rulesetTableEl = el;
+			refreshRulesetStatus(el);
+			return el;
+		};
 
 		so = ss.option(form.Value, 'tag', _('Label'),
 			_('Used as the sing-box rule set tag and display name. Only letters, digits, ".", "_" and "-" are allowed. Chinese is not supported. It must be unique.'));
@@ -2240,6 +2437,10 @@ return view.extend({
 		so = ss.option(form.Value, 'update_interval', _('Update time (weekly)'));
 		so.renderWidget = function() {
 			return hp.renderCronSelector.apply(this, arguments);
+		};
+		/* 建议8：表格中以「每天 04:30 / 每周五 04:30」形式显示，弹窗内仍为选择器 */
+		so.textvalue = function(section_id) {
+			return hp.cronToHuman(this.cfgvalue(section_id) || this.default || '0 0 * * *');
 		};
 		so.default = '0 0 * * *';
 		so.rmempty = false;
