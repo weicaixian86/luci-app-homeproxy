@@ -252,6 +252,10 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1119
+msgid "Auto latency test"
+msgstr "自动测速"
+
 #: htdocs/luci-static/resources/view/homeproxy/log.js:466
 msgid "Auto refresh"
 msgstr "自动刷新"
@@ -490,6 +494,10 @@ msgstr "核心版本"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:338
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1147
+msgid "Current node / Latency"
+msgstr "当前节点 / 延迟"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2557
 msgid "Custom"
@@ -1693,6 +1701,7 @@ msgid "Make IP CIDR in rule-sets accept empty query response."
 msgstr "使规则集中的 IP CIDR 接受空查询响应。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1038
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1119
 msgid "Manual select"
 msgstr "手动选择"
 
@@ -2809,6 +2818,11 @@ msgstr "订阅"
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1135
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1312
+msgid "Subscription airports"
+msgstr "订阅机场"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1961
 msgid "Subscription links"
 msgstr "订阅连接"
@@ -2971,6 +2985,10 @@ msgstr "测试间隔"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1299
 msgid "Test interval must be less or equal than idle timeout."
 msgstr "测试间隔时间必须小于或等于空闲超时时间。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1125
+msgid "Test interval: %ss · Tolerance: %sms"
+msgstr "测试间隔：%s 秒 · 容差：%s 毫秒"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:755
 #: htdocs/luci-static/resources/view/homeproxy/client.js:786

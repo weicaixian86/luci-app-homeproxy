@@ -1031,6 +1031,141 @@ return view.extend({
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 
+		/* 建议3：类型徽章列。urltest/selector 不再以英文术语裸露在表格里，
+		   改为徽章显示（自动测速 / 手动选择）；urltest 的测速参数放在徽章
+		   悬浮提示中。单节点包装则直接显示节点名。 */
+		/* 建议1：当前节点 / 延迟列。渲染后异步从 sing-box Clash API
+		   （GET /proxies，自带 CORS）拉取运行时状态：沿 now 链解析实际
+		   出口节点并显示其最近一次测速延迟；服务未运行或 API 不可达时
+		   清空该列内容，不影响配置编辑。 */
+		const refreshRoutingNodeStatus = function(container) {
+			const api = getClashApiInfo(),
+			      options = { headers: {} };
+
+			if (api.secret)
+				options.headers['Authorization'] = 'Bearer ' + api.secret;
+
+			fetch(api.baseUrl + '/proxies', options)
+				.then((res) => (res && res.ok) ? res.json() : Promise.reject())
+				.then((res) => {
+					const proxies = (res && res.proxies) || {};
+
+					for (const span of container.querySelectorAll('.hp-rn-status[data-tag]')) {
+						const grp = proxies[span.getAttribute('data-tag')];
+
+						span.textContent = '';
+						span.removeAttribute('title');
+
+						if (!grp)
+							continue;
+
+						/* selector 嵌套策略组时沿 now 链取实际出口 */
+						let cur = grp;
+
+						for (let i = 0; cur && cur.now && proxies[cur.now] && i < 8; i++)
+							cur = proxies[cur.now];
+
+						const name = (cur && cur.name) || grp.now || '';
+
+						if (!name)
+							continue;
+
+						/* 最近一次测速延迟：优先 history，新版内核在 extra */
+						let delay = null;
+						const hist = (cur && cur.history) || [];
+
+						if (hist.length)
+							delay = hist[hist.length - 1].delay;
+						else if (cur && cur.extra) {
+							for (const key in cur.extra) {
+								const h = cur.extra[key];
+
+								if (h && h.length) {
+									delay = h[h.length - 1].delay;
+									break;
+								}
+							}
+						}
+
+						span.appendChild(document.createTextNode(name));
+
+						if (delay != null && delay > 0) {
+							span.appendChild(document.createTextNode(' · '));
+							span.appendChild(E('span', { 'class': 'hp-rn-ms' }, String(delay) + ' ms'));
+						}
+
+						span.title = (delay != null && delay > 0)
+							? name + ' · ' + delay + ' ms' : name;
+					}
+				})
+				.catch(() => {
+					/* 服务未运行 / API 不可达：仅清空列内容 */
+					for (const span of container.querySelectorAll('.hp-rn-status[data-tag]')) {
+						span.textContent = '';
+						span.removeAttribute('title');
+					}
+				});
+		};
+
+		hp.appendTableColumns(ss, [
+			{
+				header: _('Node'),
+				renderCell: function(sid) {
+					const node = uci.get(data[0], sid, 'node') || 'selector';
+
+					if (node === 'urltest' || node === 'selector') {
+						const badge = E('span', {
+							'class': 'hp-tag ' + ((node === 'urltest') ? 'hp-tag-auto' : 'hp-tag-manual')
+						}, (node === 'urltest') ? _('Auto latency test') : _('Manual select'));
+
+						if (node === 'urltest') {
+							const interval = uci.get(data[0], sid, 'urltest_interval') || '180',
+							      tolerance = uci.get(data[0], sid, 'urltest_tolerance') || '50';
+
+							badge.title = _('Test interval: %ss · Tolerance: %sms').format(interval, tolerance);
+						}
+
+						return badge;
+					}
+
+					return proxy_nodes[node] || node;
+				}
+			},
+			{
+				header: _('Subscription airports'),
+				renderCell: function(sid) {
+					const values = normalizeFormList(uci.get(data[0], sid, 'subscription_groups'));
+
+					if (!values.length)
+						return '—';
+
+					return E('span', { 'class': 'hp-chips' },
+						values.map((v) => E('span', { 'class': 'hp-chip' }, subscription_groups[v] || v)));
+				}
+			},
+			{
+				header: _('Current node / Latency'),
+				renderCell: function(sid) {
+					/* 与 generate_client.uc 的 outbound tag 规则保持一致 */
+					const label = uci.get(data[0], sid, 'label') || sid,
+					      tag = String(label).trim()
+							.replace(/[\r\n\t]+/g, ' ')
+							.replace(/[\/\\?#%]+/g, '-')
+							.replace(/\s+/g, ' ');
+
+					return E('span', { 'class': 'hp-rn-status', 'data-tag': tag }, [ '…' ]);
+				}
+			}
+		]);
+
+		const routingNodeOrigRenderContents = ss.renderContents;
+
+		ss.renderContents = function() {
+			const el = routingNodeOrigRenderContents.apply(this, arguments);
+			refreshRoutingNodeStatus(el);
+			return el;
+		};
+
 		so = ss.option(form.Value, 'label', _('Label'),
 			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'));
 		so.load = L.bind(hp.loadDefaultLabel, this, data[0]);
@@ -1056,6 +1191,8 @@ return view.extend({
 			so.value(i, proxy_nodes[i]);
 		so.default = 'selector';
 		so.rmempty = false;
+		/* 类型在表格末尾以徽章列展示（建议3），行内不再重复显示英文术语 */
+		so.modalonly = true;
 		so.formvalue = function(section_id) {
 			let widget = this.getUIElement(section_id),
 			    cbid = this.cbid(section_id),
@@ -1172,7 +1309,7 @@ return view.extend({
 		so.depends('node', /^((?!(urltest|selector)$).)+$/);
 		so.editable = true;
 
-		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscriptions'));
+		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscription airports'));
 		for (let hash in subscription_groups)
 			so.value(hash, subscription_groups[hash]);
 		so.depends('node', 'urltest');

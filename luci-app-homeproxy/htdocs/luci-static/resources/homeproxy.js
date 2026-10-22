@@ -928,6 +928,14 @@ return baseclass.extend({
 				.hp-dns-banner { margin: 0 0 .8rem 0; padding: .55rem .9rem;
 					border: 1px solid rgba(96, 60, 190, .35); border-left: 4px solid rgba(96, 60, 190, .65);
 					border-radius: 6px; font-size: .9rem; line-height: 1.8; }
+				.hp-tag { display: inline-block; padding: 1px 8px; border-radius: 4px;
+					font-size: .85rem; line-height: 1.5; white-space: nowrap; }
+				.hp-tag-auto { background: rgba(176, 106, 0, .14); color: #b06a00; }
+				.hp-tag-manual { background: rgba(43, 91, 215, .12); color: #2b5bd7; }
+				.hp-rn-status { display: inline-block; max-width: 280px; overflow: hidden;
+					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+					font-size: .85rem; }
+				.hp-rn-ms { color: #2eb872; font-weight: 600; }
 			` ]));
 		}
 		catch (e) {}
