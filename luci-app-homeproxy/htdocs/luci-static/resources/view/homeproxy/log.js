@@ -91,12 +91,45 @@ const callLogClean = rpc.declare({
 const LOG_MAX_LINES = 1000;
 
 /* Leading "YYYY-MM-DD HH:MM:SS" of a log line. An optional "+0800"-style
-   zone prefix is tolerated because some sing-box builds emit it. */
-const TS_RE = /^\s*(?:[+-]\d{4}\s+)?(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/;
+   zone prefix is tolerated because some sing-box builds emit it. Accepts
+   both sing-box (YYYY-MM-DD HH:MM:SS / YYYY/MM/DD HH:MM:SS) and Go log default
+   forms so we can split the stream into timestamped records first. The level
+   token is extracted separately (see LEVEL_RE below) so that shell-script
+   logs (homeproxy, core_download, panel_download) — which have timestamps but
+   no level token — still split cleanly into their own records. */
+const TS_RE = /^\s*(?:[+-]\d{4}\s+)?(\d{4}[-/]\d{2}[-/]\d{2})[ T](\d{2}:\d{2}:\d{2})/;
+
+/* Level token extraction. Matches a severity keyword (optional square
+   brackets) that appears *immediately after* the timestamp suffix — i.e.
+   it has to be the first token after the timestamp/zone gap, so we don't
+   accidentally match descriptive words like "error" inside a shell logger's
+   free-form message body. Used inside splitRecords only after TS_RE has
+   already confirmed the line has a timestamp and we've trimmed the suffix. */
+const LEVEL_TOKEN_RE = /^\s*\[?(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\]?\b/i;
+
+/* Severity weight: higher = more severe. A record whose level weight is
+   >= the selected cutoff weight survives; others are filtered out on the
+   frontend. Unknown/non-sing-box records (level = null) always pass. */
+const LEVEL_ORDER = {
+	trace:   0,
+	debug:   1,
+	info:    2,
+	warn:    3,
+	warning: 3,
+	error:   4,
+	fatal:   5,
+	panic:   6
+};
 
 /* Split one log file into records: a timestamped line plus the untimestamped
    continuation lines that follow it (e.g. sing-box "Cause:" / stack traces).
-   Keeping records intact means multi-line entries survive the merge. */
+   Keeping records intact means multi-line entries survive the merge.
+
+   Records that look like sing-box output (a level token appears immediately
+   after the timestamp) get a `level` (lowercase) tagged on the record;
+   records from shell logger (homeproxy, core_download, panel_download) have
+   timestamps but no such token → `level: null` and are always shown when the
+   frontend applies its severity filter. */
 function splitRecords(text) {
 	const out = [];
 	const lines = text.split('\n');
@@ -109,11 +142,24 @@ function splitRecords(text) {
 		if (m) {
 			if (cur)
 				out.push(cur);
+
+			/* Extract level token from the region immediately after the
+			   timestamp match. TS_RE does not capture trailing millis/zone
+			   suffix ("+0000 123.456"), so `m[0].length` already points at
+			   the first character of what should be the sing-box severity
+			   token or a shell-log description. Running LEVEL_TOKEN_RE there
+			   lets us distinguish the two: sing-box has a recognised keyword
+			   right there; shell logs have free-form text. */
+			const tail = line.slice(m[0].length);
+			const lm = LEVEL_TOKEN_RE.exec(tail);
+			const levelTok = lm ? lm[1].toLowerCase() : null;
+
 			/* sing-box prefixes every line with a UTC offset ("+0000 ") from
 			   Go's -0700 layout. TS_RE tolerates it for sorting, but the raw
 			   prefix is noise in the rendered text, so strip it here. */
 			cur = {
-				ts: m[1] + ' ' + m[2],
+				ts:    m[1] + ' ' + m[2],
+				level: levelTok,           /* null = non-sing-box, always shown */
 				lines: [ line.replace(/^\s*[+-]\d{4}\s+/, '') ]
 			};
 		}
@@ -122,7 +168,7 @@ function splitRecords(text) {
 		}
 		else if (line.trim() !== '') {
 			/* Lines before the first timestamp: keep as an untimed record. */
-			out.push({ ts: '', lines: [ line ] });
+			out.push({ ts: '', level: null, lines: [ line ] });
 		}
 	}
 
@@ -151,14 +197,17 @@ function readSourceLog(src) {
 }
 
 /* Merge records from every source into one chronological list. Each item is
-   { si, ts, lines }, where si indexes log_sources. Untimed notices (a missing
-   file, for instance) sort first so they stay visible. Ties keep source order. */
+   { si, ts, level, lines }, where si indexes log_sources. Records with a
+   recognised sing-box level (level !== null) can be filtered later by weight;
+   records with level=null (shell-script logs, errors, ...) always survive.
+   Untimed notices (a missing file, for instance) sort first so they stay
+   visible. Ties keep source order. */
 function mergeRecords(results) {
 	const all = [];
 
 	results.forEach((r, si) => {
 		if (r.error) {
-			all.push({ si: si, ts: '', lines: [ r.error ] });
+			all.push({ si: si, ts: '', level: null, lines: [ r.error ] });
 			return;
 		}
 
@@ -171,7 +220,7 @@ function mergeRecords(results) {
 
 		for (let i = 0; i < r.records.length; i++) {
 			const rec = r.records[i];
-			all.push({ si: si, ts: rec.ts, lines: rec.lines });
+			all.push({ si: si, ts: rec.ts, level: rec.level, lines: rec.lines });
 		}
 	});
 
@@ -182,6 +231,22 @@ function mergeRecords(results) {
 	});
 
 	return all;
+}
+
+/* Filter a merged record list by severity cutoff. Only records whose `level`
+   resolves to a weight >= cutoff_weight survive; records with level=null
+   (shell logger output, errors, homeproxy, download logs, ...) and records
+   whose level token is unknown are always shown, so non-sing-box sources
+   are effectively immune to the dropdown. */
+function filterByLevel(merged, cutoffWeight) {
+	if (cutoffWeight == null)
+		return merged;
+	return merged.filter((rec) => {
+		if (rec.level == null) return true;        /* non-sing-box, keep */
+		const w = LEVEL_ORDER[rec.level];
+		if (w == null) return true;                 /* unknown token, keep */
+		return w >= cutoffWeight;
+	});
 }
 
 /* Render merged records into the single scrollable box as plain log text.
@@ -244,18 +309,25 @@ function renderUnifiedLog() {
 		error: _('Error')
 	};
 
-	const selected = uci.get('homeproxy', 'config', 'log_level') || 'info';
+	let selected = uci.get('homeproxy', 'config', 'log_level') || 'info';
 
 	/* Unified log level switcher: writes both the client (config) and the
-	   server (server) section so a single control tunes sing-box verbosity. */
+	   server (server) section so a single control tunes sing-box verbosity,
+	   AND immediately triggers a frontend re-filter so the view updates
+	   without waiting for the 5 s poll tick. */
 	const level_sel = E('select', {
 		'id': 'hp_unified_log_level',
 		'class': 'cbi-input-select',
 		'style': 'margin-left: 4px; width: 7em;',
 		'change': ui.createHandlerFn(this, (ev) => {
 			const v = ev.target.value;
+			selected = v;
 			uci.set('homeproxy', 'config', 'log_level', v);
 			uci.set('homeproxy', 'server', 'log_level', v);
+			/* save+apply restarts sing-box (kernel picks up the new level),
+			   but we also re-filter the currently-shown logs right now so
+			   the UI reacts instantly; wait for apply to finish afterwards. */
+			refresh();
 			return this.map.save(null, true).then(() => {
 				ui.changes.apply(true);
 			});
@@ -335,6 +407,14 @@ function renderUnifiedLog() {
 
 	let autoRefresh = true;
 
+	/* Compute the severity cutoff weight from the current dropdown value.
+	   null means "show everything" — but the dropdown's options table has
+	   entries for debug/info/warn/error only, so in practice cutoff is
+	   always set from the dropdown default (info) or the user's pick. */
+	function cutoffWeight() {
+		return LEVEL_ORDER[selected] != null ? LEVEL_ORDER[selected] : null;
+	}
+
 	function refresh() {
 		if (!autoRefresh)
 			return;
@@ -349,7 +429,9 @@ function renderUnifiedLog() {
 
 		return Promise.all(log_sources.map(readSourceLog))
 			.then((results) => {
-				dom.content(log_body, renderLogBox(mergeRecords(results)));
+				let merged = mergeRecords(results);
+				merged = filterByLevel(merged, cutoffWeight());
+				dom.content(log_body, renderLogBox(merged));
 			});
 	}
 
