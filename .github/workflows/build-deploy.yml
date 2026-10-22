@@ -364,7 +364,7 @@ jobs:
       - name: Prepare release body
         run: |
           {
-            printf '编译时间：%s\n' "$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S CST')"
+            printf '编译时间：%s（北京时间，UTC+8）\n' "$(TZ='Asia/Shanghai' date '+%Y-%m-%d %H:%M:%S')"
             if [ -n "${{ inputs.description }}" ]; then
               printf '\n%s\n' "${{ inputs.description }}"
             fi
