@@ -7,7 +7,7 @@
 
 'use strict';
 
-import { access, lstat, popen, readfile, writefile } from 'fs';
+import { access, lstat, popen, readfile, unlink, writefile } from 'fs';
 import { cursor } from 'uci';
 
 /* Kanged from ucode/luci */
@@ -1982,15 +1982,131 @@ const methods = {
 						'`sh -n ' + HP_DIR + '/scripts/update_core.sh` 检查语法，并确认该文件存在且可执行（chmod 755）。';
 
 			return {
-				running: running || starting,
-				done: done,
-				result: ok,
-				rc: rc,
-				output: output,
-				log: displayed
-			};
+					running: running || starting,
+					done: done,
+					result: ok,
+					rc: rc,
+					output: output,
+					log: displayed
+				};
+			}
+		},
+
+		/* DNS 服务器行内延迟测试（建议 11）：
+		   HTTPS(DoH) 用 curl 测 TLS 握手耗时(time_appconnect)；
+		   UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC 无法单独测握手，改测 ping 往返。
+		   单次预算约 6 秒。 */
+		dns_server_test: {
+			args: { section: 'section' },
+			call: function(req) {
+				const section = req.args?.section || '';
+
+				if (!match(section, /^[A-Za-z0-9_]+$/))
+					return { result: false, error: 'illegal section' };
+
+				const uci = cursor();
+				let type = null,
+				    server = null;
+
+				uci.foreach('homeproxy', 'dns_server', (sec) => {
+					if (sec['.name'] === section) {
+						type = sec.type || 'udp';
+						server = sec.server || '';
+					}
+				});
+
+				if (!server)
+					return { result: false, error: 'no such section or empty address' };
+
+				/* 从带协议头的地址里提取主机名（scheme 允许数字，如 h3://） */
+				let host = server;
+				const m = match(server, /^[a-z][a-z0-9+.-]*:\/\/(.+)$/i);
+
+				if (m)
+					host = m[1];
+
+				/* 去掉端口、路径、IPv6 方括号 */
+				host = match(host, /^([^:/\[\]]+)/)?.[1] || match(host, /^\[([^\]]+)\]/)?.[1] || host;
+				if (!host)
+					return { result: false, error: 'failed to extract host from address' };
+
+				const isHandshake = (type === 'https'),
+				      curl = access('/usr/bin/curl') ? '/usr/bin/curl' : null,
+				      ping = access('/bin/ping') ? '/bin/ping' : (access('/usr/bin/ping') ? '/usr/bin/ping' : null);
+
+				/* HTTPS(DoH) 且系统有 curl：测 TLS 握手耗时。H3(DoH3) 虽同为
+				   HTTP，但 h3:// 不是 curl 能识别的 scheme，且 QUIC 握手不在
+				   TCP/TLS 语义内，故按请求退回 ping。 */
+				if (isHandshake && curl) {
+					let url = server;
+
+					if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
+						url = 'https://' + url;
+
+					const fd = popen(`${curl} --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}" ${shellquote(url)} 2>/dev/null`);
+
+					if (!fd)
+						return { result: false, error: 'curl invocation failed', latency_ms: null };
+
+					const line = trim(fd.read('line') || '');
+					fd.close();
+
+					const parts = split(line, ' ');
+					const time_connect = parts[0] ? +parts[0] * 1000 : null,
+					      time_appconnect = parts[1] ? +parts[1] * 1000 : null;
+
+					/* 握手耗时 = time_appconnect（含 TLS），否则退回 time_connect（仅 TCP） */
+					let latency_ms = (time_appconnect !== null && time_appconnect > 0)
+						? Math.round(time_appconnect)
+						: ((time_connect !== null && time_connect > 0) ? Math.round(time_connect) : null);
+
+					/* 亚毫秒握手四舍五入为 0：钳到 1ms，避免误判失败 */
+					if (latency_ms !== null && latency_ms < 1)
+						latency_ms = 1;
+
+					if (latency_ms === null || latency_ms <= 0)
+						return { result: false, error: 'curl probe failed', latency_ms: null, kind: 'handshake' };
+
+					return { result: true, latency_ms, kind: 'handshake' };
+				}
+
+				/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
+				   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
+				   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
+				if (!ping)
+					return { result: false, error: 'missing ping executable', latency_ms: null };
+
+				const outfile = `/tmp/.hp_dns_ping_${section}`;
+				const rc = system(`${ping} -c 1 -W 2 ${shellquote(host)} > ${shellquote(outfile)} 2>/dev/null`, 6000);
+				const out = readfile(outfile) || '';
+				unlink(outfile);
+
+				let latency_ms = null;
+				const rt = match(out, /round-trip min\/avg\/max = ([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
+
+				if (rt)
+					latency_ms = Math.round(+rt[2]);
+				else {
+					const t = match(out, /time[=<]\s*([0-9.]+)\s*ms/);
+					if (t)
+						latency_ms = Math.round(+t[1]);
+				}
+
+				/* 亚毫秒 RTT 四舍五入为 0：钳到 1ms，避免误判失败 */
+				if (latency_ms !== null && latency_ms < 1)
+					latency_ms = 1;
+
+				if (latency_ms !== null && latency_ms > 0)
+					return { result: true, latency_ms, kind: 'ping' };
+
+				return {
+					result: false,
+					error: (rc === -1) ? 'ping timeout' : 'ping failed',
+					latency_ms: null,
+					kind: 'ping'
+				};
+			}
 		}
-	}
-};
+	};
 
 return { 'luci.homeproxy': methods };

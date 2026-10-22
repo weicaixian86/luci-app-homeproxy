@@ -252,15 +252,12 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1119
-msgid "Auto latency test"
-msgstr "自动测速"
-
 #: htdocs/luci-static/resources/view/homeproxy/log.js:466
 msgid "Auto refresh"
 msgstr "自动刷新"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1053
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1119
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1169
 msgid "Auto select"
 msgstr "自动选择"
 
@@ -1091,6 +1088,12 @@ msgstr "外部账户密钥标识符"
 msgid "Extra records"
 msgstr "附加记录"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2053
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2056
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2069
+msgid "Failed"
+msgstr "失败"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:86
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
@@ -1658,6 +1661,10 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Download time/size"
+msgstr "下载时间/大小"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2258
 msgid "Local file"
 msgstr "本地文件"
@@ -1703,7 +1710,7 @@ msgid "Make IP CIDR in rule-sets accept empty query response."
 msgstr "使规则集中的 IP CIDR 接受空查询响应。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1119
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1189
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1170
 msgid "Manual select"
 msgstr "手动选择"
 
@@ -2821,8 +2828,8 @@ msgstr "订阅"
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1135
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1312
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1112
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1296
 msgid "Subscription airports"
 msgstr "订阅机场"
 
@@ -2967,6 +2974,7 @@ msgid "Tencent Public DNS (DoH)"
 msgstr "腾讯 公共DNS (DoH)"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:750
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2028
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1037
 msgid "Test"
 msgstr "测试"
@@ -2990,10 +2998,6 @@ msgstr "测试间隔"
 msgid "Test interval must be less or equal than idle timeout."
 msgstr "测试间隔时间必须小于或等于空闲超时时间。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1125
-msgid "Test interval: %ss · Tolerance: %sms"
-msgstr "测试间隔：%s 秒 · 容差：%s 毫秒"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:769
 #: htdocs/luci-static/resources/view/homeproxy/client.js:800
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1460
@@ -3004,6 +3008,10 @@ msgstr "测试容差"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:750
 msgid "Testing"
 msgstr "测试中"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2033
+msgid "Testing..."
+msgstr "测试中..."
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2117
 msgid "Testing Current List..."
@@ -3364,6 +3372,10 @@ msgstr "更新面板失败"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1983
 msgid "Update subscriptions via proxy."
 msgstr "使用代理更新订阅。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Scheduled update time"
+msgstr "定时更新时间"
 
 #: htdocs/luci-static/resources/homeproxy.js:74
 msgid "Update time (daily)"

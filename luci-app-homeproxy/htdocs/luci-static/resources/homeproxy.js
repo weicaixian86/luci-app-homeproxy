@@ -744,6 +744,14 @@ return baseclass.extend({
 	},
 
 	renderSectionAdd(section, extra_class, hint, topHint) {
+		/* luci-base 的 renderContents() 以 this.renderSectionAdd('cbi-tblsection-create')
+		   调用本函数。由于本函数已被 L.bind 预绑定了前 3 个实参 (section,
+		   extra_class, hint)，这个 class 串会顶到第 4 个参数 topHint 上，被误当成
+		   说明文字渲染到「添加」框上方（界面上出现灰色 "cbi-tblsection-create"）。
+		   识别为 CSS 类名时直接忽略，不当作说明文字输出。 */
+		if (typeof topHint === 'string' && /^cbi-[\w-]+$/.test(topHint))
+			topHint = null;
+
 		const baseHint = hint || '';
 
 		let el = form.GridSection.prototype.renderSectionAdd.apply(section, [ extra_class ]),
@@ -936,6 +944,13 @@ return baseclass.extend({
 					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 					font-size: .85rem; }
 				.hp-rn-ms { color: #2eb872; font-weight: 600; }
+				.hp-dns-loading { color: var(--muted, #68718a); }
+				.hp-dns-err { color: #e05252; font-weight: 500; }
+				.hp-dns-lat-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+				.hp-dns-test-btn { padding: 2px 10px; font-size: .75rem; line-height: 1.4; }
+				.hp-lat-good { color: #2eb872; font-weight: 600; }
+				.hp-lat-mid { color: #e08a1e; font-weight: 600; }
+				.hp-lat-bad { color: #e05252; font-weight: 600; }
 			` ]));
 		}
 		catch (e) {}
@@ -993,64 +1008,132 @@ return baseclass.extend({
 	   columns: [{ header: '列头文本', renderCell: function(sid) → Node|String }]，
 	   数据行通过 data-sid 属性取 section id，缺失时跳过不影响原表格。 */
 	appendTableColumns(section, columns) {
-		const orig = section.renderContents;
+			const orig = section.renderContents;
 
-		section.renderContents = function() {
-			const el = orig.apply(this, arguments);
+			/* 第三方主题可能在 renderContents 之后重建/修改 DOM，
+			   用 delayedApply 在 rAF + 短延迟后再补丁一次；
+			   MutationObserver 兜底捕捉晚到的 DOM 变化。 */
+			const delayedApply = (el) => {
+				const apply = () => {
+					try {
+						let changed = false;
 
-			try {
-				for (const tr of el.querySelectorAll('tr')) {
-					if (!tr.classList.contains('cbi-section-table-row') ||
-					    tr.classList.contains('placeholder'))
-						continue;
+						for (const tr of el.querySelectorAll('tr')) {
+							/* 第三方主题可能不用 cbi-section-table-row，
+							   优先 data-sid 属性（LuCI GridSection 标准），
+							   再 fallback class 检查 */
+							if (!tr.hasAttribute('data-sid') ||
+							    tr.classList.contains('placeholder'))
+								continue;
 
-					const sid = tr.getAttribute('data-sid');
+							const sid = tr.getAttribute('data-sid');
 
-					if (!sid)
-						continue;
+							if (!sid)
+								continue;
 
-					let anchor = null;
+							/* 跳过已补丁行（hp-extra-col 已有则不重复插入） */
+							if (tr.querySelector('td.hp-extra-col'))
+								continue;
 
-					for (const td of tr.children) {
-						if (td.classList && td.classList.contains('cbi-section-actions')) {
-							anchor = td;
-							break;
+							let anchor = null;
+
+							for (const td of tr.children) {
+								if (td.classList && td.classList.contains('cbi-section-actions')) {
+									anchor = td;
+									break;
+								}
+							}
+
+							if (!anchor) {
+								/* fallback：操作列在末尾，或无操作列时取最后一个 td */
+								const lastTd = tr.querySelector('td:last-child');
+								if (lastTd && !lastTd.classList.contains('hp-extra-col'))
+									anchor = lastTd.nextSibling; /* null = append */
+							}
+
+							for (const col of columns) {
+								const content = col.renderCell(sid),
+								      td = E('td', { 'class': 'td cbi-value-field hp-extra-col' });
+
+								td.appendChild((content instanceof Node)
+									? content
+									: document.createTextNode((content != null) ? String(content) : ''));
+
+								if (anchor)
+									tr.insertBefore(td, anchor);
+								else
+									tr.appendChild(td);
+								changed = true;
+							}
+						}
+
+						/* 表头行：额外列插到「操作」列标题之前，与数据行把新增
+						   单元格插到操作列之前保持一致；否则表头会整体右移
+						   一格，出现「空表头落在数据列上方」的错位。
+						   主题可能重建表头，故用 hp-extra-col 计数去重。 */
+						for (const tr of el.querySelectorAll('tr')) {
+							if (tr.children.length === 0 || tr.children[0].tagName !== 'TH' ||
+							    tr.querySelector('td'))
+								continue;
+
+							if (tr.querySelectorAll('th.hp-extra-col').length === columns.length)
+								continue;
+
+							let thAnchor = null;
+
+							for (const th of tr.children) {
+								if (th.classList && th.classList.contains('cbi-section-actions')) {
+									thAnchor = th;
+									break;
+								}
+							}
+
+							for (const col of columns) {
+								const th = E('th', { 'class': 'th hp-extra-col' }, col.header || '');
+
+								if (thAnchor)
+									tr.insertBefore(th, thAnchor);
+								else
+									tr.appendChild(th);
+							}
+
+							changed = true;
+						}
+
+						if (changed && !el.__hp_col_observer) {
+							let debounceTimer = null;
+							const mo = new MutationObserver(() => {
+								/* apply() 修改 DOM 会再次触发 Observer，
+								   加 50ms debounce 避免高频抖动 */
+								if (debounceTimer)
+									clearTimeout(debounceTimer);
+
+								debounceTimer = setTimeout(() => {
+									debounceTimer = null;
+									apply();
+								}, 50);
+							});
+
+							mo.observe(el, { childList: true, subtree: true });
+							el.__hp_col_observer = mo;
 						}
 					}
+					catch (e) {}
+				};
 
-					for (const col of columns) {
-						const content = col.renderCell(sid),
-						      td = E('td', { 'class': 'td cbi-value-field hp-extra-col' });
+				apply();
+				requestAnimationFrame(apply);
+				setTimeout(apply, 50);
+			};
 
-						td.appendChild((content instanceof Node)
-							? content
-							: document.createTextNode((content != null) ? String(content) : ''));
+			section.renderContents = function() {
+				const el = orig.apply(this, arguments);
+				delayedApply(el);
+				return el;
+			};
 
-						if (anchor)
-							tr.insertBefore(td, anchor);
-						else
-							tr.appendChild(td);
-					}
-				}
-
-				for (const tr of el.querySelectorAll('tr')) {
-					if (tr.children.length === 0 || tr.children[0].tagName !== 'TH' ||
-					    tr.querySelector('td'))
-						continue;
-
-					for (const col of columns)
-						tr.appendChild(E('th', { 'class': 'th' }, col.header || ''));
-				}
-			}
-			catch (e) {
-				/* 渲染后处理失败时保持原样，不影响表单功能 */
-			}
-
-			return el;
-		};
-
-		return section;
-	},
+			return section;
+		},
 
 	/* 「启用」列移动到名称列左侧（全局改进）。启用单元格以表格单元格
 	   标准属性 td[data-name="enabled"] 定位；名称列兼容三种 luci-base 形态：
@@ -1076,10 +1159,12 @@ return baseclass.extend({
 			return input ? (input.value || '').trim() : '';
 		};
 
-		/* 行内首个非序号单元格（序号列由 prependIndexColumn 注入） */
+		/* 行内首个非序号/非自定义追加列单元格（序号列由 prependIndexColumn 注入，
+		   自定义追加列由 appendTableColumns 注入） */
 		const firstContentCell = function(tr, tag) {
 			for (const cell of tr.children) {
-				if (cell.tagName !== tag || cell.classList.contains('hp-index-cell'))
+				if (cell.tagName !== tag || cell.classList.contains('hp-index-cell') ||
+				    cell.classList.contains('hp-extra-col'))
 					continue;
 
 				return cell;
@@ -1088,127 +1173,200 @@ return baseclass.extend({
 			return null;
 		};
 
+		/* 三级 fallback 定位「启用」单元格，结果缓存在 tr.__hp_en_cell 避免重复扫描 */
+		const findEnabledCell = function(tr) {
+			if (tr.__hp_en_cell)
+				return tr.__hp_en_cell;
+
+			const cache = (c) => {
+				tr.__hp_en_cell = c;
+				return c;
+			};
+
+			/* Level 1：标准 LuCI 属性 */
+			const l1 = tr.querySelector('td[data-name="enabled"]');
+			if (l1) return cache(l1);
+
+			/* Level 2：checkbox name 包含 .enabled */
+			for (const td of tr.children) {
+				const cb = td.querySelector('input[type="checkbox"]');
+				if (cb && /\.enabled(?:$|\[)/.test(cb.name || ''))
+					return cache(td);
+			}
+
+			/* Level 3：首个不在操作列且含 checkbox 的单元格 */
+			for (const td of tr.children) {
+				if (td.classList.contains('cbi-section-actions'))
+					continue;
+
+				if (td.querySelector('input[type="checkbox"]'))
+					return cache(td);
+			}
+
+			return cache(null);
+		};
+
+		/* 第三方主题可能在 renderContents 之后重建/修改 DOM，
+		   用 delayedApply 在 rAF + 短延迟后再补丁一次；
+		   MutationObserver 兜底捕捉晚到的 DOM 变化。 */
+		const delayedApply = (el) => {
+			const apply = () => {
+				try {
+					const dataRows = [],
+					      headerRows = [];
+
+					for (const tr of el.querySelectorAll('tr')) {
+						/* 第三方主题兼容：data-sid 优先，class fallback */
+						const isDataRow = tr.hasAttribute('data-sid') ||
+							tr.classList.contains('cbi-section-table-row');
+
+						if (isDataRow && !tr.classList.contains('placeholder'))
+							dataRows.push(tr);
+						else if (tr.children.length > 0 && tr.children[0].tagName === 'TH' &&
+						         !tr.querySelector('td'))
+							headerRows.push(tr);
+					}
+
+					if (dataRows.length === 0)
+						return;
+
+					const ref = dataRows[0],
+					      refEnabled = findEnabledCell(ref);
+
+					if (!refEnabled)
+						return;
+
+					let nameTd = ref.querySelector('td.cbi-section-table-titles');
+
+					if (!nameTd) {
+						const titleAttr = ref.getAttribute('data-title'),
+						      firstTd = firstContentCell(ref, 'TD');
+
+						if (titleAttr && (!firstTd || cellText(firstTd) !== titleAttr)) {
+							/* 形态三：伪元素名称转真实名称列。样式守卫与
+							   dedupeNameColumn 共用同一标记，避免重复注入。 */
+							if (!window.__hpTitleRealStyle) {
+								window.__hpTitleRealStyle = true;
+
+								try {
+									document.head.appendChild(E('style', [ `
+										.hp-title-real tr.cbi-section-table-row::before,
+										.hp-title-real tr.cbi-section-table-titles::before { content: none !important; }
+									` ]));
+								}
+								catch (e) {}
+							}
+
+							for (const tr of dataRows) {
+								const t = tr.getAttribute('data-title');
+
+								if (!t)
+									continue;
+
+								tr.insertBefore(
+									E('td', { 'class': 'td cbi-value-field cbi-section-table-titles' }, [ t ]),
+									firstContentCell(tr, 'TD') || tr.firstElementChild);
+								tr.removeAttribute('data-title');
+							}
+
+							for (const tr of headerRows) {
+								const t = tr.getAttribute('data-title');
+
+								if (!t)
+									continue;
+
+								tr.insertBefore(
+									E('th', { 'class': 'th cbi-section-table-cell' }, [ t ]),
+									firstContentCell(tr, 'TH') || tr.firstElementChild);
+								tr.removeAttribute('data-title');
+							}
+
+							el.classList.add('hp-title-real');
+
+							nameTd = ref.querySelector('td.cbi-section-table-titles');
+						}
+						else {
+							/* 形态二（或无标题表）：首列即名称 */
+							nameTd = firstTd;
+						}
+					}
+
+					if (!nameTd || nameTd === refEnabled ||
+					    refEnabled.previousElementSibling === nameTd)
+						return;
+
+					const enabledIdx = Array.prototype.indexOf.call(ref.children, refEnabled),
+					      nameIdx = Array.prototype.indexOf.call(ref.children, nameTd),
+					      cellCount = ref.children.length;
+
+					if (enabledIdx < 0 || nameIdx < 0 || enabledIdx < nameIdx)
+						return;
+
+					/* 数据行：启用单元格移到名称单元格之前 */
+					for (const tr of dataRows) {
+						const td = findEnabledCell(tr);
+
+						if (!td)
+							continue;
+
+						const cell = tr.querySelector('td.cbi-section-table-titles') ||
+							firstContentCell(tr, 'TD');
+
+						if (!cell || td === cell)
+							continue;
+
+						/* 幂等：已在名称前则不重复移动 */
+						if (td.previousElementSibling === cell)
+							continue;
+
+						tr.insertBefore(td, cell);
+					}
+
+					/* 表头行：按数据行索引对齐移动（表头与数据行列数一致） */
+					for (const tr of headerRows) {
+						if (tr.children.length !== cellCount)
+							continue;
+
+						const th = tr.children[enabledIdx],
+						      target = tr.children[nameIdx];
+
+						if (!th || th.tagName !== 'TH' || !target || target === th)
+							continue;
+
+						if (th.previousElementSibling === target)
+							continue;
+
+						tr.insertBefore(th, target);
+					}
+
+					/* 首次 apply 成功后，挂载 MutationObserver 捕捉后续 DOM 变动 */
+					if (!el.__hp_en_observer) {
+						let debounceTimer = null;
+						const mo = new MutationObserver(() => {
+							if (debounceTimer)
+								clearTimeout(debounceTimer);
+
+							debounceTimer = setTimeout(() => {
+								debounceTimer = null;
+								apply();
+							}, 50);
+						});
+
+						mo.observe(el, { childList: true, subtree: true });
+						el.__hp_en_observer = mo;
+					}
+				}
+				catch (e) {}
+			};
+
+			apply();
+			requestAnimationFrame(apply);
+			setTimeout(apply, 50);
+		};
+
 		section.renderContents = function() {
 			const el = orig.apply(this, arguments);
-
-			try {
-				const dataRows = [],
-				      headerRows = [];
-
-				for (const tr of el.querySelectorAll('tr')) {
-					if (tr.classList.contains('cbi-section-table-row') &&
-					    !tr.classList.contains('placeholder'))
-						dataRows.push(tr);
-					else if (tr.children.length > 0 && tr.children[0].tagName === 'TH' &&
-					         !tr.querySelector('td'))
-						headerRows.push(tr);
-				}
-
-				if (dataRows.length === 0)
-					return el;
-
-				const ref = dataRows[0],
-				      refEnabled = ref.querySelector('td[data-name="enabled"]');
-
-				if (!refEnabled)
-					return el;
-
-				let nameTd = ref.querySelector('td.cbi-section-table-titles');
-
-				if (!nameTd) {
-					const titleAttr = ref.getAttribute('data-title'),
-					      firstTd = firstContentCell(ref, 'TD');
-
-					if (titleAttr && (!firstTd || cellText(firstTd) !== titleAttr)) {
-						/* 形态三：伪元素名称转真实名称列。样式守卫与
-						   dedupeNameColumn 共用同一标记，避免重复注入。 */
-						if (!window.__hpTitleRealStyle) {
-							window.__hpTitleRealStyle = true;
-
-							try {
-								document.head.appendChild(E('style', [ `
-									.hp-title-real tr.cbi-section-table-row::before,
-									.hp-title-real tr.cbi-section-table-titles::before { content: none !important; }
-								` ]));
-							}
-							catch (e) {}
-						}
-
-						for (const tr of dataRows) {
-							const t = tr.getAttribute('data-title');
-
-							if (!t)
-								continue;
-
-							tr.insertBefore(
-								E('td', { 'class': 'td cbi-value-field cbi-section-table-titles' }, [ t ]),
-								firstContentCell(tr, 'TD') || tr.firstElementChild);
-							tr.removeAttribute('data-title');
-						}
-
-						for (const tr of headerRows) {
-							const t = tr.getAttribute('data-title');
-
-							if (!t)
-								continue;
-
-							tr.insertBefore(
-								E('th', { 'class': 'th cbi-section-table-cell' }, [ t ]),
-								firstContentCell(tr, 'TH') || tr.firstElementChild);
-							tr.removeAttribute('data-title');
-						}
-
-						el.classList.add('hp-title-real');
-
-						nameTd = ref.querySelector('td.cbi-section-table-titles');
-					}
-					else {
-						/* 形态二（或无标题表）：首列即名称 */
-						nameTd = firstTd;
-					}
-				}
-
-				if (!nameTd || nameTd === refEnabled ||
-				    refEnabled.previousElementSibling === nameTd)
-					return el;
-
-				const enabledIdx = Array.prototype.indexOf.call(ref.children, refEnabled),
-				      nameIdx = Array.prototype.indexOf.call(ref.children, nameTd),
-				      cellCount = ref.children.length;
-
-				if (enabledIdx < 0 || nameIdx < 0 || enabledIdx < nameIdx)
-					return el;
-
-				/* 数据行：启用单元格移到名称单元格之前 */
-				for (const tr of dataRows) {
-					const td = tr.querySelector('td[data-name="enabled"]');
-
-					if (!td)
-						continue;
-
-					const cell = tr.querySelector('td.cbi-section-table-titles') ||
-						firstContentCell(tr, 'TD');
-
-					if (cell && td !== cell)
-						tr.insertBefore(td, cell);
-				}
-
-				/* 表头行：按数据行索引对齐移动（表头与数据行列数一致） */
-				for (const tr of headerRows) {
-					if (tr.children.length !== cellCount)
-						continue;
-
-					const th = tr.children[enabledIdx],
-					      target = tr.children[nameIdx];
-
-					if (th && th.tagName === 'TH' && target && target !== th)
-						tr.insertBefore(th, target);
-				}
-			}
-			catch (e) {
-				/* 渲染后处理失败时保持原样，不影响表单功能 */
-			}
-
+			delayedApply(el);
 			return el;
 		};
 

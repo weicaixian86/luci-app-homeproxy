@@ -78,6 +78,13 @@ const callRulesetUpdate = rpc.declare({
 	expect: { '': {} }
 });
 
+const callDnsServerTest = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'dns_server_test',
+	params: ['section'],
+	expect: { '': {} }
+});
+
 const statusCss = `
 #homeproxy_status_panel {
 	margin-bottom: 1rem;
@@ -1109,38 +1116,19 @@ return view.extend({
 
 		hp.appendTableColumns(ss, [
 			{
-				header: _('Node'),
+				header: _('Subscription airports'),
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
 					if (node === 'urltest' || node === 'selector') {
 						const badge = E('span', {
 							'class': 'hp-tag ' + ((node === 'urltest') ? 'hp-tag-auto' : 'hp-tag-manual')
-						}, (node === 'urltest') ? _('Auto latency test') : _('Manual select'));
-
-						if (node === 'urltest') {
-							const interval = uci.get(data[0], sid, 'urltest_interval') || '180',
-							      tolerance = uci.get(data[0], sid, 'urltest_tolerance') || '50';
-
-							badge.title = _('Test interval: %ss · Tolerance: %sms').format(interval, tolerance);
-						}
+						}, (node === 'urltest') ? _('Auto select') : _('Manual select'));
 
 						return badge;
 					}
 
 					return proxy_nodes[node] || node;
-				}
-			},
-			{
-				header: _('Subscription airports'),
-				renderCell: function(sid) {
-					const values = normalizeFormList(uci.get(data[0], sid, 'subscription_groups'));
-
-					if (!values.length)
-						return '—';
-
-					return E('span', { 'class': 'hp-chips' },
-						values.map((v) => E('span', { 'class': 'hp-chip' }, subscription_groups[v] || v)));
 				}
 			},
 			{
@@ -1308,6 +1296,9 @@ return view.extend({
 		}
 		so.depends('node', /^((?!(urltest|selector)$).)+$/);
 		so.editable = true;
+		/* 出站节点只在单节点包装时生效（点击下拉菜单手动选），
+		   策略组表格里显示这列对多数人含义不明，改为仅在弹窗中展示。 */
+		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscription airports'));
 		for (let hash in subscription_groups)
@@ -2016,15 +2007,71 @@ return view.extend({
 		so.default = 'direct-out';
 		so.rmempty = false;
 		so.editable = true;
+
+		/* 建议 11：DNS 服务器行内延迟测试。单列「延迟」内联显示数值与
+		   「测试」按钮：HTTPS(DoH) 测 curl TLS 握手耗时(time_appconnect)，
+		   UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC 测 ping 往返。点击按钮异步调用
+		   rpcd dns_server_test；数值按 <100ms 绿 / <300ms 橙 / >=300ms 红分级。 */
+		hp.appendTableColumns(ss, [
+			{
+				header: _('Latency'),
+				renderCell: function(sid) {
+					const latSpan = E('span', { 'class': 'hp-dns-lat', 'data-sid': sid }, [ '—' ]);
+					const btn = E('button', {
+						'class': 'btn cbi-button cbi-button-action hp-dns-test-btn',
+						'type': 'button'
+					}, _('Test'));
+
+					btn.addEventListener('click', (ev) => {
+						/* 阻止冒泡：GridSection 数据行点击会打开编辑弹窗 */
+						ev.preventDefault();
+						ev.stopPropagation();
+
+						btn.disabled = true;
+						btn.textContent = _('Testing...');
+						latSpan.textContent = '';
+						latSpan.appendChild(E('span', { 'class': 'hp-dns-loading' }, [ '…' ]));
+
+						L.resolveDefault(callDnsServerTest({ section: sid }), {})
+							.then((ret) => {
+								btn.disabled = false;
+								btn.textContent = _('Test');
+								latSpan.textContent = '';
+
+								if (ret && ret.result && ret.latency_ms > 0) {
+									const ms = ret.latency_ms;
+									const cls = (ms < 100) ? 'hp-lat-good'
+									          : (ms < 300) ? 'hp-lat-mid'
+									          : 'hp-lat-bad';
+
+									latSpan.appendChild(E('span', { 'class': cls },
+										String(ms) + 'ms'));
+								} else {
+									const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
+									if (ret && ret.error)
+										err.title = ret.error;
+									latSpan.appendChild(err);
+								}
+							})
+							.catch(() => {
+								btn.disabled = false;
+								btn.textContent = _('Test');
+								latSpan.textContent = '';
+								latSpan.appendChild(E('span', { 'class': 'hp-dns-err' }, _('Failed')));
+							});
+					});
+
+					return E('span', { 'class': 'hp-dns-lat-cell' }, [ latSpan, btn ]);
+				}
+			}
+		]);
+
 		/* DNS servers end */
 
 		/* DNS rules start */
 		s.tab('dns_rule', _('DNS Rules'));
-		/* 建议10：DNS 解析流程横幅——说明 DNS 规则自上而下按序匹配、
-		   未命中的查询交给哪个默认 DNS 服务器及其出站。 */
-		o = s.taboption('dns_rule', form.DummyValue, '_dns_resolve_banner');
-		o.depends('routing_mode', 'custom');
-		o.render = function() {
+
+		const renderDnsBanner = function() {
 			const server_id = uci.get(data[0], 'dns', 'default_server') || 'default-dns';
 
 			let server_label = null,
@@ -2065,6 +2112,7 @@ return view.extend({
 					: _('Default DNS server: %s').format(server_label))
 			]);
 		};
+
 		o = s.taboption('dns_rule', form.SectionValue, '_dns_rule', form.GridSection, 'dns_rule');
 		o.depends('routing_mode', 'custom');
 
@@ -2316,6 +2364,25 @@ return view.extend({
 		so = ss.taboption('fields_process', form.DynamicList, 'process_path_regex', _('Process path (regex)'),
 			_('Match process path using regular expression.'));
 		so.modalonly = true;
+
+		/* 建议 10（移至底部）：把 DNS 解析流程横幅放到「添加」按钮的位置，删除添加按钮。 */
+		const dnsRuleOrigRenderContents = ss.renderContents;
+
+		ss.renderContents = function() {
+			const el = dnsRuleOrigRenderContents.apply(this, arguments);
+
+			try {
+				const createEl = el.querySelector('.cbi-tblsection-create');
+
+				if (createEl) {
+					const banner = renderDnsBanner();
+					createEl.parentNode.replaceChild(banner, createEl);
+				}
+			} catch (e) {}
+
+			return el;
+		};
+
 		/* DNS rules end */
 		/* Custom routing settings end */
 
@@ -2392,7 +2459,7 @@ return view.extend({
 
 		hp.appendTableColumns(ss, [
 			{
-				header: _('Local file'),
+				header: _('Download time/size'),
 				renderCell: function(sid) {
 					return E('span', { 'class': 'hp-rs-status', 'data-sid': sid }, [ '…' ]);
 				}
@@ -2571,7 +2638,7 @@ return view.extend({
 		so.depends('type', 'remote');
 		so.modalonly = true;
 
-		so = ss.option(form.Value, 'update_interval', _('Update time (weekly)'));
+		so = ss.option(form.Value, 'update_interval', _('Scheduled update time'));
 		so.renderWidget = function() {
 			return hp.renderCronSelector.apply(this, arguments);
 		};
