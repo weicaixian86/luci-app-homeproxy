@@ -276,15 +276,24 @@ resolve_path() {
 # Every enabled remote rule-set, one section name per line.
 # awk instead of `sed -E`: BusyBox sed without -E support would silently match
 # nothing, and an empty list looks exactly like "nothing to do".
+#
+# A section WITHOUT an explicit `type` counts as remote. That is what the core
+# assumes (sing-box defaults `rule_set.type` to "remote") and what the RPC
+# layer already does (`sec.type || 'remote'` in ruleset_status/ruleset_update).
+# Requiring a literal `type=remote` here made such sections invisible to the
+# whole download chain: --check reported "nothing missing", the download pass
+# exited before mkdir could even create /etc/homeproxy/ruleset, no log line
+# was written, and the core quietly re-fetched every rule-set on each start.
 list_sections() {
-	local sec
-	uci -q show "$CONF" 2>/dev/null | awk -F. -v c="$CONF" '
-		$1 == c && $3 ~ /^type=/ && $3 ~ /remote/ {
-			sub(/^type=/, "", $3);
-			gsub(/'"'"'/, "", $3);
-			if ($3 == "remote") print $2;
-		}' | while read -r sec; do
-			[ "$(uci -q get "$CONF.$sec.enabled")" = "1" ] && printf '%s\n' "$sec"
+	local sec type
+	uci -q show "$CONF" 2>/dev/null | awk -F'[.=]' -v c="$CONF" '
+		$1 == c && $3 == "ruleset" && NF == 3 { print $2 }' | while read -r sec; do
+			[ -n "$sec" ] || continue
+			[ "$(uci -q get "$CONF.$sec.enabled")" = "1" ] || continue
+			type="$(uci -q get "$CONF.$sec.type")"
+			# 未写 type 一律按 remote 处理，与内核/rpcd 的默认值保持一致。
+			[ -n "$type" ] || type="remote"
+			[ "$type" = "remote" ] && printf '%s\n' "$sec"
 		done
 	return 0
 }
@@ -295,7 +304,9 @@ list_sections() {
 
 if [ "$CHECK_ONLY" = "1" ]; then
 	missing=0
+	total=0
 	for sec in $(list_sections); do
+		total=$((total + 1))
 		fmt="$(uci -q get "$CONF.$sec.format")"
 		tag="$(uci -q get "$CONF.$sec.tag")"
 		[ -n "$tag" ] || tag="cfg-$sec-rule"
@@ -306,8 +317,11 @@ if [ "$CHECK_ONLY" = "1" ]; then
 		recently_unavailable "$path.unavailable" "$url" && continue
 		missing=$((missing + 1))
 	done
+	# 无论是否缺失都输出统计，供 init.d 打印「共 N 条，缺失 M 条」：
+	# 「保存并应用」时若本地副本都是有效的，日志里要能看到「已检查、跳过下载」，
+	# 否则静默跳过和「根本没检查」在用户看来完全一样。
+	printf 'total=%s missing=%s\n' "$total" "$missing"
 	[ "$missing" -eq 0 ] && exit 0
-	printf '%s\n' "$missing"
 	exit 1
 fi
 
@@ -384,6 +398,7 @@ for sec in $sections; do
 
 	if [ "$FORCE" != "1" ] && valid_ruleset "$path" "$fmt"; then
 		cached=$((cached + 1))
+		log_msg "跳过 $tag：本地已有有效副本（$(human_size "$(wc -c < "$path" 2>/dev/null | tr -d ' ')")），不重复下载。"
 		continue
 	fi
 

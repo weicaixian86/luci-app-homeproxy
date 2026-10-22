@@ -32,10 +32,6 @@ msgstr "/etc/homeproxy/certs/...，/etc/acme/...，/etc/ssl/..."
 msgid "4 or 6. Not limited if empty."
 msgstr "4 或 6。留空不限制。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:2327
-msgid "; all other domains go to default server %s."
-msgstr "；其余域名 → 默认服务器 %s。"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1795
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2522
 msgid ""
@@ -512,13 +508,13 @@ msgstr "核心状态"
 msgid "Core Version"
 msgstr "核心版本"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:2318
-msgid "Current DNS resolution flow:"
-msgstr ""
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2330
+msgid "Current DNS resolution flow: %s → %s; all other domains → default server %s."
+msgstr "当前 DNS 解析流程：%s → %s；其余域名 → 默认服务器 %s。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:2316
-msgid "Current DNS resolution flow: all queries →"
-msgstr ""
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2328
+msgid "Current DNS resolution flow: all queries → %s."
+msgstr "当前 DNS 解析流程：所有查询 → %s。"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:338
 msgid "Current architecture is not supported by reF1nd yet."

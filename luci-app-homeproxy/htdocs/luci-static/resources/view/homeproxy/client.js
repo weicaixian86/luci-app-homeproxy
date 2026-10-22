@@ -1164,7 +1164,8 @@ return view.extend({
 							'title': _('No subscription airport is selected.')
 						}, [ '—' ]);
 
-					return E('span', { 'class': 'hp-chip-list' },
+					/* 每行固定 5 个，超过换行（hp-chip-list-5） */
+					return E('span', { 'class': 'hp-chip-list hp-chip-list-5' },
 						names.map((name) => E('span', { 'class': 'hp-chip', 'title': name }, [ name ])));
 				}
 			},
@@ -1188,7 +1189,8 @@ return view.extend({
 							'title': _('No policy node is selected.')
 						}, [ '—' ]);
 
-					return E('span', { 'class': 'hp-chip-list' },
+					/* 每行固定 5 个，超过换行（hp-chip-list-5） */
+					return E('span', { 'class': 'hp-chip-list hp-chip-list-5' },
 						names.map((name) => E('span', { 'class': 'hp-chip hp-chip-policy', 'title': name }, [ name ])));
 				}
 			},
@@ -2275,14 +2277,20 @@ return view.extend({
 			const def = resolveDnsTarget(uci.get(data[0], 'dns', 'default_server') || 'default-dns'),
 			      leakTip = _('Leak warning: queries that match no rule are resolved by the default DNS server. If it goes out directly, your local network or ISP can see the domains you visit (DNS leak). Add rules for sensitive domains, or set the default DNS server to one that goes through a proxy.');
 
-			/* 规则命中后去哪：route 落到具体服务器（直连加警示色），
-			   其余动作只有语义标签，没有目标服务器。 */
+			/* 规则命中后去哪：route 落到具体服务器，其余动作只有语义标签。 */
+			const dnsActionLabel = function(server_id, action) {
+				if (action !== 'route')
+					return (action === 'reject') ? _('Reject')
+						: (action === 'predefined') ? _('Predefined')
+						: _('Route options');
+
+				return dnsTargetLabel(resolveDnsTarget(server_id));
+			};
+
+			/* 多条规则的列表：目标格用加粗 + 直连警示色，便于扫读 */
 			const targetNode = function(server_id, action) {
 				if (action !== 'route')
-					return E('span', { 'class': 'hp-dns-flow-target' },
-						(action === 'reject') ? _('Reject')
-							: (action === 'predefined') ? _('Predefined')
-							: _('Route options'));
+					return E('span', { 'class': 'hp-dns-flow-target' }, dnsActionLabel(server_id, action));
 
 				const t = resolveDnsTarget(server_id),
 				      el = E('span', { 'class': 'hp-dns-flow-target' }, dnsTargetLabel(t));
@@ -2304,35 +2312,30 @@ return view.extend({
 					});
 			};
 
-			/* 只有一条规则：一句话说清「谁直连、谁走代理、其余去哪」 */
+			/* 只有一条规则：一句话说清「谁直连、谁走代理、其余去哪」。
+			   整句是纯文本（不加粗、不染色），并用带 %s 的整句模板承载；
+			   msgid 不能带尾部空格——那种串在翻译查找时很容易对不上，
+			   一旦对不上就整句回落成英文。 */
 			if (list.length === 1) {
 				const cfg = list[0],
 				      action = cfg.action || 'route',
 				      catch_all = dnsRuleMatchesAll(cfg),
-				      children = [],
-				      box = [];
+				      target = dnsActionLabel(cfg.server, action);
 
-				if (catch_all) {
-					children.push(_('Current DNS resolution flow: all queries → '));
-				} else {
-					children.push(_('Current DNS resolution flow: '),
-						E('span', { 'class': 'hp-dns-flow-cond' }, dnsRuleCondition(cfg, ' ')),
-						' → ');
-				}
+				let text;
 
-				children.push(targetNode(cfg.server, action));
+				if (catch_all)
+					text = _('Current DNS resolution flow: all queries → %s.').format(target);
+				else
+					text = _('Current DNS resolution flow: %s → %s; all other domains → default server %s.')
+						.format(dnsRuleCondition(cfg, ' '), target, dnsTargetLabel(def));
 
-				if (!catch_all) {
-					const rest = E('span', { 'class': 'hp-dns-flow-rest' },
-						_('; all other domains go to default server %s.').format(dnsTargetLabel(def)));
-
-					if (def.outbound == null)
-						rest.classList.add('hp-dns-flow-direct');
-
-					children.push(rest);
-				}
-
-				box.push(E('div', { 'class': 'hp-dns-flow-compact' }, children));
+				const box = [
+					/* 表格已有「序号」列，这里说明匹配顺序（与路由规则页同一句文案） */
+					E('div', { 'class': 'hp-dns-flow-note' },
+						_('Rules are matched by sequence number from top to bottom; matching stops at the first hit.')),
+					E('div', { 'class': 'hp-dns-flow-compact' }, [ text ])
+				];
 
 				/* 所有查询都被这条规则拦住时，默认 DNS 根本用不到，不必提示泄漏 */
 				if (!catch_all && def.outbound == null)
@@ -2376,6 +2379,8 @@ return view.extend({
 		hp.dedupeNameColumn(ss);
 		/* 「启用」列移到名称列左侧 */
 		hp.moveEnableColumn(ss);
+		/* 「启用」左侧显示序号列（列头「序号」），与路由规则页一致 */
+		hp.prependIndexColumn(ss, _('Sequence'));
 		/* 第 4 个预绑定实参是 topHint：传函数而非节点，让每次重绘都重新读取
 		   uci 数据，汇总内容随规则增删/启停实时变化，且显示在「添加」输入框上方。 */
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,

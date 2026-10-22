@@ -318,7 +318,10 @@ add_ruleset_cron() {
 
 	config_get_bool enabled "$section" "enabled" "0"
 	config_get_bool auto_update "$section" "auto_update" "1"
-	config_get type "$section" "type" "local"
+	# 默认 remote：与内核（sing-box 的 rule_set.type 默认 remote）、rpcd
+	# （sec.type || 'remote'）以及 fetch_rulesets.sh 的 list_sections 一致。
+	# 这里曾默认 local，导致「没写 type」的规则集既不会下载也拿不到定时任务。
+	config_get type "$section" "type" "remote"
 	config_get update_time "$section" "update_interval" ""
 
 	[ "$enabled" = "1" ] || return
@@ -354,6 +357,130 @@ setup_auto_update_cron() {
 	local ruleset_cron_list=""
 	config_foreach add_ruleset_cron "ruleset"
 	[ "$cron_reload" = "1" ] && /etc/init.d/cron restart
+}
+
+# Refresh the local rule-set cache BEFORE the config is generated.
+#
+# generate_client.uc emits `type: local` whenever a validated copy exists;
+# otherwise the rule-set stays `remote` and sing-box downloads it while
+# initialising — that is, BEFORE the Clash API listener comes up. With 20+
+# enabled rule-sets on a slow mirror that pushed the API past every readiness
+# window, so the panel was never downloaded at all.
+#
+# Called from start_service(), which reload_service() also goes through
+# (reload = stop + start). That is what makes LuCI's "Save & Apply" check and
+# fill the cache by itself: valid local copies are skipped, missing or invalid
+# ones are downloaded. Every branch writes to the main log — a silent skip used
+# to look exactly like "nothing happened".
+sync_rulesets() {
+	local ruleset_script="$HP_DIR/scripts/fetch_rulesets.sh"
+	[ -f "$ruleset_script" ] || return 0
+
+	# --check prints "total=N missing=M" on stdout (exit 1 only when M > 0).
+	local report total missing sec_count
+	report="$(/bin/sh "$ruleset_script" --check 2>/dev/null | tail -n 1)"
+	total="$(printf '%s\n' "$report" | sed -n 's/.*total=\([0-9]*\).*/\1/p')"
+	missing="$(printf '%s\n' "$report" | sed -n 's/.*missing=\([0-9]*\).*/\1/p')"
+	case "$total" in ''|*[!0-9]*) total="" ;; esac
+	case "$missing" in ''|*[!0-9]*) missing="" ;; esac
+
+	if [ -z "$total" ] || [ -z "$missing" ]; then
+		log "规则集检查：未能获取规则集状态（$ruleset_script --check 无输出），跳过。"
+		return 0
+	fi
+
+	sec_count="$(uci -q show "$CONF" 2>/dev/null | grep -c "=ruleset")"
+
+	if [ "$total" = "0" ]; then
+		log "规则集检查：当前没有已启用的远程规则集，跳过。"
+		if [ "${sec_count:-0}" -gt 0 ]; then
+			log "提示：配置里共有 ${sec_count} 个 ruleset 段，但没有一条满足「启用 + 远程」。请到规则集页面确认每条的「启用」开关与「类型」（类型为本地的规则集不会下载）。"
+		fi
+		return 0
+	fi
+
+	if [ "$missing" = "0" ]; then
+		log "规则集检查：共 ${total} 条远程规则集，本地均已有有效副本，跳过下载（要强制重下请用规则集页面的「立即更新」）。"
+		return 0
+	fi
+
+	log "规则集检查：共 ${total} 条远程规则集，其中 ${missing} 条本地缺失或无效，正在预下载（最多约 4 分钟）…"
+
+	local rs_before rs_rc rs_waited rs_pid n copied
+	rs_before=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
+	case "$rs_before" in ''|*[!0-9]*) rs_before=0 ;; esac
+
+	# 用「标记文件 + 退出码文件」而不是 kill -0 来判断下载是否结束：
+	# 某些 shell 的 kill -0 对后台兄弟进程并不可靠，一旦判断失败，跟进循环
+	# 会一次都不执行，用户就又只能等下载全部结束后才看到日志。
+	local rs_flag="$RUN_DIR/.ruleset_running"
+	local rs_rcf="$RUN_DIR/.ruleset_rc"
+	local rs_pos="$RUN_DIR/.ruleset_follow.pos"
+	rm -f "$rs_rcf" "$rs_pos" 2>/dev/null
+	echo "$rs_before" > "$rs_pos" 2>/dev/null
+	: > "$rs_flag" 2>/dev/null
+
+	# fetch_rulesets.sh prints its failure summary to stdout, so redirecting it
+	# here lands it in homeproxy.log directly.
+	(
+		/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1
+		echo $? > "$rs_rcf"
+		rm -f "$rs_flag"
+	) &
+	rs_pid=$!
+
+	# 实时跟进：下载可能持续几分钟，若等到结束才一次性并入主日志，用户在
+	# 插件「日志」页刷新时只会看到「正在预下载」一行。这里每 2 秒把
+	# ruleset_download.log 的新增行追加到主日志，进度与逐条结果即时可见。
+	# 已复制的行数记在 .ruleset_follow.pos，供收尾时补齐（避免重复追加）。
+	(
+		while [ -f "$rs_flag" ]; do
+			n=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
+			copied=$(cat "$rs_pos" 2>/dev/null)
+			case "$n" in ''|*[!0-9]*) n=0 ;; esac
+			case "$copied" in ''|*[!0-9]*) copied=0 ;; esac
+			if [ "$n" -gt "$copied" ]; then
+				tail -n +$((copied + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null >>"$LOG_PATH"
+				echo "$n" > "$rs_pos" 2>/dev/null
+			fi
+			sleep 2
+		done
+	) &
+
+	# 等待下载结束（带上限，避免标记文件残留时把服务启动卡死）。
+	# 只等下载这一个后台任务：无参 wait 会连更早启动的面板预下载一起等，
+	# 把服务启动拖到面板下载完成为止。
+	rs_waited=0
+	while [ -f "$rs_flag" ] && [ "$rs_waited" -lt 400 ]; do
+		sleep 2
+		rs_waited=$((rs_waited + 2))
+	done
+	wait "$rs_pid" 2>/dev/null
+
+	rs_rc=$(cat "$rs_rcf" 2>/dev/null)
+	case "$rs_rc" in ''|*[!0-9]*) rs_rc=1 ;; esac
+
+	# 收尾：补上跟进循环退出前（最后一次 sleep 期间）可能漏掉的最后几行，
+	# 保证主日志里的下载过程是完整的。
+	if [ -f "$RUN_DIR/ruleset_download.log" ]; then
+		n=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
+		copied=$(cat "$rs_pos" 2>/dev/null)
+		case "$n" in ''|*[!0-9]*) n=0 ;; esac
+		case "$copied" in ''|*[!0-9]*) copied=0 ;; esac
+		if [ "$n" -gt "$copied" ]; then
+			tail -n +$((copied + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null >>"$LOG_PATH"
+		fi
+	fi
+	rm -f "$rs_pos" "$rs_flag" "$rs_rcf" 2>/dev/null
+
+	if [ "$rs_rc" -eq 0 ]; then
+		log "规则集预下载完成：${missing} 条缺失已补齐。"
+	else
+		log "【规则集下载失败】预下载未全部成功（失败项见上方明细及 $RUN_DIR/ruleset_download.log）。失败项将由内核按 remote 方式下载；若 URL 返回 404，内核会把它当 .srs 载入并崩溃，导致服务起不来。请检查失败项 URL：geoip-* 公司/服务类域名规则应改为 geosite-*，或手动下载正确 .srs 放到 $HP_DIR/ruleset。"
+		panel_log "规则集有下载失败项，已在主日志提示处理办法（geoip-* 公司/服务类应改为 geosite-*）。"
+	fi
+
+	return 0
 }
 
 start_service() {
@@ -423,6 +550,11 @@ start_service() {
 	config_load "$CONF"
 	setup_auto_update_cron
 
+	# 「保存并应用」走 reload_service() = stop + start，同样会执行到这里，
+	# 所以点保存并应用就会检查并补齐规则集：本地已有有效副本的跳过，
+	# 缺失/无效的才下载。放在早退判定之前，未配置节点时也会同步。
+	sync_rulesets
+
 	local routing_mode proxy_mode
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
 	config_get proxy_mode "config" "proxy_mode" "redirect_tproxy"
@@ -464,38 +596,6 @@ start_service() {
 	fi
 
 	if [ "$outbound_node" != "nil" ]; then
-		# Refresh the local rule-set cache BEFORE the config is generated.
-		#
-		# generate_client.uc emits `type: local` whenever a validated copy
-		# exists; otherwise the rule-set stays `remote` and sing-box downloads
-		# it while initialising — that is, BEFORE the Clash API listener comes
-		# up. With 20+ enabled rule-sets on a slow mirror that pushed the API
-		# past every readiness window, so the panel was never downloaded at
-		# all. Only fetch when something is actually missing or invalid, so a
-		# warm cache costs nothing at start-up.
-		local ruleset_script="$HP_DIR/scripts/fetch_rulesets.sh"
-		if [ -f "$ruleset_script" ]; then
-			if ! /bin/sh "$ruleset_script" --check >/dev/null 2>&1; then
-				log "规则集缓存不完整，正在预下载（最多约 4 分钟）…"
-				# Snapshot the detail log length so we can pull out only this
-				# run's failures into the main log afterwards.
-				local rs_before rs_rc
-				rs_before=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
-				# fetch_rulesets.sh now prints its failure summary to stdout,
-				# so redirecting it here lands it in homeproxy.log directly.
-				/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1
-				rs_rc=$?
-				if [ -f "$RUN_DIR/ruleset_download.log" ]; then
-					tail -n +$((rs_before + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null \
-						| grep -E '下载失败|提示：|警告|HTTP 状态|不存在|404' >> "$LOG_PATH" 2>/dev/null
-				fi
-				if [ "$rs_rc" -ne 0 ]; then
-					log "【规则集下载失败】预下载未全部成功（失败项见上方明细及 $RUN_DIR/ruleset_download.log）。失败项将由内核按 remote 方式下载；若 URL 返回 404，内核会把它当 .srs 载入并崩溃，导致服务起不来。请检查失败项 URL：geoip-* 公司/服务类域名规则应改为 geosite-*，或手动下载正确 .srs 放到 $HP_DIR/ruleset。"
-					panel_log "规则集有下载失败项，已在主日志提示处理办法（geoip-* 公司/服务类应改为 geosite-*）。"
-				fi
-			fi
-		fi
-
 		# Generate/Validate client config
 		# Capture ucode's stderr to the log with ANSI escapes stripped.
 		append_err_stripped ucode -S "$HP_DIR/scripts/generate_client.uc"

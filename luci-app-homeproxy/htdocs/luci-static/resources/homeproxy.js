@@ -114,10 +114,18 @@ function renderCronEditor(input) {
 	input.style.padding = '0';
 	input.style.border = '0';
 
+	/* 两小时/分钟下拉固定 5.2em。原来 4.25em 在字号偏小的主题（如 Argon
+	   的 11px）下只有约 47px，而主题给 select 右侧箭头留的内边距是固定的
+	   像素值（约 24px），剩下的空间放不下「04」，后半个数字会被裁掉。
+	   这里同时加大宽度并把左右内边距显式写成 em：右侧 1.7em 给箭头留位，
+	   左侧 .45em 不贴边，字号再变也不会再压缩文字区。 */
+	const timeSelectStyle = 'width: 5.2em !important; min-width: 5.2em !important; max-width: 5.2em !important; '
+		+ 'box-sizing: border-box; padding-left: .45em !important; padding-right: 1.7em !important; text-align: left;';
+
 	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
-	    hour = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
-	    minute = E('select', { 'class': 'cbi-input-select', 'style': 'width: 4.25em !important; min-width: 4.25em !important; max-width: 4.25em !important; box-sizing: border-box;' }),
-	    dailyField = E('div', { 'style': 'display: flex; align-items: center; gap: .25em; width: 9.5em;' }, [
+	    hour = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
+	    minute = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
+	    dailyField = E('div', { 'style': 'display: flex; align-items: center; gap: .3em; width: 12em; flex: 0 0 auto;' }, [
 		hour,
 		E('span', ':'),
 		minute
@@ -967,6 +975,19 @@ return baseclass.extend({
 				.hp-rn-out-na { opacity: .45; }
 				.hp-chip-list { display: inline-flex; flex-wrap: wrap; gap: 4px;
 					max-width: 240px; vertical-align: middle; }
+				/* 每行固定 5 个（策略节点 / 订阅机场列）：第 6 个起换到下一行。
+				   minmax(max-content, 1fr) 让列宽至少等于最宽的那个标签，容器更宽
+				   时 5 列均分，因此标签文字不会被截断。 */
+				.hp-chip-list-5 { display: inline-grid; max-width: none;
+					grid-template-columns: repeat(5, minmax(max-content, 1fr));
+					gap: 4px; vertical-align: middle; }
+				/* 单个标签留 96px 上限：5 个中文字够放，超长的机场名才省略
+				   （hover 有完整名称），避免一条超长标签把整列撑爆。 */
+				.hp-chip-list-5 .hp-chip { max-width: 96px; text-align: center; }
+				/* 窄屏放不下 5 列时不强行撑宽表格，退成 3 列。 */
+				@media (max-width: 720px) {
+					.hp-chip-list-5 { grid-template-columns: repeat(3, minmax(max-content, 1fr)); }
+				}
 				.hp-chip { display: inline-block; max-width: 130px; padding: 1px 9px;
 					border-radius: 999px; font-size: .78rem; line-height: 1.7;
 					white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -995,9 +1016,8 @@ return baseclass.extend({
 				.hp-dns-flow-direct { color: #c0603a; }
 				.hp-dns-flow-tip { margin-top: .35rem; font-size: .85rem; color: #c0603a; }
 				.hp-dns-banner-compact { padding: .45rem .9rem; }
-				.hp-dns-flow-compact { font-size: .9rem; line-height: 1.9; }
-				.hp-dns-flow-compact .hp-dns-flow-cond { font-weight: 600; }
-				.hp-dns-flow-rest.hp-dns-flow-direct { color: #c0603a; }
+				.hp-dns-flow-note { margin-bottom: .2rem; }
+				.hp-dns-flow-compact { font-size: .9rem; line-height: 1.85; }
 				.hp-dns-flow-empty { opacity: .75; }
 			` ]));
 		}
