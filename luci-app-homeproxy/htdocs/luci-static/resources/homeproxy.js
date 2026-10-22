@@ -965,13 +965,16 @@ return baseclass.extend({
 				.hp-rn-out-chain { color: #2b5bd7; font-weight: 600; }
 				.hp-rn-out-direct { color: var(--muted, #68718a); }
 				.hp-rn-out-na { opacity: .45; }
-				.hp-ap-list { display: inline-flex; flex-wrap: wrap; gap: 4px;
+				.hp-chip-list { display: inline-flex; flex-wrap: wrap; gap: 4px;
 					max-width: 240px; vertical-align: middle; }
-				.hp-ap-chip { display: inline-block; max-width: 130px; padding: 1px 9px;
+				.hp-chip { display: inline-block; max-width: 130px; padding: 1px 9px;
 					border-radius: 999px; font-size: .78rem; line-height: 1.7;
 					white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 					background: rgba(43, 91, 215, .10); color: #2b5bd7; }
-				.hp-ap-empty { opacity: .45; }
+				.hp-chip-policy { background: rgba(96, 60, 190, .10); color: #5c3cbe; }
+				.hp-chip-ruleset { background: rgba(96, 60, 190, .07); color: #5c3cbe;
+					border: 1px solid rgba(96, 60, 190, .28); padding: 0 8px; }
+				.hp-chip-empty { opacity: .45; }
 				.hp-dns-loading { color: var(--muted, #68718a); }
 				.hp-dns-err { color: #e05252; font-weight: 500; }
 				.hp-dns-lat-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
@@ -991,6 +994,10 @@ return baseclass.extend({
 					border-top: 1px dashed rgba(128, 128, 128, .35); font-size: .88rem; }
 				.hp-dns-flow-direct { color: #c0603a; }
 				.hp-dns-flow-tip { margin-top: .35rem; font-size: .85rem; color: #c0603a; }
+				.hp-dns-banner-compact { padding: .45rem .9rem; }
+				.hp-dns-flow-compact { font-size: .9rem; line-height: 1.9; }
+				.hp-dns-flow-compact .hp-dns-flow-cond { font-weight: 600; }
+				.hp-dns-flow-rest.hp-dns-flow-direct { color: #c0603a; }
 				.hp-dns-flow-empty { opacity: .75; }
 			` ]));
 		}

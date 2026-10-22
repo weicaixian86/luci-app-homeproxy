@@ -9,6 +9,9 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2242
+msgid "%s (direct)"
+msgstr "%s（直连）"
+
 msgid "%s (via outbound: %s)"
 msgstr "%s（出站：%s）"
 
@@ -41,6 +44,9 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1750
 #: htdocs/luci-static/resources/view/homeproxy/server.js:777
 #: htdocs/luci-static/resources/view/homeproxy/server.js:796
+msgid "; all other domains go to default server %s."
+msgstr "；其余域名 → 默认服务器 %s。"
+
 msgid "<strong>Save your configuration before uploading files!</strong>"
 msgstr "<strong>上传文件前请先保存配置！</strong>"
 
@@ -505,6 +511,12 @@ msgid "Core Version"
 msgstr "核心版本"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:338
+msgid "Current DNS resolution flow: "
+msgstr "当前 DNS 解析流程："
+
+msgid "Current DNS resolution flow: all queries → "
+msgstr "当前 DNS 解析流程：所有查询 → "
+
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
 
@@ -2036,6 +2048,15 @@ msgid "No matching binary for this architecture yet."
 msgstr "当前架构暂无可匹配的二进制。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1164
+msgid "No policy node is selected."
+msgstr "未选择策略节点。"
+
+msgid "No response from rpcd. Restart rpcd (or the router) and try again."
+msgstr "未收到 rpcd 响应。请重启 rpcd（或路由器）后重试。"
+
+msgid "No rule set is referenced."
+msgstr "未引用规则集。"
+
 msgid "No subscription airport is selected."
 msgstr "未选择订阅机场。"
 
@@ -3388,6 +3409,9 @@ msgid "Unknown error: %s"
 msgstr "未知错误：%s"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1156
+msgid "Unknown policy node"
+msgstr "未知策略节点"
+
 msgid "Unnamed airport"
 msgstr "未命名机场"
 

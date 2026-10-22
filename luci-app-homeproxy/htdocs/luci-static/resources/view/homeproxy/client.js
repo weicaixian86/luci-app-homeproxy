@@ -1144,7 +1144,7 @@ return view.extend({
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
 					if (node !== 'urltest' && node !== 'selector')
-						return E('span', { 'class': 'hp-ap-empty' }, [ '—' ]);
+						return E('span', { 'class': 'hp-chip-empty' }, [ '—' ]);
 
 					const names = [],
 					      addName = function(name) {
@@ -1160,12 +1160,36 @@ return view.extend({
 
 					if (!names.length)
 						return E('span', {
-							'class': 'hp-ap-empty',
+							'class': 'hp-chip-empty',
 							'title': _('No subscription airport is selected.')
 						}, [ '—' ]);
 
-					return E('span', { 'class': 'hp-ap-list' },
-						names.map((name) => E('span', { 'class': 'hp-ap-chip', 'title': name }, [ name ])));
+					return E('span', { 'class': 'hp-chip-list' },
+						names.map((name) => E('span', { 'class': 'hp-chip', 'title': name }, [ name ])));
+				}
+			},
+			{
+				/* 手动选择组可以把别的策略组挂成下级节点（policy_nodes），
+				   顺序就是勾选顺序——内核按这个顺序构建 selector 的 outbounds。
+				   自动选择组与单节点包装没有这一项。 */
+				header: _('Policy nodes'),
+				renderCell: function(sid) {
+					const node = uci.get(data[0], sid, 'node') || 'selector';
+
+					if (node !== 'selector')
+						return E('span', { 'class': 'hp-chip-empty' }, [ '—' ]);
+
+					const names = normalizeFormList(uci.get(data[0], sid, 'policy_nodes'))
+						.map((id) => routing_groups[id] || _('Unknown policy node'));
+
+					if (!names.length)
+						return E('span', {
+							'class': 'hp-chip-empty',
+							'title': _('No policy node is selected.')
+						}, [ '—' ]);
+
+					return E('span', { 'class': 'hp-chip-list' },
+						names.map((name) => E('span', { 'class': 'hp-chip hp-chip-policy', 'title': name }, [ name ])));
 				}
 			},
 			{
@@ -2121,18 +2145,26 @@ return view.extend({
 
 									latSpan.appendChild(E('span', { 'class': cls },
 										String(ms) + 'ms'));
-								} else {
-									const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
-									if (ret && ret.error)
-										err.title = ret.error;
-									latSpan.appendChild(err);
-								}
+							} else {
+								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
+
+								/* 有 rpcd 返回的 error 就直接显示；连响应都没有（方法未注册，
+								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。 */
+								err.title = (ret && ret.error)
+									? ret.error
+									: _('No response from rpcd. Restart rpcd (or the router) and try again.');
+
+								latSpan.appendChild(err);
+							}
 							})
 							.catch(() => {
 								btn.disabled = false;
 								btn.textContent = _('Test');
 								latSpan.textContent = '';
-								latSpan.appendChild(E('span', { 'class': 'hp-dns-err' }, _('Failed')));
+
+								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
+								err.title = _('No response from rpcd. Restart rpcd (or the router) and try again.');
+								latSpan.appendChild(err);
 							});
 					});
 
@@ -2178,10 +2210,20 @@ return view.extend({
 			return { label: label, outbound: outbound };
 		};
 
+		/* 目标的文字形式：直连显示「名称（直连）」，走代理显示「名称（出站：X）」。 */
+		const dnsTargetLabel = function(t) {
+			return (t.outbound == null)
+				? _('%s (direct)').format(t.label)
+				: _('%s (via outbound: %s)').format(t.label, t.outbound);
+		};
+
 		/* 单条 DNS 规则的匹配条件摘要。每类最多列 3 项，超出用「…」省略；
-		   一条规则没有任何匹配条件时即「所有查询」。 */
-		const dnsRuleCondition = function(cfg) {
-			const toList = (v) => (v == null ? [] : (Array.isArray(v) ? v : [ v ])),
+		   一条规则没有任何匹配条件时即「所有查询」。
+		   label_sep 是「类别」与「取值」之间的分隔符：列表里用「：」，
+		   一句话模式传空格，避免和句首的冒号叠成双冒号。 */
+		const dnsRuleCondition = function(cfg, label_sep) {
+			const sep = (label_sep != null) ? label_sep : '：',
+			      toList = (v) => (v == null ? [] : (Array.isArray(v) ? v : [ v ])),
 			      parts = [],
 			      add = (label, v) => {
 				const vals = toList(v).filter((x) => x !== '' && x != null);
@@ -2189,7 +2231,7 @@ return view.extend({
 				if (!vals.length)
 					return;
 
-				parts.push(label + '：' + vals.slice(0, 3).join('、') +
+				parts.push(label + sep + vals.slice(0, 3).join('、') +
 					(vals.length > 3 ? ' …' : ''));
 			};
 
@@ -2216,51 +2258,99 @@ return view.extend({
 			return (cfg.invert === '1' ? _('Invert') + '：' : '') + parts.join('；');
 		};
 
-		/* 解析流程说明：动态汇总当前每条 DNS 规则「匹配什么 → 走直连还是走代理」，
-		   再给出默认 DNS 去向与防泄漏提示。通过 renderSectionAdd 的 topHint
-		   显示在「添加」输入框上方，见下方 ss.renderSectionAdd 绑定。 */
+		/* 解析流程说明：动态汇总当前每条 DNS 规则「匹配什么 → 走直连还是走代理」。
+		   只有一条规则时压成一句话（新手最容易读），多条才用列表；
+		   只有默认 DNS 真的直连出去时才追加防泄漏提示。
+		   通过 renderSectionAdd 的 topHint 显示在「添加」输入框上方，见下方绑定。 */
 		const renderDnsBanner = function() {
-			const rows = [];
-			let idx = 0;
+			const list = [];
 
 			uci.sections(data[0], 'dns_rule', (cfg) => {
 				if (cfg.enabled === '0')
 					return;
 
-				idx++;
+				list.push(cfg);
+			});
 
-				const action = cfg.action || 'route',
-				      row = E('div', { 'class': 'hp-dns-flow-row' }, [
-					E('span', { 'class': 'hp-dns-flow-idx' }, idx + '.'),
-					E('span', { 'class': 'hp-dns-flow-cond' }, dnsRuleCondition(cfg)),
-					E('span', { 'class': 'hp-dns-flow-arrow' }, '→')
-				]);
+			const def = resolveDnsTarget(uci.get(data[0], 'dns', 'default_server') || 'default-dns'),
+			      leakTip = _('Leak warning: queries that match no rule are resolved by the default DNS server. If it goes out directly, your local network or ISP can see the domains you visit (DNS leak). Add rules for sensitive domains, or set the default DNS server to one that goes through a proxy.');
 
-				if (action === 'route') {
-					const t = resolveDnsTarget(cfg.server),
-					      targetEl = E('span', { 'class': 'hp-dns-flow-target' },
-						_('%s (via outbound: %s)').format(t.label, t.outbound || _('Direct')));
-
-					/* 直连解析等于把域名明文暴露给运营商/局域网，用警示色标出来。 */
-					if (t.outbound == null)
-						targetEl.classList.add('hp-dns-flow-direct');
-
-					row.appendChild(targetEl);
-				} else {
-					row.appendChild(E('span', { 'class': 'hp-dns-flow-target' },
+			/* 规则命中后去哪：route 落到具体服务器（直连加警示色），
+			   其余动作只有语义标签，没有目标服务器。 */
+			const targetNode = function(server_id, action) {
+				if (action !== 'route')
+					return E('span', { 'class': 'hp-dns-flow-target' },
 						(action === 'reject') ? _('Reject')
 							: (action === 'predefined') ? _('Predefined')
-							: _('Route options')));
+							: _('Route options'));
+
+				const t = resolveDnsTarget(server_id),
+				      el = E('span', { 'class': 'hp-dns-flow-target' }, dnsTargetLabel(t));
+
+				/* 直连解析等于把域名明文暴露给运营商/局域网，用警示色标出来。 */
+				if (t.outbound == null)
+					el.classList.add('hp-dns-flow-direct');
+
+				return el;
+			};
+
+			/* 一条规则一个匹配条件都没有 = 命中所有查询；
+			   此时「其余域名走默认服务器」并不成立，必须换措辞。 */
+			const dnsRuleMatchesAll = function(cfg) {
+				return [ 'domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'rule_set' ]
+					.every((k) => {
+						const v = cfg[k];
+						return (v == null) || (Array.isArray(v) ? v.length === 0 : v === '');
+					});
+			};
+
+			/* 只有一条规则：一句话说清「谁直连、谁走代理、其余去哪」 */
+			if (list.length === 1) {
+				const cfg = list[0],
+				      action = cfg.action || 'route',
+				      catch_all = dnsRuleMatchesAll(cfg),
+				      children = [],
+				      box = [];
+
+				if (catch_all) {
+					children.push(_('Current DNS resolution flow: all queries → '));
+				} else {
+					children.push(_('Current DNS resolution flow: '),
+						E('span', { 'class': 'hp-dns-flow-cond' }, dnsRuleCondition(cfg, ' ')),
+						' → ');
 				}
 
-				rows.push(row);
-			});
+				children.push(targetNode(cfg.server, action));
+
+				if (!catch_all) {
+					const rest = E('span', { 'class': 'hp-dns-flow-rest' },
+						_('; all other domains go to default server %s.').format(dnsTargetLabel(def)));
+
+					if (def.outbound == null)
+						rest.classList.add('hp-dns-flow-direct');
+
+					children.push(rest);
+				}
+
+				box.push(E('div', { 'class': 'hp-dns-flow-compact' }, children));
+
+				/* 所有查询都被这条规则拦住时，默认 DNS 根本用不到，不必提示泄漏 */
+				if (!catch_all && def.outbound == null)
+					box.push(E('div', { 'class': 'hp-dns-flow-tip' }, leakTip));
+
+				return E('div', { 'class': 'hp-dns-banner hp-dns-banner-compact' }, box);
+			}
+
+			const rows = list.map((cfg, i) => E('div', { 'class': 'hp-dns-flow-row' }, [
+				E('span', { 'class': 'hp-dns-flow-idx' }, (i + 1) + '.'),
+				E('span', { 'class': 'hp-dns-flow-cond' }, dnsRuleCondition(cfg)),
+				E('span', { 'class': 'hp-dns-flow-arrow' }, '→'),
+				targetNode(cfg.server, cfg.action || 'route')
+			]));
 
 			if (rows.length === 0)
 				rows.push(E('div', { 'class': 'hp-dns-flow-row hp-dns-flow-empty' },
 					_('No DNS rule is configured; all queries go to the default DNS server.')));
-
-			const def = resolveDnsTarget(uci.get(data[0], 'dns', 'default_server') || 'default-dns');
 
 			return E('div', { 'class': 'hp-dns-banner' }, [
 				E('div', { 'class': 'hp-dns-flow-title' },
@@ -2268,8 +2358,7 @@ return view.extend({
 				E('div', { 'class': 'hp-dns-flow-list' }, rows),
 				E('div', { 'class': 'hp-dns-flow-default' },
 					_('Default DNS server: %s (via outbound: %s)').format(def.label, def.outbound || _('Direct'))),
-				E('div', { 'class': 'hp-dns-flow-tip' },
-					_('Leak warning: queries that match no rule are resolved by the default DNS server. If it goes out directly, your local network or ISP can see the domains you visit (DNS leak). Add rules for sensitive domains, or set the default DNS server to one that goes through a proxy.'))
+				E('div', { 'class': 'hp-dns-flow-tip' }, leakTip)
 			]);
 		};
 
@@ -2527,6 +2616,40 @@ return view.extend({
 		so = ss.taboption('fields_process', form.DynamicList, 'process_path_regex', _('Process path (regex)'),
 			_('Match process path using regular expression.'));
 		so.modalonly = true;
+
+		/* 「规则集」列：把这条规则引用的规则集以标签形式列出来。
+		   规则集字段只存在于「其他字段」弹窗里，表格里原本完全看不到；
+		   有大量 geosite/geoip 规则时，靠它才能一眼分清哪条规则靠哪些规则集匹配。 */
+		hp.appendTableColumns(ss, [{
+			header: _('Rule set'),
+			renderCell: function(sid) {
+				const raw = uci.get(data[0], sid, 'rule_set'),
+				      ids = Array.isArray(raw) ? raw : (raw ? [ raw ] : []);
+
+				if (!ids.length)
+					return E('span', { 'class': 'hp-chip-empty', 'title': _('No rule set is referenced.') }, [ '—' ]);
+
+				const labels = {},
+				      names = [];
+
+				uci.sections(data[0], 'ruleset', (res) => {
+					labels[res['.name']] = res.tag || res.label || res['.name'];
+				});
+
+				for (const id of ids) {
+					const name = labels[id] || id;
+
+					if (!names.includes(name))
+						names.push(name);
+				}
+
+				return E('span', { 'class': 'hp-chip-list' },
+					names.map((name) => E('span', {
+						'class': 'hp-chip hp-chip-ruleset',
+						'title': name
+					}, [ name ])));
+			}
+		}]);
 
 		/* DNS rules end */
 		/* Custom routing settings end */

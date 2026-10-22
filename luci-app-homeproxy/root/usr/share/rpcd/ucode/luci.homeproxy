@@ -2025,8 +2025,20 @@ const methods = {
 				if (m)
 					host = m[1];
 
-				/* 去掉端口、路径、IPv6 方括号 */
-				host = match(host, /^([^:/\[\]]+)/)?.[1] || match(host, /^\[([^\]]+)\]/)?.[1] || host;
+				/* 去掉端口、路径、IPv6 方括号。三类要分开处理：
+				   一、[2606:4700::1111]:53 → 取方括号内；
+				   二、裸 IPv6 2606:4700::1111 → 整串就是主机，不能按 ':' 切，
+				       否则会截成 "2606"，ping 必然失败（前端校验允许裸 IPv6）；
+				   三、主机名 / IPv4，可能带 :端口 或 /路径。 */
+				const bracketed = match(host, /^\[([^\]]+)\]/);
+
+				if (bracketed) {
+					host = bracketed[1];
+				}
+				else if (!match(host, /^[0-9a-fA-F:.]+$/) || split(host, ':')[2] == null) {
+					host = match(host, /^([^:\/]+)/)?.[1] || host;
+				}
+
 				if (!host)
 					return { result: false, error: 'failed to extract host from address' };
 
@@ -2034,47 +2046,71 @@ const methods = {
 				      curl = access('/usr/bin/curl') ? '/usr/bin/curl' : null,
 				      ping = access('/bin/ping') ? '/bin/ping' : (access('/usr/bin/ping') ? '/usr/bin/ping' : null);
 
-				/* HTTPS(DoH) 且系统有 curl：测 TLS 握手耗时。H3(DoH3) 虽同为
-				   HTTP，但 h3:// 不是 curl 能识别的 scheme，且 QUIC 握手不在
-				   TCP/TLS 语义内，故按请求退回 ping。 */
+				/* HTTPS(DoH) 且系统有 curl：测 TLS 握手耗时。
+				   -k 是必需的：DoH 地址经常直接填 IP（https://223.5.5.5/dns-query、
+				   https://1.12.12.12/dns-query），而证书是签给域名的，SNI/校验都对不上，
+				   不加 -k 会直接以「证书校验失败」退出，一个时间都拿不到。
+				   这里只量延迟，不承担证书校验职责，所以跳过校验是合理的。
+				   H3(DoH3) 虽同为 HTTP，但 h3:// 不是 curl 能识别的 scheme，且 QUIC
+				   握手不在 TCP/TLS 语义内，故按请求退回 ping。 */
+				let handshake_error = null;
+
 				if (isHandshake && curl) {
 					let url = server;
 
 					if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
 						url = 'https://' + url;
 
-					const fd = popen(`${curl} --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}" ${shellquote(url)} 2>/dev/null`);
+					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip */
+					const errfile = `/tmp/.hp_dns_curl_${section}`,
+					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}" ${shellquote(url)} 2> ${shellquote(errfile)}`);
 
-					if (!fd)
-						return { result: false, error: 'curl invocation failed', latency_ms: null };
+					let line = '';
 
-					const line = trim(fd.read('line') || '');
-					fd.close();
+					if (fd) {
+						line = trim(fd.read('line') || '');
+						fd.close();
+					}
+
+					const details = trim(readfile(errfile) || '');
+					unlink(errfile);
 
 					const parts = split(line, ' ');
 					const time_connect = parts[0] ? +parts[0] * 1000 : null,
 					      time_appconnect = parts[1] ? +parts[1] * 1000 : null;
 
-					/* 握手耗时 = time_appconnect（含 TLS），否则退回 time_connect（仅 TCP） */
-					let latency_ms = (time_appconnect !== null && time_appconnect > 0)
+					/* 握手耗时 = time_appconnect（含 TLS），否则退回 time_connect（仅 TCP）。
+					   变量名避开外层的 latency_ms，不做同名遮蔽，省得踩 let 作用域的坑。 */
+					let hs_ms = (time_appconnect !== null && time_appconnect > 0)
 						? Math.round(time_appconnect)
 						: ((time_connect !== null && time_connect > 0) ? Math.round(time_connect) : null);
 
 					/* 亚毫秒握手四舍五入为 0：钳到 1ms，避免误判失败 */
-					if (latency_ms !== null && latency_ms < 1)
-						latency_ms = 1;
+					if (hs_ms !== null && hs_ms < 1)
+						hs_ms = 1;
 
-					if (latency_ms === null || latency_ms <= 0)
-						return { result: false, error: 'curl probe failed', latency_ms: null, kind: 'handshake' };
+					if (hs_ms !== null && hs_ms > 0)
+						return { result: true, latency_ms: hs_ms, kind: 'handshake' };
 
-					return { result: true, latency_ms, kind: 'handshake' };
+					/* 握手测不出来（curl 无 TLS 支持 / 连接被阻断 / 域名解析失败）：
+					   记下原始报错，继续往下走 ping 兜底，而不是直接判失败。 */
+					handshake_error = details ? split(details, '\n')[0] : 'curl probe failed';
 				}
 
 				/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
 				   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
 				   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
-				if (!ping)
+				if (!ping) {
+					if (handshake_error)
+						return {
+							result: false,
+							error: 'handshake failed: ' + handshake_error,
+							latency_ms: null,
+							kind: 'handshake'
+						};
+
 					return { result: false, error: 'missing ping executable', latency_ms: null };
+				}
 
 				const outfile = `/tmp/.hp_dns_ping_${section}`;
 				const rc = system(`${ping} -c 1 -W 2 ${shellquote(host)} > ${shellquote(outfile)} 2>/dev/null`, 6000);
@@ -2099,11 +2135,15 @@ const methods = {
 				if (latency_ms !== null && latency_ms > 0)
 					return { result: true, latency_ms, kind: 'ping' };
 
+				/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始报错
+				   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
 				return {
 					result: false,
-					error: (rc === -1) ? 'ping timeout' : 'ping failed',
+					error: handshake_error
+						? ('handshake failed: ' + handshake_error)
+						: ((rc === -1) ? 'ping timeout' : 'ping failed'),
 					latency_ms: null,
-					kind: 'ping'
+					kind: handshake_error ? 'handshake' : 'ping'
 				};
 			}
 		}

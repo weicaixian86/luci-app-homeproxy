@@ -83,6 +83,9 @@ sleep 2
 # 让 LuCI 重新扫描到新装的 app
 rm -rf /tmp/luci-indexcache /tmp/luci-modulecache 2>/dev/null || true
 /etc/init.d/uhttpd restart 2>/dev/null || true
+# rpcd 只在启动时加载 /usr/share/rpcd/ucode/*.uc，不重启就仍是旧方法表：
+# 新版本新增的 RPC（如 dns_server_test 延迟测试）会一律报 Method not found。
+/etc/init.d/rpcd restart 2>/dev/null || service rpcd restart 2>/dev/null || true
 
 echo ""
 echo "===== 部署完成，开始校验 ====="
