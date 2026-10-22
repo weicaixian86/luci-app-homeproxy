@@ -1,6 +1,7 @@
 name: Build & Release All-in-One
 
 # 一体化构建与发布（只跑这一个 workflow 即覆盖全部安装方式）：
+#   - guard job：发布前用 git ls-remote --tags 与 gh release view 校验，拒绝覆盖同名 tag/Release（需求 4.3.3）
 #   - luci job（matrix）：用 OpenWrt SDK 分别编译
 #       · OpenWrt 24.10.0 的 .ipk（opkg 安装）
 #       · OpenWrt 25.12.0 的 .apk（apk 安装）
@@ -40,10 +41,36 @@ env:
 
 jobs:
   # ===========================================================================
+  # 0) 发布前校验：拒绝覆盖同名 Git tag 或同名 Release（需求 4.3.3）
+  #    luci 与 core 均依赖本 job，tag 重复时在数秒内全局失败，不浪费构建资源
+  # ===========================================================================
+  guard:
+    name: Reject existing tag / release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check tag and release do not exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag="${{ inputs.tag }}"
+          repo_url="https://github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --tags "$repo_url" "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "::error::Git tag '$tag' already exists in ${GITHUB_REPOSITORY}; refusing to overwrite (需求 4.3.3)"
+            exit 1
+          fi
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release '$tag' already exists in ${GITHUB_REPOSITORY}; refusing to overwrite (需求 4.3.3)"
+            exit 1
+          fi
+          echo "OK: tag '$tag' does not exist yet; proceeding"
+
+  # ===========================================================================
   # 1) 编译 luci 包（matrix：24.10 IPK + 25.12 APK，均含中文 lmo）
   # ===========================================================================
   luci:
     name: Build luci ${{ matrix.name }}
+    needs: guard
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -168,6 +195,7 @@ jobs:
   # ===========================================================================
   core:
     name: Build sing-box ${{ matrix.arch }}
+    needs: guard
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

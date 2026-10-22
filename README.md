@@ -88,4 +88,5 @@ rm -rf /tmp/luci-modulecache/*
 ## 五、感谢作者
 - immortalwrt：https://github.com/immortalwrt/homeproxy
 - VIKINGYFY：https://github.com/VIKINGYFY/homeproxy
-- reF1nd（第三方 sing-box 内核）：https://github.com/reF1nd/sing-box-releases
+- reF1nd（sing-box 内核基础源码）：https://github.com/reF1nd/sing-box （v1.14.3-reF1nd）
+- 本仓库 Release（打补丁后的 sing-box 内核二进制）：https://github.com/weicaixian86/luci-app-homeproxy/releases
