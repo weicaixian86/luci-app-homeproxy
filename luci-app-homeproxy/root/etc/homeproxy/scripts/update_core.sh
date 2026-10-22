@@ -41,6 +41,11 @@ CACHE_DIR="/tmp/homeproxy-core-dl"
 REFIND_REPO="weicaixian86/luci-app-homeproxy"
 REFIND_TAG="v1.14.3-reF1nd"
 REFIND_VERSION="1.14.3-reF1nd"
+# 发布标签同时充当两件事：Release 名（可能带 v 前缀）和内核压缩包的文件名
+# 组件（构建时统一不带 v）。这里剥掉前缀单独存一份，asset 名一律用它，
+# 这样发布时填 "v0.1.10" 还是 "0.1.10" 都不会找不到文件。
+REFIND_ASSET_TAG="${REFIND_TAG#v}"
+REFIND_ASSET_TAG="${REFIND_ASSET_TAG#V}"
 
 # Accelerator prefixes. Order matters: a reachable-but-slow source still burns
 # its whole --max-time before we fail over, so the fastest wins the front slot.
@@ -235,19 +240,19 @@ asset_candidates_for_arch() {
 	case "$arch" in
 		x86_64)
 			if cpu_supports_x86_64_v3; then
-				echo "sing-box-1.14.3-refind_${REFIND_TAG}-linux-amd64v3-musl.tar.gz sing-box-1.14.3-refind_${REFIND_TAG}-linux-amd64-musl.tar.gz"
+				echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64v3-musl.tar.gz sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64-musl.tar.gz"
 			else
-				echo "sing-box-1.14.3-refind_${REFIND_TAG}-linux-amd64-musl.tar.gz"
+				echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64-musl.tar.gz"
 			fi
 			;;
 		aarch64)
-			echo "sing-box-1.14.3-refind_${REFIND_TAG}-linux-arm64-musl.tar.gz"
+			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-arm64-musl.tar.gz"
 			;;
 		armv7*)
-			echo "sing-box-1.14.3-refind_${REFIND_TAG}-linux-armv7-musl.tar.gz"
+			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-armv7-musl.tar.gz"
 			;;
 		mipsel*|*mipsle*)
-			echo "sing-box-1.14.3-refind_${REFIND_TAG}-linux-mipsle-musl.tar.gz"
+			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-mipsle-musl.tar.gz"
 			;;
 		*)
 			return 1

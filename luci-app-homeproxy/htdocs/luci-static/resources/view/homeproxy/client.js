@@ -545,6 +545,7 @@ return view.extend({
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
 		let node_labels = {};
+		let node_airports = {};
 		let subscription_groups = {};
 		let routing_groups = {};
 		let normalizeFormList = function(value) {
@@ -576,6 +577,7 @@ return view.extend({
 			let displayLabel = airport ? String.format('[%s] %s', airport, nodelabel) : nodelabel;
 
 			node_labels[res['.name']] = nodelabel;
+			node_airports[res['.name']] = airport;
 			proxy_nodes[res['.name']] = String.format('[%s] %s', res.type, displayLabel);
 		});
 		/* Mirrors the generator's policy group node filter: keywords are
@@ -1116,7 +1118,9 @@ return view.extend({
 
 		hp.appendTableColumns(ss, [
 			{
-				header: _('Subscription airports'),
+				/* 该列显示「工作模式」徽章（自动选择 / 手动选择）；
+				   固定成单个节点时直接显示节点名，所以表头不再叫「订阅机场」。 */
+				header: _('Working mode'),
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
@@ -1132,6 +1136,39 @@ return view.extend({
 				}
 			},
 			{
+				/* 该策略组实际用到的订阅机场。取三条来源的并集：
+				   subscription_groups（按机场整包选）、subscription_nodes（按节点选，
+				   反查所属机场）、以及自选节点（无机场，忽略）。 */
+				header: _('Subscription airports'),
+				renderCell: function(sid) {
+					const node = uci.get(data[0], sid, 'node') || 'selector';
+
+					if (node !== 'urltest' && node !== 'selector')
+						return E('span', { 'class': 'hp-ap-empty' }, [ '—' ]);
+
+					const names = [],
+					      addName = function(name) {
+						if (name && !names.includes(name))
+							names.push(name);
+					      };
+
+					normalizeFormList(uci.get(data[0], sid, 'subscription_groups'))
+						.forEach((hash) => addName(subscription_groups[hash] || _('Unnamed airport')));
+
+					normalizeFormList(uci.get(data[0], sid, 'subscription_nodes'))
+						.forEach((node_id) => addName(node_airports[node_id]));
+
+					if (!names.length)
+						return E('span', {
+							'class': 'hp-ap-empty',
+							'title': _('No subscription airport is selected.')
+						}, [ '—' ]);
+
+					return E('span', { 'class': 'hp-ap-list' },
+						names.map((name) => E('span', { 'class': 'hp-ap-chip', 'title': name }, [ name ])));
+				}
+			},
+			{
 				header: _('Current node / Latency'),
 				renderCell: function(sid) {
 					/* 与 generate_client.uc 的 outbound tag 规则保持一致 */
@@ -1142,6 +1179,42 @@ return view.extend({
 							.replace(/\s+/g, ' ');
 
 					return E('span', { 'class': 'hp-rn-status', 'data-tag': tag }, [ '…' ]);
+				}
+			},
+			{
+				/* 出站：单节点包装（自建节点 / 订阅节点）的上游出站。
+				   对应 generate_client.uc 里 routed_outbound.detour = get_outbound(cfg.outbound)：
+				   空值即无上游（直接由该节点拨出），有值则串到另一个路由节点的出站。
+				   策略组（urltest / selector）没有这个概念，显示占位符。 */
+				header: _('Outbound'),
+				renderCell: function(sid) {
+					const node = uci.get(data[0], sid, 'node') || 'selector';
+
+					if (node === 'urltest' || node === 'selector')
+						return E('span', {
+							'class': 'hp-rn-out hp-rn-out-na',
+							'title': _('Policy groups do not use an upstream outbound.')
+						}, [ '—' ]);
+
+					const upstream = uci.get(data[0], sid, 'outbound') || '';
+
+					if (!upstream)
+						return E('span', {
+							'class': 'hp-rn-out hp-rn-out-direct',
+							'title': _('This node dials out directly.')
+						}, [ _('Direct') ]);
+
+					let label = upstream;
+
+					uci.sections(data[0], 'routing_node', (res) => {
+						if (res['.name'] === upstream)
+							label = res.label || upstream;
+					});
+
+					return E('span', {
+						'class': 'hp-rn-out hp-rn-out-chain',
+						'title': label + ' (' + upstream + ')'
+					}, [ '→ ' + label ]);
 				}
 			}
 		]);
@@ -1171,8 +1244,10 @@ return view.extend({
 		so.rmempty = false;
 		so.editable = true;
 
-		so = ss.option(form.ListValue, 'node', _('Node'),
-			_('Outbound node'));
+		/* 这个下拉框既选策略组的工作模式（自动测速 / 手动切换），
+		   也能直接固定成某一个节点，所以标签用「工作模式」而不是「节点」。 */
+		so = ss.option(form.ListValue, 'node', _('Working mode'),
+			_('Auto select picks the lowest-latency node; manual select can be switched at runtime; picking a single node uses only that node.'));
 		so.value('urltest', _('Auto select'));
 		so.value('selector', _('Manual select'));
 		for (let i in proxy_nodes)
@@ -2071,45 +2146,130 @@ return view.extend({
 		/* DNS rules start */
 		s.tab('dns_rule', _('DNS Rules'));
 
-		const renderDnsBanner = function() {
-			const server_id = uci.get(data[0], 'dns', 'default_server') || 'default-dns';
+		/* 把 DNS 服务器 id 解析成「名称 + 出站」。outbound 为 null 表示直连
+		   （WAN 下发 DNS / 系统 DNS / 服务器自身出站为 direct-out）。 */
+		const resolveDnsTarget = function(server_id) {
+			const id = server_id || 'default-dns';
 
-			let server_label = null,
-			    outbound_label = null;
+			if (id === 'default-dns')
+				return { label: _('Default DNS (issued by WAN)'), outbound: null };
+			else if (id === 'system-dns')
+				return { label: _('System DNS'), outbound: null };
 
-			if (server_id === 'default-dns') {
-				server_label = _('Default DNS (issued by WAN)');
-			} else if (server_id === 'system-dns') {
-				server_label = _('System DNS');
-			} else {
-				uci.sections(data[0], 'dns_server', (res) => {
-					if (res['.name'] === server_id)
-						server_label = res.label || server_id;
+			let label = id;
+
+			uci.sections(data[0], 'dns_server', (res) => {
+				if (res['.name'] === id)
+					label = res.label || id;
+			});
+
+			const outbound_id = uci.get(data[0], id, 'outbound') || 'direct-out';
+
+			if (outbound_id === 'direct-out' || outbound_id === '')
+				return { label: label, outbound: null };
+
+			let outbound = outbound_id;
+
+			uci.sections(data[0], 'routing_node', (res) => {
+				if (res['.name'] === outbound_id)
+					outbound = res.label || outbound_id;
+			});
+
+			return { label: label, outbound: outbound };
+		};
+
+		/* 单条 DNS 规则的匹配条件摘要。每类最多列 3 项，超出用「…」省略；
+		   一条规则没有任何匹配条件时即「所有查询」。 */
+		const dnsRuleCondition = function(cfg) {
+			const toList = (v) => (v == null ? [] : (Array.isArray(v) ? v : [ v ])),
+			      parts = [],
+			      add = (label, v) => {
+				const vals = toList(v).filter((x) => x !== '' && x != null);
+
+				if (!vals.length)
+					return;
+
+				parts.push(label + '：' + vals.slice(0, 3).join('、') +
+					(vals.length > 3 ? ' …' : ''));
+			};
+
+			add(_('Domain name'), cfg.domain);
+			add(_('Domain suffix'), cfg.domain_suffix);
+			add(_('Domain keyword'), cfg.domain_keyword);
+			add(_('Domain regex'), cfg.domain_regex);
+
+			const rulesets = toList(cfg.rule_set);
+
+			if (rulesets.length) {
+				const labels = {};
+
+				uci.sections(data[0], 'ruleset', (res) => {
+					labels[res['.name']] = res.tag || res.label || res['.name'];
 				});
 
-				if (!server_label)
-					server_label = server_id;
-
-				const outbound_id = uci.get(data[0], server_id, 'outbound') || 'direct-out';
-
-				if (outbound_id === 'direct-out') {
-					outbound_label = _('Direct');
-				} else {
-					uci.sections(data[0], 'routing_node', (res) => {
-						if (res['.name'] === outbound_id)
-							outbound_label = res.label || outbound_id;
-					});
-
-					if (!outbound_label)
-						outbound_label = outbound_id;
-				}
+				add(_('Rule set'), rulesets.map((r) => labels[r] || r));
 			}
 
+			if (!parts.length)
+				return _('All queries');
+
+			return (cfg.invert === '1' ? _('Invert') + '：' : '') + parts.join('；');
+		};
+
+		/* 解析流程说明：动态汇总当前每条 DNS 规则「匹配什么 → 走直连还是走代理」，
+		   再给出默认 DNS 去向与防泄漏提示。通过 renderSectionAdd 的 topHint
+		   显示在「添加」输入框上方，见下方 ss.renderSectionAdd 绑定。 */
+		const renderDnsBanner = function() {
+			const rows = [];
+			let idx = 0;
+
+			uci.sections(data[0], 'dns_rule', (cfg) => {
+				if (cfg.enabled === '0')
+					return;
+
+				idx++;
+
+				const action = cfg.action || 'route',
+				      row = E('div', { 'class': 'hp-dns-flow-row' }, [
+					E('span', { 'class': 'hp-dns-flow-idx' }, idx + '.'),
+					E('span', { 'class': 'hp-dns-flow-cond' }, dnsRuleCondition(cfg)),
+					E('span', { 'class': 'hp-dns-flow-arrow' }, '→')
+				]);
+
+				if (action === 'route') {
+					const t = resolveDnsTarget(cfg.server),
+					      targetEl = E('span', { 'class': 'hp-dns-flow-target' },
+						_('%s (via outbound: %s)').format(t.label, t.outbound || _('Direct')));
+
+					/* 直连解析等于把域名明文暴露给运营商/局域网，用警示色标出来。 */
+					if (t.outbound == null)
+						targetEl.classList.add('hp-dns-flow-direct');
+
+					row.appendChild(targetEl);
+				} else {
+					row.appendChild(E('span', { 'class': 'hp-dns-flow-target' },
+						(action === 'reject') ? _('Reject')
+							: (action === 'predefined') ? _('Predefined')
+							: _('Route options')));
+				}
+
+				rows.push(row);
+			});
+
+			if (rows.length === 0)
+				rows.push(E('div', { 'class': 'hp-dns-flow-row hp-dns-flow-empty' },
+					_('No DNS rule is configured; all queries go to the default DNS server.')));
+
+			const def = resolveDnsTarget(uci.get(data[0], 'dns', 'default_server') || 'default-dns');
+
 			return E('div', { 'class': 'hp-dns-banner' }, [
-				E('div', {}, _('Client DNS queries match DNS rules from top to bottom; matching stops at the first hit, and unmatched queries go to the default DNS server.')),
-				E('div', {}, (outbound_label != null)
-					? _('Default DNS server: %s (via outbound: %s)').format(server_label, outbound_label)
-					: _('Default DNS server: %s').format(server_label))
+				E('div', { 'class': 'hp-dns-flow-title' },
+					_('Client DNS queries match DNS rules from top to bottom; matching stops at the first hit, and unmatched queries go to the default DNS server.')),
+				E('div', { 'class': 'hp-dns-flow-list' }, rows),
+				E('div', { 'class': 'hp-dns-flow-default' },
+					_('Default DNS server: %s (via outbound: %s)').format(def.label, def.outbound || _('Direct'))),
+				E('div', { 'class': 'hp-dns-flow-tip' },
+					_('Leak warning: queries that match no rule are resolved by the default DNS server. If it goes out directly, your local network or ISP can see the domains you visit (DNS leak). Add rules for sensitive domains, or set the default DNS server to one that goes through a proxy.'))
 			]);
 		};
 
@@ -2127,8 +2287,11 @@ return view.extend({
 		hp.dedupeNameColumn(ss);
 		/* 「启用」列移到名称列左侧 */
 		hp.moveEnableColumn(ss);
+		/* 第 4 个预绑定实参是 topHint：传函数而非节点，让每次重绘都重新读取
+		   uci 数据，汇总内容随规则增删/启停实时变化，且显示在「添加」输入框上方。 */
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
-			_('Used as the displayed DNS rule name. Chinese is supported. It must be unique.'));
+			_('Used as the displayed DNS rule name. Chinese is supported. It must be unique.'),
+			renderDnsBanner);
 
 		ss.tab('field_other', _('Other fields'));
 		ss.tab('field_host', _('Host/IP fields'));
@@ -2364,24 +2527,6 @@ return view.extend({
 		so = ss.taboption('fields_process', form.DynamicList, 'process_path_regex', _('Process path (regex)'),
 			_('Match process path using regular expression.'));
 		so.modalonly = true;
-
-		/* 建议 10（移至底部）：把 DNS 解析流程横幅放到「添加」按钮的位置，删除添加按钮。 */
-		const dnsRuleOrigRenderContents = ss.renderContents;
-
-		ss.renderContents = function() {
-			const el = dnsRuleOrigRenderContents.apply(this, arguments);
-
-			try {
-				const createEl = el.querySelector('.cbi-tblsection-create');
-
-				if (createEl) {
-					const banner = renderDnsBanner();
-					createEl.parentNode.replaceChild(banner, createEl);
-				}
-			} catch (e) {}
-
-			return el;
-		};
 
 		/* DNS rules end */
 		/* Custom routing settings end */

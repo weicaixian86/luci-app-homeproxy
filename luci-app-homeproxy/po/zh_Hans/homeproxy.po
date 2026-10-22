@@ -16,6 +16,10 @@ msgstr "%s ms"
 msgid "%s nodes removed"
 msgstr "移除了 %s 个节点"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2167
+msgid "%s (via outbound: %s)"
+msgstr "%s（出站：%s）"
+
 #: htdocs/luci-static/resources/homeproxy.js:1502
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr "/etc/homeproxy/certs/...，/etc/acme/...，/etc/ssl/..."
@@ -59,6 +63,10 @@ msgstr "留空则不校验。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2198
 msgid "Accept empty query response"
 msgstr "接受空查询响应"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2137
+msgid "All queries"
+msgstr "所有查询"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2661
 msgid "Access Control"
@@ -260,6 +268,10 @@ msgstr "自动刷新"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1176
 msgid "Auto select"
 msgstr "自动选择"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1211
+msgid "Auto select picks the lowest-latency node; manual select can be switched at runtime; picking a single node uses only that node."
+msgstr "自动选择会按延迟自动挑选最快节点；手动选择可在面板中随时切换；直接选一个节点则只使用该节点。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2635
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1963
@@ -1587,6 +1599,17 @@ msgstr "延迟测试模式"
 msgid "Leave empty to use the default port."
 msgstr "留空则表示使用默认端口。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2191
+msgid ""
+"Leak warning: queries that match no rule are resolved by the default DNS "
+"server. If it goes out directly, your local network or ISP can see the "
+"domains you visit (DNS leak). Add rules for sensitive domains, or set the "
+"default DNS server to one that goes through a proxy."
+msgstr ""
+"防泄漏提示：未命中任何规则的查询会交给默认 DNS 服务器解析。若它直连出网，局域"
+"网或运营商就能看到你访问的域名（DNS 泄漏）。建议为敏感域名单独添加规则，或把默"
+"认 DNS 服务器设为走代理的那一个。"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1387
 #: htdocs/luci-static/resources/view/homeproxy/server.js:401
 msgid ""
@@ -1959,6 +1982,10 @@ msgstr ""
 msgid "NTP time synchronization interval"
 msgstr "NTP 时间同步间隔"
 
+#: htdocs/luci-static/resources/homeproxy.js:1367
+msgid "Name"
+msgstr "名称"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1355
 msgid "Native"
 msgstr "原生"
@@ -1993,6 +2020,10 @@ msgstr "无额外加密支持：它基本上是重复加密。"
 msgid "No binary for this arch yet"
 msgstr "该架构暂无可用二进制"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2180
+msgid "No DNS rule is configured; all queries go to the default DNS server."
+msgstr "未配置任何 DNS 规则，所有查询都会交给默认 DNS 服务器解析。"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:342
 msgid "No matching binary for this architecture yet."
 msgstr "当前架构暂无可匹配的二进制。"
@@ -2000,6 +2031,10 @@ msgstr "当前架构暂无可匹配的二进制。"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2052
 msgid "No subscription available"
 msgstr "无可用订阅"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1152
+msgid "No subscription airport is selected."
+msgstr "未选择订阅机场。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2077
 msgid "No subscription node"
@@ -2216,6 +2251,10 @@ msgstr "插件参数"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1348
 msgid "Policy nodes"
 msgstr "策略节点"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1180
+msgid "Policy groups do not use an upstream outbound."
+msgstr "策略组不使用上游出站。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1769
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1909
@@ -2828,8 +2867,8 @@ msgstr "订阅"
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1119
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1303
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1142
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1378
 msgid "Subscription airports"
 msgstr "订阅机场"
 
@@ -3131,6 +3170,10 @@ msgstr "服务端证书路径，需要 PEM 格式。"
 msgid "The port must be unique."
 msgstr "必须是唯一端口。"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1183
+msgid "This node dials out directly."
+msgstr "该节点直接拨出，不经过上游出站。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2276
 msgid "The response code."
 msgstr "响应代码。"
@@ -3337,6 +3380,10 @@ msgstr "未知错误。"
 msgid "Unknown error: %s"
 msgstr "未知错误：%s"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1156
+msgid "Unnamed airport"
+msgstr "未命名机场"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1780
 msgid "Unsupported fingerprint!"
 msgstr "不支持的指纹！"
@@ -3532,6 +3579,11 @@ msgstr "三"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2001
 msgid "Whitelist mode"
 msgstr "白名单模式"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1121
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1214
+msgid "Working mode"
+msgstr "工作模式"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1039
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1158

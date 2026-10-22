@@ -788,9 +788,24 @@ return baseclass.extend({
 		el.appendChild(row);
 		el.appendChild(hintEl);     /* hint below the row */
 
-		/* 顶部说明（如路由规则的匹配顺序提示），显示在输入行上方 */
-		if (topHint)
-			el.insertBefore(E('div', { 'class': 'cbi-value-description hp-top-hint' }, topHint), row);
+		/* 顶部说明（如路由规则的匹配顺序提示、DNS 解析流程汇总），显示在输入行上方。
+		   topHint 可以是字符串，也可以是返回 DOM 节点/字符串的函数——后者用于需要
+		   在每次渲染时读取最新 uci 数据的动态说明（如 DNS 规则汇总）。 */
+		if (topHint) {
+			let content = (typeof topHint === 'function') ? topHint() : topHint;
+
+			if (content != null && content !== '') {
+				const isNode = (typeof Node !== 'undefined') && (content instanceof Node);
+				const hintBox = E('div', { 'class': isNode ? 'hp-top-hint' : 'cbi-value-description hp-top-hint' });
+
+				if (isNode)
+					hintBox.appendChild(content);
+				else
+					hintBox.appendChild(document.createTextNode(String(content)));
+
+				el.insertBefore(hintBox, row);
+			}
+		}
 
 		/* The original wrapper is now empty; drop it so it cannot affect layout. */
 		if (wrapper && wrapper.parentNode === el && wrapper.childElementCount === 0)
@@ -944,6 +959,19 @@ return baseclass.extend({
 					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 					font-size: .85rem; }
 				.hp-rn-ms { color: #2eb872; font-weight: 600; }
+				.hp-rn-out { display: inline-block; max-width: 220px; overflow: hidden;
+					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+					font-size: .85rem; }
+				.hp-rn-out-chain { color: #2b5bd7; font-weight: 600; }
+				.hp-rn-out-direct { color: var(--muted, #68718a); }
+				.hp-rn-out-na { opacity: .45; }
+				.hp-ap-list { display: inline-flex; flex-wrap: wrap; gap: 4px;
+					max-width: 240px; vertical-align: middle; }
+				.hp-ap-chip { display: inline-block; max-width: 130px; padding: 1px 9px;
+					border-radius: 999px; font-size: .78rem; line-height: 1.7;
+					white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+					background: rgba(43, 91, 215, .10); color: #2b5bd7; }
+				.hp-ap-empty { opacity: .45; }
 				.hp-dns-loading { color: var(--muted, #68718a); }
 				.hp-dns-err { color: #e05252; font-weight: 500; }
 				.hp-dns-lat-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
@@ -951,6 +979,19 @@ return baseclass.extend({
 				.hp-lat-good { color: #2eb872; font-weight: 600; }
 				.hp-lat-mid { color: #e08a1e; font-weight: 600; }
 				.hp-lat-bad { color: #e05252; font-weight: 600; }
+				.hp-dns-flow-title { font-weight: 600; margin-bottom: .35rem; }
+				.hp-dns-flow-list { display: block; }
+				.hp-dns-flow-row { display: flex; flex-wrap: wrap; align-items: baseline;
+					gap: 0 .45rem; padding: .1rem 0; font-size: .88rem; }
+				.hp-dns-flow-idx { flex: none; min-width: 1.5em; opacity: .65; }
+				.hp-dns-flow-cond { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+				.hp-dns-flow-arrow { flex: none; opacity: .65; }
+				.hp-dns-flow-target { flex: none; font-weight: 600; }
+				.hp-dns-flow-default { margin-top: .35rem; padding-top: .35rem;
+					border-top: 1px dashed rgba(128, 128, 128, .35); font-size: .88rem; }
+				.hp-dns-flow-direct { color: #c0603a; }
+				.hp-dns-flow-tip { margin-top: .35rem; font-size: .85rem; color: #c0603a; }
+				.hp-dns-flow-empty { opacity: .75; }
 			` ]));
 		}
 		catch (e) {}
@@ -1135,76 +1176,72 @@ return baseclass.extend({
 			return section;
 		},
 
-	/* 「启用」列移动到名称列左侧（全局改进）。启用单元格以表格单元格
-	   标准属性 td[data-name="enabled"] 定位；名称列兼容三种 luci-base 形态：
-	   一、25.12：真实 td.cbi-section-table-titles；
-	   二、旧版重复列：dedupeNameColumn 去重后首列即名称
-	       （首列文本与 tr[data-title] 相同）；
-	   三、24.10 分支：无真实名称列，名称仅是主题用 tr[data-title]::before
-	       画的伪元素（永远在最左）——先就地转成真实名称单元格（含表头），
-	       再移动，否则「启用」永远到不了名称左侧。
+	/* 「启用」列移动到名称列左侧（全局改进）。
+	   两层保障，尽量不依赖具体 luci-base 版本与主题：
+	   一、源码层（关键）：渲染前把 enabled 选项提到 children 首位。luci-base 的
+	      表头 renderHeaderRows() 与数据行 renderContents() 都按 this.children
+	      顺序生成列，所以这一步让「启用」成为第一个业务列，24.10 / 25.12 通用，
+	      且不依赖任何 DOM 结构与主题 CSS。
+	   二、DOM 层：luci-base 会把「名称」格固定插在所有业务列之前——25.12 是真实
+	      td.cbi-section-table-titles；24.10 根本没有名称格，只给 tr[data-title]，
+	      由主题用 ::before 画出来。所以再把名称格挪到「启用」之后；24.10 上没有
+	      真实名称格时补一个，并关掉主题那一份伪元素名称。
 	   必须在 dedupeNameColumn() 之后调用。 */
 	moveEnableColumn(section) {
-		const orig = section.renderContents;
+		const optionName = 'enabled';
 
-		/* 取单元格可见文本（与 dedupeNameColumn 的 cellText 同思路） */
-		const cellText = function(td) {
-			const text = (td.textContent || '').trim();
+		/* 源码层：把 enabled 提到 children 首位（幂等）。 */
+		const orderChildren = function(self) {
+			if (!self || !Array.isArray(self.children))
+				return;
 
-			if (text !== '')
-				return text;
+			let idx = -1;
 
-			const input = td.querySelector('input[type="text"], input:not([type])');
-
-			return input ? (input.value || '').trim() : '';
-		};
-
-		/* 行内首个非序号/非自定义追加列单元格（序号列由 prependIndexColumn 注入，
-		   自定义追加列由 appendTableColumns 注入） */
-		const firstContentCell = function(tr, tag) {
-			for (const cell of tr.children) {
-				if (cell.tagName !== tag || cell.classList.contains('hp-index-cell') ||
-				    cell.classList.contains('hp-extra-col'))
-					continue;
-
-				return cell;
+			for (let i = 0; i < self.children.length; i++) {
+				if (self.children[i] && self.children[i].option === optionName) {
+					idx = i;
+					break;
+				}
 			}
 
-			return null;
+			if (idx <= 0)
+				return;
+
+			self.children.unshift(self.children.splice(idx, 1)[0]);
 		};
 
-		/* 三级 fallback 定位「启用」单元格，结果缓存在 tr.__hp_en_cell 避免重复扫描 */
-		const findEnabledCell = function(tr) {
-			if (tr.__hp_en_cell)
-				return tr.__hp_en_cell;
+		/* 关掉主题用伪元素画出来的那一份名称，避免与真实名称格重复显示。
+		   选择器覆盖 tr / td / th 三种挂载位置；data-title 属性本身也会被移除，
+		   即使主题用的是 content: attr(data-title) 也拿不到内容。 */
+		const ensureTitleRealStyle = function() {
+			if (window.__hpTitleRealStyleEx)
+				return;
 
-			const cache = (c) => {
-				tr.__hp_en_cell = c;
-				return c;
+			window.__hpTitleRealStyleEx = true;
+
+			try {
+				document.head.appendChild(E('style', [ `
+					.hp-title-real tr.cbi-section-table-row::before,
+					.hp-title-real tr.cbi-section-table-titles::before,
+					.hp-title-real tbody tr::before,
+					.hp-title-real td.cbi-section-table-titles::before,
+					.hp-title-real th.cbi-section-table-titles::before { content: none !important; }
+				` ]));
+			}
+			catch (e) {}
+		};
+
+		const origRenderChildren = section.renderChildren;
+
+		if (typeof origRenderChildren === 'function') {
+			section.renderChildren = function() {
+				try { orderChildren(this); } catch (e) {}
+
+				return origRenderChildren.apply(this, arguments);
 			};
+		}
 
-			/* Level 1：标准 LuCI 属性 */
-			const l1 = tr.querySelector('td[data-name="enabled"]');
-			if (l1) return cache(l1);
-
-			/* Level 2：checkbox name 包含 .enabled */
-			for (const td of tr.children) {
-				const cb = td.querySelector('input[type="checkbox"]');
-				if (cb && /\.enabled(?:$|\[)/.test(cb.name || ''))
-					return cache(td);
-			}
-
-			/* Level 3：首个不在操作列且含 checkbox 的单元格 */
-			for (const td of tr.children) {
-				if (td.classList.contains('cbi-section-actions'))
-					continue;
-
-				if (td.querySelector('input[type="checkbox"]'))
-					return cache(td);
-			}
-
-			return cache(null);
-		};
+		const orig = section.renderContents;
 
 		/* 第三方主题可能在 renderContents 之后重建/修改 DOM，
 		   用 delayedApply 在 rAF + 短延迟后再补丁一次；
@@ -1216,127 +1253,153 @@ return baseclass.extend({
 					      headerRows = [];
 
 					for (const tr of el.querySelectorAll('tr')) {
-						/* 第三方主题兼容：data-sid 优先，class fallback */
-						const isDataRow = tr.hasAttribute('data-sid') ||
-							tr.classList.contains('cbi-section-table-row');
-
-						if (isDataRow && !tr.classList.contains('placeholder'))
-							dataRows.push(tr);
-						else if (tr.children.length > 0 && tr.children[0].tagName === 'TH' &&
-						         !tr.querySelector('td'))
+						/* 表头行：首格是 TH 且整行没有 TD（25.12 的表头也带
+						   cbi-section-table-titles，不能靠 class 判断） */
+						if (tr.children.length > 0 && tr.children[0].tagName === 'TH' &&
+						    !tr.querySelector('td')) {
 							headerRows.push(tr);
+							continue;
+						}
+
+						/* 第三方主题兼容：data-sid 优先，class fallback */
+						if ((tr.hasAttribute('data-sid') ||
+						     tr.classList.contains('cbi-section-table-row')) &&
+						    !tr.classList.contains('placeholder'))
+							dataRows.push(tr);
 					}
 
 					if (dataRows.length === 0)
 						return;
 
-					const ref = dataRows[0],
-					      refEnabled = findEnabledCell(ref);
+					const ref = dataRows[0];
 
-					if (!refEnabled)
+					const findNameIdx = function(tr) {
+						for (let i = 0; i < tr.children.length; i++) {
+							if (tr.children[i].classList &&
+							    tr.children[i].classList.contains('cbi-section-table-titles'))
+								return i;
+						}
+
+						return -1;
+					};
+
+					/* 源码层已把 enabled 提到首位，所以它必然是第一个业务列 */
+					const findEnabledIdx = function(tr) {
+						let fallback = -1;
+
+						for (let i = 0; i < tr.children.length; i++) {
+							const td = tr.children[i];
+
+							if (td.tagName !== 'TD')
+								continue;
+
+							if (td.getAttribute('data-name') === optionName)
+								return i;
+
+							if (fallback < 0 && td.querySelector('input[type="checkbox"]'))
+								fallback = i;
+						}
+
+						return fallback;
+					};
+
+					let nameIdx = findNameIdx(ref),
+					    enabledIdx = findEnabledIdx(ref);
+
+					if (enabledIdx < 0)
 						return;
 
-					let nameTd = ref.querySelector('td.cbi-section-table-titles');
+					const preCount = ref.children.length,
+					      createName = (nameIdx < 0);
 
-					if (!nameTd) {
-						const titleAttr = ref.getAttribute('data-title'),
-						      firstTd = firstContentCell(ref, 'TD');
+					ensureTitleRealStyle();
+					el.classList.add('hp-title-real');
 
-						if (titleAttr && (!firstTd || cellText(firstTd) !== titleAttr)) {
-							/* 形态三：伪元素名称转真实名称列。样式守卫与
-							   dedupeNameColumn 共用同一标记，避免重复注入。 */
-							if (!window.__hpTitleRealStyle) {
-								window.__hpTitleRealStyle = true;
+					if (createName) {
+						/* 24.10 分支：没有真实名称格，用 tr[data-title] 补一个 */
+						if (!ref.getAttribute('data-title'))
+							return;
 
-								try {
-									document.head.appendChild(E('style', [ `
-										.hp-title-real tr.cbi-section-table-row::before,
-										.hp-title-real tr.cbi-section-table-titles::before { content: none !important; }
-									` ]));
-								}
-								catch (e) {}
-							}
+						for (const tr of dataRows) {
+							const t = tr.getAttribute('data-title');
 
-							for (const tr of dataRows) {
-								const t = tr.getAttribute('data-title');
+							if (!t || findNameIdx(tr) >= 0)
+								continue;
 
-								if (!t)
-									continue;
+							const e = findEnabledIdx(tr),
+							      cell = E('td', {
+								'class': 'td cbi-value-field cbi-section-table-titles'
+							}, [ t ]);
 
-								tr.insertBefore(
-									E('td', { 'class': 'td cbi-value-field cbi-section-table-titles' }, [ t ]),
-									firstContentCell(tr, 'TD') || tr.firstElementChild);
-								tr.removeAttribute('data-title');
-							}
+							if (e >= 0 && tr.children[e] && tr.children[e].nextSibling)
+								tr.insertBefore(cell, tr.children[e].nextSibling);
+							else
+								tr.appendChild(cell);
 
-							for (const tr of headerRows) {
-								const t = tr.getAttribute('data-title');
+							tr.removeAttribute('data-title');
+						}
 
-								if (!t)
-									continue;
+						nameIdx = findNameIdx(ref);
+						enabledIdx = findEnabledIdx(ref);
 
-								tr.insertBefore(
-									E('th', { 'class': 'th cbi-section-table-cell' }, [ t ]),
-									firstContentCell(tr, 'TH') || tr.firstElementChild);
-								tr.removeAttribute('data-title');
-							}
+						if (nameIdx < 0 || enabledIdx < 0)
+							return;
+					}
 
-							el.classList.add('hp-title-real');
+					/* 幂等：名称已在启用右侧相邻位置则无需再搬动数据行。
+					   表头仍需处理——24.10 分支的名称格是刚补出来的，
+					   对应表头格还没建，不能在这里直接 return。 */
+					const needMove = (nameIdx !== enabledIdx + 1);
 
-							nameTd = ref.querySelector('td.cbi-section-table-titles');
+					/* 数据行：名称格移到启用格之后 */
+					if (needMove) {
+						for (const tr of dataRows) {
+							const n = findNameIdx(tr),
+							      e = findEnabledIdx(tr);
+
+							if (n < 0 || e < 0 || n === e + 1)
+								continue;
+
+							const nameCell = tr.children[n],
+							      enabledCell = tr.children[e];
+
+							if (!nameCell || !enabledCell || nameCell === enabledCell)
+								continue;
+
+							tr.insertBefore(nameCell, enabledCell.nextSibling);
+						}
+					}
+
+					/* 表头行：与数据行同样处理，索引与数据行对齐 */
+					for (const tr of headerRows) {
+						if (tr.children.length !== preCount)
+							continue;
+
+						if (createName) {
+							if (tr.querySelector('th.hp-name-col'))
+								continue;
+
+							const anchor = tr.children[enabledIdx],
+							      title = tr.getAttribute('data-title') || _('Name'),
+							      th = E('th', {
+								'class': 'th cbi-section-table-cell hp-name-col'
+							}, [ title ]);
+
+							tr.insertBefore(th, anchor ? anchor.nextSibling : null);
+							tr.removeAttribute('data-title');
 						}
 						else {
-							/* 形态二（或无标题表）：首列即名称 */
-							nameTd = firstTd;
+							const nameTh = tr.children[nameIdx],
+							      enabledTh = tr.children[enabledIdx];
+
+							if (!nameTh || !enabledTh || nameTh === enabledTh)
+								continue;
+
+							if (nameTh.previousElementSibling === enabledTh)
+								continue;
+
+							tr.insertBefore(nameTh, enabledTh.nextSibling);
 						}
-					}
-
-					if (!nameTd || nameTd === refEnabled ||
-					    refEnabled.previousElementSibling === nameTd)
-						return;
-
-					const enabledIdx = Array.prototype.indexOf.call(ref.children, refEnabled),
-					      nameIdx = Array.prototype.indexOf.call(ref.children, nameTd),
-					      cellCount = ref.children.length;
-
-					if (enabledIdx < 0 || nameIdx < 0 || enabledIdx < nameIdx)
-						return;
-
-					/* 数据行：启用单元格移到名称单元格之前 */
-					for (const tr of dataRows) {
-						const td = findEnabledCell(tr);
-
-						if (!td)
-							continue;
-
-						const cell = tr.querySelector('td.cbi-section-table-titles') ||
-							firstContentCell(tr, 'TD');
-
-						if (!cell || td === cell)
-							continue;
-
-						/* 幂等：已在名称前则不重复移动 */
-						if (td.previousElementSibling === cell)
-							continue;
-
-						tr.insertBefore(td, cell);
-					}
-
-					/* 表头行：按数据行索引对齐移动（表头与数据行列数一致） */
-					for (const tr of headerRows) {
-						if (tr.children.length !== cellCount)
-							continue;
-
-						const th = tr.children[enabledIdx],
-						      target = tr.children[nameIdx];
-
-						if (!th || th.tagName !== 'TH' || !target || target === th)
-							continue;
-
-						if (th.previousElementSibling === target)
-							continue;
-
-						tr.insertBefore(th, target);
 					}
 
 					/* 首次 apply 成功后，挂载 MutationObserver 捕捉后续 DOM 变动 */
@@ -1365,8 +1428,12 @@ return baseclass.extend({
 		};
 
 		section.renderContents = function() {
+			try { orderChildren(this); } catch (e) {}
+
 			const el = orig.apply(this, arguments);
+
 			delayedApply(el);
+
 			return el;
 		};
 
