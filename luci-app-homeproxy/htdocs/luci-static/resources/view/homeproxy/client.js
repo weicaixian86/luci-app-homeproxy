@@ -1475,7 +1475,12 @@ return view.extend({
 			   后（离开该页或重新渲染）旧回调自行注销。 */
 			hp.pollAdd('routing-node-status', function() {
 				if (!el.isConnected) {
-					hp.pollRemove('routing-node-status');
+					/* 延后一拍再注销：LuCI 的 poll 是遍历数组逐个调用回调，
+					   在当前回调里 splice 掉自己会让「后面那个回调」这一轮被跳过。 */
+					setTimeout(function() {
+						hp.pollRemove('routing-node-status');
+					}, 0);
+
 					return;
 				}
 

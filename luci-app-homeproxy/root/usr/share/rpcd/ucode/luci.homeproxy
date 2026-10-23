@@ -2096,9 +2096,11 @@ const methods = {
 		},
 
 		/* DNS 服务器行内延迟测试（建议 11）：
-		   HTTPS(DoH) 用 curl 测 TLS 握手耗时(time_appconnect)；
-		   UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC 无法单独测握手，改测 ping 往返。
-		   单次预算约 6 秒。 */
+		   每种类型都先做真实端口探测（curl），失败再回退 ICMP ping ——
+		   https→地址原 URL（443/TLS 握手）、tls→853/TLS、h3→443/TLS、
+		   quic→853/TLS、tcp/udp→53/TCP 建连。
+		   只对 https 做探测、其余一律 ping 是错的：ICMP 不覆盖服务端口，
+		   禁 ping 的网络还会把可用服务器误判成失败。详细口径见需求书十一.8。 */
 		dns_server_test: {
 			args: { section: 'string' },
 			call: function(req) {
