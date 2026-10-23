@@ -3134,6 +3134,10 @@ msgstr "测试当前列表"
 msgid "Test URL"
 msgstr "测试 URL"
 
+#: htdocs/luci-static/resources/homeproxy.js:441
+msgid "Test failed, see system log for details."
+msgstr "测试失败，详情见系统日志。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:774
 #: htdocs/luci-static/resources/view/homeproxy/client.js:805
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1777
@@ -3966,6 +3970,38 @@ msgstr "订阅地址"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr "订阅地址不能重复"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:150
+msgid "HTTP request latency: time from sending the request to receiving the first byte. DNS, TCP and TLS handshakes are NOT included, so the value is much smaller than ping or node latency. Same metric as Passwall."
+msgstr "HTTP 请求延迟：从请求发出到收到首字节的时间，不含 DNS、TCP、TLS 握手，所以数值远小于 ping 与节点延迟。与 Passwall 口径一致。"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:151
+msgid "HTTP request latency: %s ms (handshake excluded)"
+msgstr "HTTP 请求延迟：%s 毫秒（不含握手）"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:152
+msgid "DNS + TCP + TLS handshake: %s ms"
+msgstr "DNS + TCP + TLS 握手：%s 毫秒"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:153
+msgid "Time to first byte: %s ms"
+msgstr "首字节时间：%s 毫秒"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:154
+msgid "HTTP status code: %s"
+msgstr "HTTP 状态码：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:155
+msgid "Failed: %s"
+msgstr "失败：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:156
+msgid "Failed. The target did not return a complete HTTP response."
+msgstr "失败：目标没有返回完整的 HTTP 响应。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3640
+msgid "Failed to start rule-set download: %s"
+msgstr "启动规则集下载失败：%s"
 
 #~ msgid "Current DNS resolution flow: "
 #~ msgstr "当前 DNS 解析流程："

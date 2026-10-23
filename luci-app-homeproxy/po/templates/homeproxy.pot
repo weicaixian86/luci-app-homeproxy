@@ -3063,6 +3063,10 @@ msgstr ""
 msgid "Test URL"
 msgstr ""
 
+#: htdocs/luci-static/resources/homeproxy.js:441
+msgid "Test failed, see system log for details."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:774
 #: htdocs/luci-static/resources/view/homeproxy/client.js:805
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1777
@@ -3880,3 +3884,35 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr ""
+#: htdocs/luci-static/resources/view/homeproxy/status.js:150
+msgid "HTTP request latency: time from sending the request to receiving the first byte. DNS, TCP and TLS handshakes are NOT included, so the value is much smaller than ping or node latency. Same metric as Passwall."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:151
+msgid "HTTP request latency: %s ms (handshake excluded)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:152
+msgid "DNS + TCP + TLS handshake: %s ms"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:153
+msgid "Time to first byte: %s ms"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:154
+msgid "HTTP status code: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:155
+msgid "Failed: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/status.js:156
+msgid "Failed. The target did not return a complete HTTP response."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3640
+msgid "Failed to start rule-set download: %s"
+msgstr ""
+

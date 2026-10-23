@@ -134,20 +134,30 @@ function renderConnCards() {
 		icon.innerHTML = connLogos[item.site] || '';
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
+			'title': _('HTTP request latency: time from sending the request to receiving the first byte. DNS, TCP and TLS handshakes are NOT included, so the value is much smaller than ping or node latency. Same metric as Passwall.'),
 			'click': ui.createHandlerFn(this, () => {
 				result.textContent = _('Checking...');
 				result.style.setProperty('color', '#f0ad4e');
+				result.title = _('Checking...');
 
 				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
 					if (ret.result && ret.latency != null) {
 						result.style.setProperty('color', 'green');
-						/* Keep the unit short ("ms") and untranslated so the card
-						   stays compact; the handshake time is intentionally not
-						   shown here. */
+						/* 主数字只放 HTTP 请求延迟（与 passwall 一致），
+						   握手时间、HTTP 状态码放 tooltip —— passwall 也是
+						   这么分层显示的，两者数值可以直接对比。 */
 						result.textContent = '%s ms'.format(ret.latency);
+						result.title = _('HTTP request latency: %s ms (handshake excluded)')
+							.format(ret.latency)
+							+ '\n' + _('DNS + TCP + TLS handshake: %s ms').format(ret.handshake)
+							+ '\n' + _('Time to first byte: %s ms').format(ret.total)
+							+ '\n' + _('HTTP status code: %s').format(ret.code);
 					} else {
 						result.style.setProperty('color', '#ff4d35');
 						result.textContent = _('failed');
+						result.title = ret.error
+							? _('Failed: %s').format(ret.error)
+							: _('Failed. The target did not return a complete HTTP response.');
 					}
 				});
 			})

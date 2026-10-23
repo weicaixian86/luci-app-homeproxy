@@ -496,7 +496,11 @@ sync_rulesets() {
 
 	# fetch_rulesets.sh prints its failure summary to stdout, so redirecting it
 	# here lands it in homeproxy.log directly.
+	# trap '' HUP：start_service 返回后 procd 或调用方的 shell 退出时会向
+	# 进程组发 SIGHUP，后台下载会被无声掐断（前台看只剩半截日志）。
+	# 这里忽略它，保证 21 条规则集能跑完（脚本自身不依赖 nohup）。
 	(
+		trap '' HUP
 		/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1
 		echo $? > "$rs_rcf"
 		rm -f "$rs_flag"

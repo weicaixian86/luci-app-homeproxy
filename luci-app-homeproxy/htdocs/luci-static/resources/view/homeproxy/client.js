@@ -77,6 +77,14 @@ const callRulesetUpdate = rpc.declare({
 	expect: { '': {} }
 });
 
+/* 后台补齐所有缺失的远程规则集。与「重启服务」解耦：没配节点时服务根本
+   不会起，靠 procd 触发器同步规则集这条路是断的。 */
+const callRulesetSync = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'ruleset_sync',
+	expect: { '': {} }
+});
+
 const callDnsServerTest = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'dns_server_test',
@@ -2404,15 +2412,18 @@ return view.extend({
 									latSpan.appendChild(cell);
 							} else {
 								/* 有 rpcd 返回的 error 就直接显示；连响应都没有（方法未注册，
-								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。 */
+								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。
+								   error 已经是中文，detail 里是底层英文原文（curl 报错、
+								   ucode 运行时异常），只作为 mouseover 提示，不上正文。 */
 								const msg = (ret && ret.error)
 									? String(ret.error)
 									: _('No response from rpcd. Restart rpcd (or the router) and try again.');
+								const detail = (ret && ret.detail) ? String(ret.detail) : '';
 
 								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
-								err.title = msg;
+								err.title = detail || msg;
 								latSpan.appendChild(err);
-								latSpan.appendChild(hp.dnsFailDetail(msg));
+								latSpan.appendChild(hp.dnsFailDetail(msg, detail));
 							}
 							})
 							.catch((e) => {
@@ -2421,15 +2432,15 @@ return view.extend({
 								latSpan.textContent = '';
 
 								/* ubus 层面的失败（Method not found / Object not found /
-								   Permission denied）走这里。把原始 message 一并显示，
-								   否则界面上只有「失败」，看不出是 rpcd 还在跑旧方法表。 */
-								const fallback = _('No response from rpcd. Restart rpcd (or the router) and try again.');
-								const msg = (e && e.message) ? String(e.message) : fallback;
+								   Permission denied）走这里。正文固定给这句中文提示，
+								   原始 message 只作为 mouseover 提示，界面不再出现英文。 */
+								const raw = (e && e.message) ? String(e.message) : '';
+								const msg = _('No response from rpcd. Restart rpcd (or the router) and try again.');
 
 								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
-								err.title = msg;
+								err.title = raw || msg;
 								latSpan.appendChild(err);
-								latSpan.appendChild(hp.dnsFailDetail(msg));
+								latSpan.appendChild(hp.dnsFailDetail(msg, raw));
 							});
 					});
 
@@ -3592,18 +3603,51 @@ return view.extend({
 				ensurePanelInstalled();
 
 				/* 「保存并应用」原本完全依赖 procd 的 config.change 触发器去重启
-				   服务。但 procd 只会重启「已经有运行实例」的服务，而本插件在
-				   「没配节点、也没开服务端」时会提前 return，一个实例都不创建，
-				   触发器于是什么也不做 —— start_service 不执行，sync_rulesets
-				   也就不跑，现象就是「点了保存并应用，日志里连一行规则集都没
-				   有」。这里在服务确实没在跑时补一次显式 reload 兜底；服务在跑
-				   时触发器已经完成重启（reload_service = stop + start），不再重复
-				   重启，避免连接被断开两次。 */
-				if (result && typeof result.then === 'function')
-					result.then(() => getServiceStatus()).then((running) => {
-						if (!running)
-							return callRCInit('homeproxy', 'reload');
-					}).catch(() => {});
+				   服务。但 procd 只会重启「已经有运行实例」的服务（没有实例就
+				   没有 procd service 对象，`procd_add_reload_trigger` 也就无从生
+				   效），而本插件在「没配节点、也没开服务端」时会提前 return，一个
+				   实例都不创建 —— start_service 不执行，sync_rulesets 也就不跑，
+				   现象就是「点了保存并应用，日志里连一行规则集都没有」。这里在
+				   服务确实没在跑时补一次显式 reload 兜底；服务在跑时触发器已经完
+				   成重启（reload_service = stop + start），不再重复重启。
+
+				   ⚠️ 时序坑（0.1.20 现场）：不能拿到 handleSaveApply 的返回值就
+				   立刻判断。LuCI 的 `view.handleSaveApply()` 只
+				   `classes.ui.changes.apply(...)` 而**不 return 它**，所以它的
+				   promise 在 uci commit 真正开始之前就 resolve 了；此时 reload
+				   读到的是**旧配置**，规则集依旧一条都不下载，日志里也依旧没有
+				   任何「重新加载服务」的痕迹。正确做法是等「uci 待应用变更清空」
+				   = commit 完成，再判断服务状态。 */
+				const waitApplied = (remaining) => L.resolveDefault(uci.changes(), {}).then((changes) => {
+					const pending = (changes && Object.keys(changes).length > 0);
+
+					if (!pending || remaining <= 1)
+						return;
+
+					return new Promise((r) => setTimeout(r, 600))
+						.then(() => waitApplied(remaining - 1));
+				}).catch(() => { });
+
+				waitApplied(14).then(() => {
+					/* commit 已完成。先无条件触发一次后台规则集同步 ——
+					   这条路不依赖服务是否被重启，所以「保存并应用后就该
+					   下载规则集」这件一定能做到；脚本与 start_service 的
+					   预下载用同一把锁，重复触发只会让路。
+
+					   启动失败（脚本缺失、权限不足）必须弹出来：以前 ubus
+					   调用失败被 catch 吞掉，「点了保存并应用什么都没发生」
+					   就是这么变成哑巴的。 */
+					callRulesetSync().then((ret) => {
+						if (ret && ret.result === false)
+							ui.addNotification(null, E('p', {},
+								_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
+					}).catch(() => { });
+
+					return getServiceStatus();
+				}).then((running) => {
+					if (!running)
+						return callRCInit('homeproxy', 'reload');
+				}).catch(() => { });
 
 				return result;
 			};

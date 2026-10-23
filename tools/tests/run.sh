@@ -129,6 +129,82 @@ else
 	done < "$WORK/uc.list"
 fi
 
+# ------------------------------------------------------- rpcd regex portability
+# rpcd 里的 match()/replace() 走 C 的 regcomp/regexec，不是 JS 引擎。
+# 踩过的坑：/^([0-9]+)(\.([0-9]+))?$/ 直接抛
+#   Repetition not preceded by valid expression
+# 整条 DNS 延迟测试因此全失败，界面上还只剩一串英文。这里守住三类写法。
+section "rpcd regex portability"
+HP_UC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+
+# 只看代码行：注释里会引用这些坏写法作为反例，不能算命中。
+regex_hits() {
+	grep -nE "$1" "$HP_UC" 2>/dev/null \
+		| grep -vE '^[0-9]+:[[:space:]]*(\*|//|#)' \
+		|| true
+}
+
+hits=$(regex_hits '(match|replace)\(.*\)\?')
+if [ -n "$hits" ]; then
+	bad "optional group (?...) in match()/replace(): $(printf '%s' "$hits" | head -1)"
+else
+	ok "no optional-group regex in match()/replace()"
+fi
+
+hits=$(regex_hits '(match|replace)\(.*\(\?:')
+if [ -n "$hits" ]; then
+	bad "non-capturing group (?:...) in match()/replace(): $(printf '%s' "$hits" | head -1)"
+else
+	ok "no non-capturing group in match()/replace()"
+fi
+
+hits=$(regex_hits '(match|replace)\(.*\\[sdwSDW]')
+if [ -n "$hits" ]; then
+	bad "PCRE-only escape in match()/replace(): $(printf '%s' "$hits" | head -1)"
+else
+	ok "no PCRE-only escapes in match()/replace()"
+fi
+
+# ------------------------------------------------ connection check parity
+# 「服务状态 → 连接检查」必须与 passwall 同口径，否则同一个网络下两边的
+# 数字没法比（曾出现 homeproxy 明显偏低）：
+#   1. 端点用 favicon.ico / generate_204，不用站点首页
+#      —— www.aliyun.com 的 HEAD 会被 WAF 直接回 403；
+#   2. curl 不带 -L
+#      —— 跟随重定向后 time_pretransfer / time_starttransfer 变成整条
+#         重定向链的累计值，算出的「请求延迟」不是同一个量；
+#   3. 指标仍是 (time_starttransfer - time_pretransfer) * 1000。
+section "connection check parity (passwall)"
+
+if grep -q -- '-skL' "$HP_UC"; then
+	bad "connection_check follows redirects (curl -L); Passwall does not"
+else
+	ok "connection_check does not follow redirects (matches Passwall)"
+fi
+
+for probe in 'www.aliyun.com/favicon.ico' \
+             'www.google.com/generate_204' \
+             'github.com/favicon.ico' \
+             'www.youtube.com/generate_204'; do
+	if grep -q "$probe" "$HP_UC"; then
+		ok "probe endpoint $probe"
+	else
+		bad "probe endpoint missing or changed: $probe"
+	fi
+done
+
+if grep -q 'time_pretransfer' "$HP_UC" && grep -q 'time_starttransfer' "$HP_UC"; then
+	ok "connection_check uses pretransfer/starttransfer metric"
+else
+	bad "connection_check metric changed (time_pretransfer/time_starttransfer)"
+fi
+
+if grep -q "'/usr/sbin/curl'" "$HP_UC"; then
+	ok "curl lookup includes /usr/sbin/curl"
+else
+	bad "curl lookup misses /usr/sbin/curl (iStoreOS)"
+fi
+
 # ----------------------------------------------------------------- catalog
 section "gettext catalog"
 "$PY" "$ROOT/tools/tests/pocheck.py" > "$WORK/po.out" 2>&1
@@ -411,6 +487,64 @@ case $? in
 		fi
 		;;
 esac
+
+# ------------------------------------------------ detached launcher (no nohup)
+# iStoreOS 等精简 BusyBox **不带 nohup**（现场 `nohup: not found`，前台 shell
+# 得到 Done(127)）。规则集下载曾用 `nohup ... &` 启动，于是 ubus 返回成功、
+# 后台进程根本不存在：日志里一行规则集都没有，ruleset_download.log 也从未
+# 生成。必须守住：
+#   1. rpcd / init.d / 下载脚本里不得再出现裸 nohup 启动；
+#   2. fetch_rulesets.sh 必须自带 --detach（忽略 SIGHUP + 后台 + 重定向）；
+#   3. --detach 必须「启动器立刻返回，子进程继续跑」；
+#   4. 日志写不进文件时必须降级到 stderr，不许静默。
+section "detached launcher (no nohup)"
+
+RS="$PKG/root/etc/homeproxy/scripts/fetch_rulesets.sh"
+INITD="$PKG/root/etc/init.d/homeproxy"
+
+hits=$(grep -nE 'nohup[[:space:]]+"?/(bin|usr/bin)/sh' "$HP_UC" 2>/dev/null | head -1)
+if [ -n "$hits" ]; then
+	bad "ucode starts background job via nohup (absent on iStoreOS): $hits"
+else
+	ok "ucode does not start background jobs via nohup"
+fi
+
+# update_core_async.sh 是有 `command -v nohup` 守卫的例外，其余脚本不许出现。
+hits=$(grep -rn 'nohup' "$PKG/root/etc/init.d/homeproxy" "$RS" 2>/dev/null | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' | grep -vE '不依赖|不能用|没有 nohup|no nohup|not found' | head -1)
+if [ -n "$hits" ]; then
+	bad "shell launches background job via nohup: $hits"
+else
+	ok "shell scripts do not launch background jobs via nohup"
+fi
+
+if grep -q -- '--detach' "$RS" && grep -q "trap '' HUP" "$RS"; then
+	ok "fetch_rulesets.sh self-detaches (--detach + HUP ignored)"
+else
+	bad "fetch_rulesets.sh lacks --detach self-detach support"
+fi
+
+if grep -q "trap '' HUP" "$INITD"; then
+	ok "init.d background ruleset pass ignores SIGHUP"
+else
+	bad "init.d background ruleset pass may be killed by SIGHUP"
+fi
+
+# 功能性验证：启动器必须立刻返回（0 秒级），下载在后台继续。
+t0=$(date +%s)
+/bin/sh "$RS" --detach --check >/dev/null 2>&1
+rc=$?
+t1=$(date +%s)
+if [ "$rc" -eq 0 ] && [ $((t1 - t0)) -le 3 ]; then
+	ok "--detach returns immediately (rc=0, $((t1 - t0))s)"
+else
+	bad "--detach did not return promptly (rc=$rc, $((t1 - t0))s)"
+fi
+
+if grep -q '>&2' "$RS"; then
+	ok "log_msg falls back to stderr when the log file is unwritable"
+else
+	bad "log_msg can fail silently (no stderr fallback)"
+fi
 
 # ----------------------------------------------------------------- summary
 printf '\n----------------------------------------\n'

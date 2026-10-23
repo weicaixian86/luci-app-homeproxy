@@ -419,19 +419,34 @@ return baseclass.extend({
 	 * method loaded, whether curl was missing, or whether the address was simply
 	 * unreachable. Truncated so a long curl error cannot blow up the table.
 	 *
-	 * @param {string} msg full error text
+	 * The backend now returns a Chinese `error` plus an optional `detail` that
+	 * keeps the raw English text (curl stderr, ucode runtime exception). Only the
+	 * Chinese part is rendered; `detail` goes into the tooltip. If an older
+	 * package still returns a pure-English message, it is not shown verbatim
+	 * either — the generic Chinese hint is used instead, with the original text
+	 * in the tooltip.
+	 *
+	 * @param {string} msg      full error text (Chinese in current packages)
+	 * @param {string} [detail] raw technical text, tooltip only
 	 * @returns {Node}
 	 */
-	dnsFailDetail(msg) {
+	dnsFailDetail(msg, detail) {
 		const text = String(msg || '');
-		const brief = (text.length > 60) ? (text.slice(0, 57) + '...') : text;
+		const extra = String(detail || '');
+
+		/* 正文只放中文：没有汉字就说明是旧包/底层库抛出的英文串，
+		   换成通用中文提示，原文进 tooltip。 */
+		const shown = /[\u4e00-\u9fff]/.test(text)
+			? text
+			: _('Test failed, see system log for details.');
+		const brief = (shown.length > 60) ? (shown.slice(0, 57) + '...') : shown;
 
 		/* Plain DOM on purpose: this module does not require 'dom', so the
 		   global E() helper is not guaranteed to be in scope here. */
 		const span = document.createElement('span');
 
 		span.className = 'hp-dns-err-detail';
-		span.title = text;
+		span.title = [ text, extra ].filter(Boolean).join('\n');
 		span.textContent = brief;
 
 		return span;

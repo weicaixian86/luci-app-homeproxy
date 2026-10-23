@@ -33,6 +33,20 @@
 # 报「当前没有已启用的远程规则集」，且没有任何报错可查。
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 
+# --detach：自我脱管（后台 + 忽略 SIGHUP + 三处重定向）。
+# ⚠️ 不能用 nohup：iStoreOS 等精简 BusyBox 没有 nohup（现场 `nohup: not found`，
+# 前台得到 Done(127)，后台连进程都不存在）。而 rpcd 的 ruleset_sync 之前正是
+# 用 `nohup ... &` 启动下载的 —— 于是 ubus 返回成功、日志里却一行规则集都没有，
+# 「点了保存并应用不下规则集」的真正原因就在这里。
+# POSIX 规则：SIG_IGN 会被 fork 出的子进程继承、且 exec 后仍保持忽略，
+# 所以父进程设好 trap 再 fork 即可，不依赖任何外部命令。
+if [ "$1" = "--detach" ]; then
+	shift
+	trap '' HUP
+	/bin/sh "$0" "$@" </dev/null >/dev/null 2>&1 &
+	exit 0
+fi
+
 CONF="homeproxy"
 # 允许覆盖，便于自检时用临时文件演练「uci 读不出来」的兜底路径。
 CONF_FILE="${CONF_FILE:-/etc/config/$CONF}"
@@ -52,6 +66,19 @@ RULESET_DIR="$HP_DIR/ruleset"
 RUN_DIR="/var/run/homeproxy"
 LOG_FILE="$RUN_DIR/ruleset_download.log"
 
+# 运行目录降级。极个别固件上 /var/run 不可写（tmpfs 满、只读 overlay、
+# 被同名普通文件占位），此时所有日志会“成功”写到无处可去：用户看到的现象
+# 是「脚本跑了，日志文件却不存在」，完全无法判断卡在哪一步。
+# 这里先试 /var/run，失败则整个 RUN_DIR（含日志与锁）一起挪到 /tmp，
+# 保证「跑过就一定有日志」这个不变量成立。
+# 注意只碰 RUN_DIR（易失的运行目录）；$RULESET_DIR 的创建留到下载段，
+# 以免 `--check` 这个「只读校验」入口在磁盘上留下任何东西。
+if ! mkdir -p "$RUN_DIR" 2>/dev/null || [ ! -d "$RUN_DIR" ]; then
+	RUN_DIR="/tmp/homeproxy"
+	LOG_FILE="$RUN_DIR/ruleset_download.log"
+	mkdir -p "$RUN_DIR" 2>/dev/null
+fi
+
 # Total wall-clock budget in seconds. Whatever is not finished when it expires
 # is simply left as `remote` for the core to fetch, i.e. the old behaviour.
 BUDGET=600
@@ -64,9 +91,26 @@ QUIET=0
 ONLY=""
 
 log_msg() {
+	local line
+
+	line="$(date '+%Y-%m-%d %H:%M:%S') $*"
+
 	mkdir -p "$RUN_DIR" 2>/dev/null
-	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$LOG_FILE" 2>/dev/null
+
+	# 写不进日志文件时绝不能静默：降级打到 stderr，调用方（init.d 的主日志
+	# 重定向、终端、cron）都能接住。以前这一句静默失败，最后的结果是
+	# 「脚本退出码 75/0，但任何地方都看不到原因」。
+	if ! printf '%s\n' "$line" >>"$LOG_FILE" 2>/dev/null; then
+		printf '%s\n' "$line" >&2
+	fi
+
+	# 手动在终端执行（stdout 是 tty）时同步回显。否则「脚本一秒就返回、
+	# 屏幕上什么都没有、日志文件还找不到」会让人以为脚本根本没干活 ——
+	# 现场就是这样，把「无规则集」「让路给另一个任务」都藏了起来。
+	[ -t 1 ] && printf '%s\n' "$line"
+
 	[ "$QUIET" = "1" ] || logger -t homeproxy "$*" 2>/dev/null
+
 	return 0
 }
 
@@ -106,6 +150,8 @@ Usage: fetch_rulesets.sh [options]
   --quiet        do not log to syslog
   --only SEC     download pass only handles the named rule-set section
                  (LuCI「立即更新」按钮使用；--check 模式忽略此参数)
+  --detach       fork into background immediately (no nohup needed; the
+                 minimal BusyBox on iStoreOS ships without it)
 EOF
 }
 
@@ -573,6 +619,18 @@ fi
 
 sections="$(list_sections)"
 if [ -z "$sections" ]; then
+	# 「一条都没扫到」有两种完全不同的原因，日志里必须区分开：
+	#   a) 用户确实没配 / 全关了 → 正常跳过；
+	#   b) 配置里有 ruleset 段但没被识别（uci 不可用、段名不在 config
+	#      ruleset 下、格式不受支持）→ 是故障，必须报错。
+	# 0.1.19/0.1.20 现场就是 b 被当成 a 打印成「没有已启用的远程规则集」，
+	# 用户看着配置里的 21 条完全无从下手。
+	rs_raw="$(uci -q show "$CONF" 2>/dev/null | grep -c '=ruleset$')"
+	case "$rs_raw" in ''|*[!0-9]*) rs_raw=0 ;; esac
+	if [ "$rs_raw" -gt 0 ]; then
+		log_msg "错误：配置里有 $rs_raw 条 ruleset 段，但一条都没被识别为「已启用的远程规则集」。请检查 uci 是否可用（command -v uci）、段是否写在 config ruleset 下、以及 format 是否为 remote/binary。"
+		exit 1
+	fi
 	log_msg "没有启用的远程规则集，跳过。"
 	exit 0
 fi
