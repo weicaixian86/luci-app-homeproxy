@@ -62,7 +62,11 @@ else
 	uci() { return 127; }
 fi
 HP_DIR="/etc/homeproxy"
-RULESET_DIR="$HP_DIR/ruleset"
+# HP_RULESET_DIR 同 HP_RUN_DIR：显式指定就原样使用，绝不回落到真机目录。
+# 没有它，任何在本机跑过一次真实下载的环境都会在 /etc/homeproxy/ruleset
+# 留下有效副本，自检里「--check 应报 missing=3」从此永远变绿/变红 ——
+# 断言读到了机器上恰好存在的东西（0.1.22 的 CI「3 of 92」是同一类病）。
+RULESET_DIR="${HP_RULESET_DIR:-$HP_DIR/ruleset}"
 RUN_DIR="${HP_RUN_DIR:-/var/run/homeproxy}"
 LOG_FILE="$RUN_DIR/ruleset_download.log"
 

@@ -1763,8 +1763,19 @@ const methods = {
 			   没有」，且 ruleset_download.log 从未生成。
 			   --detach 由脚本自己完成脱管（忽略 SIGHUP + 后台 + 重定向），
 			   不依赖任何外部命令。慢镜像上 21 条要几分钟，ubus 等不起，
-			   前端也只需要「已经开始了」这一个事实。 */
-			const rc = system(`/bin/sh ${shellquote(script)} --detach --quiet`);
+			   前端也只需要「已经开始了」这一个事实。
+
+			   0.1.22 现场教训：这条路的每一步此前都是零痕迹 ——
+			   --quiet 连 syslog 都不写，而 ruleset_download.log 只有脚本
+			   真正跑起来才会被创建。于是「rpcd 没被调用 / 调用了但脚本
+			   没能启动」在日志与文件两处都无从区分。现在 ① 去掉 --quiet，
+			   让下载脚本每一步 log_msg 同时进 logread（init.d 的预下载
+			   路径本来就不带 --quiet，两条路口径一致）；② 下面补一行
+			   调用审计：logread 里「什么都没有」= rpcd 没收到调用，
+			   「只有这一行、没有下载日志」= 收到了但脚本没能启动。 */
+			const rc = system(`/bin/sh ${shellquote(script)} --detach`);
+
+			system(`logger -t homeproxy ruleset_sync: LuCI 保存并应用触发，已后台启动规则集下载（rc=${rc}）`);
 
 			return { result: rc === 0, rc: rc };
 		}

@@ -402,6 +402,10 @@ msgstr "无法将 null 转换为对象。"
 msgid "Certificate path"
 msgstr "证书路径"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3672
+msgid "Could not verify the service state after applying: %s"
+msgstr "应用配置后无法确认服务状态：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:91
 msgid "Check"
 msgstr "检查"
@@ -2765,6 +2769,10 @@ msgstr "规则集 URL"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3050
 msgid "Rule set updated successfully."
 msgstr "规则集更新成功。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3663
+msgid "Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/etc/init.d/rpcd restart\" or reboot the router."
+msgstr "规则集同步请求失败：%s。若刚升级过插件，请执行 /etc/init.d/rpcd restart 或重启路由器。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1844
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2625

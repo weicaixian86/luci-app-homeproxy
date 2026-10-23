@@ -3656,13 +3656,25 @@ return view.extend({
 						if (ret && ret.result === false)
 							ui.addNotification(null, E('p', {},
 								_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
-					}).catch(() => { });
+					}).catch((e) => {
+						/* 请求本身被拒绝绝不能静默：升级后 rpcd 未重启时 ubus 回
+						   "Method not found"，.catch(() => {}) 一吞，「点了保存并
+						   应用、规则集毫无动静、日志里什么都不存在」就成立了，
+						   且任何地方都查不到证据。这里必须弹出来。 */
+						ui.addNotification(null, E('p', {},
+							_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
+					});
 
 					return getServiceStatus();
 				}).then((running) => {
 					if (!running)
 						return callRCInit('homeproxy', 'reload');
-				}).catch(() => { });
+				}).catch((e) => {
+					/* 同理：拿不到服务状态 / reload 兜底失败也不能一声不吭，
+					   否则「服务没起来、规则集也没人补」完全无从排查。 */
+					ui.addNotification(null, E('p', {},
+						_('Could not verify the service state after applying: %s').format(e)), 'warning');
+				});
 
 				return result;
 			};

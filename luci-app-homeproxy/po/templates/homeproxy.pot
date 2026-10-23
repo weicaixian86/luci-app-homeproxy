@@ -386,6 +386,10 @@ msgstr ""
 msgid "Certificate path"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3672
+msgid "Could not verify the service state after applying: %s"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:91
 msgid "Check"
 msgstr ""
@@ -2703,6 +2707,10 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3050
 msgid "Rule set updated successfully."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3663
+msgid "Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/etc/init.d/rpcd restart\" or reboot the router."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1844

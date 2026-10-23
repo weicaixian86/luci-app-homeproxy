@@ -535,6 +535,7 @@ STUB
 	run_rs_check() {
 		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
 			STUB_SHOW_EMPTY="${1:-0}" STUB_GET_EMPTY="${2:-0}" \
+			HP_RULESET_DIR="$WORK/rs.ruleset" \
 			sh "$RS" --check 2>"$WORK/rs.err"
 	}
 
@@ -597,6 +598,7 @@ STUB
 	# 0.1.19 现场最可能就是这一类：init.d 从不设置 PATH，uci 找不到，
 	# 所有调用又都带 2>/dev/null，于是「21 条规则集」变成「一条都没有」。
 	rs_out3="$(PATH=/usr/bin:/bin STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
+		HP_RULESET_DIR="$WORK/rs.ruleset" \
 		sh "$RS" --check 2>"$WORK/rs3.err")"
 	rs_three="$(printf '%s' "$rs_out3" | tr '\n' '|')"
 	case "$rs_out3" in
@@ -638,7 +640,7 @@ STUB
 	}
 	rs_only() {
 		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
-			HP_RUN_DIR="${rs_log%/*}" sh "$RS" "$@" 2>&1
+			HP_RUN_DIR="${rs_log%/*}" HP_RULESET_DIR="${rs_log%/*}/ruleset" sh "$RS" "$@" 2>&1
 	}
 	rs_saw() {
 		printf '%s' "$1" | grep -q -- "$2" && return 0
@@ -838,6 +840,58 @@ if grep -q '>&2' "$RS"; then
 	ok "log_msg falls back to stderr when the log file is unwritable"
 else
 	bad "log_msg can fail silently (no stderr fallback)"
+fi
+
+# ------------------------------------------- save&apply ruleset sync audit
+# 0.1.22 现场教训：「保存并应用」触发规则集下载的整条链路曾有四个静默点，
+# 任何一个断掉，用户看到的现象都一模一样 —— 点了没反应、两处日志都空白：
+#   ① rpcd 的 ruleset_sync 带 --quiet，脚本跑没跑 logread 无从知晓；
+#   ② ruleset_download.log 不在日志页的来源列表里，rpcd 脱管下载的明细
+#      只有 SSH 能看；
+#   ③ ruleset_download.log 不在 ACL 读名单里，就算挂上来源也读不到；
+#   ④ 前端对 callRulesetSync 的拒绝 .catch(() => {}) 一吞（升级后 rpcd
+#      未重启 → Method not found 正是最常见形态），界面毫无提示。
+section "save&apply ruleset sync audit"
+
+RPCD="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+ACL="$PKG/root/usr/share/rpcd/acl.d/luci-app-homeproxy.json"
+CJS="$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"
+LOGJS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
+
+if grep -q 'fetch_rulesets.sh --detach --quiet' "$RPCD"; then
+	bad "rpcd ruleset_sync runs the download with --quiet (syslog stays blind)"
+else
+	ok "rpcd ruleset_sync drops --quiet (every step reaches logread)"
+fi
+
+if grep -q 'logger -t homeproxy ruleset_sync' "$RPCD"; then
+	ok "rpcd ruleset_sync leaves a syslog audit line with its rc"
+else
+	bad "rpcd ruleset_sync is invisible in logread (no audit line)"
+fi
+
+if grep -q '"/var/run/homeproxy/ruleset_download.log"' "$ACL"; then
+	ok "ACL grants read on ruleset_download.log"
+else
+	bad "ACL lacks ruleset_download.log (log page would show it as missing)"
+fi
+
+if grep -q "file: 'ruleset_download'" "$LOGJS"; then
+	ok "log page reads ruleset_download.log directly"
+else
+	bad "log page cannot show the ruleset download log (detached path invisible)"
+fi
+
+if grep -A9 'callRulesetSync().then' "$CJS" | grep -q 'catch((e)'; then
+	ok "frontend surfaces ruleset_sync request failures"
+else
+	bad "frontend swallows ruleset_sync rejections (.catch(() => {}))"
+fi
+
+if grep -A4 "return callRCInit('homeproxy', 'reload')" "$CJS" | grep -q 'catch((e)'; then
+	ok "frontend surfaces the service-reload fallback failure"
+else
+	bad "frontend swallows the reload fallback failure"
 fi
 
 # ----------------------------------------------------------------- summary

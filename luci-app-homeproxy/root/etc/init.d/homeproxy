@@ -603,18 +603,16 @@ sync_rulesets() {
 
 	log "规则集检查：共 ${total} 条远程规则集，其中 ${missing} 条本地缺失或无效，正在预下载（最多约 4 分钟）…"
 
-	local rs_before rs_rc rs_waited rs_pid n copied
-	rs_before=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
-	case "$rs_before" in ''|*[!0-9]*) rs_before=0 ;; esac
-
 	# 用「标记文件 + 退出码文件」而不是 kill -0 来判断下载是否结束：
-	# 某些 shell 的 kill -0 对后台兄弟进程并不可靠，一旦判断失败，跟进循环
-	# 会一次都不执行，用户就又只能等下载全部结束后才看到日志。
+	# 某些 shell 的 kill -0 对后台兄弟进程并不可靠，一旦判断失败，等待循环
+	# 会一次都不执行，用户就只能等下载全部结束后才看到结果。
+	# 下载明细不再 tail 进主日志：日志页现在直接读 ruleset_download.log
+	# （ACL 已授读），tail 只会制造两份相同的行；失败摘要仍随 stdout 落进
+	# 主日志，结论不受影响。
+	local rs_rc rs_waited rs_pid
 	local rs_flag="$RUN_DIR/.ruleset_running"
 	local rs_rcf="$RUN_DIR/.ruleset_rc"
-	local rs_pos="$RUN_DIR/.ruleset_follow.pos"
-	rm -f "$rs_rcf" "$rs_pos" 2>/dev/null
-	echo "$rs_before" > "$rs_pos" 2>/dev/null
+	rm -f "$rs_rcf" 2>/dev/null
 	: > "$rs_flag" 2>/dev/null
 
 	# fetch_rulesets.sh prints its failure summary to stdout, so redirecting it
@@ -630,24 +628,6 @@ sync_rulesets() {
 	) &
 	rs_pid=$!
 
-	# 实时跟进：下载可能持续几分钟，若等到结束才一次性并入主日志，用户在
-	# 插件「日志」页刷新时只会看到「正在预下载」一行。这里每 2 秒把
-	# ruleset_download.log 的新增行追加到主日志，进度与逐条结果即时可见。
-	# 已复制的行数记在 .ruleset_follow.pos，供收尾时补齐（避免重复追加）。
-	(
-		while [ -f "$rs_flag" ]; do
-			n=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
-			copied=$(cat "$rs_pos" 2>/dev/null)
-			case "$n" in ''|*[!0-9]*) n=0 ;; esac
-			case "$copied" in ''|*[!0-9]*) copied=0 ;; esac
-			if [ "$n" -gt "$copied" ]; then
-				tail -n +$((copied + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null >>"$LOG_PATH"
-				echo "$n" > "$rs_pos" 2>/dev/null
-			fi
-			sleep 2
-		done
-	) &
-
 	# 等待下载结束（带上限，避免标记文件残留时把服务启动卡死）。
 	# 只等下载这一个后台任务：无参 wait 会连更早启动的面板预下载一起等，
 	# 把服务启动拖到面板下载完成为止。
@@ -661,18 +641,7 @@ sync_rulesets() {
 	rs_rc=$(cat "$rs_rcf" 2>/dev/null)
 	case "$rs_rc" in ''|*[!0-9]*) rs_rc=1 ;; esac
 
-	# 收尾：补上跟进循环退出前（最后一次 sleep 期间）可能漏掉的最后几行，
-	# 保证主日志里的下载过程是完整的。
-	if [ -f "$RUN_DIR/ruleset_download.log" ]; then
-		n=$(wc -l < "$RUN_DIR/ruleset_download.log" 2>/dev/null || echo 0)
-		copied=$(cat "$rs_pos" 2>/dev/null)
-		case "$n" in ''|*[!0-9]*) n=0 ;; esac
-		case "$copied" in ''|*[!0-9]*) copied=0 ;; esac
-		if [ "$n" -gt "$copied" ]; then
-			tail -n +$((copied + 1)) "$RUN_DIR/ruleset_download.log" 2>/dev/null >>"$LOG_PATH"
-		fi
-	fi
-	rm -f "$rs_pos" "$rs_flag" "$rs_rcf" 2>/dev/null
+	rm -f "$rs_flag" "$rs_rcf" 2>/dev/null
 
 	if [ "$rs_rc" -eq 75 ]; then
 		# 75 = fetch_rulesets.sh 让路（另一个下载任务正在跑）。

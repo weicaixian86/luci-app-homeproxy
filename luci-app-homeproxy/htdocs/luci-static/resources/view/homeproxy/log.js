@@ -374,9 +374,16 @@ function renderLogBox(merged) {
 function renderUnifiedLog() {
 	/* Log files merged into the single timeline, in merge order. Only the file
 	   names matter now that the view renders plain log text without per-source
-	   badges. */
+	   badges.
+
+	   ruleset_download 必须是直接来源：init.d 的预下载会把新增行 tail 进
+	   主日志，但「保存并应用」还会走 rpcd 的脱管下载（--detach），那条路
+	   没有任何搬运 —— 不直接挂上来，用户在界面上就永远看不到下载日志，
+	   只能 SSH。两路同时写主日志时会出现少量重复行，时间戳一致、相邻排列，
+	   可接受；看不到永远比重复糟糕。 */
 	const log_sources = [
 		{ file: 'homeproxy' },
+		{ file: 'ruleset_download' },
 		{ file: 'sing-box-c', core: true },
 		{ file: 'core_download' },
 		{ file: 'panel_download' },
