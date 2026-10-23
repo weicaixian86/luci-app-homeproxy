@@ -70,6 +70,13 @@ const css = `
 	padding: 16px 12px;
 	color: #888;
 }
+/* One-off notice above the merged log (e.g. core timestamps were UTC and have
+   been converted). Sits inside the box so it scrolls away with the content. */
+.hp-log-note {
+	color: #b06a00;
+	font-weight: 600;
+	padding: 2px 10px 6px;
+}
 `;
 
 const hp_dir = '/var/run/homeproxy';
@@ -120,6 +127,59 @@ const LEVEL_ORDER = {
 	panic:   6
 };
 
+/* Only the four levels offered by the dropdown are meaningful here. A value
+   hand-edited into uci (or carried over from an older config) would otherwise
+   leave the <select> showing its first option while the filter cut at a
+   different weight, so clamp it the same way the generators do. */
+function normalizeLevel(v) {
+	return (v === 'debug' || v === 'info' || v === 'warn' || v === 'error')
+		? v : 'info';
+}
+
+/* init.d records whether the core actually got a usable timezone in
+   CORE_TZ_FILE: "local" when it did, "utc <seconds east of UTC>" when the
+   image has no tzdata and sing-box therefore logs in UTC. Go cannot parse
+   OpenWrt's POSIX /etc/TZ ("CST-8"), which is what used to leave the core
+   eight hours behind every other source — and, because the merged timeline
+   sorts on the stamp text, out of order too. */
+const CORE_TZ_FILE = hp_dir + '/core_tz';
+
+/* Shift a "YYYY-MM-DD HH:MM:SS" stamp by N minutes. Pure UTC arithmetic, so
+   the browser's own timezone and DST never enter the result. Returns the
+   input untouched when it does not look like a full stamp. */
+function shiftTs(ts, minutes) {
+	const m = /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(ts);
+	if (!m)
+		return ts;
+
+	const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + minutes * 60000);
+	const p = (n) => (n < 10 ? '0' : '') + n;
+
+	return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) +
+	       ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
+}
+
+/* "+08:00" for a signed minute count (used in the notice text). */
+function fmtOffset(minutes) {
+	const p = (n) => (n < 10 ? '0' : '') + n;
+	const a = Math.abs(minutes);
+	return (minutes < 0 ? '-' : '+') + p(Math.floor(a / 60)) + ':' + p(a % 60);
+}
+
+/* Minutes the core's stamps have to move to land on the local clock; 0 when
+   they already are (or when the marker is missing, i.e. an older install). */
+function readCoreShift() {
+	return fs.read_direct(CORE_TZ_FILE, 'text')
+		.then((res) => {
+			const parts = String(res || '').trim().split(/\s+/);
+			if (parts[0] !== 'utc')
+				return 0;
+			const off = parseInt(parts[1], 10);
+			return isFinite(off) ? Math.round(off / 60) : 0;
+		})
+		.catch(() => 0);
+}
+
 /* Split one log file into records: a timestamped line plus the untimestamped
    continuation lines that follow it (e.g. sing-box "Cause:" / stack traces).
    Keeping records intact means multi-line entries survive the merge.
@@ -129,7 +189,7 @@ const LEVEL_ORDER = {
    records from shell logger (homeproxy, core_download, panel_download) have
    timestamps but no such token → `level: null` and are always shown when the
    frontend applies its severity filter. */
-function splitRecords(text) {
+function splitRecords(text, shift) {
 	const out = [];
 	const lines = text.split('\n');
 	let cur = null;
@@ -156,10 +216,25 @@ function splitRecords(text) {
 			/* sing-box prefixes every line with a UTC offset ("+0000 ") from
 			   Go's -0700 layout. TS_RE tolerates it for sorting, but the raw
 			   prefix is noise in the rendered text, so strip it here. */
+			let body = line.replace(/^\s*[+-]\d{4}\s+/, '');
+			let ts = m[1] + ' ' + m[2];
+
+			/* Core stamped in UTC: move both the sort key AND the rendered
+			   text. Shifting only the key would leave a row reading 15:17
+			   sitting between 23:1x rows. */
+			if (shift) {
+				const moved = shiftTs(ts, shift);
+				if (moved !== ts) {
+					body = body.replace(m[1], moved.slice(0, m[1].length))
+					           .replace(m[2], moved.slice(m[1].length + 1));
+					ts = moved;
+				}
+			}
+
 			cur = {
-				ts:    m[1] + ' ' + m[2],
+				ts:    ts,
 				level: levelTok,           /* null = non-sing-box, always shown */
-				lines: [ line.replace(/^\s*[+-]\d{4}\s+/, '') ]
+				lines: [ body ]
 			};
 		}
 		else if (cur) {
@@ -179,11 +254,13 @@ function splitRecords(text) {
 
 /* Read one log file and resolve to { src, records, error }. Never rejects, so
    one unreadable source cannot blank out the whole merged view. */
-function readSourceLog(src) {
+function readSourceLog(src, shift) {
 	return fs.read_direct(String.format('%s/%s.log', hp_dir, src.file), 'text')
 	.then((res) => {
 		const text = String(res || '').replace(/\r\n/g, '\n').trim();
-		return { src: src, records: text ? splitRecords(text) : [], error: null };
+		/* Only the core's own log can be on a foreign clock; the shell
+		   scripts always stamp with BusyBox date (local). */
+		return { src: src, records: text ? splitRecords(text, src.core ? shift : 0) : [], error: null };
 	})
 	.catch((err) => {
 		const missing = err.toString().includes('NotFoundError');
@@ -257,7 +334,7 @@ function renderLogBox(merged) {
 	for (let i = 0; i < merged.length; i++) {
 		const rec = merged[i];
 		for (let j = 0; j < rec.lines.length; j++)
-			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j] });
+			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j], note: (rec.note === true) });
 	}
 
 	if (flat.length === 0) {
@@ -267,7 +344,11 @@ function renderLogBox(merged) {
 
 	let truncated = false;
 	if (flat.length > LOG_MAX_LINES) {
-		flat.splice(0, flat.length - LOG_MAX_LINES);
+		/* The one-off notice (UTC→local conversion) sits at the very front;
+		   dropping it would leave the reader with two clocks and no
+		   explanation exactly when the log is long enough to be interesting. */
+		const keep = (flat[0] && flat[0].note) ? 1 : 0;
+		flat.splice(keep, flat.length - LOG_MAX_LINES);
 		truncated = true;
 	}
 
@@ -277,7 +358,8 @@ function renderLogBox(merged) {
 		   first line is flush, its continuation lines (e.g. sing-box
 		   "Caused by:") are indented so the grouping stays readable. */
 		box.appendChild(E('div', {
-			'class': it.first ? 'hp-log-line' : 'hp-log-line hp-log-cont'
+			'class': it.note ? 'hp-log-line hp-log-note'
+			                 : (it.first ? 'hp-log-line' : 'hp-log-line hp-log-cont')
 		}, [ it.text === '' ? ' ' : it.text ]));
 	}
 
@@ -295,10 +377,10 @@ function renderUnifiedLog() {
 	   badges. */
 	const log_sources = [
 		{ file: 'homeproxy' },
-		{ file: 'sing-box-c' },
+		{ file: 'sing-box-c', core: true },
 		{ file: 'core_download' },
 		{ file: 'panel_download' },
-		{ file: 'sing-box-s' }
+		{ file: 'sing-box-s', core: true }
 	];
 
 	const log_level_choices = {
@@ -308,7 +390,7 @@ function renderUnifiedLog() {
 		error: _('Error')
 	};
 
-	let selected = uci.get('homeproxy', 'config', 'log_level') || 'info';
+	let selected = normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
 
 	/* Unified log level switcher: writes both the client (config) and the
 	   server (server) section so a single control tunes sing-box verbosity,
@@ -326,7 +408,7 @@ function renderUnifiedLog() {
 			/* save+apply restarts sing-box (kernel picks up the new level),
 			   but we also re-filter the currently-shown logs right now so
 			   the UI reacts instantly; wait for apply to finish afterwards. */
-			refresh();
+			refresh(true);
 			return this.map.save(null, true).then(() => {
 				ui.changes.apply(true);
 			});
@@ -414,8 +496,38 @@ function renderUnifiedLog() {
 		return LEVEL_ORDER[selected] != null ? LEVEL_ORDER[selected] : null;
 	}
 
-	function refresh() {
-		if (!autoRefresh)
+	/* Scroll state of the merged box. Rebuilding the box on every poll tick
+	   empties the scroller first, so the browser clamps scrollTop back to 0
+	   and the reader lands on the oldest line right after a refresh — while
+	   the newest lines, the ones worth watching, sit at the bottom. Remember
+	   where we were: follow the tail while the reader is at the tail,
+	   otherwise leave their position untouched. */
+	function scrollState() {
+		const box = log_body.querySelector('.hp-log-scroll');
+
+		if (!box)
+			return { follow: true, top: 0 };
+
+		return {
+			follow: (box.scrollHeight - box.scrollTop - box.clientHeight) < 24,
+			top: box.scrollTop
+		};
+	}
+
+	function restoreScroll(state) {
+		const box = log_body.querySelector('.hp-log-scroll');
+
+		if (!box)
+			return;
+
+		box.scrollTop = state.follow ? box.scrollHeight : state.top;
+	}
+
+	/* `force` re-renders even when auto refresh is off: switching the level
+	   must re-filter what is already on screen, and that is a one-shot user
+	   action rather than a poll tick. */
+	function refresh(force) {
+		if (!autoRefresh && force !== true)
 			return;
 
 		/* Never clobber a selection: with auto-refresh on, the box is rebuilt
@@ -426,12 +538,29 @@ function renderUnifiedLog() {
 			log_body.contains(selection.anchorNode))
 			return;
 
-		return Promise.all(log_sources.map(readSourceLog))
+		const scroll = scrollState();
+
+		return readCoreShift()
+			.then((shift) => Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
 			.then((results) => {
 				let merged = mergeRecords(results);
 				merged = filterByLevel(merged, cutoffWeight());
+
+				/* Say it out loud when the stamps above had to be moved:
+				   otherwise the core lines disagree with logread / SSH.
+				   Skip the notice when no core line is on screen — a device
+				   marker alone is not something to explain. */
+				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
+				if (shift && coreLines) {
+					merged.unshift({
+						si: 0, ts: '', level: null, note: true,
+						lines: [ _('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)) ]
+					});
+				}
+
 				dom.content(log_body, renderLogBox(merged));
-			});
+				restoreScroll(scroll);
+			}));
 	}
 
 	/* Auto-refresh checkbox: when checked the log reloads on every poll tick

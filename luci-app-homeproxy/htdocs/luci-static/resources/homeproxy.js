@@ -1129,6 +1129,9 @@ return baseclass.extend({
 				.hp-lat-good { color: #2eb872; font-weight: 600; }
 				.hp-lat-mid { color: #e08a1e; font-weight: 600; }
 				.hp-lat-bad { color: #e05252; font-weight: 600; }
+				/* ICMP 兜底标记：端口探测失败时跟在毫秒数后面，避免绿色数字
+				   被误读成该协议的握手耗时。cursor:help 提示可以悬停看原因。 */
+				.hp-lat-warn { color: #e08a1e; font-weight: 700; cursor: help; }
 				.hp-dns-flow-title { font-weight: 600; margin-bottom: .35rem; }
 				.hp-dns-flow-list { display: block; }
 				.hp-dns-flow-row { display: flex; flex-wrap: wrap; align-items: baseline;

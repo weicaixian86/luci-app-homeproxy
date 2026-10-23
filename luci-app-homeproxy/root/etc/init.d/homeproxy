@@ -86,6 +86,129 @@ wait_for_time_sync() {
 	return 0
 }
 
+# ---------- core timezone (sing-box is Go) ----------
+# sing-box formats its log timestamps with Go's local time, and Go understands
+# exactly two forms of TZ: a TZif file path (optionally ':'-prefixed) or an IANA
+# name such as "Asia/Shanghai". OpenWrt keeps a POSIX rule in /etc/TZ ("CST-8"),
+# which Go does NOT parse — it silently falls back to UTC. That is why core log
+# lines came out 8 hours behind every other source and out of order in the
+# merged log view: TZ="CST-8" was a no-op. Resolve something Go can use, and
+# leave a marker so the log view can still line the timestamps up if it cannot.
+# Note that having a zonename in UCI proves nothing: images without tzdata still
+# report "Asia/Shanghai" while /usr/share/zoneinfo is absent.
+tz_local_offset() {
+	local z sign digits hh mm
+	z="$(date +%z 2>/dev/null)"
+	# Some builds print "+08:00"; normalise to the POSIX "+0800" first.
+	case "$z" in
+		[+-][0-9][0-9]:[0-9][0-9]) z="${z%:*}${z#*:}" ;;
+	esac
+	case "$z" in
+		[+-][0-9][0-9][0-9][0-9]) ;;
+		*) return 1 ;;
+	esac
+	sign=1
+	case "$z" in -*) sign=-1 ;; esac
+	digits="${z#?}"
+	hh="${digits%??}"
+	mm="${digits#??}"
+	hh="${hh#0}"
+	mm="${mm#0}"
+	[ -n "$hh" ] || hh=0
+	[ -n "$mm" ] || mm=0
+	printf '%s' $(( sign * (hh * 3600 + mm * 60) ))
+}
+
+# 32-bit big-endian value as four printf octal escapes. Kept as *text*: a shell
+# variable cannot hold NUL bytes, so the escapes are expanded by printf later.
+tz_be32() {
+	printf '\\%03o\\%03o\\%03o\\%03o' \
+		$(( ($1 >> 24) & 255 )) $(( ($1 >> 16) & 255 )) \
+		$(( ($1 >> 8) & 255 )) $(( $1 & 255 ))
+}
+
+# Minimal TZif v1 with a single fixed offset (no transitions, no DST):
+# 20-byte header + 6 counts + one ttinfo + "LOC" abbreviation = 54 bytes.
+# Hand-rolled because the image ships no tzdata. Length and magic are verified
+# afterwards, so a printf that refuses to expand escapes cannot leave a bogus
+# file behind — the caller then falls back to UTC plus the shifted log view.
+tz_write_fixed() {
+	local out="$1" off="$2" u fmt i=0
+	[ -n "$out" ] && [ -n "$off" ] || return 1
+	mkdir -p "${out%/*}" 2>/dev/null
+	u=$(( off & 4294967295 ))
+	fmt='TZif\000'
+	while [ "$i" -lt 15 ]; do
+		fmt="$fmt\\000"
+		i=$((i + 1))
+	done
+	# isutcnt, isstdcnt, leapcnt, timecnt, typecnt=1, charcnt=4
+	fmt="$fmt$(tz_be32 0)$(tz_be32 0)$(tz_be32 0)$(tz_be32 0)$(tz_be32 1)$(tz_be32 4)"
+	# gmtoff, isdst=0, abbrind=0, then the abbreviation block
+	fmt="$fmt$(tz_be32 "$u")\\000\\000LOC\\000"
+	printf "$fmt" > "$out" 2>/dev/null || return 1
+	[ "$(wc -c < "$out" 2>/dev/null)" = 54 ] || return 1
+	[ "$(head -c 4 "$out" 2>/dev/null)" = TZif ] || return 1
+	return 0
+}
+
+# Sets CORE_TZ (the value exported to the core) and records what happened in
+# $RUN_DIR/core_tz, which view/homeproxy/log.js reads: "local" when the core
+# logs local time, "utc <seconds east of UTC>" when it cannot.
+# A zone path is only usable when it really is a TZif file. /etc/localtime is
+# usually a symlink into /tmp, and on images without tzdata it is left dangling
+# or as a zero-byte placeholder; feeding that to the core makes Go fall back to
+# UTC again — silently, while the marker below would still claim "local".
+tz_is_tzif() {
+	[ -f "$1" ] || return 1
+	[ "$(head -c 4 "$1" 2>/dev/null)" = TZif ]
+}
+
+tz_setup_core() {
+	local zn posix off offsign offabs offfmt
+	CORE_TZ=""
+	mkdir -p "$RUN_DIR" 2>/dev/null
+	zn="$(uci -q get system.@system[0].zonename 2>/dev/null)"
+	posix="$(cat /etc/TZ 2>/dev/null)"
+	[ -n "$posix" ] || posix="$(uci -q get system.@system[0].timezone 2>/dev/null)"
+
+	# 1) real tzdata on the image: a path keeps DST transitions working.
+	if [ -n "$zn" ] && tz_is_tzif "/usr/share/zoneinfo/$zn"; then
+		CORE_TZ=":/usr/share/zoneinfo/$zn"
+	elif tz_is_tzif "/etc/localtime"; then
+		CORE_TZ=":/etc/localtime"
+	else
+		# 2) no tzdata: synthesize a fixed-offset zone from the offset in
+		#    effect right now. Wrong across a DST switch, right the rest of
+		#    the year, and always better than UTC.
+		off="$(tz_local_offset)" || off=""
+		if [ -n "$off" ] && tz_write_fixed "$RUN_DIR/core.zone" "$off"; then
+			CORE_TZ=":$RUN_DIR/core.zone"
+			case "$posix" in
+				*,*) log "提示：本机没有时区数据，已按当前偏移生成固定时区；夏令时切换后内核日志时间不会自动校正，重启服务即可。" ;;
+			esac
+		fi
+		# No IANA-name fallback here on purpose: this core does not embed
+		# time/tzdata (no such symbol in the binary), so a name would resolve
+		# to nothing and Go would quietly use UTC — while the marker below
+		# said "local" and the log view stopped shifting. Leave CORE_TZ empty
+		# instead: Go treats that as UTC, exactly what the marker claims.
+	fi
+
+	if [ -n "$CORE_TZ" ]; then
+		printf '%s' "local" > "$RUN_DIR/core_tz" 2>/dev/null
+	else
+		off="$(tz_local_offset)"
+		[ -n "$off" ] || off=0
+		offsign="+"
+		[ "$off" -lt 0 ] && offsign="-"
+		offabs=${off#-}
+		offfmt="$(printf '%s%02d:%02d' "$offsign" $((offabs / 3600)) $(((offabs % 3600) / 60)))"
+		printf 'utc %s' "$off" > "$RUN_DIR/core_tz" 2>/dev/null
+		log "提示：本机没有可用的时区数据（/usr/share/zoneinfo 缺失，或 /etc/localtime 不存在／不是时区文件），sing-box 只能按 UTC 记日志；「运行日志」页已按本地时区（$offfmt）换算显示。"
+	fi
+}
+
 log() {
 	local ts marker=""
 	ts="$(date "+%Y-%m-%d %H:%M:%S")"
@@ -680,18 +803,6 @@ start_service() {
 	local server_enabled
 	config_get_bool server_enabled "server" "enabled" "0"
 
-	# POSIX TZ string passed to the core. sing-box is written in Go, which reads
-	# the TZ environment variable; BusyBox's /etc/TZ is not understood by Go and
-	# OpenWrt images rarely ship a TZif /etc/localtime, so with TZ unset the core
-	# logs in UTC — eight hours behind the rest of the log and prefixed with
-	# "+0000". Declared outside both instance blocks so either one can use it
-	# (referencing it under `set -u` before assignment would be fatal).
-	# Prefer /etc/TZ (what the system itself uses), then the UCI zone.
-	local tz_value
-	tz_value="$(cat /etc/TZ 2>/dev/null)"
-	[ -n "$tz_value" ] || tz_value="$(uci -q get system.@system[0].timezone 2>/dev/null)"
-	[ -n "$tz_value" ] || tz_value="CST-8"
-
 	if [ "$outbound_node" = "nil" ] && [ "$server_enabled" = "0" ]; then
 		# No entry node and no server: nothing to run, so start_service returns
 		# before the instances are created and long before ensure_panel().
@@ -699,6 +810,11 @@ start_service() {
 		panel_log "面板未下载：未配置代理节点且服务端未启用，服务未启动（面板依赖内核运行）。"
 		return 1
 	fi
+
+	# The core's TZ has to be a TZif path or an IANA name; see tz_setup_core().
+	# Runs only when something will actually be started, so an idle config does
+	# not fill the log with notices about a core that never runs.
+	tz_setup_core
 
 	if [ "$outbound_node" != "nil" ]; then
 		# Generate/Validate client config
@@ -803,13 +919,18 @@ start_service() {
 		procd_set_param command "$PROG"
 		procd_append_param command run --config "$RUN_DIR/sing-box-c.json"
 
-		# QUIC-GO GSO is broken on kernel 6.6 currently
-		uname -r | grep -Eq "^6\.6" && procd_set_param env "QUIC_GO_DISABLE_GSO"="true"
-
-		# sing-box is Go: it reads the TZ environment variable, not BusyBox's
-		# /etc/TZ, so without this its log timestamps come out in UTC — eight
-		# hours behind the rest of the log and prefixed with "+0000".
-		procd_set_param env "TZ"="$tz_value"
+		# Both variables must go into ONE procd_set_param env call: procd keeps
+		# a single "env" object per instance, so a second call silently drops
+		# the first one's variables.
+		#   TZ  — sing-box is Go and needs a TZif path or an IANA name
+		#         (see tz_setup_core); the POSIX string from /etc/TZ is
+		#         silently ignored, which used to leave the core on UTC.
+		#   GSO — QUIC-GO GSO is broken on kernel 6.6 currently.
+		if uname -r | grep -Eq "^6\.6"; then
+			procd_set_param env "TZ"="$CORE_TZ" "QUIC_GO_DISABLE_GSO"="true"
+		else
+			procd_set_param env "TZ"="$CORE_TZ"
+		fi
 
 		if have_sing_box_user && [ -x "/sbin/ujail" ] && [ "$routing_mode" != "custom" ] && ! grep -Eq '"type": "(wireguard|tun)"' "$RUN_DIR/sing-box-c.json"; then
 			procd_add_jail "sing-box-c" log procfs
@@ -821,6 +942,11 @@ start_service() {
 			procd_add_jail_mount "/etc/ssl/"
 			procd_add_jail_mount "/etc/localtime"
 			procd_add_jail_mount "/etc/TZ"
+			# The TZ we hand the core may live outside the jail's view.
+			case "$CORE_TZ" in
+				:/usr/share/zoneinfo/*) procd_add_jail_mount "/usr/share/zoneinfo" ;;
+				:*"$RUN_DIR"*) procd_add_jail_mount "$RUN_DIR/core.zone" ;;
+			esac
 			procd_set_param capabilities "/etc/capabilities/homeproxy.json"
 			procd_set_param no_new_privs 1
 			procd_set_param user sing-box
@@ -854,11 +980,18 @@ start_service() {
 		procd_set_param command "$PROG"
 		procd_append_param command run --config "$RUN_DIR/sing-box-s.json"
 
-		# QUIC-GO GSO is broken on kernel 6.6 currently
-		uname -r | grep -Eq "^6\.6" && procd_set_param env "QUIC_GO_DISABLE_GSO"="true"
-
-		# Same UTC-vs-local-time fix as the client instance above.
-		procd_set_param env "TZ"="$tz_value"
+		# Both variables must go into ONE procd_set_param env call: procd keeps
+		# a single "env" object per instance, so a second call silently drops
+		# the first one's variables.
+		#   TZ  — sing-box is Go and needs a TZif path or an IANA name
+		#         (see tz_setup_core); the POSIX string from /etc/TZ is
+		#         silently ignored, which used to leave the core on UTC.
+		#   GSO — QUIC-GO GSO is broken on kernel 6.6 currently.
+		if uname -r | grep -Eq "^6\.6"; then
+			procd_set_param env "TZ"="$CORE_TZ" "QUIC_GO_DISABLE_GSO"="true"
+		else
+			procd_set_param env "TZ"="$CORE_TZ"
+		fi
 
 		if have_sing_box_user && [ -x "/sbin/ujail" ]; then
 			procd_add_jail "sing-box-s" log procfs
@@ -869,6 +1002,11 @@ start_service() {
 			procd_add_jail_mount "/etc/ssl/"
 			procd_add_jail_mount "/etc/localtime"
 			procd_add_jail_mount "/etc/TZ"
+			# The TZ we hand the core may live outside the jail's view.
+			case "$CORE_TZ" in
+				:/usr/share/zoneinfo/*) procd_add_jail_mount "/usr/share/zoneinfo" ;;
+				:*"$RUN_DIR"*) procd_add_jail_mount "$RUN_DIR/core.zone" ;;
+			esac
 			procd_set_param capabilities "/etc/capabilities/homeproxy.json"
 			procd_set_param no_new_privs 1
 			procd_set_param user sing-box

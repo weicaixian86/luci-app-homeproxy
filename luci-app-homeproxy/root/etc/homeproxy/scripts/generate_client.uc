@@ -245,7 +245,14 @@ if (match(proxy_mode, /tun/)) {
 		tcpip_stack = uci.get(uciconfig, uciroutingsetting, 'tcpip_stack') || 'system';
 }
 
-const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'info';
+/* Only the four levels the UI offers are accepted by sing-box. A hand-edited
+   or restored config carrying anything else (e.g. "warning") would make
+   `sing-box check` fail and the whole service refuse to start, so fall back
+   to info instead of trusting UCI verbatim. */
+const log_level_uci = uci.get(uciconfig, ucimain, 'log_level') || 'info';
+
+const log_level = (log_level_uci == 'debug' || log_level_uci == 'info' ||
+	log_level_uci == 'warn' || log_level_uci == 'error') ? log_level_uci : 'info';
 
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');

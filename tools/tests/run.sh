@@ -7,6 +7,7 @@
 #   - JSON / workflow YAML         (python)
 #   - ucode syntax, approximated   (strip imports + wrap + node --check)
 #   - gettext catalog consistency  (tools/tests/pocheck.py)
+#   - log level filtering          (tools/tests/log_level.test.cjs)
 #   - Makefile conffiles exist     (packaging guard)
 #   - routing-node DOM behaviour   (tools/tests/routing_pin.test.cjs, needs jsdom)
 #
@@ -205,6 +206,178 @@ else
 	bad "curl lookup misses /usr/sbin/curl (iStoreOS)"
 fi
 
+# ------------------------------------------ dns test ICMP fallback contract
+# 端口探测失败后会回退 ICMP。这时必须把「为什么失败」一起带回前端：
+# 只回 { result:true, kind:'ping' } 的话，界面就是一个绿色毫秒数 +
+# tooltip 里的 ICMP 字样，和「该协议握手正常」在视觉上完全一样 ——
+# 0.1.21 现场三个 DoH 全部回退 ICMP 却没人察觉，就是这么发生的。
+section "dns test ICMP fallback is labelled"
+
+if grep -q 'probe_failed' "$HP_UC"; then
+	ok "rpcd marks the ICMP fallback with probe_failed"
+else
+	bad "rpcd drops the reason when falling back to ICMP (probe_failed missing)"
+fi
+
+if grep -q 'error: probe_error' "$HP_UC"; then
+	ok "rpcd returns the humanized probe error on ICMP fallback"
+else
+	bad "ICMP fallback does not return a humanized error"
+fi
+
+if grep -q 'hp-lat-warn' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js" \
+   && grep -q 'hp-lat-warn' "$PKG/htdocs/luci-static/resources/homeproxy.js"; then
+	ok "client renders (and styles) a marker for the ICMP fallback"
+else
+	bad "client does not distinguish an ICMP fallback from a real handshake result"
+fi
+
+# ------------------------------------------- core timezone (Go vs POSIX)
+# sing-box is Go: it only understands a TZif path or an IANA name. OpenWrt's
+# /etc/TZ holds a POSIX rule ("CST-8"), which Go silently rejects, so the core
+# logged in UTC — eight hours behind every other source and, because the merged
+# timeline sorts on the stamp text, in the wrong order too. init.d must hand it
+# a zone Go can read and record the outcome for the log view.
+section "core timezone (Go needs TZif, not POSIX)"
+
+INITD="$PKG/root/etc/init.d/homeproxy"
+
+if grep -q 'tz_setup_core' "$INITD" && ! grep -q 'TZ"=$tz_value' "$INITD"; then
+	ok "init.d resolves a zone Go can actually use"
+else
+	bad "init.d still passes a POSIX TZ string (Go ignores it => core logs in UTC)"
+fi
+
+# procd keeps one "env" object per instance: a second procd_set_param env call
+# would silently drop the first one's variables (TZ or QUIC_GO_DISABLE_GSO).
+if [ "$(grep -c '^[[:space:]]*procd_set_param env' "$INITD")" = 4 ] \
+   && ! grep -qF '&& procd_set_param env' "$INITD"; then
+	ok "TZ and QUIC_GO_DISABLE_GSO share a single env call"
+else
+	bad "TZ / QUIC_GO_DISABLE_GSO are passed in two env calls (procd keeps only the last)"
+fi
+
+TZDIR="$WORK/tz"
+mkdir -p "$TZDIR"
+sed -n '/^tz_local_offset()/,/^}/p;/^tz_be32()/,/^}/p;/^tz_write_fixed()/,/^}/p;/^tz_is_tzif()/,/^}/p' "$INITD" > "$TZDIR/fn.sh"
+
+tz_wrote=0
+sh -c ". '$TZDIR/fn.sh'; tz_write_fixed '$TZDIR/zone' 28800" 2>/dev/null && tz_wrote=1
+if [ "$tz_wrote" = 1 ] && [ "$(wc -c < "$TZDIR/zone" 2>/dev/null)" = 54 ] \
+   && [ "$(head -c 4 "$TZDIR/zone" 2>/dev/null)" = TZif ]; then
+	ok "fixed-offset TZif is generated (54 bytes, valid magic)"
+else
+	bad "fixed-offset TZif generation failed (printf escapes not expanded?)"
+fi
+
+# The bytes have to be a real TZif, not just the right length: feed them back
+# into an independent parser and compare the offset.
+tz_off="$("$PY" - "$TZDIR/zone" <<'PY_TZ'
+import datetime, sys, zoneinfo
+with open(sys.argv[1], 'rb') as handle:
+    zone = zoneinfo.ZoneInfo.from_file(handle, key='core')
+ref = datetime.datetime(2026, 7, 1, 12, 0, tzinfo=datetime.timezone.utc)
+print(int(zone.utcoffset(ref).total_seconds()))
+PY_TZ
+)" 2>/dev/null
+case "$tz_off" in
+	28800) ok "generated TZif parses back as +08:00" ;;
+	'')    skip "cannot validate TZif (python zoneinfo unavailable)" ;;
+	*)     bad "generated TZif parses back as '$tz_off' (expected 28800)" ;;
+esac
+
+# /etc/localtime is normally a symlink into /tmp. On raw OpenWrt images without
+# tzdata it is left dangling, and on some vendor images it is a zero-byte
+# placeholder. Either way "-f" alone is not enough: Go would reject the file,
+# fall back to UTC, and the marker would still say "local" — the 8-hour bug
+# coming back with no warning at all.
+tz_chk() { sh -c ". '$TZDIR/fn.sh'; tz_is_tzif '$1' && echo yes || echo no" 2>/dev/null; }
+if [ "$(tz_chk "$TZDIR/zone")" = yes ]; then
+	ok "TZif check accepts the generated zone"
+else
+	bad "TZif check rejects the zone file it just generated"
+fi
+printf 'CST-8' > "$TZDIR/posix"
+: > "$TZDIR/empty"
+if [ "$(tz_chk "$TZDIR/posix")" = no ] && [ "$(tz_chk "$TZDIR/empty")" = no ] \
+   && [ "$(tz_chk "$TZDIR/missing")" = no ]; then
+	ok "TZif check rejects POSIX-string / empty / missing zone paths"
+else
+	bad "a bogus /etc/localtime would be accepted (core silently goes back to UTC)"
+fi
+
+# A bare IANA name is NOT a safe fallback: this core carries no time/tzdata, so
+# Go would land on UTC while the marker says "local" and the log view stops
+# shifting. Only the ":<path>" form may be exported.
+if grep -qF 'CORE_TZ="$zn"' "$INITD"; then
+	bad "init.d falls back to a bare IANA name (marker would lie: local vs real UTC)"
+else
+	ok "no bare IANA-name fallback (marker always matches the core's clock)"
+fi
+
+LOG_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
+if grep -q 'core_tz' "$LOG_JS" && grep -q 'shiftTs' "$LOG_JS" \
+   && grep -q 'core: true' "$LOG_JS"; then
+	ok "log view puts the core's stamps on the local clock"
+else
+	bad "log view would keep two clocks (core_tz marker not consumed)"
+fi
+
+# ------------------------------------------------ unified log view (levels)
+# All four levels share ONE poll registration, so the 5 s cadence cannot vary
+# by level. Two things around it are easy to break: the level has to reach
+# BOTH the client and server config sections (each generator reads its own),
+# and a rebuild of the scroller must not throw the reader back to line 1.
+section "unified log view (levels + refresh)"
+
+lv="$(sed -n '/const log_level_choices = {/,/};/p' "$LOG_JS" \
+	| sed -n 's/^[[:space:]]*\([a-z]*\)[[:space:]]*:.*/\1/p' | sort | tr '\n' ' ')"
+if [ "$lv" = "debug error info warn " ]; then
+	ok "level choices are exactly debug/info/warn/error"
+else
+	bad "level choices are '$lv' (sing-box accepts debug/info/warn/error)"
+fi
+
+if [ "$(grep -c "hp.pollAdd('log-refresh', refresh)" "$LOG_JS")" = 1 ] \
+   && ! grep -qE "pollAdd\('log-refresh', refresh, *[0-9]" "$LOG_JS"; then
+	ok "one poll registration, no per-level interval"
+else
+	bad "log refresh interval differs by level (or poll registered twice)"
+fi
+
+if grep -q "uci.set('homeproxy', 'config', 'log_level'" "$LOG_JS" \
+   && grep -q "uci.set('homeproxy', 'server', 'log_level'" "$LOG_JS"; then
+	ok "level change commits to both client and server sections"
+else
+	bad "level change misses a section (client or server keeps old verbosity)"
+fi
+
+if grep -q 'function scrollState' "$LOG_JS" && grep -q 'restoreScroll(scroll)' "$LOG_JS"; then
+	ok "reader keeps their scroll position across a rebuild"
+else
+	bad "every rebuild jumps back to the oldest line (new lines are at the bottom)"
+fi
+
+if grep -q 'refresh(true)' "$LOG_JS"; then
+	ok "level switch re-filters even with auto refresh paused"
+else
+	bad "level switch is ignored while auto refresh is off"
+fi
+
+# The dropdown only offers four levels, but uci can carry anything (hand-edit,
+# restored backup). sing-box rejects an unknown "log.level" at check time and
+# then the whole service refuses to start — so both generators whitelist it.
+for gen in generate_client.uc generate_server.uc; do
+	path="$PKG/root/etc/homeproxy/scripts/$gen"
+	if grep -q "log_level_uci == 'debug'" "$path" \
+	   && grep -q "log_level_uci == 'error'" "$path" \
+	   && grep -q "? log_level_uci : 'info'" "$path"; then
+		ok "$gen whitelists log level before it reaches sing-box"
+	else
+		bad "$gen passes log_level verbatim (a stray value stops the core from starting)"
+	fi
+done
+
 # ----------------------------------------------------------------- catalog
 section "gettext catalog"
 "$PY" "$ROOT/tools/tests/pocheck.py" > "$WORK/po.out" 2>&1
@@ -294,7 +467,13 @@ get)
 		*) echo remote ;;
 		esac
 		;;
-	*.tag) echo geosite-x ;;
+	*.tag)
+		case "${1:-}" in
+		*rs_cn.tag) echo geosite-cn ;;
+		*rs_gfw.tag|*rs_legacy.tag) echo geosite-gfw ;;
+		*) echo geosite-x ;;
+		esac
+		;;
 	*.format) echo binary ;;
 	*.url) echo https://example.com/x.srs ;;
 	*) exit 1 ;;
@@ -418,6 +597,73 @@ STUB
 		ok "no uci must not spam stderr"
 	fi
 
+	# --only 的价值在于「现场照着界面按」：界面上看到的是 tag（geosite-cn），
+	# 段名却是 ruleset_geosite_cn。0.1.21 现场照 tag 敲，在解析阶段就被判成
+	# 「缺少参数」exit 2（旧模式串只放行 [A-Za-z0-9_]），根本走不到 tag 反查。
+	# log_msg 非 tty 时不回显，写入 $RUN_DIR/ruleset_download.log，所以断言
+	# 同时看 stdout 和日志尾部两种落点。
+	rs_log=""
+	for f in /var/run/homeproxy/ruleset_download.log /tmp/homeproxy/ruleset_download.log; do
+		if [ -f "$f" ]; then rs_log="$f"; break; fi
+	done
+	rs_only() {
+		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" sh "$RS" "$@" 2>&1
+	}
+	rs_saw() {
+		printf '%s' "$1" | grep -q -- "$2" && return 0
+		[ -n "$rs_log" ] && grep -q -- "$2" "$rs_log" 2>/dev/null && return 0
+		return 1
+	}
+
+	rs_o="$(rs_only --check --only geosite-cn)"
+	if rs_saw "$rs_o" 'sections=5'; then
+		ok "--only accepts a hyphenated tag (arg parser)"
+	else
+		bad "--only accepts a hyphenated tag (arg parser)  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 160)"
+	fi
+
+	rs_o="$(rs_only --only geosite-cn --budget 0)"
+	rs_rc=$?
+	if rs_saw "$rs_o" "是 tag，对应段名 rs_cn"; then
+		ok "--only resolves a unique tag to its section"
+	else
+		bad "--only resolves a unique tag to its section  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 200)"
+	fi
+	if [ "$rs_rc" -eq 0 ]; then
+		ok "--only with --budget 0 returns 0 without any download"
+	else
+		bad "--only with --budget 0 returns 0 without any download  <- rc=$rs_rc"
+	fi
+
+	rs_o="$(rs_only --only geosite-gfw --budget 0)"
+	rs_rc=$?
+	if rs_saw "$rs_o" "命中 2 个规则集段"; then
+		ok "--only rejects a tag matching several sections"
+	else
+		bad "--only rejects a tag matching several sections  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 200)"
+	fi
+	if [ "$rs_rc" -eq 2 ]; then
+		ok "--only ambiguous tag exits 2"
+	else
+		bad "--only ambiguous tag exits 2  <- rc=$rs_rc"
+	fi
+
+	rs_o="$(rs_only --only no-such-rule --budget 0)"
+	rs_rc=$?
+	if rs_saw "$rs_o" "段名与 tag 都对不上"; then
+		ok "--only says both section and tag were tried"
+	else
+		bad "--only says both section and tag were tried  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 200)"
+	fi
+
+	rs_o="$(rs_only --only --force)"
+	rs_rc=$?
+	if [ "$rs_rc" -eq 2 ]; then
+		ok "--only without a value still exits 2"
+	else
+		bad "--only without a value still exits 2  <- rc=$rs_rc"
+	fi
+
 	rm -rf "$RS_STUB" "$RS_CONF" 2>/dev/null
 else
 	bad "fetch_rulesets.sh is missing from the package tree"
@@ -476,6 +722,18 @@ else
 fi
 
 # -------------------------------------------------------------- DOM behaviour
+# The four dropdown levels, exercised against a real log slice: the pure part of
+# log.js is sliced out and evaluated (log.js cannot be require'd).
+section "Log level filtering (frontend)"
+"$NODE" "$ROOT/tools/tests/log_level.test.cjs" > "$WORK/loglevel.out" 2>&1
+if [ $? -eq 0 ]; then
+	ok "log_level.test.cjs"
+	sed 's/^/       /' "$WORK/loglevel.out" | tail -4
+else
+	bad "log_level.test.cjs"
+	sed 's/^/       /' "$WORK/loglevel.out" | tail -25
+fi
+
 section "Routing-node table DOM"
 "$NODE" "$ROOT/tools/tests/routing_pin.test.cjs" > "$WORK/dom.out" 2>&1
 case $? in

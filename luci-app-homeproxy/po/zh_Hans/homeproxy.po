@@ -4009,6 +4009,10 @@ msgstr "订阅地址"
 msgid "订阅地址不能重复"
 msgstr "订阅地址不能重复"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:557
+msgid "Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s)."
+msgstr "内核日志时间戳原为 UTC（本机没有时区数据），已按本地时区（%s）换算显示。"
+
 #~ msgid "Current DNS resolution flow: "
 #~ msgstr "当前 DNS 解析流程："
 

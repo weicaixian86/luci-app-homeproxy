@@ -3920,3 +3920,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:557
+msgid "Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s)."
+msgstr ""

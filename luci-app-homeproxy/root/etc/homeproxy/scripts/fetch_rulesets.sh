@@ -148,8 +148,10 @@ Usage: fetch_rulesets.sh [options]
   --check        verify only; exit 1 when some enabled rule-set has no valid
                  local copy (nothing is downloaded, nothing is written)
   --quiet        do not log to syslog
-  --only SEC     download pass only handles the named rule-set section
-                 (LuCI「立即更新」按钮使用；--check 模式忽略此参数)
+  --only NAME    download pass only handles the named rule-set
+                 (NAME = section id 或 tag，如 ruleset_geosite_cn / geosite-cn；
+                  tag 命中多段时报错并要求改用段名。LuCI「立即更新」按钮
+                  传的是 section id；--check 模式忽略此参数)
   --detach       fork into background immediately (no nohup needed; the
                  minimal BusyBox on iStoreOS ships without it)
 EOF
@@ -162,8 +164,13 @@ while [ $# -gt 0 ]; do
 		--quiet) QUIET=1 ;;
 		--only)
 			shift
-			case "$1" in
-				''|*[!A-Za-z0-9_]*) log_msg "错误：--only 需要一个规则集 section 名"; exit 2 ;;
+			# 值可以是段名（ruleset_geosite_cn）也可以是 tag（geosite-cn）。
+			# tag 一定带连字符，早先只放行 [A-Za-z0-9_] 时 `--only geosite-cn`
+			# 在解析阶段就被判成「缺少参数」并 exit 2，用户看到的是
+			# 「--only 需要一个规则集 section 名」，根本走不到下面的 tag 反查。
+			case "${1:-}" in
+				''|-|-*) log_msg "错误：--only 需要一个规则集名（段名或 tag）"; exit 2 ;;
+				*[!A-Za-z0-9_.-]*) log_msg "错误：--only 只接受段名或 tag（字母、数字、下划线、点、连字符）"; exit 2 ;;
 			esac
 			ONLY="$1"
 			;;
@@ -643,8 +650,32 @@ if [ -n "$ONLY" ]; then
 			sections="$ONLY"
 			;;
 		*)
-			log_msg "错误：--only 指定的规则集 '$ONLY' 不存在或未启用。"
-			exit 2
+			# 也允许直接给 tag：界面上看到的是 geosite-cn，段名却是
+			# ruleset_geosite_cn，凭界面信息猜段名非常容易猜错（现场就猜错过）。
+			# 只有「唯一命中」才接受 —— 多段同 tag 时必须报错，否则会下错对象。
+			only_sec=""
+			only_hits=0
+			for only_s in $sections; do
+				only_tag="$(uci -q get "$CONF.$only_s.tag" 2>/dev/null)"
+				[ -n "$only_tag" ] || continue
+				[ "$only_tag" = "$ONLY" ] || continue
+				only_sec="$only_s"
+				only_hits=$((only_hits + 1))
+			done
+			case "$only_hits" in
+				1)
+					log_msg "--only：'$ONLY' 是 tag，对应段名 $only_sec。"
+					sections="$only_sec"
+					;;
+				0)
+					log_msg "错误：--only 指定的规则集 '$ONLY' 不存在或未启用（段名与 tag 都对不上）。"
+					exit 2
+					;;
+				*)
+					log_msg "错误：--only 指定的 tag '$ONLY' 命中 $only_hits 个规则集段，请改用段名。"
+					exit 2
+					;;
+			esac
 			;;
 	esac
 fi

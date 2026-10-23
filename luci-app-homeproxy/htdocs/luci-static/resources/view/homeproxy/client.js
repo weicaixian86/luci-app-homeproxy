@@ -2408,8 +2408,23 @@ return view.extend({
 									           : (ret.kind === 'tcp') ? 'TCP' : 'TLS';
 
 									const cell = E('span', { 'class': cls }, String(ms) + 'ms');
+
+									/* 端口探测失败后回退 ICMP：数字本身没错，但必须显式标出来 ——
+									   一个绿色的「22ms」会被读成「该协议握手 22ms」。0.1.21 现场三个
+									   DoH 全部回退 ICMP 却没人看出，就是因为两者在界面上完全一样。
+									   原因（中文）来自 rpcd 的 error 字段，只放 tooltip。 */
 									cell.title = ret.port ? (kind + ' :' + ret.port) : kind;
-									latSpan.appendChild(cell);
+
+									if (ret.probe_failed) {
+										cell.title = kind + ' — ' + String(ret.error || '');
+										const warn = E('span', { 'class': 'hp-lat-warn' }, ' !');
+										warn.title = cell.title;
+										latSpan.appendChild(cell);
+										latSpan.appendChild(warn);
+									}
+									else {
+										latSpan.appendChild(cell);
+									}
 							} else {
 								/* 有 rpcd 返回的 error 就直接显示；连响应都没有（方法未注册，
 								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。

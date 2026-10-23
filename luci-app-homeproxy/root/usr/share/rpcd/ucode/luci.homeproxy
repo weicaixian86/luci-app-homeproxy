@@ -2303,6 +2303,13 @@ const methods = {
 
 					if (index(t, 'refused') >= 0)
 						return '连接被拒绝，端口未开放';
+					/* 现场 `curl https://1.1.1.1/` 回的是
+					   "Recv failure: Connection reset by peer"（rc=35）：
+					   TCP 已建连（本机 redirect 接管后放行），TLS 阶段被
+					   对端/中间设备用 RST 掐断。归到「被阻断」而不是模糊的
+					   「连接探测失败」，用户才知道该换端点而不是查端口。 */
+					if (index(t, 'reset') >= 0)
+						return '连接被重置，可能被中间设备阻断';
 					if (index(t, 'timed out') >= 0 || index(t, 'Timeout') >= 0)
 						return '连接超时，可能被防火墙拦截';
 					if (index(t, 'resolve') >= 0)
@@ -2450,12 +2457,17 @@ const methods = {
 						/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
 						   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直
 						   读到 EOF 才返回，补上换行能让计时串立刻返回。
+						   ⚠️ 必须是 -sS 而不是 -s：单独的 -s 连报错一起吞掉，
+						   stderr 变成空文件，日志里只剩一句「curl probe failed」，
+						   现场完全无法判断是 TLS 握手失败、端口不通还是无 SNI ——
+						   这正是 0.1.21 现场三个 DoH 端点全部回退 ICMP 却查不出
+						   原因的直接原因。-sS = 静默进度条 + 保留错误信息。
 						   -k 是必需的：DoH/DoT 地址经常直接填 IP，证书签给域名，
 						   SNI/校验都对不上，不加 -k 会直接以「证书校验失败」退出，
 						   一个时间都拿不到 —— 这里只量延迟，不承担证书校验职责。 */
 						const maxtime = (probe.port == null) ? 6 : 3;
 						const errfile = `/tmp/.hp_dns_curl_${section}`,
-						      fd = popen(`${curl} -k --connect-timeout 3 --max-time ${maxtime} -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
+						      fd = popen(`${curl} -k --connect-timeout 3 --max-time ${maxtime} -sS -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
 
 						let line = '';
 
@@ -2549,8 +2561,24 @@ const methods = {
 					if (latency_ms !== null && latency_ms < 1)
 						latency_ms = 1;
 
-					if (latency_ms !== null && latency_ms > 0)
-						return { result: true, latency_ms: latency_ms, kind: 'ping' };
+					if (latency_ms !== null && latency_ms > 0) {
+						/* ICMP 兜底成功：必须把「端口探测为什么失败」一起带回去。
+						   只回 { result:true, kind:'ping' } 的话，界面就是一个绿色
+						   毫秒数 + tooltip 里的 ICMP 字样，看上去像该协议握手正常 ——
+						   0.1.21 现场三个 DoH 全部回退 ICMP 却没人察觉，就是因为
+						   这个原因被丢在了这里。error 是中文归类（前端只放进
+						   tooltip），detail 保留 curl 英文原文，不上正文。 */
+						return {
+							result: true,
+							latency_ms: latency_ms,
+							kind: 'ping',
+							probe_failed: probe_error ? true : false,
+							error: probe_error
+								? `${humanizeCurl(probe_error)}（端口探测未通过，此处为本机到服务器的 ICMP 往返）`
+								: null,
+							detail: probe_error || null
+						};
+					}
 
 					/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始
 					   报错一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
