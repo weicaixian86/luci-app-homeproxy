@@ -1333,9 +1333,11 @@ return view.extend({
 				if (!tbody)
 					return;
 
-				/* route.final = routing_setting.default_outbound 指向的 routing_node sid；
+				/* route.final = routing.default_outbound 指向的 routing_node sid；
+				   段名是 'routing'（见 generate_client.uc 的 uciroutingsetting），
+				   不是 'routing_setting'——写错会让 uci.get 返回空、整个置顶逻辑失效。
 				   nil / direct-out / block-out 不是策略组，无需置顶。 */
-				const finalSid = uci.get(data[0], 'routing_setting', 'default_outbound') || '';
+				const finalSid = uci.get(data[0], 'routing', 'default_outbound') || '';
 
 				if (!finalSid || [ 'nil', 'direct-out', 'block-out' ].includes(finalSid))
 					return;

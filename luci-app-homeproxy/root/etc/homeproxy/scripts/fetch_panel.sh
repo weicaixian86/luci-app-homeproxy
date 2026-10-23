@@ -190,7 +190,11 @@ download_with_progress() {
 			-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
 		pid=$!
 		while kill -0 "$pid" 2>/dev/null; do
-			cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
+			# curl 是后台启动的，输出文件可能尚未创建；此时 `wc -c < 文件`
+			# 的 shell 重定向会在 stderr 报 "can't open ... no such file"。
+			# 先判断文件存在再读取，缺失时按 0 处理。
+			cur=0
+			[ -f "$out" ] && cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
 			[ -z "$cur" ] && cur=0
 			now=$(date +%s)
 			if [ "$total" -gt 0 ]; then

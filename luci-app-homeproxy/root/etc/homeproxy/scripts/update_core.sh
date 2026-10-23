@@ -395,7 +395,10 @@ download_file() {
 					-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
 				pid=$!
 				while kill -0 "$pid" 2>/dev/null; do
-					cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
+					# 同 fetch_panel.sh：curl 后台启动，输出文件可能尚未创建，
+					# 直接 `wc -c < 文件` 会触发 shell 重定向报错，先判存在。
+					cur=0
+					[ -f "$out" ] && cur="$(wc -c < "$out" 2>/dev/null | tr -d ' ')"
 					[ -z "$cur" ] && cur=0
 					now=$(date +%s)
 					if [ "$total" -gt 0 ]; then
