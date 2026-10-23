@@ -2188,8 +2188,14 @@ const methods = {
 					: (PROBE_BY_TYPE[type] || null);
 
 				/* 失败原因写系统日志，便于现场直接 logread -e homeproxy-dns 定位，
-				   不必再靠猜（以前只能看到界面上的「失败」两个字）。 */
-				const trace = (msg) => system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
+				   不必再靠猜（以前只能看到界面上的「失败」两个字）。
+				   诊断日志本身绝不能把测试搞挂：任何异常都吞掉。 */
+				const trace = (msg) => {
+					try {
+						system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
+					}
+					catch (e) {}
+				};
 
 				/* curl 分支：https 用完整 URL，其它协议用 host + 协议默认端口重拼。
 				   -k 是必需的：DoH/DoT 地址经常直接填 IP（https://223.5.5.5/dns-query），
@@ -2284,10 +2290,17 @@ const methods = {
 				/* IPv6 字面量（含冒号）走 ping6：busybox 的 ping 默认只发 IPv4，
 				   裸 IPv6 会被当作主机名去做 DNS 查询，必然失败。 */
 				const pingbin = (index(host, ':') >= 0 && ping6) ? ping6 : ping;
-				const outfile = `/tmp/.hp_dns_ping_${section}`;
-				const rc = system(`${pingbin} -c 1 -W 2 ${shellquote(host)} > ${shellquote(outfile)} 2>/dev/null`);
-				const out = readfile(outfile) || '';
-				unlink(outfile);
+
+				/* 直接读 ping 的 stdout，不再「system + /tmp 临时文件 + readfile」：
+				   后者要经过 shell 重定向、临时文件写入、再次读文件三步，任何一步
+				   出问题都只能得到一句笼统的 ping failed，且 system 的退出码与输出
+				   分属两条路径、无法互相印证。popen 在本文件里已被 httpCommand()
+				   长期使用，可用性有保障。 */
+				const pingfd = popen(`${pingbin} -c 1 -W 2 ${shellquote(host)} 2>/dev/null`);
+				const out = pingfd ? readProcess(pingfd) : '';
+
+				if (!pingfd)
+					trace(`test ${section}: failed to spawn ${pingbin}`);
 
 				let latency_ms = null;
 				const rt = match(out, /round-trip min\/avg\/max = ([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
@@ -2311,9 +2324,9 @@ const methods = {
 				   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
 				const fail_reason = probe_error
 					? ('probe failed: ' + probe_error)
-					: ((rc === -1) ? 'ping timeout' : 'ping failed');
+					: (pingfd ? 'ping failed' : ('failed to spawn ' + pingbin));
 
-				trace(`test ${section}: ${pingbin} ${host} rc ${rc} -> ${fail_reason}`);
+				trace(`test ${section}: ${pingbin} ${host} -> ${fail_reason}`);
 
 				return {
 					result: false,
