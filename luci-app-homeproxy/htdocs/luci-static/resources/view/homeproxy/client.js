@@ -2337,8 +2337,14 @@ return view.extend({
 									          : (ms < 300) ? 'hp-lat-mid'
 									          : 'hp-lat-bad';
 
-									latSpan.appendChild(E('span', { 'class': cls },
-										String(ms) + 'ms'));
+									/* 各协议口径不同（TLS 握手 / TCP 建连 / ICMP 往返），
+									   用 title 标出来，避免把 ICMP 值当成 DoH 握手耗时比较。 */
+									const kind = (ret.kind === 'ping') ? 'ICMP'
+									           : (ret.kind === 'tcp') ? 'TCP' : 'TLS';
+
+									const cell = E('span', { 'class': cls }, String(ms) + 'ms');
+									cell.title = ret.port ? (kind + ' :' + ret.port) : kind;
+									latSpan.appendChild(cell);
 							} else {
 								/* 有 rpcd 返回的 error 就直接显示；连响应都没有（方法未注册，
 								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。 */

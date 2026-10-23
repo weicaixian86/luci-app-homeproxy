@@ -2158,35 +2158,68 @@ const methods = {
 					return null;
 				};
 
-				const isHandshake = (type === 'https'),
-				      curl = findExec([ '/usr/bin/curl', '/bin/curl', '/usr/sbin/curl' ]),
+				const curl = findExec([ '/usr/bin/curl', '/bin/curl', '/usr/sbin/curl' ]),
 				      ping = findExec([ '/bin/ping', '/usr/bin/ping', '/sbin/ping' ]),
 				      ping6 = findExec([ '/bin/ping6', '/usr/bin/ping6', '/sbin/ping6' ]);
+
+				/* 每种 DNS 类型的真实探测目标。
+				   之前只有 https 走 curl，其余协议一律 ping ICMP —— 但 ICMP 只能证明
+				   「这台机器能 ping 通」，既不覆盖服务端口，也会在禁 ping 的网络里把
+				   完全可用的 DNS 误判为「失败」。现在按协议挑端口做真实建连：
+				   - https(DoH)：用地址里的完整 URL 做 TLS 握手（端口默认 443，路径保留）
+				   - tls(DoT)  ：853/TCP + TLS 握手
+				   - tcp       ：53/TCP 建连
+				   - udp       ：53/TCP 建连（DNS 规范要求同一端口同时监听 TCP，纯 UDP
+				                 的无副作用探测不可靠，故用 TCP 同端口作为可达性近似）
+				   - h3(DoH3)  ：443/TCP + TLS 握手（同一端点一般也开 443/TCP；真正的 QUIC
+				                 握手需要 curl --http3，OpenWrt 的 curl 多数没编进去）
+				   - quic(DoQ) ：853/TCP + TLS 握手（DoQ 端点多数不监听 TCP，失败会自动回退 ICMP）
+				   探测失败一律回退 ICMP ping，两条都失败才判「失败」，并把两段原因都带回。 */
+				const PROBE_BY_TYPE = {
+					tls:  { scheme: 'https', port: 853 },
+					tcp:  { scheme: 'http',  port: 53  },
+					udp:  { scheme: 'http',  port: 53  },
+					h3:   { scheme: 'https', port: 443 },
+					quic: { scheme: 'https', port: 853 }
+				};
+
+				const probe = (type === 'https')
+					? { scheme: 'https', port: null }
+					: (PROBE_BY_TYPE[type] || null);
 
 				/* 失败原因写系统日志，便于现场直接 logread -e homeproxy-dns 定位，
 				   不必再靠猜（以前只能看到界面上的「失败」两个字）。 */
 				const trace = (msg) => system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
 
-				/* HTTPS(DoH) 且系统有 curl：测 TLS 握手耗时。
-				   -k 是必需的：DoH 地址经常直接填 IP（https://223.5.5.5/dns-query、
-				   https://1.12.12.12/dns-query），而证书是签给域名的，SNI/校验都对不上，
-				   不加 -k 会直接以「证书校验失败」退出，一个时间都拿不到。
-				   这里只量延迟，不承担证书校验职责，所以跳过校验是合理的。
-				   H3(DoH3) 虽同为 HTTP，但 h3:// 不是 curl 能识别的 scheme，且 QUIC
-				   握手不在 TCP/TLS 语义内，故按请求退回 ping。 */
-				let handshake_error = null;
+				/* curl 分支：https 用完整 URL，其它协议用 host + 协议默认端口重拼。
+				   -k 是必需的：DoH/DoT 地址经常直接填 IP（https://223.5.5.5/dns-query），
+				   证书签给域名，SNI/校验都对不上，不加 -k 会直接以「证书校验失败」退出，
+				   一个时间都拿不到。这里只量延迟，不承担证书校验职责。 */
+				let probe_error = null;
 
-				if (isHandshake && curl) {
-					let url = server;
+				if (curl && probe) {
+					let url;
 
-					if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
-						url = 'https://' + url;
+					if (probe.port == null) {
+						url = server;
+
+						if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
+							url = 'https://' + url;
+					}
+					else {
+						/* IPv6 字面量要加方括号，否则 host:853 会被解析成非法 URL */
+						const ipv6 = (index(host, ':') >= 0);
+
+						url = `${probe.scheme}://${ipv6 ? '[' + host + ']' : host}:${probe.port}/`;
+					}
 
 					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
 					   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直读到
-					   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。 */
+					   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。
+					   --max-time 对非 TLS 的建连探测收紧到 3 秒：53/TCP 上发 HTTP
+					   请求必然等不到正常响应，靠超时收尾，没必要等满 6 秒。 */
 					const errfile = `/tmp/.hp_dns_curl_${section}`,
-					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
+					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 3 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
 
 					let line = '';
 
@@ -2216,20 +2249,25 @@ const methods = {
 						hs_ms = 1;
 
 					if (hs_ms !== null && hs_ms > 0)
-						return { result: true, latency_ms: hs_ms, kind: 'handshake' };
+						return {
+							result: true,
+							latency_ms: hs_ms,
+							kind: (probe.scheme === 'https') ? 'tls' : 'tcp',
+							port: probe.port || null
+						};
 
-					/* 握手测不出来（curl 无 TLS 支持 / 连接被阻断 / 域名解析失败）：
-					   记下原始报错，继续往下走 ping 兜底，而不是直接判失败。 */
-					handshake_error = details ? split(details, '\n')[0] : 'curl probe failed';
-					trace(`test ${section}: curl ${url} -> ${handshake_error}`);
+					/* 测不出来（端口不通 / 被阻断 / 域名解析失败）：记下原始报错，
+					   继续往下走 ping 兜底，而不是直接判失败。 */
+					probe_error = details ? split(details, '\n')[0] : 'curl probe failed';
+					trace(`test ${section}: curl ${url} -> ${probe_error}`);
 				}
 
 				/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
 				   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
 				   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
 				if (!ping) {
-					const reason = handshake_error
-						? ('handshake failed: ' + handshake_error)
+					const reason = probe_error
+						? ('probe failed: ' + probe_error)
 						: 'missing ping executable';
 
 					trace(`test ${section}: ${reason}`);
@@ -2238,7 +2276,7 @@ const methods = {
 						result: false,
 						error: reason,
 						latency_ms: null,
-						kind: handshake_error ? 'handshake' : 'ping'
+						kind: probe_error ? 'probe' : 'ping'
 					};
 				}
 
@@ -2270,8 +2308,8 @@ const methods = {
 
 				/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始报错
 				   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
-				const fail_reason = handshake_error
-					? ('handshake failed: ' + handshake_error)
+				const fail_reason = probe_error
+					? ('probe failed: ' + probe_error)
 					: ((rc === -1) ? 'ping timeout' : 'ping failed');
 
 				trace(`test ${section}: ${pingbin} ${host} rc ${rc} -> ${fail_reason}`);
@@ -2280,7 +2318,7 @@ const methods = {
 					result: false,
 					error: fail_reason,
 					latency_ms: null,
-					kind: handshake_error ? 'handshake' : 'ping'
+					kind: probe_error ? 'probe' : 'ping'
 				};
 			}
 		}
