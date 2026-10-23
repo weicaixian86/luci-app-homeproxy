@@ -1070,6 +1070,9 @@ return baseclass.extend({
 					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 					font-size: .85rem; }
 				.hp-rn-ms { color: #2eb872; font-weight: 600; }
+				/* 「当前节点 / 延迟」拿不到最新数据（服务重启中 / 该组未启用）：
+				   保留上一次的值但降透明度，避免整格突然变成空白。 */
+				.hp-rn-stale { opacity: .45; }
 				.hp-rn-out { display: inline-block; max-width: 220px; overflow: hidden;
 					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 					font-size: .85rem; }

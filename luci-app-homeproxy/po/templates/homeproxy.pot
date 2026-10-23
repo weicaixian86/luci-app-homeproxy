@@ -3863,3 +3863,15 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Service is not running or this policy group is disabled."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cannot connect to the Clash API. Check that the service is running and the API port is reachable."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cannot connect to the Clash API. LuCI is opened over HTTPS, so the browser blocks plain-HTTP requests to the API port; open LuCI over HTTP instead."
+msgstr ""

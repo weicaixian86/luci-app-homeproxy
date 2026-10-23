@@ -3948,6 +3948,19 @@ msgstr "订阅地址"
 msgid "订阅地址不能重复"
 msgstr "订阅地址不能重复"
 
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Service is not running or this policy group is disabled."
+msgstr "服务未运行，或该策略组已停用。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cannot connect to the Clash API. Check that the service is running and the API port is reachable."
+msgstr "无法连接 Clash API，请确认服务已运行且 API 端口可达。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cannot connect to the Clash API. LuCI is opened over HTTPS, so the browser blocks plain-HTTP requests to the API port; open LuCI over HTTP instead."
+msgstr "无法连接 Clash API。当前通过 HTTPS 打开 LuCI，浏览器会拦截发往 API 端口的明文 HTTP 请求，请改用 HTTP 访问 LuCI。"
+
 #~ msgid "Current DNS resolution flow: "
 #~ msgstr "当前 DNS 解析流程："
 

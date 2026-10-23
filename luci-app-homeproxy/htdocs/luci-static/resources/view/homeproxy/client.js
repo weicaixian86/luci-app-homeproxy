@@ -1050,75 +1050,108 @@ return view.extend({
 		/* 建议3：类型徽章列。urltest/selector 不再以英文术语裸露在表格里，
 		   改为徽章显示（自动测速 / 手动选择）；urltest 的测速参数放在徽章
 		   悬浮提示中。单节点包装则直接显示节点名。 */
-		/* 建议1：当前节点 / 延迟列。渲染后异步从 sing-box Clash API
-		   （GET /proxies，自带 CORS）拉取运行时状态：沿 now 链解析实际
-		   出口节点并显示其最近一次测速延迟；服务未运行或 API 不可达时
-		   清空该列内容，不影响配置编辑。 */
+		/* 建议1：当前节点 / 延迟列。渲染后从 sing-box Clash API
+		   （GET /proxies）拉取运行时状态：沿 now 链解析实际出口节点并显示其
+		   最近一次测速延迟。
+		   这里以前只在 render 时拉一次 —— 只要那一次刚好碰上 sing-box 正在
+		   重启（点「保存并应用」、切换节点、内核更新）或服务还没起来，整列就
+		   被清空并且再也不会恢复，表现成「时不时整列空白」。现在改为：
+		   轮询刷新 + 失败保留上次结果 + 未就绪时给占位符而不是留空白。 */
+		const ROUTING_STATUS_SELECTOR = '.hp-rn-status[data-tag]';
+
+		const applyRoutingProxies = function(container, proxies) {
+			for (const span of container.querySelectorAll(ROUTING_STATUS_SELECTOR)) {
+				/* 表格可能已经被重新渲染，写进脱离文档的旧节点没人看得见 */
+				if (!span.isConnected)
+					continue;
+
+				const grp = proxies[span.getAttribute('data-tag')];
+
+				if (!grp) {
+					/* 服务未运行 / 该组未启用 / 刚启动还没注册出站：
+					   有旧值就保留（标为过期态），没有就给占位符，不留空白。 */
+					if (!span.textContent.trim() || span.textContent.trim() === '…') {
+						span.textContent = '—';
+						span.title = _('Service is not running or this policy group is disabled.');
+					}
+
+					span.classList.add('hp-rn-stale');
+					continue;
+				}
+
+				span.classList.remove('hp-rn-stale');
+
+				/* selector 嵌套策略组时沿 now 链取实际出口 */
+				let cur = grp;
+
+				for (let i = 0; cur && cur.now && proxies[cur.now] && i < 8; i++)
+					cur = proxies[cur.now];
+
+				const name = (cur && cur.name) || grp.now || '';
+
+				if (!name) {
+					if (!span.textContent.trim() || span.textContent.trim() === '…') {
+						span.textContent = '—';
+						span.title = _('Service is not running or this policy group is disabled.');
+					}
+
+					continue;
+				}
+
+				/* 最近一次测速延迟：优先 history，新版内核在 extra */
+				let delay = null;
+				const hist = (cur && cur.history) || [];
+
+				if (hist.length)
+					delay = hist[hist.length - 1].delay;
+				else if (cur && cur.extra) {
+					for (const key in cur.extra) {
+						const h = cur.extra[key];
+
+						if (h && h.length) {
+							delay = h[h.length - 1].delay;
+							break;
+						}
+					}
+				}
+
+				span.textContent = '';
+
+				if (delay != null && delay > 0) {
+					span.appendChild(document.createTextNode(name + ' · '));
+					span.appendChild(E('span', { 'class': 'hp-rn-ms' }, String(delay) + ' ms'));
+					span.title = name + ' · ' + delay + ' ms';
+				}
+				else {
+					span.appendChild(document.createTextNode(name));
+					span.title = name;
+				}
+			}
+		};
+
+		/* 拉一次 Clash API。失败时不清空已有内容，只把仍在转圈的「…」换成「—」。 */
 		const refreshRoutingNodeStatus = function(container) {
 			const api = getClashApiInfo(),
-			      options = { headers: {} };
+			      options = { headers: {}, cache: 'no-store' };
 
 			if (api.secret)
 				options.headers['Authorization'] = 'Bearer ' + api.secret;
 
 			fetch(api.baseUrl + '/proxies', options)
-				.then((res) => (res && res.ok) ? res.json() : Promise.reject())
-				.then((res) => {
-					const proxies = (res && res.proxies) || {};
-
-					for (const span of container.querySelectorAll('.hp-rn-status[data-tag]')) {
-						const grp = proxies[span.getAttribute('data-tag')];
-
-						span.textContent = '';
-						span.removeAttribute('title');
-
-						if (!grp)
-							continue;
-
-						/* selector 嵌套策略组时沿 now 链取实际出口 */
-						let cur = grp;
-
-						for (let i = 0; cur && cur.now && proxies[cur.now] && i < 8; i++)
-							cur = proxies[cur.now];
-
-						const name = (cur && cur.name) || grp.now || '';
-
-						if (!name)
-							continue;
-
-						/* 最近一次测速延迟：优先 history，新版内核在 extra */
-						let delay = null;
-						const hist = (cur && cur.history) || [];
-
-						if (hist.length)
-							delay = hist[hist.length - 1].delay;
-						else if (cur && cur.extra) {
-							for (const key in cur.extra) {
-								const h = cur.extra[key];
-
-								if (h && h.length) {
-									delay = h[h.length - 1].delay;
-									break;
-								}
-							}
-						}
-
-						span.appendChild(document.createTextNode(name));
-
-						if (delay != null && delay > 0) {
-							span.appendChild(document.createTextNode(' · '));
-							span.appendChild(E('span', { 'class': 'hp-rn-ms' }, String(delay) + ' ms'));
-						}
-
-						span.title = (delay != null && delay > 0)
-							? name + ' · ' + delay + ' ms' : name;
-					}
-				})
+				.then((res) => (res && res.ok) ? res.json() : Promise.reject(new Error('HTTP ' + (res && res.status))))
+				.then((res) => applyRoutingProxies(container, (res && res.proxies) || {}))
 				.catch(() => {
-					/* 服务未运行 / API 不可达：仅清空列内容 */
-					for (const span of container.querySelectorAll('.hp-rn-status[data-tag]')) {
-						span.textContent = '';
-						span.removeAttribute('title');
+					for (const span of container.querySelectorAll(ROUTING_STATUS_SELECTOR)) {
+						if (span.textContent.trim() !== '…')
+							continue;
+
+						span.textContent = '—';
+						/* HTTPS 页面请求 http:// 的 API 端口会被浏览器按混合内容
+						   直接拦掉，连请求都不会发出 —— 这种「全空」不是服务的问题，
+						   必须给出可操作的提示，否则用户只会反复点刷新。 */
+						span.title = (window.location.protocol === 'https:')
+							? _('Cannot connect to the Clash API. LuCI is opened over HTTPS, so the browser blocks plain-HTTP requests to the API port; open LuCI over HTTP instead.')
+							: _('Cannot connect to the Clash API. Check that the service is running and the API port is reachable.');
 					}
 				});
 		};
@@ -1435,6 +1468,25 @@ return view.extend({
 			pinFinalRoutingNode(el);
 			watchRoutingNodeOrder(el);
 			refreshRoutingNodeStatus(el);
+
+			/* 5 秒轮询一次。原先只在 render 时拉一次，任何一次失败都会让整列
+			   永久空白；轮询让 sing-box 重启完成后自动补上。
+			   hp.pollAdd 按 key 替换旧回调，反复重渲染不会叠加请求；表格被替换
+			   后（离开该页或重新渲染）旧回调自行注销。 */
+			hp.pollAdd('routing-node-status', function() {
+				if (!el.isConnected) {
+					hp.pollRemove('routing-node-status');
+					return;
+				}
+
+				/* 标签页在后台时不拉：/proxies 在节点多时有几百 KB，
+				   没人看的时候没必要每 5 秒下一次。 */
+				if (document.hidden)
+					return;
+
+				refreshRoutingNodeStatus(el);
+			}, 5);
+
 			return el;
 		};
 
