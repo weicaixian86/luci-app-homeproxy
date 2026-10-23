@@ -4,12 +4,23 @@
  * Copyright (C) 2023 ImmortalWrt.org
  */
 
-import { mkstemp } from 'fs';
+import { lstat, mkstemp } from 'fs';
 import { urldecode_params } from 'luci.http';
 
 /* Global variables start */
 export const HP_DIR = '/etc/homeproxy';
 export const RUN_DIR = '/var/run/homeproxy';
+
+/* 单条命令 stdout / stderr 各自的最大采集字节数。
+   原实现只 read(1024 * 512)，超过 512 KiB 的部分被静默丢弃：大型订阅
+   （几 MB 的 Clash YAML、几千条节点的 base64 列表）会被悄悄截断，表现
+   为「订阅导入后少了节点」且日志里毫无提示。这里放宽到 16 MiB，并且
+   循环读到 EOF；真的超过上限时 truncated 标记为 true，调用方可以告警。 */
+const CMD_OUTPUT_LIMIT = 16 * 1024 * 1024;
+const CMD_READ_CHUNK = 64 * 1024;
+
+/* 二进制探测只需要看开头：对 16 MiB 的正文逐字节 ord() 太浪费。 */
+const CMD_BINARY_SCAN = 4096;
 /* Global variables end */
 
 /* Utilities start */
@@ -19,37 +30,135 @@ export function shellQuote(s) {
 };
 
 export function isBinary(str) {
-	for (let off = 0, byte = ord(str); off < length(str); byte = ord(str, ++off))
+	const limit = (length(str) > CMD_BINARY_SCAN) ? CMD_BINARY_SCAN : length(str);
+
+	for (let off = 0, byte = ord(str); off < limit; byte = ord(str, ++off))
 		if (byte <= 8 || (byte >= 14 && byte <= 31))
 			return true;
 
 	return false;
 };
 
+/* 分块读完整个 fd，最多 limit 字节。
+   返回 { data, size, truncated }：truncated 只在「确实还有数据没读完」
+   时为 true，正常读完不会误报。 */
+function readAll(fd, limit) {
+	let chunks = [];
+	let total = 0;
+	let truncated = false;
+
+	for (;;) {
+		const chunk = fd.read(CMD_READ_CHUNK);
+
+		if (chunk === null || length(chunk) === 0)
+			break;
+
+		const remain = limit - total;
+
+		if (remain <= 0) {
+			truncated = true;
+			break;
+		}
+
+		if (length(chunk) > remain) {
+			push(chunks, substr(chunk, 0, remain));
+			total += remain;
+			truncated = true;
+			break;
+		}
+
+		push(chunks, chunk);
+		total += length(chunk);
+	}
+
+	return { data: join('', chunks), size: total, truncated };
+};
+
+/* 执行命令。参数一律按 argv 处理并逐项 shellQuote —— 调用方不可能再
+   「忘了加引号」，也就不存在把用户输入拼进命令行的注入面。
+   需要复杂 shell 语法时请显式调用 /bin/sh -c <script>。 */
 export function executeCommand(...args) {
+	const argv = [];
+
+	for (let arg in args)
+		push(argv, shellQuote(sprintf('%s', arg)));
+
 	let outfd = mkstemp();
 	let errfd = mkstemp();
 
-	const exitcode = system(`${join(' ', args)} >&${outfd.fileno()} 2>&${errfd.fileno()}`);
+	const exitcode = system(`${join(' ', argv)} >&${outfd.fileno()} 2>&${errfd.fileno()}`);
 
 	outfd.seek(0);
 	errfd.seek(0);
 
-	const stdout = outfd.read(1024 * 512) ?? '';
-	const stderr = errfd.read(1024 * 512) ?? '';
+	const stdout = readAll(outfd, CMD_OUTPUT_LIMIT);
+	const stderr = readAll(errfd, CMD_OUTPUT_LIMIT);
 
 	outfd.close();
 	errfd.close();
 
-	const binary = isBinary(stdout);
+	const binary = isBinary(stdout.data);
 
 	return {
 		command: join(' ', args),
-		stdout: binary ? null : stdout,
-		stderr,
+		stdout: binary ? null : stdout.data,
+		stderr: stderr.data,
 		exitcode,
-		binary
+		binary,
+		truncated: stdout.truncated || stderr.truncated,
+		size: stdout.size
 	};
+};
+
+/* 探测可执行文件是否存在（Makefile 只声明了 curl，但精简镜像里也可能
+   只有 wget，反之亦然，所以两个都认）。 */
+function findBinary(name) {
+	for (let path in [`/usr/bin/${name}`, `/bin/${name}`, `/usr/sbin/${name}`]) {
+		try {
+			if (lstat(path).type === 'file')
+				return path;
+		} catch (e) {}
+	}
+
+	return null;
+};
+
+/* 统一下载器：优先 curl（DEPENDS 保证），缺失时回退 wget。
+   返回 null 表示两者都没有——调用方据此给出明确的「缺依赖」提示，
+   而不是把命令不存在（127）当成「服务器返回空」。 */
+function httpFetcher() {
+	const curl = findBinary('curl');
+
+	if (curl)
+		return { name: 'curl', path: curl };
+
+	const wget = findBinary('wget');
+
+	if (wget)
+		return { name: 'wget', path: wget };
+
+	return null;
+};
+
+/* 取回正文 + 响应头。curl 用 -D 把响应头写进 stderr（/proc/self/fd/2
+   就是本次调用被重定向的那个 stderr），与 wget -S 的输出通道完全一致，
+   上层解析逻辑不必区分下载器。用 /proc 而不是 /dev/stderr：OpenWrt 的
+   /dev 由 devtmpfs 生成，不保证有 stderr 这个链接，而 /proc 一定在。 */
+function httpFetch(url, ua, timeout) {
+	const fetcher = httpFetcher();
+
+	if (!fetcher)
+		return null;
+
+	if (fetcher.name === 'curl')
+		return executeCommand(fetcher.path, '-fsSL',
+			'--user-agent', ua,
+			'--connect-timeout', '10',
+			'--max-time', sprintf('%d', timeout),
+			'-D', '/proc/self/fd/2', url);
+
+	return executeCommand(fetcher.path, '-O-', '-S',
+		'--user-agent', ua, sprintf('--timeout=%d', timeout), url);
 };
 
 export function getTime(epoch) {
@@ -73,11 +182,18 @@ export function wGETResponse(url, ua) {
 	if (!ua)
 		ua = 'Wget/1.21 (HomeProxy, like v2rayN)';
 
-	const output = executeCommand(`/usr/bin/wget -O- -S --user-agent ${shellQuote(ua)} --timeout=10 ${shellQuote(url)}`) || {};
+	const output = httpFetch(url, ua, 300);
+
+	/* 两个下载器都不存在：返回 exitcode 127 而不是 null，让上层日志能看出
+	   是环境缺依赖，而不是订阅服务器返回了空内容。 */
+	if (!output)
+		return { body: null, headers: '', exitcode: 127, truncated: false };
+
 	return {
 		body: trim(output.stdout),
 		headers: output.stderr || '',
-		exitcode: output.exitcode
+		exitcode: output.exitcode,
+		truncated: output.truncated
 	};
 };
 
@@ -92,7 +208,26 @@ export function wGETHeaders(url, ua) {
 	if (!ua)
 		ua = 'clash.meta';
 
-	const output = executeCommand(`/usr/bin/wget -O /dev/null -S --user-agent ${shellQuote(ua)} --timeout=10 ${shellQuote(url)}`) || {};
+	const fetcher = httpFetcher();
+
+	if (!fetcher)
+		return '';
+
+	/* curl 把响应头写到 stdout（-D -），wget 写到 stderr（-S）；
+	   两者都只回传「头」，正文丢进 /dev/null。 */
+	if (fetcher.name === 'curl') {
+		const output = executeCommand(fetcher.path, '-fsSL',
+			'--user-agent', ua,
+			'--connect-timeout', '10',
+			'--max-time', '20',
+			'-o', '/dev/null', '-D', '-', url);
+
+		return output.stdout || '';
+	}
+
+	const output = executeCommand(fetcher.path, '-O', '/dev/null', '-S',
+		'--user-agent', ua, '--timeout=10', url);
+
 	return output.stderr || '';
 };
 /* Utilities end */

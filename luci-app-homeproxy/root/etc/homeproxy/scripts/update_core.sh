@@ -108,6 +108,44 @@ log_download() {
 	ensure_log
 	printf '%s download : %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"${DOWNLOAD_LOG}" 2>/dev/null
 }
+
+# ---------- 单实例互斥 ----------
+# 内核安装会被三处触发：init.d 启动时的 ensure、LuCI「更新内核」、以及
+# 定时/手动执行。两个进程同时下载会往同一个 /usr/bin/sing-box 交替写，
+# 还会互相清空 ${CACHE_DIR}，最终可能装上一个只写了一半的二进制。
+# mkdir 在 POSIX 上是原子的，用它当锁比 lock/flock 更可移植；
+# 持锁进程被 kill 留下的陈旧锁按 pid 是否存活清理。
+LOCK_DIR="${RUN_DIR}/core-update.lock"
+LOCK_HELD=0
+
+lock_acquire() {
+	local holder
+	mkdir -p "${RUN_DIR}" 2>/dev/null
+
+	while :; do
+		if mkdir "${LOCK_DIR}" 2>/dev/null; then
+			printf '%s\n' "$$" > "${LOCK_DIR}/pid" 2>/dev/null
+			LOCK_HELD=1
+			return 0
+		fi
+
+		holder="$(cat "${LOCK_DIR}/pid" 2>/dev/null || true)"
+
+		if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+			return 1
+		fi
+
+		rm -rf "${LOCK_DIR}" 2>/dev/null
+	done
+}
+
+lock_release() {
+	# 只删自己持有的锁：没拿到锁就退出时绝不能把别人的锁清掉
+	[ "${LOCK_HELD}" = "1" ] || return 0
+	rm -rf "${LOCK_DIR}" 2>/dev/null
+	LOCK_HELD=0
+	return 0
+}
 # 把字节数格式化为可读字符串（B/KB/MB/GB），便于日志阅读。
 human_size() {
 	local n="$1"
@@ -763,8 +801,25 @@ main() {
 	# so ensure_log() inside log_download creates it first.
 	log_download "==== 脚本启动：命令=${cmd} ===="
 	case "$cmd" in
-		ensure)  ensure_core ;;
-		update)  update_core ;;
+		ensure)
+			# 另一个实例正在下载/安装内核：它做的正是 ensure 要做的事，
+			# 让路即可（rc 0，不把并发当成失败写进日志）。
+			if ! lock_acquire; then
+				log_download "另一个内核任务正在运行，ensure 让路退出。"
+				exit 0
+			fi
+			trap 'lock_release' EXIT INT TERM
+			ensure_core
+			;;
+		update)
+			if ! lock_acquire; then
+				log_download "另一个内核任务正在运行，update 让路退出。"
+				echo "busy"
+				exit 1
+			fi
+			trap 'lock_release' EXIT INT TERM
+			update_core
+			;;
 		status)  print_status ;;
 		*)
 			echo "Usage: $0 {ensure|update|status}" >&2

@@ -2319,7 +2319,7 @@ msgid "Port"
 msgstr "端口"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:911
-msgid "Port %s alrealy exists!"
+msgid "Port %s already exists!"
 msgstr "端口 %s 已存在！"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1799
@@ -3905,17 +3905,23 @@ msgstr "…（仅显示最近 %s 行）"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2156
 msgid ""
-"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns."
-"alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns."
-"alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议"
-"若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失"
-"败。"
+"Examples:<br/>UDP: udp://223.5.5.5<br/>TCP: tcp://223.5.5.5<br/>TLS: tls://dns."
+"alidns.com<br/>HTTPS: https://dns.alidns.com/dns-query<br/>HTTP/3: h3://dns."
+"alidns.com/dns-query<br/>QUIC: quic://dns.alidns.com<br/>Note: for TLS/QUIC, if "
+"an IP address is used, the real domain (e.g. dns.alidns.com) must be set in "
+"\"TLS SNI\" below, otherwise certificate verification fails."
 msgstr ""
 "示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns."
 "alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns."
 "alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议"
 "若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失"
 "败。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3392
+msgid ""
+"Invalid UI path: it must not be a system directory (/, /etc, /usr, /tmp, ...) "
+"and must not contain \"..\"."
+msgstr "面板路径无效：不能是系统目录（/、/etc、/usr、/tmp 等），且不能包含“..”。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:89
 msgid "订阅名称"

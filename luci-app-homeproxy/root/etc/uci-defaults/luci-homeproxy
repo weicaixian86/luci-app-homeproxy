@@ -3,8 +3,15 @@
 [ -f "/www/luci-static/resources/icons/loading.gif" ] && \
 	sed -i "s,/loading.svg,/loading.gif,g" "/www/luci-static/resources/view/homeproxy/status.js"
 
-uci -q set luci.main.lang='zh_cn'
-uci -q commit luci
+# NOTE: this used to run `uci set luci.main.lang='zh_cn'; uci commit luci`
+# unconditionally, which changed the language of the *whole* LuCI web UI (every
+# other app included) just because this package was installed. The setting is
+# global and persisted, so only seed it when the user has never chosen a
+# language; an existing choice (including the usual "auto") is left untouched.
+if [ -z "$(uci -q get luci.main.lang)" ]; then
+	uci -q set luci.main.lang='zh_cn'
+	uci -q commit luci
+fi
 
 api_secret="$(uci -q get homeproxy.clash_api.secret)"
 if [ -z "$api_secret" ] || [ "$api_secret" = "homeproxy" ]; then

@@ -191,13 +191,44 @@ ensure_panel() {
 	# with a secret configured, an unauthenticated probe gets 401 on every try,
 	# the loop exhausts and the panel is simply never downloaded — while the log
 	# misleadingly says the API "never became ready".
-	probe_version() {
-		if [ -n "$secret" ]; then
-			wget -qO- -T 3 --header "Authorization: Bearer ${secret}" \
-				"${base_url}/version" >/dev/null 2>&1
+	# Clash API 调用统一走这两个包装：curl 是包的硬依赖（Makefile 的
+	# LUCI_DEPENDS 里有 +curl），wget 只是精简镜像里可能存在的替代品。
+	# 原来这里把 wget 写死，镜像里没有 wget 时「就绪探测 + /upgrade/ui」
+	# 全部静默失败，日志只会显示「clash API 未就绪」，看不出是缺下载器。
+	api_get() {		# api_get <url> <timeout>
+		if command -v curl >/dev/null 2>&1; then
+			if [ -n "$secret" ]; then
+				curl -fsS --connect-timeout 5 --max-time "$2" \
+					-H "Authorization: Bearer ${secret}" "$1" 2>/dev/null
+			else
+				curl -fsS --connect-timeout 5 --max-time "$2" "$1" 2>/dev/null
+			fi
+		elif [ -n "$secret" ]; then
+			wget -qO- -T "$2" --header "Authorization: Bearer ${secret}" "$1" 2>/dev/null
 		else
-			wget -qO- -T 3 "${base_url}/version" >/dev/null 2>&1
+			wget -qO- -T "$2" "$1" 2>/dev/null
 		fi
+	}
+
+	api_post() {		# api_post <url> <timeout>（/upgrade/ui 只认 POST 空数据）
+		# 这里刻意不加 -f：失败时内核返回 {"error":"..."} 的 JSON，正是下面
+		# 用来给用户看具体原因的来源；-f 会把响应体丢掉，只剩一句笼统失败。
+		if command -v curl >/dev/null 2>&1; then
+			if [ -n "$secret" ]; then
+				curl -sS --connect-timeout 5 --max-time "$2" -X POST --data '' \
+					-H "Authorization: Bearer ${secret}" "$1" 2>/dev/null
+			else
+				curl -sS --connect-timeout 5 --max-time "$2" -X POST --data '' "$1" 2>/dev/null
+			fi
+		elif [ -n "$secret" ]; then
+			wget -qO- -T "$2" --post-data='' --header "Authorization: Bearer ${secret}" "$1" 2>/dev/null
+		else
+			wget -qO- -T "$2" --post-data='' "$1" 2>/dev/null
+		fi
+	}
+
+	probe_version() {
+		api_get "${base_url}/version" 3 >/dev/null 2>&1
 	}
 
 	local i ready=0
@@ -233,11 +264,7 @@ ensure_panel() {
 	# a download that is actually progressing. -T is a socket inactivity
 	# timeout, not a total budget, so raising it only makes a stalled transfer
 	# take longer to give up.
-	if [ -n "$secret" ]; then
-		wget -qO- -T 1200 --post-data='' --header "Authorization: Bearer ${secret}" "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
-	else
-		wget -qO- -T 1200 --post-data='' "${base_url}/upgrade/ui" >"$tmp" 2>/dev/null && ok=1
-	fi
+	api_post "${base_url}/upgrade/ui" 1200 >"$tmp" 2>/dev/null && ok=1
 
 	if [ "$ok" = "1" ] && grep -q '"status"[[:space:]]*:[[:space:]]*"ok"' "$tmp"; then
 		panel_log "下载成功"

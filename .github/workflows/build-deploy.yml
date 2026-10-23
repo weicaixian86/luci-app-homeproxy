@@ -396,7 +396,10 @@ jobs:
           version="${tag#v}"; version="${version#V}"
           echo "version=$version"
           for arch in amd64 arm64 armv7 mipsle; do
-            d="homeproxy-deploy-$version-$arch"
+            # 命名与 luci 包（luci-app-homeproxy_<ver>-all.ipk）一致：版本号在前、
+            # 架构在后，用下划线分隔 —— README 与 deploy/README.md 都按这个名字
+            # 写命令，用连字符会让用户照文档下载 404。
+            d="homeproxy-deploy_${version}-${arch}"
             mkdir -p "$d"
             cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk "$d/"
             cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk "$d/"

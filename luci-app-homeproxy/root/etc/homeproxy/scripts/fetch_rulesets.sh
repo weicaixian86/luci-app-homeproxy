@@ -326,10 +326,71 @@ if [ "$CHECK_ONLY" = "1" ]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 单实例互斥
+#
+# 规则集下载会被三处触发：init.d 启动预取、LuCI「立即更新」（--only）、
+# 以及用户手动执行。并发时两个进程会同时写同一批 .srs，虽然用了临时文件
+# + rename，仍会互相覆盖、白白占满带宽。
+# mkdir 在 POSIX 上是原子的，用它当锁不依赖 lock/flock applet；
+# 持锁者被 kill 留下的陈旧锁按 pid 是否存活清理。
+# ---------------------------------------------------------------------------
+LOCK_DIR="$RUN_DIR/rulesets-download.lock"
+LOCK_HELD=0
+
+# $1 = 最多等待秒数（0 表示拿不到就立刻返回 1）
+lock_acquire() {
+	local wait_s="${1:-0}" holder waited=0
+
+	mkdir -p "$RUN_DIR" 2>/dev/null
+
+	while :; do
+		if mkdir "$LOCK_DIR" 2>/dev/null; then
+			printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null
+			LOCK_HELD=1
+			return 0
+		fi
+
+		holder="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
+
+		if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+			[ "$waited" -ge "$wait_s" ] && return 1
+			sleep 2
+			waited=$((waited + 2))
+			continue
+		fi
+
+		# 持有者已不在：陈旧锁，清掉后重试
+		rm -rf "$LOCK_DIR" 2>/dev/null
+	done
+}
+
+lock_release() {
+	# 只删自己持有的锁：没拿到锁就退出时绝不能把别人的锁清掉
+	[ "$LOCK_HELD" = "1" ] || return 0
+	rm -rf "$LOCK_DIR" 2>/dev/null
+	LOCK_HELD=0
+	return 0
+}
+
+# ---------------------------------------------------------------------------
 # Download pass
 # ---------------------------------------------------------------------------
 
 mkdir -p "$RUN_DIR" "$RULESET_DIR" 2>/dev/null
+
+if [ -n "$ONLY" ]; then
+	# 「立即更新」必须给出真实结果：等正在跑的批量预下载腾出锁（最多 60s），
+	# 等不到就明确失败，而不是假装成功。
+	if ! lock_acquire 60; then
+		log_msg "错误：另一个规则集下载任务仍在运行，稍后再试。"
+		exit 1
+	fi
+elif ! lock_acquire 0; then
+	log_msg "另一个规则集下载任务正在运行，本次跳过。"
+	exit 0
+fi
+
+trap 'lock_release' EXIT INT TERM
 
 # 下载磁盘空间预检：规则集虽单条不大，但一次性拉取 N 条仍需要余量。
 # 可用空间拿不到（df 缺失）时放行，不阻断下载。

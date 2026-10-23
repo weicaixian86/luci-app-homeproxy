@@ -6,7 +6,6 @@
 
 'use strict';
 'require form';
-'require poll';
 'require rpc';
 'require uci';
 'require ui';
@@ -133,7 +132,7 @@ return view.extend({
 
 		s = m.section(form.TypedSection);
 		s.render = function() {
-			poll.add(() => {
+			hp.pollAdd('server-status', () => {
 				return L.resolveDefault(getServiceStatus()).then((res) => {
 					let view = document.getElementById('service_status');
 					view.innerHTML = renderStatus(res, features.version);

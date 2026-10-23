@@ -8,6 +8,7 @@
 'require baseclass';
 'require form';
 'require fs';
+'require poll';
 'require rpc';
 'require uci';
 'require ui';
@@ -339,6 +340,77 @@ const OrderedMultiDropdown = ui.Dropdown.extend({
 });
 
 return baseclass.extend({
+	/* Registry backing hp.pollAdd(), keyed by caller-chosen name. */
+	poll_handles: {},
+
+	/**
+	 * Register a poll callback under a stable name.
+	 *
+	 * LuCI's poll.add() only de-duplicates by function identity, so a callback
+	 * created inside a section's render() (a fresh closure on every
+	 * re-render, e.g. after "Save & Apply") accumulates one extra entry per
+	 * render and fires several RPCs per tick. Registering through this helper
+	 * removes the previous callback for the same key first.
+	 *
+	 * @param {string} key    stable name, e.g. 'client-status'
+	 * @param {function} fn   callback to run on each poll tick
+	 * @param {number} [interval] optional interval in seconds
+	 * @returns {boolean} true when the callback is registered
+	 */
+	pollAdd(key, fn, interval) {
+		if (typeof fn !== 'function')
+			return false;
+
+		if (!this.poll_handles)
+			this.poll_handles = {};
+
+		const previous = this.poll_handles[key];
+
+		/* Same function object: poll.add() itself de-duplicates, but do not
+		   touch the queue at all in that case. */
+		if (previous === fn)
+			return true;
+
+		if (previous) {
+			/* Without poll.remove() (very old LuCI) re-registering would stack
+			   callbacks, so keep the first one instead. */
+			if (typeof poll.remove !== 'function')
+				return false;
+
+			try {
+				poll.remove(previous);
+			}
+			catch (e) {}
+		}
+
+		this.poll_handles[key] = fn;
+
+		return poll.add(fn, interval);
+	},
+
+	/**
+	 * Drop a previously registered poll callback (page teardown, opt-out).
+	 *
+	 * @param {string} key
+	 * @returns {boolean} true when a callback was removed
+	 */
+	pollRemove(key) {
+		const fn = this.poll_handles ? this.poll_handles[key] : null;
+
+		if (!fn)
+			return false;
+
+		delete this.poll_handles[key];
+
+		if (typeof poll.remove === 'function')
+			try {
+				poll.remove(fn);
+			}
+			catch (e) {}
+
+		return true;
+	},
+
 	dns_strategy: {
 		'': _('Default'),
 		'prefer_ipv4': _('Prefer IPv4'),

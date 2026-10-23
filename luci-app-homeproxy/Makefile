@@ -5,7 +5,10 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-homeproxy
-PKG_VERSION:=2.0.0
+# 占位版本号：正式发布由 CI（.github/workflows/build-deploy.yml）在编译前把
+# PKG_VERSION 改写成本次填写的发布版本（如 0.1.17）。本地 make 得到 0.0.0-1，
+# 一眼就能看出是本地构建，也不会和真实发布版本混淆。
+PKG_VERSION:=0.0.0
 PKG_RELEASE:=1
 
 LUCI_TITLE:=Sing-box proxy management platform for OpenWrt
@@ -26,12 +29,19 @@ LUCI_DEPENDS:= \
 	+ucode-mod-ubus \
 	+ucode-mod-uci
 
+# Only files that are actually shipped by this package and that a user may
+# edit belong here. The previous list also named /etc/homeproxy/certs/,
+# /etc/homeproxy/ruleset/, resources/direct_list.txt and
+# resources/proxy_list.txt:
+#   - the two directories are created at service start (init.d does mkdir -p),
+#     so they are not part of the package and opkg/apk silently ignored the
+#     entries;
+#   - the two list files are no longer shipped (superseded by the geodata
+#     lists), so the entries were dead as well.
+# Keeping only real paths means a stale entry can never fail a conffile
+# integrity check, and `tools/tests/run.sh` guards against regressions.
 define Package/luci-app-homeproxy/conffiles
 /etc/config/homeproxy
-/etc/homeproxy/certs/
-/etc/homeproxy/ruleset/
-/etc/homeproxy/resources/direct_list.txt
-/etc/homeproxy/resources/proxy_list.txt
 endef
 
 # HomeProxy no longer bundles a single-architecture sing-box binary. The reF1nd

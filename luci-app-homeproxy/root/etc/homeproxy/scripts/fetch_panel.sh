@@ -69,6 +69,46 @@ disk_free_bytes() {
 	return 0
 }
 
+# ---------------------------------------------------------------------------
+# 单实例互斥
+#
+# 面板下载有三个触发源：init.d 启动预取、cron/规则集流程、LuCI「更新面板」
+# 按钮，三者完全可能撞在一起。并发下载不仅浪费带宽，还会让同一个
+# $panel_dir 被两个进程交替 rm -rf / cp，最后留下半套文件。
+# 用 mkdir 当锁（POSIX 上是原子的，且不依赖 lock/flock 这类不一定存在的
+# applet）；持锁进程被 kill 或重启留下的陈旧锁，按 pid 是否存活清理。
+# ---------------------------------------------------------------------------
+LOCK_DIR="$RUN_DIR/panel-download.lock"
+LOCK_HELD=0
+
+lock_acquire() {
+	local holder=""
+	mkdir -p "$RUN_DIR" 2>/dev/null
+	if mkdir "$LOCK_DIR" 2>/dev/null; then
+		printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null
+		LOCK_HELD=1
+		return 0
+	fi
+	holder="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
+	if [ -n "$holder" ] && kill -0 "$holder" 2>/dev/null; then
+		return 1
+	fi
+	# 有锁目录但持有者已不在：陈旧锁，清掉重来
+	rm -rf "$LOCK_DIR" 2>/dev/null
+	mkdir "$LOCK_DIR" 2>/dev/null || return 1
+	printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>/dev/null
+	LOCK_HELD=1
+	return 0
+}
+
+lock_release() {
+	# 只删自己持有的锁：没拿到锁就退出时绝不能把别人的锁清掉
+	[ "$LOCK_HELD" = "1" ] || return 0
+	rm -rf "$LOCK_DIR" 2>/dev/null
+	LOCK_HELD=0
+	return 0
+}
+
 usage() {
 	cat <<'EOF'
 Usage: fetch_panel.sh [options]
@@ -96,8 +136,43 @@ while [ $# -gt 0 ]; do
 	shift
 done
 
+# 面板目录来自用户输入（LuCI「UI 路径」），后面会被 rm -rf / mv 直接操作。
+# 规则与 rpcd 侧 sanitizePanelDir() 一致：绝对路径、至少两级、不含 `..`、
+# 不落在系统目录，/etc 下只允许本应用目录；不合规一律回落默认目录。
+sanitize_panel_dir() {
+	local d="$1" p
+	case "$d" in
+		/*) ;;
+		*) printf '%s' "$HP_DIR/run/ui"; return 0 ;;
+	esac
+	d="$(printf '%s' "$d" | sed 's#//*#/#g; s#/$##')"
+	case "/$d/" in
+		*/../*) printf '%s' "$HP_DIR/run/ui"; return 0 ;;
+	esac
+	case "$d" in
+		/*/*) ;;
+		*) printf '%s' "$HP_DIR/run/ui"; return 0 ;;
+	esac
+	for p in /bin /sbin /lib /usr /proc /sys /dev /overlay /rom /boot /tmp /var; do
+		case "$d" in
+			"$p"/*) printf '%s' "$HP_DIR/run/ui"; return 0 ;;
+		esac
+	done
+	case "$d" in
+		/etc/*)
+			case "$d" in
+				/etc/homeproxy/*) ;;
+				*) printf '%s' "$HP_DIR/run/ui"; return 0 ;;
+			esac
+			;;
+	esac
+	printf '%s' "$d"
+	return 0
+}
+
 panel_dir="$(uci -q get "$CONF.clash_api.external_ui" 2>/dev/null)"
 [ -n "$panel_dir" ] || panel_dir="$HP_DIR/run/ui"
+panel_dir="$(sanitize_panel_dir "$panel_dir")"
 panel_url="$(uci -q get "$CONF.clash_api.external_ui_download_url" 2>/dev/null)"
 
 if [ "$FORCE" != "1" ] && [ -f "$panel_dir/index.html" ]; then
@@ -152,27 +227,14 @@ build_candidates() {
 	return 0
 }
 
+# Last HTTP status seen by download_with_progress(); reported when every mirror
+# fails so the log says *why* (404 vs timeout vs TLS error).
 LAST_HTTP=""
 
-download_to() {
-	local url="$1" out="$2" max="$3"
-	LAST_HTTP=""
-	if command -v curl >/dev/null 2>&1; then
-		# -f turns HTTP 4xx/5xx into a failure instead of saving the error page,
-		# which is exactly how a 73-byte "404" ends up installed as a dashboard.
-		# --speed-limit/--speed-time abort only when the transfer is too slow to
-		# be worth waiting for (a 0.9 KB/s mirror), so a merely slow but working
-		# mirror (17 KB/s measured) is still allowed to finish.
-		LAST_HTTP="$(curl -fsSL --connect-timeout 20 \
-			--speed-limit 6144 --speed-time 60 --max-time "$max" \
-			-w '%{http_code}' -o "$out" "$url" 2>/dev/null)"
-		return $?
-	fi
-	wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
-	return $?
-}
 # 带进度显示的下载：后台运行 curl 并轮询已下载字节，按百分比/可读字节数
 # 写日志，避免单文件大下载（面板约 9.5MB）期间日志长时间无输出、看起来像卡死。
+# 这是本脚本唯一的下载入口（旧的静默 download_to 已删除，避免两套超时参数
+# 与镜像策略各走一路、彼此不一致）。
 download_with_progress() {
 	local url="$1" out="$2" max="$3" label="$4"
 	LAST_HTTP=""
@@ -260,6 +322,7 @@ stage="$work/stage"
 backup="$panel_dir.backup"
 
 cleanup() {
+	lock_release
 	rm -rf "$work" 2>/dev/null
 	return 0
 }
@@ -267,6 +330,13 @@ cleanup() {
 rm -rf "$work" 2>/dev/null
 mkdir -p "$work" "$extract" "$stage" 2>/dev/null || { log_msg "下载失败：无法创建临时目录 $work"; exit 1; }
 trap cleanup EXIT INT TERM
+
+# 拿到锁之后再开始下载。抢不到说明另一个进程正在下载同一份面板：它做的
+# 正是本脚本要做的事，直接让路（rc 0，调用方会自行检查 index.html）。
+if ! lock_acquire; then
+	log_msg "另一个面板下载任务正在运行，本次跳过。"
+	exit 0
+fi
 
 deadline=$(( $(date +%s) + BUDGET ))
 got=0

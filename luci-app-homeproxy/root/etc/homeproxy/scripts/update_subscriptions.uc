@@ -1430,6 +1430,11 @@ function main() {
 			continue;
 		}
 
+		/* 正文超过采集上限（16 MiB）时会被截断：必须显式告警，否则用户只
+		   看到「节点少了」，却不知道是响应太大而不是订阅本身的问题。 */
+		if (response.truncated)
+			log(sprintf('Warning: the response from %s exceeded the 16 MiB limit and was truncated; the node list may be incomplete.', url));
+
 		let nodes;
 		try {
 			const parsed = json(res);
@@ -1468,9 +1473,18 @@ function main() {
 
 		let count = 0;
 		for (let node in nodes) {
-			let config;
-			if (!isEmpty(node))
-				config = parse_uri(node);
+			let config = null;
+			if (!isEmpty(node)) {
+				/* 任意一条坏节点（畸形 base64、非预期 JSON 结构、缺字段）都只
+				   跳过它自己：解析异常漏出去会让整条订阅中断，用户看到的是
+				   「这次更新一个节点都没有」。 */
+				try {
+					config = parse_uri(node);
+				} catch (e) {
+					log(sprintf('Skipping unparsable node entry in %s: %s', url, trim(sprintf('%s', e))));
+					config = null;
+				}
+			}
 			if (isEmpty(config))
 				continue;
 

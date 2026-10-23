@@ -64,6 +64,20 @@ rm -rf /tmp/luci-modulecache/*
 - `build-deploy.yml`（Build & Release All-in-One）：手动触发，输入版本号（如 `0.1.1`）后云端编译打补丁 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci 包（24.10 IPK 与 25.12 APK）。只发**一个** Release，标签即该版本号，包含：每架构一体化 zip、`luci-app-homeproxy_<版本>-all.ipk/.apk`、以及 `sing-box-1.14.3-refind_<版本>-linux-*-musl.tar.gz`（供「更新内核」自动下载）。
 - `Rescan-Translation.yml`：代码变更后自动/手动更新翻译。
 - `Update-Geodata.yml`：每周自动/手动更新内置 geodata。
+- `lint.yml`：每次推送跑一次静态检查（秒级，不依赖 SDK），只报状态、不阻塞发布。
+
+### 提交前自检
+
+```sh
+sh tools/tests/run.sh
+```
+
+覆盖：JS/shell 语法、JSON、工作流 YAML、ucode 近似解析、`po` 与 JS 文案一致性、
+`Makefile` 的 `conffiles` 是否真实存在、策略组表格置顶/拖拽的 DOM 行为、界面轮询去重。
+
+Windows（Git Bash）下若 `python3` 不可用：`PY=python sh tools/tests/run.sh`；
+缺少 `jsdom` 时 DOM 测试自动 `SKIP`（`npm install --no-save jsdom` 可启用），
+缺少 `polib`/`PyYAML` 时对应两项同样降级为 `SKIP`。
 
 ## 四、常见问题
 1. **面板下载失败**

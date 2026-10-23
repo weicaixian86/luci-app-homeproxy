@@ -7,7 +7,6 @@
 'use strict';
 'require form';
 'require network';
-'require poll';
 'require rpc';
 'require uci';
 'require ui';
@@ -644,7 +643,7 @@ return view.extend({
 
 		s = m.section(form.TypedSection);
 		s.render = function () {
-			poll.add(function () {
+			const statusPoll = function () {
 				return Promise.all([
 					L.resolveDefault(getServiceStatus(), false),
 					L.resolveDefault(callCurrentNode(), null)
@@ -662,7 +661,11 @@ return view.extend({
 
 					updateCoreStatus(isRunning, current_label);
 					});
-				});
+			};
+
+			/* 重渲染（保存并应用）时由 hp.pollAdd 摘掉上一次注册的回调，
+			   避免同一个轮询被叠加成多份、每周期多发一次 RPC。 */
+			hp.pollAdd('client-status', statusPoll);
 
 			let actions = [
 				E('button', {
@@ -908,7 +911,7 @@ return view.extend({
 					if (!stubValidator.apply('port', i) && !stubValidator.apply('portrange', i))
 						return _('Expecting: %s').format(_('valid port value'));
 					if (ports.includes(i))
-						return _('Port %s alrealy exists!').format(i);
+						return _('Port %s already exists!').format(i);
 					ports = ports.concat(i);
 				}
 			}
@@ -2153,7 +2156,7 @@ return view.extend({
 		so.rmempty = false;
 
 		so = ss.option(form.Value, 'server', _('Address'),
-			_('示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns.alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns.alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失败。'));
+			_('Examples:<br/>UDP: udp://223.5.5.5<br/>TCP: tcp://223.5.5.5<br/>TLS: tls://dns.alidns.com<br/>HTTPS: https://dns.alidns.com/dns-query<br/>HTTP/3: h3://dns.alidns.com/dns-query<br/>QUIC: quic://dns.alidns.com<br/>Note: for TLS/QUIC, if an IP address is used, the real domain (e.g. dns.alidns.com) must be set in "TLS SNI" below, otherwise certificate verification fails.'));
 		so.placeholder = '';
 		so.validate = function(section_id, value) {
 			let type = this.section.formvalue(section_id, 'type') ||
@@ -3389,6 +3392,27 @@ return view.extend({
 		so = ss.option(form.Value, 'external_ui', _('UI path'));
 		so.placeholder = '/etc/homeproxy/run/ui';
 		so.default = '/etc/homeproxy/run/ui';
+		/* 该路径会被 rpcd 侧直接 rm -rf / mv（安装、更新、回滚面板），
+		   界面必须拦住根目录、系统目录与 `..` 回溯；判定规则与
+		   luci.homeproxy 的 sanitizePanelDir()、fetch_panel.sh 保持一致。 */
+		so.validate = function(section_id, value) {
+			value = (value || '').trim();
+
+			if (!value)
+				return true;
+
+			const normalized = value.replace(/\/+/g, '/').replace(/\/+$/, ''),
+			      protectedPrefix = /^\/(bin|sbin|lib|usr|proc|sys|dev|overlay|rom|boot|tmp|var)\//;
+
+			if (!normalized.startsWith('/')
+				|| !/^\/[^\/]+\/[^\/]+/.test(normalized)
+				|| /(^|\/)\.\.($|\/)/.test(normalized)
+				|| protectedPrefix.test(normalized)
+				|| (normalized.startsWith('/etc/') && !normalized.startsWith('/etc/homeproxy/')))
+				return _('Invalid UI path: it must not be a system directory (/, /etc, /usr, /tmp, ...) and must not contain "..".');
+
+			return true;
+		};
 
 		const panelPresetUrls = {
 			'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版 (ghproxy.net)',

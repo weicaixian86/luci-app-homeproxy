@@ -44,10 +44,55 @@ function readProcess(fd) {
 	return payload;
 }
 
+/* Clash API 请求统一走这两个包装：curl 是包的硬依赖（Makefile 的
+   LUCI_DEPENDS 里有 +curl），wget 只是精简镜像里可能存在的替代品。
+   原来这里把 /usr/bin/wget 写死，镜像里没有 wget 时面板下载、延迟测试
+   和「当前节点」查询都会静默失败。两个都没有时返回 null，上层沿用
+   已有的 clash_api_unavailable 分支，不会冒出一个误导性的「未知错误」。 */
+function httpClient() {
+	for (let path in ['/usr/bin/curl', '/bin/curl'])
+		if (access(path))
+			return { kind: 'curl', path: path };
+
+	for (let path in ['/usr/bin/wget', '/bin/wget'])
+		if (access(path))
+			return { kind: 'wget', path: path };
+
+	return null;
+}
+
+function httpCommand(url, timeout, header, post) {
+	const client = httpClient();
+
+	if (!client)
+		return null;
+
+	const t = timeout || 10;
+	const auth = header ? sprintf('--header %s ', shellquote(header)) : '';
+
+	if (client.kind === 'curl')
+		/* 不加 -f：Clash API 在 4xx/5xx 时也会返回带 message 的 JSON，
+		   这正是上层用来区分「超时 / 无效 outbound / 未知错误」的依据。 */
+		return sprintf(`%s -sS --connect-timeout 5 --max-time %d %s%s%s 2>"/dev/null"`,
+			client.path, t, auth,
+			post ? "--request POST --data '' " : '',
+			shellquote(url));
+
+	return sprintf(`%s -qO- -T %d %s%s%s 2>"/dev/null"`,
+		client.path, t, auth,
+		post ? "--post-data='' " : '',
+		shellquote(url));
+}
+
 function clashAPIRequest(api, method, path, timeout) {
-	const auth = api.secret ? `--header ${shellquote(`Authorization: Bearer ${api.secret}`)} ` : '';
-	const post = (method === 'POST') ? "--post-data='' " : '';
-	const fd = popen(`/usr/bin/wget -qO- -T ${timeout || 10} ${auth}${post}${shellquote(api.base_url + path)} 2>"/dev/null"`);
+	const cmd = httpCommand(api.base_url + path, timeout || 10,
+		api.secret ? `Authorization: Bearer ${api.secret}` : null,
+		method === 'POST');
+
+	if (!cmd)
+		return null;
+
+	const fd = popen(cmd);
 
 	if (!fd)
 		return null;
@@ -63,16 +108,63 @@ function clashAPIRequest(api, method, path, timeout) {
 
 
 
-function getPanelDir(uci) {
-	return trim(uci.get('homeproxy', 'clash_api', 'external_ui') || `${HP_DIR}/run/ui`);
-}
-
 /* Append a timestamped panel-download event to the dedicated runtime log
    file so it is visible in the HomeProxy "Logs" page, and also keep a syslog
    copy for system-level debugging. */
 function panelLog(msg) {
 	const line = sprintf('面板: %s', msg);
 	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/panel_download.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
+}
+
+/* external_ui 是用户自由输入的路径，随后会被 `rm -rf` / `mv` 直接操作
+   （preparePanelBackup / restorePanelBackup / clash_api_install_panel）。
+   一旦填成 `/`、`/etc`、`/usr`，安装或更新面板就会搬走/删除系统目录。
+   规则：
+     - 必须是绝对路径，至少两级（/a/b），且不含 `..` 回溯；
+     - 只能是 root 之外的常规目录；
+     - 系统目录一律拒绝；`/etc` 下只允许 /etc/homeproxy/**。
+   不合规时回落到默认目录并写一条面板日志，绝不带着危险路径去执行。 */
+const PROTECTED_PATH_PREFIXES = ['/bin/', '/sbin/', '/lib/', '/usr/', '/proc/',
+	'/sys/', '/dev/', '/overlay/', '/rom/', '/boot/', '/tmp/', '/var/'];
+
+function sanitizePanelDir(raw) {
+	const fallback = `${HP_DIR}/run/ui`;
+	const dir = trim(raw || '');
+
+	if (!length(dir) || !match(dir, /^\//))
+		return fallback;
+
+	let normalized = replace(dir, /\/+/g, '/');
+	normalized = replace(normalized, /\/\.\//g, '/');
+	normalized = replace(normalized, /\/$/, '');
+
+	if (!length(normalized) || match(normalized, /(^|\/)\.\.($|\/)/))
+		return fallback;
+
+	/* 至少两级：/etc、/mnt 这种一级目录本身不允许当面板目录 */
+	if (!match(normalized, /^\/[^\/]+\/[^\/]+/))
+		return fallback;
+
+	for (let prefix in PROTECTED_PATH_PREFIXES) {
+		if (substr(normalized, 0, length(prefix)) === prefix)
+			return fallback;
+	}
+
+	/* /etc 下只放行本应用自己的目录 */
+	if (match(normalized, /^\/etc\//) && !match(normalized, /^\/etc\/homeproxy\//))
+		return fallback;
+
+	return normalized;
+}
+
+function getPanelDir(uci) {
+	const raw = trim(uci.get('homeproxy', 'clash_api', 'external_ui') || '');
+	const dir = sanitizePanelDir(raw);
+
+	if (length(raw) && dir !== trim(replace(raw, /\/+$/g, '')))
+		panelLog(sprintf('外部面板路径不安全，已忽略（%s），改用默认目录 %s', raw, dir));
+
+	return dir;
 }
 
 function hasDirectoryContent(directory) {
@@ -1007,7 +1099,8 @@ const methods = {
 					for (let i = 0; i < retries; i++) {
 						resolveRuntimePid(runtime_meta);
 
-						const probe_fd = popen(`/usr/bin/wget -qO- ${shellquote(runtime_meta.controller_url + '/version')} 2>"/dev/null"`);
+						const probe_cmd = httpCommand(runtime_meta.controller_url + '/version', 5, null, false);
+						const probe_fd = probe_cmd ? popen(probe_cmd) : null;
 						if (probe_fd) {
 							let payload = '', line;
 							while (true) {
@@ -1162,11 +1255,9 @@ const methods = {
 				);
 
 				const started_ms = monotonicMs();
-				const fd = popen(sprintf(
-					'/usr/bin/wget -qO- -T %d %s 2>"/dev/null"',
-					int((rp_delay_timeout_ms + 999) / 1000),
-					shellquote(delay_endpoint)
-				));
+				const delay_cmd = httpCommand(delay_endpoint,
+					int((rp_delay_timeout_ms + 999) / 1000), null, false);
+				const fd = delay_cmd ? popen(delay_cmd) : null;
 				if (!fd)
 					return {
 						state: 'timeout',

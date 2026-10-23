@@ -8,7 +8,6 @@
 'require dom';
 'require form';
 'require fs';
-'require poll';
 'require rpc';
 'require uci';
 'require ui';
@@ -448,7 +447,9 @@ function renderUnifiedLog() {
 		})
 	});
 
-	poll.add(refresh);
+	/* Keyed registration: request() runs on every re-render and creates a new
+	   closure, which poll.add() would happily stack up. */
+	hp.pollAdd('log-refresh', refresh);
 
 	return E([
 		E('style', [ css ]),

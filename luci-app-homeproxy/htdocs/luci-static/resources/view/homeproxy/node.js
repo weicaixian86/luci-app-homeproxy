@@ -1925,8 +1925,18 @@ return view.extend({
 										if (['vless', 'vmess'].includes(config.type))
 											config.packet_encoding = packet_encoding
 
-										let nameHash = hp.calcStringMD5(config.label);
-										let sid = uci.add(data[0], 'node', nameHash);
+										/* 段名用 label 的 MD5：同名节点会算出同一个 sid，而
+										   uci.add() 对已存在的段是「复用」，后一条会把前一条
+										   的值覆盖掉——一次导入 20 条「香港 01」最后只剩 1 条。
+										   冲突时追加序号，保证每条都能落地。 */
+										const nameHash = hp.calcStringMD5(config.label);
+										let sid = nameHash,
+										    seq = 1;
+
+										while (uci.get(data[0], sid))
+											sid = '%s_%s'.format(nameHash, ++seq);
+
+										sid = uci.add(data[0], 'node', sid);
 										Object.keys(config).forEach((k) => {
 											uci.set(data[0], sid, k, config[k]);
 										});
