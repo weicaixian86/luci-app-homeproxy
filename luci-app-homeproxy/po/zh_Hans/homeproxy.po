@@ -269,7 +269,7 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:596
+#: htdocs/luci-static/resources/view/homeproxy/log.js:603
 msgid "Auto refresh"
 msgstr "自动刷新"
 
@@ -402,10 +402,6 @@ msgstr "无法将 null 转换为对象。"
 msgid "Certificate path"
 msgstr "证书路径"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:3672
-msgid "Could not verify the service state after applying: %s"
-msgstr "应用配置后无法确认服务状态：%s"
-
 #: htdocs/luci-static/resources/view/homeproxy/status.js:91
 msgid "Check"
 msgstr "检查"
@@ -456,11 +452,11 @@ msgstr "Cisco 公共DNS (DoH)"
 msgid "Clash API unavailable."
 msgstr "Clash API 不可用"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:605
+#: htdocs/luci-static/resources/view/homeproxy/log.js:612
 msgid "Clean log"
 msgstr "清空日志"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:625
+#: htdocs/luci-static/resources/view/homeproxy/log.js:632
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr "先点击日志区域，再按 Ctrl+A 即可全选。"
 
@@ -502,7 +498,7 @@ msgid "CloudFlare Public DNS (DoH)"
 msgstr "CloudFlare 公共DNS (DoH)"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:727
-#: htdocs/luci-static/resources/view/homeproxy/log.js:435
+#: htdocs/luci-static/resources/view/homeproxy/log.js:442
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
@@ -520,7 +516,7 @@ msgstr "拥塞控制算法"
 msgid "Connection check"
 msgstr "连接检查"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:616
+#: htdocs/luci-static/resources/view/homeproxy/log.js:623
 msgid "Copy log"
 msgstr "复制日志"
 
@@ -531,6 +527,10 @@ msgstr "核心状态"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:718
 msgid "Core Version"
 msgstr "核心版本"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3676
+msgid "Could not verify the service state after applying: %s"
+msgstr "应用配置后无法确认服务状态：%s"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2619
 msgid ""
@@ -618,7 +618,7 @@ msgid ""
 "protection is required."
 msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:387
+#: htdocs/luci-static/resources/view/homeproxy/log.js:394
 msgid "Debug"
 msgstr "调试"
 
@@ -1053,7 +1053,7 @@ msgstr "启用 SUoT 协议，需要服务端支持。与多路复用冲突。"
 msgid "Encrypt method"
 msgstr "加密方式"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:390
+#: htdocs/luci-static/resources/view/homeproxy/log.js:397
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
 msgstr "错误"
@@ -1605,7 +1605,7 @@ msgid ""
 "seconds."
 msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:388
+#: htdocs/luci-static/resources/view/homeproxy/log.js:395
 msgid "Info"
 msgstr "信息"
 
@@ -1678,7 +1678,7 @@ msgstr "反转"
 msgid "Invert match result."
 msgstr "反转匹配结果"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:557
+#: htdocs/luci-static/resources/view/homeproxy/log.js:564
 msgid ""
 "Kernel log timestamps were in UTC (this device has no time zone data); they "
 "are shown converted to local time (%s)."
@@ -1793,7 +1793,7 @@ msgstr "监听接口"
 msgid "Listen port"
 msgstr "监听端口"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:433
+#: htdocs/luci-static/resources/view/homeproxy/log.js:440
 msgid "Loading"
 msgstr "加载中"
 
@@ -1805,7 +1805,7 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:613
+#: htdocs/luci-static/resources/view/homeproxy/log.js:620
 msgid "Log copied to clipboard."
 msgstr "日志已复制到剪贴板。"
 
@@ -1817,7 +1817,7 @@ msgstr "日志文件不存在。"
 msgid "Log is empty."
 msgstr "日志为空。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:591
+#: htdocs/luci-static/resources/view/homeproxy/log.js:598
 msgid "Log level:"
 msgstr "日志级别："
 
@@ -2211,7 +2211,7 @@ msgstr "未下载"
 msgid "Not installed"
 msgstr "未安装"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:613
+#: htdocs/luci-static/resources/view/homeproxy/log.js:620
 msgid "Nothing to copy."
 msgstr "没有可复制的内容。"
 
@@ -2619,7 +2619,7 @@ msgstr "Redirect TCP + TProxy UDP"
 msgid "Redirect TCP + Tun UDP"
 msgstr "Redirect TCP + Tun UDP"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:623
+#: htdocs/luci-static/resources/view/homeproxy/log.js:630
 msgid "Refresh every %s seconds."
 msgstr "每 %s 秒刷新。"
 
@@ -2770,9 +2770,13 @@ msgstr "规则集 URL"
 msgid "Rule set updated successfully."
 msgstr "规则集更新成功。"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:3663
-msgid "Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/etc/init.d/rpcd restart\" or reboot the router."
-msgstr "规则集同步请求失败：%s。若刚升级过插件，请执行 /etc/init.d/rpcd restart 或重启路由器。"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3665
+msgid ""
+"Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/"
+"etc/init.d/rpcd restart\" or reboot the router."
+msgstr ""
+"规则集同步请求失败：%s。若刚升级过插件，请执行 /etc/init.d/rpcd restart 或重"
+"启路由器。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1844
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2625
@@ -3729,7 +3733,7 @@ msgstr "WAN DNS（从接口获取）"
 msgid "WAN IP Policy"
 msgstr "WAN IP 策略"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:389
+#: htdocs/luci-static/resources/view/homeproxy/log.js:396
 msgid "Warn"
 msgstr "警告"
 
