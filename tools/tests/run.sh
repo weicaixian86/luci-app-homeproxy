@@ -25,12 +25,29 @@ PKG="$ROOT/luci-app-homeproxy"
 NODE=${NODE:-node}
 PY=${PY:-python3}
 
+# OpenWrt runs /bin/sh = busybox ash and GitHub's ubuntu runner uses dash. A
+# script can pass `bash -n` locally and still die at parse time in CI (and on
+# the router), so prefer the strictest POSIX shell available here instead of
+# whatever `sh` happens to be. Git Bash maps `sh` to bash — never trust it.
+SHN=dash
+command -v dash >/dev/null 2>&1 || SHN=sh
+
 FAILED=0
 CHECKS=0
+FAILLIST=''
 
 section() { printf '\n== %s ==\n' "$1"; }
 ok()      { CHECKS=$((CHECKS + 1)); printf '  OK   %s\n' "$1"; }
-bad()     { CHECKS=$((CHECKS + 1)); FAILED=$((FAILED + 1)); printf '  FAIL %s\n' "$1"; }
+bad()     {
+	CHECKS=$((CHECKS + 1))
+	FAILED=$((FAILED + 1))
+	printf '  FAIL %s\n' "$1"
+	FAILLIST="$FAILLIST
+  - $1"
+	# Surface it where it is actually readable: the run's summary page and the
+	# annotation list, not just deep inside the step log.
+	[ -z "${GITHUB_ACTIONS:-}" ] || printf '::error::%s\n' "$1"
+}
 skip()    { printf '  SKIP %s\n' "$1"; }
 
 if ! command -v "$NODE" >/dev/null 2>&1; then
@@ -64,7 +81,7 @@ section "Shell syntax"
 } | sort > "$WORK/sh.list"
 while IFS= read -r f; do
 	[ -n "$f" ] || continue
-	if sh -n "$f" >"$WORK/sh.err" 2>&1; then
+	if "$SHN" -n "$f" >"$WORK/sh.err" 2>&1; then
 		ok "${f#$ROOT/}"
 	else
 		bad "${f#$ROOT/}  <- $(head -2 "$WORK/sh.err" | tr '\n' ' ')"
@@ -280,6 +297,9 @@ ref = datetime.datetime(2026, 7, 1, 12, 0, tzinfo=datetime.timezone.utc)
 print(int(zone.utcoffset(ref).total_seconds()))
 PY_TZ
 )" 2>/dev/null
+# Windows python writes CRLF even to a pipe; command substitution only strips
+# the LF, so the offset would arrive as "28800\r" and never compare equal.
+tz_off=$(printf '%s' "$tz_off" | tr -d '\r')
 case "$tz_off" in
 	28800) ok "generated TZif parses back as +08:00" ;;
 	'')    skip "cannot validate TZif (python zoneinfo unavailable)" ;;
@@ -601,20 +621,32 @@ STUB
 	# 段名却是 ruleset_geosite_cn。0.1.21 现场照 tag 敲，在解析阶段就被判成
 	# 「缺少参数」exit 2（旧模式串只放行 [A-Za-z0-9_]），根本走不到 tag 反查。
 	# log_msg 非 tty 时不回显，写入 $RUN_DIR/ruleset_download.log，所以断言
-	# 同时看 stdout 和日志尾部两种落点。
+	# 同时看 stdout 和日志两种落点。
+	#
+	# 每次调用都给一个**全新的运行目录**（HP_RUN_DIR）：CI 里 stdout 是管道，
+	# 这些消息只会进日志；而如果去共用 /var/run/homeproxy 或 /tmp/homeproxy
+	# 里那份历史日志，开发机上只要跑过一次就永远为真，全新机器上却必然拿不到
+	# —— 这正是「本地 92 全过、CI 挂 3 项」的那 3 项。
+	RS_SEQ=0
 	rs_log=""
-	for f in /var/run/homeproxy/ruleset_download.log /tmp/homeproxy/ruleset_download.log; do
-		if [ -f "$f" ]; then rs_log="$f"; break; fi
-	done
+	# 注意：rs_only 必须放在 $( ) 里调用，子 shell 的变量不会回传，所以
+	# 「本次调用的日志路径」在父 shell 里推进（rs_next），rs_only 只读它。
+	rs_next() {
+		RS_SEQ=$((RS_SEQ + 1))
+		rs_log="$WORK/run.$RS_SEQ/ruleset_download.log"
+		mkdir -p "${rs_log%/*}"
+	}
 	rs_only() {
-		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" sh "$RS" "$@" 2>&1
+		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
+			HP_RUN_DIR="${rs_log%/*}" sh "$RS" "$@" 2>&1
 	}
 	rs_saw() {
 		printf '%s' "$1" | grep -q -- "$2" && return 0
-		[ -n "$rs_log" ] && grep -q -- "$2" "$rs_log" 2>/dev/null && return 0
+		[ -f "$rs_log" ] && grep -q -- "$2" "$rs_log" 2>/dev/null && return 0
 		return 1
 	}
 
+	rs_next
 	rs_o="$(rs_only --check --only geosite-cn)"
 	if rs_saw "$rs_o" 'sections=5'; then
 		ok "--only accepts a hyphenated tag (arg parser)"
@@ -622,6 +654,7 @@ STUB
 		bad "--only accepts a hyphenated tag (arg parser)  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 160)"
 	fi
 
+	rs_next
 	rs_o="$(rs_only --only geosite-cn --budget 0)"
 	rs_rc=$?
 	if rs_saw "$rs_o" "是 tag，对应段名 rs_cn"; then
@@ -635,6 +668,7 @@ STUB
 		bad "--only with --budget 0 returns 0 without any download  <- rc=$rs_rc"
 	fi
 
+	rs_next
 	rs_o="$(rs_only --only geosite-gfw --budget 0)"
 	rs_rc=$?
 	if rs_saw "$rs_o" "命中 2 个规则集段"; then
@@ -648,6 +682,7 @@ STUB
 		bad "--only ambiguous tag exits 2  <- rc=$rs_rc"
 	fi
 
+	rs_next
 	rs_o="$(rs_only --only no-such-rule --budget 0)"
 	rs_rc=$?
 	if rs_saw "$rs_o" "段名与 tag 都对不上"; then
@@ -656,6 +691,7 @@ STUB
 		bad "--only says both section and tag were tried  <- got: $(printf '%s' "$rs_o" | tr '\n' '|' | head -c 200)"
 	fi
 
+	rs_next
 	rs_o="$(rs_only --only --force)"
 	rs_rc=$?
 	if [ "$rs_rc" -eq 2 ]; then
@@ -812,4 +848,16 @@ if [ "$FAILED" -eq 0 ]; then
 fi
 
 printf 'FAILED: %d of %d checks\n' "$FAILED" "$CHECKS"
+printf 'Failed checks:%s\n' "$FAILLIST"
+
+# A failing step's stdout is buried in a log that needs a login to read; the
+# step summary is one click away on the run page, so repeat the list there.
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+	{
+		printf '### %d of %d checks failed\n\n' "$FAILED" "$CHECKS"
+		printf '| failed check |\n|---|\n'
+		printf '%s\n' "$FAILLIST" | sed -n 's/^  - //p' | sed 's/|/\\|/g; s/^/| /; s/$/ |/'
+	} >> "$GITHUB_STEP_SUMMARY" 2>/dev/null
+fi
+
 exit 1

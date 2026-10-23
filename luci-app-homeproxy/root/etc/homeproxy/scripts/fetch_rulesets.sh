@@ -63,7 +63,7 @@ else
 fi
 HP_DIR="/etc/homeproxy"
 RULESET_DIR="$HP_DIR/ruleset"
-RUN_DIR="/var/run/homeproxy"
+RUN_DIR="${HP_RUN_DIR:-/var/run/homeproxy}"
 LOG_FILE="$RUN_DIR/ruleset_download.log"
 
 # 运行目录降级。极个别固件上 /var/run 不可写（tmpfs 满、只读 overlay、
@@ -73,7 +73,11 @@ LOG_FILE="$RUN_DIR/ruleset_download.log"
 # 保证「跑过就一定有日志」这个不变量成立。
 # 注意只碰 RUN_DIR（易失的运行目录）；$RULESET_DIR 的创建留到下载段，
 # 以免 `--check` 这个「只读校验」入口在磁盘上留下任何东西。
-if ! mkdir -p "$RUN_DIR" 2>/dev/null || [ ! -d "$RUN_DIR" ]; then
+# HP_RUN_DIR 是给测试用的显式覆盖：指定了就**不再降级**，否则日志会被兜底
+# 写到 /tmp 去，调用方按自己给的路径去读就会读到空。
+if [ -n "${HP_RUN_DIR:-}" ]; then
+	mkdir -p "$RUN_DIR" 2>/dev/null
+elif ! mkdir -p "$RUN_DIR" 2>/dev/null || [ ! -d "$RUN_DIR" ]; then
 	RUN_DIR="/tmp/homeproxy"
 	LOG_FILE="$RUN_DIR/ruleset_download.log"
 	mkdir -p "$RUN_DIR" 2>/dev/null
