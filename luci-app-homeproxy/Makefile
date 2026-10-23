@@ -64,6 +64,13 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/passwd" 2>/dev/null && ! grep -qs '^sing-box:' /etc/passwd 2>/dev/null; then
 		adduser -S -D -H -G sing-box -s /sbin/nologin sing-box 2>/dev/null || true
 	fi
+	# rpcd 只在启动时扫描 /usr/share/rpcd/ucode/*.uc，不重启就仍是旧方法表：
+	# 本次新增或改动过的 RPC（如 dns_server_test、ruleset_update）会报
+	# "method not found"/"object not found"，界面上表现为「延迟测试全部失败」。
+	# deploy/install.sh 已经这么做，这里补齐包管理器安装（opkg/apk）的路径。
+	# 用子 shell + || true 兜底：postinst 返回非 0 会导致整包安装失败。
+	( /etc/init.d/rpcd restart >/dev/null 2>&1 || service rpcd restart >/dev/null 2>&1 ) || true
+	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 fi
 endef
 

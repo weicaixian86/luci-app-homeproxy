@@ -257,7 +257,7 @@ function coreUpdateOutput() {
 
 const methods = {
 	acllist_read: {
-		args: { type: 'type' },
+		args: { type: 'string' },
 		call: function(req) {
 			if (index(['direct_list', 'proxy_list'], req.args?.type) === -1)
 				return { content: null, error: 'illegal type' };
@@ -267,7 +267,7 @@ const methods = {
 		}
 	},
 	acllist_write: {
-		args: { type: 'type', content: 'content' },
+		args: { type: 'string', content: 'string' },
 		call: function(req) {
 			if (index(['direct_list', 'proxy_list'], req.args?.type) === -1)
 				return { result: false, error: 'illegal type' };
@@ -291,7 +291,7 @@ const methods = {
 	},
 
 	certificate_write: {
-		args: { filename: 'filename' },
+		args: { filename: 'string' },
 		call: function(req) {
 			const writeCertificate = (filename, priv) => {
 				const tmpcert = '/tmp/homeproxy_certificate.tmp';
@@ -356,7 +356,7 @@ const methods = {
 	},
 
 	connection_check: {
-		args: { site: 'site' },
+		args: { site: 'string' },
 		call: function(req) {
 			let url;
 			switch(req.args?.site) {
@@ -739,7 +739,7 @@ const methods = {
 	},
 
 	node_latency_test: {
-		args: { node: 'node', mode: 'mode' },
+		args: { node: 'string', mode: 'string' },
 		call: function(req) {
 			const error_codes = {
 				invalid_node: 'invalid_node',
@@ -1539,7 +1539,7 @@ const methods = {
 	},
 
 	log_clean: {
-		args: { type: 'type' },
+		args: { type: 'string' },
 		call: function(req) {
 			if (!(req.args?.type in ['homeproxy', 'sing-box-c', 'sing-box-s', 'core_download', 'panel_download']))
 				return { result: false, error: 'illegal type' };
@@ -1626,7 +1626,7 @@ const methods = {
 	/* 立即更新单个远程规则集（建议9）：同步执行 fetch_rulesets.sh
 	   --force --only <section>，rc === 0 即成功。单条 90 秒预算。 */
 	ruleset_update: {
-		args: { section: 'section' },
+		args: { section: 'string' },
 		call: function(req) {
 			const section = req.args?.section || '';
 
@@ -1654,7 +1654,7 @@ const methods = {
 	},
 
 	singbox_generator: {
-		args: { type: 'type', params: 'params' },
+		args: { type: 'string', params: 'string' },
 		call: function(req) {
 			if (!(req.args?.type in ['ech-keypair', 'uuid', 'reality-keypair', 'vapid-keypair', 'wg-keypair']))
 				return { result: false, error: 'illegal type' };
@@ -1818,7 +1818,7 @@ const methods = {
 	},
 
 	resources_get_version: {
-		args: { type: 'type' },
+		args: { type: 'string' },
 		call: function(req) {
 			/* Derive the error flag from the actual read result. Do NOT use
 			 * fs error() here: it reports the *last* fs error of the persistent
@@ -1832,7 +1832,7 @@ const methods = {
 		}
 	},
 	resources_update: {
-		args: { type: 'type' },
+		args: { type: 'string' },
 		call: function(req) {
 			if (req.args?.type) {
 				const type = shellquote(req.args?.type);
@@ -2100,7 +2100,7 @@ const methods = {
 		   UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC 无法单独测握手，改测 ping 往返。
 		   单次预算约 6 秒。 */
 		dns_server_test: {
-			args: { section: 'section' },
+			args: { section: 'string' },
 			call: function(req) {
 				const section = req.args?.section || '';
 
@@ -2145,9 +2145,27 @@ const methods = {
 				if (!host)
 					return { result: false, error: 'failed to extract host from address' };
 
+				/* 可执行文件不写死单一绝对路径：不同固件/发行版把 curl 放在
+				   /usr/bin、/bin 或 /usr/sbin，写死一个会让 HTTPS 全部落到 ping 分支，
+				   表现成「延迟测试全失败」。按顺序取第一个可执行的即可。
+				   用下标循环而不是 for-in：ucode 的 for-in 语义与 JS 不同，
+				   这里不冒这个险。 */
+				const findExec = (paths) => {
+					for (let i = 0; i < length(paths); i++)
+						if (access(paths[i]))
+							return paths[i];
+
+					return null;
+				};
+
 				const isHandshake = (type === 'https'),
-				      curl = access('/usr/bin/curl') ? '/usr/bin/curl' : null,
-				      ping = access('/bin/ping') ? '/bin/ping' : (access('/usr/bin/ping') ? '/usr/bin/ping' : null);
+				      curl = findExec([ '/usr/bin/curl', '/bin/curl', '/usr/sbin/curl' ]),
+				      ping = findExec([ '/bin/ping', '/usr/bin/ping', '/sbin/ping' ]),
+				      ping6 = findExec([ '/bin/ping6', '/usr/bin/ping6', '/sbin/ping6' ]);
+
+				/* 失败原因写系统日志，便于现场直接 logread -e homeproxy-dns 定位，
+				   不必再靠猜（以前只能看到界面上的「失败」两个字）。 */
+				const trace = (msg) => system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
 
 				/* HTTPS(DoH) 且系统有 curl：测 TLS 握手耗时。
 				   -k 是必需的：DoH 地址经常直接填 IP（https://223.5.5.5/dns-query、
@@ -2164,15 +2182,20 @@ const methods = {
 					if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
 						url = 'https://' + url;
 
-					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip */
+					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
+					   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直读到
+					   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。 */
 					const errfile = `/tmp/.hp_dns_curl_${section}`,
-					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}" ${shellquote(url)} 2> ${shellquote(errfile)}`);
+					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 6 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
 
 					let line = '';
 
 					if (fd) {
 						line = trim(fd.read('line') || '');
 						fd.close();
+					}
+					else {
+						trace(`test ${section}: failed to spawn ${curl}`);
 					}
 
 					const details = trim(readfile(errfile) || '');
@@ -2198,25 +2221,32 @@ const methods = {
 					/* 握手测不出来（curl 无 TLS 支持 / 连接被阻断 / 域名解析失败）：
 					   记下原始报错，继续往下走 ping 兜底，而不是直接判失败。 */
 					handshake_error = details ? split(details, '\n')[0] : 'curl probe failed';
+					trace(`test ${section}: curl ${url} -> ${handshake_error}`);
 				}
 
 				/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
 				   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
 				   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
 				if (!ping) {
-					if (handshake_error)
-						return {
-							result: false,
-							error: 'handshake failed: ' + handshake_error,
-							latency_ms: null,
-							kind: 'handshake'
-						};
+					const reason = handshake_error
+						? ('handshake failed: ' + handshake_error)
+						: 'missing ping executable';
 
-					return { result: false, error: 'missing ping executable', latency_ms: null };
+					trace(`test ${section}: ${reason}`);
+
+					return {
+						result: false,
+						error: reason,
+						latency_ms: null,
+						kind: handshake_error ? 'handshake' : 'ping'
+					};
 				}
 
+				/* IPv6 字面量（含冒号）走 ping6：busybox 的 ping 默认只发 IPv4，
+				   裸 IPv6 会被当作主机名去做 DNS 查询，必然失败。 */
+				const pingbin = (index(host, ':') >= 0 && ping6) ? ping6 : ping;
 				const outfile = `/tmp/.hp_dns_ping_${section}`;
-				const rc = system(`${ping} -c 1 -W 2 ${shellquote(host)} > ${shellquote(outfile)} 2>/dev/null`, 6000);
+				const rc = system(`${pingbin} -c 1 -W 2 ${shellquote(host)} > ${shellquote(outfile)} 2>/dev/null`);
 				const out = readfile(outfile) || '';
 				unlink(outfile);
 
@@ -2240,11 +2270,15 @@ const methods = {
 
 				/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始报错
 				   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
+				const fail_reason = handshake_error
+					? ('handshake failed: ' + handshake_error)
+					: ((rc === -1) ? 'ping timeout' : 'ping failed');
+
+				trace(`test ${section}: ${pingbin} ${host} rc ${rc} -> ${fail_reason}`);
+
 				return {
 					result: false,
-					error: handshake_error
-						? ('handshake failed: ' + handshake_error)
-						: ((rc === -1) ? 'ping timeout' : 'ping failed'),
+					error: fail_reason,
 					latency_ms: null,
 					kind: handshake_error ? 'handshake' : 'ping'
 				};

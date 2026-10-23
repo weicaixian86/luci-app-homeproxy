@@ -411,6 +411,32 @@ return baseclass.extend({
 		return true;
 	},
 
+	/**
+	 * Build the small grey line that shows *why* a DNS latency probe failed.
+	 *
+	 * Previously the reason only lived in a title attribute, so a screenshot of
+	 * "Failed / Failed / Failed" said nothing about whether rpcd had the new
+	 * method loaded, whether curl was missing, or whether the address was simply
+	 * unreachable. Truncated so a long curl error cannot blow up the table.
+	 *
+	 * @param {string} msg full error text
+	 * @returns {Node}
+	 */
+	dnsFailDetail(msg) {
+		const text = String(msg || '');
+		const brief = (text.length > 60) ? (text.slice(0, 57) + '...') : text;
+
+		/* Plain DOM on purpose: this module does not require 'dom', so the
+		   global E() helper is not guaranteed to be in scope here. */
+		const span = document.createElement('span');
+
+		span.className = 'hp-dns-err-detail';
+		span.title = text;
+		span.textContent = brief;
+
+		return span;
+	},
+
 	dns_strategy: {
 		'': _('Default'),
 		'prefer_ipv4': _('Prefer IPv4'),
@@ -1075,6 +1101,11 @@ return baseclass.extend({
 				.hp-chip-empty { opacity: .45; }
 				.hp-dns-loading { color: var(--muted, #68718a); }
 				.hp-dns-err { color: #e05252; font-weight: 500; }
+				/* 失败原因的简短说明：以前只放在 title 里，截图看不出是
+				   rpcd 没加载新方法、还是 curl/ping 缺失或网络不通。
+				   display:block 让它自成一行（父级 .hp-dns-lat 是 inline）。 */
+				.hp-dns-err-detail { display: block; color: var(--muted, #8a8f9c);
+					font-size: .72rem; line-height: 1.3; word-break: break-word; }
 				.hp-dns-lat-cell { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
 				.hp-dns-test-btn { padding: 2px 10px; font-size: .75rem; line-height: 1.4; }
 				.hp-lat-good { color: #2eb872; font-weight: 600; }

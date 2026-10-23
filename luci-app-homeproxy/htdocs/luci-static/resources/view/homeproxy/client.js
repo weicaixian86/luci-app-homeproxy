@@ -2322,7 +2322,10 @@ return view.extend({
 						   必须直接传 section id，传对象会让 rpcd 收到
 						   args.section = { section: ... }，被 /^[A-Za-z0-9_]+$/
 						   判为 illegal section，测试永远失败。 */
-						L.resolveDefault(callDnsServerTest(sid), {})
+						/* 不用 L.resolveDefault 包一层：它会把 ubus 的 reject 吞成 {}，
+						   那样「Method not found」这类关键信息就丢了，界面只剩一句
+						   通用的「无响应」。下面的 .catch 已经统一兜住。 */
+						callDnsServerTest(sid)
 							.then((ret) => {
 								btn.disabled = false;
 								btn.textContent = _('Test');
@@ -2337,25 +2340,33 @@ return view.extend({
 									latSpan.appendChild(E('span', { 'class': cls },
 										String(ms) + 'ms'));
 							} else {
-								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
-
 								/* 有 rpcd 返回的 error 就直接显示；连响应都没有（方法未注册，
 								   典型原因是装完新包没重启 rpcd）时给一句可操作的提示。 */
-								err.title = (ret && ret.error)
-									? ret.error
+								const msg = (ret && ret.error)
+									? String(ret.error)
 									: _('No response from rpcd. Restart rpcd (or the router) and try again.');
 
+								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
+								err.title = msg;
 								latSpan.appendChild(err);
+								latSpan.appendChild(hp.dnsFailDetail(msg));
 							}
 							})
-							.catch(() => {
+							.catch((e) => {
 								btn.disabled = false;
 								btn.textContent = _('Test');
 								latSpan.textContent = '';
 
+								/* ubus 层面的失败（Method not found / Object not found /
+								   Permission denied）走这里。把原始 message 一并显示，
+								   否则界面上只有「失败」，看不出是 rpcd 还在跑旧方法表。 */
+								const fallback = _('No response from rpcd. Restart rpcd (or the router) and try again.');
+								const msg = (e && e.message) ? String(e.message) : fallback;
+
 								const err = E('span', { 'class': 'hp-dns-err' }, _('Failed'));
-								err.title = _('No response from rpcd. Restart rpcd (or the router) and try again.');
+								err.title = msg;
 								latSpan.appendChild(err);
+								latSpan.appendChild(hp.dnsFailDetail(msg));
 							});
 					});
 
