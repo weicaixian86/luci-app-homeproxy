@@ -2216,10 +2216,11 @@ const methods = {
 					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
 					   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直读到
 					   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。
-					   --max-time 对非 TLS 的建连探测收紧到 3 秒：53/TCP 上发 HTTP
-					   请求必然等不到正常响应，靠超时收尾，没必要等满 6 秒。 */
+					   https 保持 6 秒总预算；其它协议是「建连探测」，在 53/TCP 上发
+					   HTTP 请求必然等不到正常响应、靠超时收尾，收紧到 3 秒。 */
+					const maxtime = (probe.port == null) ? 6 : 3;
 					const errfile = `/tmp/.hp_dns_curl_${section}`,
-					      fd = popen(`${curl} -k --connect-timeout 3 --max-time 3 -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
+					      fd = popen(`${curl} -k --connect-timeout 3 --max-time ${maxtime} -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
 
 					let line = '';
 
