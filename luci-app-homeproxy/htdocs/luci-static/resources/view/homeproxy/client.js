@@ -2133,7 +2133,11 @@ return view.extend({
 						latSpan.textContent = '';
 						latSpan.appendChild(E('span', { 'class': 'hp-dns-loading' }, [ '…' ]));
 
-						L.resolveDefault(callDnsServerTest({ section: sid }), {})
+						/* rpc.declare 声明的是 params:['section']，即位置参数：
+						   必须直接传 section id，传对象会让 rpcd 收到
+						   args.section = { section: ... }，被 /^[A-Za-z0-9_]+$/
+						   判为 illegal section，测试永远失败。 */
+						L.resolveDefault(callDnsServerTest(sid), {})
 							.then((ret) => {
 								btn.disabled = false;
 								btn.textContent = _('Test');
@@ -3029,6 +3033,10 @@ return view.extend({
 		so = ss.option(form.ListValue, 'store_selected', _('Save Proxy Selection'));
 		so.value('1', _('Enable'));
 		so.value('0', _('Disable'));
+		/* 默认启用：打过补丁的内核（003-add-cache-file-store-selected）会持久化
+		   用户在面板里选中的节点，重启后仍然是上一次的选择；关掉才会在每次
+		   启动时回到默认出口。此处的 '0' 只在上面的「缓存文件」总开关被关掉
+		   时由规则 1 写入，不是本项自身的默认值。 */
 		so.default = '1';
 		so.rmempty = false;
 		so.depends('enabled', '1');

@@ -47,6 +47,33 @@ REFIND_VERSION="1.14.3-reF1nd"
 REFIND_ASSET_TAG="${REFIND_TAG#v}"
 REFIND_ASSET_TAG="${REFIND_ASSET_TAG#V}"
 
+# 「目标版本」= 下载安装后 `sing-box version` 会报告的完整版本串。
+# CI 构建时会把 REFIND_TAG 改成本次发布标签（如 0.1.12），而内核二进制的
+# ldflags 写的是 1.14.3-reF1nd_<发布标签>，所以这里也要带上下划线后缀，
+# 否则 UI 会显示成 reF1nd 官方版本号，和已安装的版本对不上。
+# 未走 CI（REFIND_TAG 仍是默认的 v1.14.3-reF1nd）时不拼后缀，
+# 避免出现 1.14.3-reF1nd_1.14.3-reF1nd 这种串。
+CORE_TARGET_VERSION="$REFIND_VERSION"
+if [ "$(printf '%s' "$REFIND_ASSET_TAG" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$REFIND_VERSION" | tr 'A-Z' 'a-z')" ]; then
+	CORE_TARGET_VERSION="${REFIND_VERSION}_${REFIND_ASSET_TAG}"
+fi
+
+# ---------- 内置完整性校验（发版时由 CI 注入） ----------
+# 每个发布版本的内核压缩包 SHA256，由 .github/workflows/build-deploy.yml 在
+# 编译完内核后 sed 写入下面五个变量（键为架构名）。之所以用「内置常量」而不是
+# 从 Release 再下一个 .sha256：校验和若与压缩包走同一个镜像，镜像/中间人把
+# 两者一起换掉就形同虚设；内置值随包发布，只信任本仓库的构建产物。
+#
+# 空值 = 该版本没有内置校验值（本地手工编译、或 REFIND_TAG 指向旧 release）。
+# 此时按 CORE_SHA256_MISSING 处理：默认 warn（只告警不拦截），避免把内核更新
+# 整条链路堵死；想严格起来就把下面改成 fail，或运行时用环境变量覆盖。
+CORE_SHA256_AMD64=""
+CORE_SHA256_AMD64V3=""
+CORE_SHA256_ARM64=""
+CORE_SHA256_ARMV7=""
+CORE_SHA256_MIPSLE=""
+CORE_SHA256_MISSING="${CORE_SHA256_MISSING:-warn}"   # warn=放行并告警；fail=拒绝安装
+
 # Accelerator prefixes. Order matters: a reachable-but-slow source still burns
 # its whole --max-time before we fail over, so the fastest wins the front slot.
 #
@@ -421,48 +448,72 @@ download_file() {
 	return 1
 }
 
-# Best-effort SHA-256 verification.
+# 压缩包名 -> 内置校验值（见文件顶部 CORE_SHA256_* 常量）
+builtin_sha256_for_asset() {
+	local asset="$1"
+	case "$asset" in
+		*-linux-amd64v3-musl.tar.gz) printf '%s' "$CORE_SHA256_AMD64V3" ;;
+		*-linux-amd64-musl.tar.gz)   printf '%s' "$CORE_SHA256_AMD64" ;;
+		*-linux-arm64-musl.tar.gz)   printf '%s' "$CORE_SHA256_ARM64" ;;
+		*-linux-armv7-musl.tar.gz)   printf '%s' "$CORE_SHA256_ARMV7" ;;
+		*-linux-mipsle-musl.tar.gz)  printf '%s' "$CORE_SHA256_MIPSLE" ;;
+		*) printf '%s' "" ;;
+	esac
+}
+
+# SHA-256 verification.
 #
-# IMPORTANT: reF1nd does NOT publish per-asset checksums. Verified against the
-# release asset lists of both v1.14.3-reF1nd and v1.15.0-alpha.11-reF1nd —
-# neither contains a `.sha256`, `sha256sums` or `checksums` asset. The previous
-# implementation nevertheless requested `<asset>.sha256` through every mirror:
-# 7 candidate URLs x 3 curl attempts each (--retry 2, --retry-delay 5), i.e.
-# minutes of pure latency on EVERY install, plus 7 bogus "download failed" log
-# lines that buried the real error when something actually went wrong.
-# Checksum verification is therefore opt-in: place a `<asset>.sha256` file in
-# /etc/homeproxy/ (first whitespace-separated field = hex digest) and it will
-# be honoured; otherwise the install proceeds without it.
+# 校验值优先级：
+#   1) 内置常量（CI 发版注入，最可信：不经过镜像、不依赖 Release 附带文件）
+#   2) /etc/homeproxy/<asset>.sha256（手工放置，第一列 = 十六进制摘要）
+# 两者都没有时按 CORE_SHA256_MISSING 处理（默认告警放行）。
+#
+# 注意：reF1nd 上游本身不发布 .sha256（v1.14.3-reF1nd 与 v1.15.0-alpha.11-reF1nd
+# 的 asset 列表里都没有），所以旧实现逐个镜像去请求 `<asset>.sha256`，白扔了
+# 7 个候选 URL x 每次 3 次重试的延迟，还刷出一堆假「下载失败」。这里不再联网
+# 找校验和，只认内置值或本地文件。
 verify_sha256() {
-	local asset="$1" file="$2" expected='' sum
+	local asset="$1" file="$2" expected='' sum source=''
 	local sum_file="${HP_DIR}/${asset}.sha256"
 
-	if [ -f "$sum_file" ]; then
+	expected="$(builtin_sha256_for_asset "$asset")"
+	if [ -n "$expected" ]; then
+		source="内置校验值"
+	elif [ -f "$sum_file" ]; then
 		expected="$(awk '{print $1}' "$sum_file" 2>/dev/null | head -n1)"
-	else
-		log_download "reF1nd 未发布 ${asset} 的 SHA256 校验和（该 release 不含 .sha256 文件），跳过校验"
-		return 0
+		[ -n "$expected" ] && source="本地校验文件 ${sum_file}"
 	fi
 
-	# Guard against a malformed digest file: only a real 64-character hex
-	# digest counts as a checksum.
+	# Guard against a malformed digest: only a real 64-character hex digest
+	# counts as a checksum. Normalised to lower case so a hand-written (or
+	# upper-case) built-in constant still matches sha256sum's output.
 	case "$expected" in
 		*[!0-9a-fA-F]*) expected='' ;;
 	esac
 	[ ${#expected} -eq 64 ] || expected=''
+	[ -n "$expected" ] && expected="$(printf '%s' "$expected" | tr 'A-F' 'a-f')"
 
 	if [ -z "$expected" ]; then
-		log_download "未找到 ${asset} 的官方 SHA256 校验和，跳过校验（作者后续可能提供）"
+		if [ "$CORE_SHA256_MISSING" = "fail" ]; then
+			log_download "拒绝安装：${asset} 没有内置 SHA256 校验值，且 CORE_SHA256_MISSING=fail（若用的是本仓库 release，说明 CI 未成功注入校验值）"
+			return 1
+		fi
+		log_download "警告：${asset} 没有内置 SHA256 校验值（本地编译或指向旧 release），跳过完整性校验，仅依赖 HTTPS 传输保护；可把 CORE_SHA256_MISSING 设为 fail 强制校验"
 		return 0
 	fi
 
 	sum="$(sha256_of "$file")"
+	if [ -z "$sum" ]; then
+		log_download "拒绝安装：无法计算 ${asset} 的 SHA256（缺少 sha256sum 或文件为空）"
+		return 1
+	fi
+
 	if [ "$sum" = "$expected" ]; then
-		log_download "SHA256 校验通过：${sum}"
+		log_download "SHA256 校验通过（${source}）：${sum}"
 		return 0
 	fi
 
-	log_download "SHA256 校验失败：期望 ${expected}，实际 ${sum}（拒绝安装）"
+	log_download "SHA256 校验失败（${source}）：期望 ${expected}，实际 ${sum}（拒绝安装。若通过第三方镜像下载，请换镜像或改用 github 直连）"
 	return 1
 }
 
@@ -698,6 +749,7 @@ print_status() {
 	echo "asset=${asset}"
 	echo "installed_version=${cur_ver}"
 	echo "refind_version=${REFIND_VERSION}"
+	echo "target_version=${CORE_TARGET_VERSION}"
 }
 
 main() {

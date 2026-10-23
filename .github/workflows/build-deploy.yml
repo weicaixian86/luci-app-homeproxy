@@ -70,7 +70,9 @@ jobs:
   # ===========================================================================
   luci:
     name: Build luci ${{ matrix.name }}
-    needs: guard
+    # 依赖 core：内核 sha256 要 sed 进 update_core.sh（内置完整性校验），
+    # 而压缩包只在 core job 打一次包（tar 含 mtime，重复打包 sha256 会变）。
+    needs: [guard, core]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -126,6 +128,38 @@ jobs:
           grep -E '^PKG_(VERSION|RELEASE):=' "$pkg_dir/Makefile"
           grep -E '^REFIND_TAG=' "$pkg_dir/root/etc/homeproxy/scripts/update_core.sh"
           echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Download core checksums
+        uses: actions/download-artifact@v4
+        with:
+          pattern: core-sha-*
+          merge-multiple: true
+
+      # 把本次发布的内核 sha256 注入 update_core.sh 的内置常量表。
+      # 「更新内核」下载后就能本地校验完整性，不再依赖镜像或 Release 附带的
+      # 校验文件（两者若走同一镜像，被一起替换就形同虚设）。
+      - name: Inject core checksums into update_core.sh
+        run: |
+          set -e
+          pkg_dir="${{ steps.pkgdir.outputs.dir }}"
+          script="$pkg_dir/root/etc/homeproxy/scripts/update_core.sh"
+          [ -f "$script" ] || { echo "::error::update_core.sh not found: $script"; exit 1; }
+          for arch in amd64 arm64 armv7 mipsle; do
+            f="sha256-${arch}.txt"
+            [ -f "$f" ] || { echo "::error::missing checksum artifact for ${arch} (${f})"; exit 1; }
+            digest="$(awk '{print $1}' "$f")"
+            if [ "${#digest}" -ne 64 ]; then
+              echo "::error::bad checksum for ${arch}: ${digest}"
+              exit 1
+            fi
+            key="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
+            sed -i "s|^CORE_SHA256_${key}=\".*\"|CORE_SHA256_${key}=\"${digest}\"|" "$script"
+            # amd64v3 是 amd64 包的字节副本，校验值相同
+            if [ "$arch" = "amd64" ]; then
+              sed -i "s|^CORE_SHA256_AMD64V3=\".*\"|CORE_SHA256_AMD64V3=\"${digest}\"|" "$script"
+            fi
+          done
+          grep -E '^CORE_SHA256_' "$script"
 
       - name: Download and extract SDK (${{ matrix.name }})
         run: |
@@ -294,11 +328,47 @@ jobs:
           file "$f"
           ./$f version | head -n1
 
-      - name: Upload sing-box artifact
+      # 内核压缩包只在这里打一次包：tar/gzip 不是可复现的（含 mtime），
+      # 若在不同 job 各打一次，两次的 sha256 会不一致，内置校验值就对不上。
+      # 因此 tarball + sha256 都在这里产出，luci job 把 sha256 sed 进
+      # update_core.sh，package job 直接复用这个 tarball 上传 Release。
+      - name: Package core tarball and checksum
+        run: |
+          set -e
+          arch="${{ matrix.arch }}"
+          ver="${{ inputs.tag }}"
+          ver="${ver#v}"; ver="${ver#V}"
+          [ -n "$ver" ] || ver="dev"
+          VER="1.14.3-refind"
+          cp -f "sing-box-${arch}" sing-box
+          tar -czf "sing-box-${VER}_${ver}-linux-${arch}-musl.tar.gz" sing-box
+          rm -f sing-box
+          digest="$(sha256sum "sing-box-${VER}_${ver}-linux-${arch}-musl.tar.gz" | awk '{print $1}')"
+          if [ "${#digest}" -ne 64 ]; then
+            echo "::error::unexpected sha256 output for ${arch}: ${digest}"
+            exit 1
+          fi
+          printf '%s\n' "$digest" > "sha256-${arch}.txt"
+          echo "${arch} tarball sha256: ${digest}"
+          ls -la "sing-box-${VER}_${ver}-linux-${arch}-musl.tar.gz"
+
+      - name: Upload core binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: sing-box-${{ matrix.arch }}
+          name: core-bin-${{ matrix.arch }}
           path: sing-box-${{ matrix.arch }}
+
+      - name: Upload core tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-tar-${{ matrix.arch }}
+          path: sing-box-1.14.3-refind_*-linux-${{ matrix.arch }}-musl.tar.gz
+
+      - name: Upload core checksum artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-sha-${{ matrix.arch }}
+          path: sha256-${{ matrix.arch }}.txt
 
   # ===========================================================================
   # 3) 打包 zip + 独立 IPK/APK + 内核 tar.gz，并发布到 Release
@@ -330,7 +400,7 @@ jobs:
             mkdir -p "$d"
             cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk "$d/"
             cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk "$d/"
-            cp -f "artifacts/sing-box-$arch/sing-box-$arch"        "$d/sing-box"
+            cp -f "artifacts/core-bin-$arch/sing-box-$arch"        "$d/sing-box"
             cp -f deploy/install.sh                                "$d/"
             cp -f deploy/README.md                                 "$d/"
             chmod 0755 "$d/install.sh" "$d/sing-box"
@@ -338,27 +408,29 @@ jobs:
             ls -la "$d.zip"
           done
 
-      - name: Build core tarballs for runtime auto-update
+      # tarball 已在 core job 打好包（含 sha256），这里只做收集 + amd64v3 副本，
+      # 不再重新打包：tar/gzip 含 mtime，重打一次 sha256 就和注入的常量对不上。
+      - name: Collect core tarballs for runtime auto-update
         run: |
           set -e
           VER="1.14.3-refind"
           tag="${{ inputs.tag }}"
           version="${tag#v}"; version="${version#V}"
-          # amd64（基线二进制，兼容所有 x86_64，含 x86-64-v3）
-          cp -f "artifacts/sing-box-amd64/sing-box-amd64" sing-box
-          tar -czf "sing-box-${VER}_${version}-linux-amd64-musl.tar.gz" sing-box
-          # amd64v3 候选：复用同一基线二进制（update_core.sh 优先尝试 v3 名，失败回退到上面的 amd64）
+          for arch in amd64 arm64 armv7 mipsle; do
+            src="artifacts/core-tar-${arch}/sing-box-${VER}_${version}-linux-${arch}-musl.tar.gz"
+            [ -f "$src" ] || { echo "::error::missing core tarball: $src"; exit 1; }
+            cp -f "$src" "./sing-box-${VER}_${version}-linux-${arch}-musl.tar.gz"
+          done
+          # amd64v3 候选：字节副本，与 amd64 校验值相同（update_core.sh 优先试 v3 名，失败回退 amd64）
           cp -f "sing-box-${VER}_${version}-linux-amd64-musl.tar.gz" "sing-box-${VER}_${version}-linux-amd64v3-musl.tar.gz"
-          # arm64
-          cp -f "artifacts/sing-box-arm64/sing-box-arm64" sing-box
-          tar -czf "sing-box-${VER}_${version}-linux-arm64-musl.tar.gz" sing-box
-          # armv7（对应 armv7-musleabihf / armv7-musleabi，供 update_core.sh 自动下载）
-          cp -f "artifacts/sing-box-armv7/sing-box-armv7" sing-box
-          tar -czf "sing-box-${VER}_${version}-linux-armv7-musl.tar.gz" sing-box
-          # mipsle（小端 mips；大端 mips 暂不发布）
-          cp -f "artifacts/sing-box-mipsle/sing-box-mipsle" sing-box
-          tar -czf "sing-box-${VER}_${version}-linux-mipsle-musl.tar.gz" sing-box
-          rm -f sing-box
+          # 顺手把校验值汇总成一个文件随 Release 发布，便于手工核对
+          : > "sha256sums-${version}.txt"
+          for arch in amd64 arm64 armv7 mipsle; do
+            printf '%s  sing-box-%s_%s-linux-%s-musl.tar.gz\n' \
+              "$(awk '{print $1}' "artifacts/core-sha-${arch}/sha256-${arch}.txt")" \
+              "$VER" "$version" "$arch" >> "sha256sums-${version}.txt"
+          done
+          cat "sha256sums-${version}.txt"
           ls -la sing-box-${VER}_*.tar.gz
 
       - name: Prepare release body
@@ -390,3 +462,4 @@ jobs:
             luci-app-homeproxy_*-all.ipk
             luci-app-homeproxy_*-all.apk
             sing-box-1.14.3-refind_*.tar.gz
+            sha256sums-*.txt

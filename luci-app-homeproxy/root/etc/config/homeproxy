@@ -67,6 +67,9 @@ config homeproxy 'cache'
 	option enabled '1'
 	option path '/etc/homeproxy/cache.db'
 	option store_dns '1'
+	# 显式写出，避免依赖 generate_client.uc 里 "undefined !== '0'" 的隐式默认：
+	# 1 = 持久化面板里选中的节点（打补丁内核的 store_selected）。
+	option store_selected '1'
 
 config homeproxy 'routing'
 	option sniff_override '1'

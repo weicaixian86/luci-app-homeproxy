@@ -551,13 +551,24 @@ function parseShareLink(uri, features) {
 
 			break;
 		case 'vmess':
-			/* "Lovely" shadowrocket format */
-			if (uri.includes('&'))
+			/* "Lovely" shadowrocket format
+			 * 这里是数组，必须判断 uri[1]：写成 uri.includes('&') 恒为 false，
+			 * shadowrocket 那种带 query 的链接会漏到下面 JSON.parse 里抛异常，
+			 * 把整批导入一起搞挂。 */
+			if (uri[1].includes('&'))
 				return null;
 
-			/* https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link */
-			uri = JSON.parse(hp.decodeBase64Str(uri[1]));
+			/* https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link
+			 * base64 或 JSON 不合法时 atob / JSON.parse 都会抛，
+			 * 单条坏链接只应跳过自己，不能中断整批导入。 */
+			try {
+				uri = JSON.parse(hp.decodeBase64Str(uri[1]));
+			} catch(e) {
+				return null;
+			}
 
+			if (!uri || typeof uri !== 'object')
+				return null;
 			if (uri.v != '2')
 				return null;
 			/* Unsupported protocols */
@@ -1874,7 +1885,9 @@ return view.extend({
 		ss.handleLinkImport = function() {
 			let textarea = new ui.Textarea();
 			ui.showModal(_('Import share links'), [
-				E('p', _('Support Hysteria, Shadowsocks, Trojan, v2rayN (VMess), and XTLS (VLESS) online configuration delivery standard.')),
+				/* 这里列出的协议必须与 update_subscriptions.uc 的 parse_uri /
+				   parse_mihomo_proxy / parse_sing_box_outbound 实际能解析的保持一致。 */
+				E('p', _('Supports AnyTLS, HTTP/HTTPS, Hysteria, Hysteria2, Shadowsocks (SIP002, Shadowrocket and SIP008), SOCKS (4 / 4a / 5), Trojan, TUIC, VLESS and VMess share links, as well as Clash (mihomo) proxy lists, sing-box outbound JSON and SIP008 JSON. SSR and KCP transport are not supported.')),
 				textarea.render(),
 				E('div', { class: 'right' }, [
 					E('button', {
@@ -1893,9 +1906,19 @@ return view.extend({
 
 								let allow_insecure = uci.get(data[0], 'subscription', 'allow_insecure');
 								let packet_encoding = uci.get(data[0], 'subscription', 'packet_encoding');
-								let imported_node = 0;
+								let imported_node = 0, failed_link = 0;
 								input_links.forEach((l) => {
-									let config = parseShareLink(l, features);
+									let config = null;
+									try {
+										config = parseShareLink(l, features);
+									} catch(e) {
+										/* 任意一条链接解析抛异常（坏 base64、非法 URL、
+										   非预期 JSON 结构…）都只跳过它自己，
+										   不能让整批导入中断。 */
+										failed_link++;
+										console.warn('Failed to parse share link:', e);
+										return;
+									}
 									if (config) {
 										if (config.tls === '1' && allow_insecure === '1')
 											config.tls_insecure = '1'
@@ -1916,6 +1939,9 @@ return view.extend({
 								else
 									ui.addNotification(null, E('p', _('Successfully imported %s nodes of total %s.').format(
 										imported_node, input_links.length)));
+
+								if (failed_link > 0)
+									ui.addNotification(null, E('p', _('%s link(s) could not be parsed and were skipped.').format(failed_link)));
 
 								return uci.save()
 									.then(L.bind(this.map.load, this.map))
@@ -1991,7 +2017,7 @@ return view.extend({
 		o.rmempty = false;
 
 		o = s.taboption('subscription', SubscriptionList, 'subscription_url', _('Subscriptions'),
-			_('Support Hysteria, Shadowsocks, Trojan, v2rayN (VMess), and XTLS (VLESS) online configuration delivery standard.'));
+			_('Supports AnyTLS, HTTP/HTTPS, Hysteria, Hysteria2, Shadowsocks (SIP002, Shadowrocket and SIP008), SOCKS (4 / 4a / 5), Trojan, TUIC, VLESS and VMess share links, as well as Clash (mihomo) proxy lists, sing-box outbound JSON and SIP008 JSON. SSR and KCP transport are not supported.'));
 		subscription_list_option = o;
 
 		o = s.taboption('subscription', form.ListValue, 'filter_nodes', _('Filter nodes'),

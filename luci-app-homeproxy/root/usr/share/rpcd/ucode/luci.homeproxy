@@ -1761,7 +1761,11 @@ const methods = {
 				asset_available: false,
 				asset: '',
 				installed_version: '-',
-				refind_version: ''
+				refind_version: '',
+				/* 目标版本（下载安装后 sing-box version 会报告的完整串，
+				   形如 1.14.3-reF1nd_0.1.12），由 update_core.sh 的
+				   target_version 提供；缺失时回落 refind_version。 */
+				target_version: ''
 			};
 
 			const fd = popen('/usr/bin/sing-box version 2>/dev/null');
@@ -1798,6 +1802,9 @@ const methods = {
 					case 'refind_version':
 						result.refind_version = value;
 						break;
+					case 'target_version':
+						result.target_version = value;
+						break;
 					}
 				}
 				sfd.close();
@@ -1833,6 +1840,11 @@ const methods = {
 					}
 				}
 			}
+
+			/* 旧版脚本不输出 target_version（或脚本整个跑不起来）时，
+			   至少回落到基础版本号，UI 不会显示成空白。 */
+			if (!length(result.target_version))
+				result.target_version = result.refind_version;
 
 			return result;
 		}
