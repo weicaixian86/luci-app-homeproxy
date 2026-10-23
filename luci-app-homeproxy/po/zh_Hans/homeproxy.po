@@ -42,9 +42,7 @@ msgstr "4 或 6。留空不限制。"
 msgid ""
 "<code>%s</code> will be temporarily overwritten to <code>%s</code> after 50 "
 "triggers in 30s if not enabled."
-msgstr ""
-"<code>%s</code> 在未启用的情况下，50 次触发后会在 30 秒内临时覆盖为 "
-"<code>%s</code>。"
+msgstr "<code>%s</code> 在未启用的情况下，50 次触发后会在 30 秒内临时覆盖为 <code>%s</code>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1742
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1761
@@ -173,7 +171,8 @@ msgid "Allow insecure connection at TLS client."
 msgstr "允许 TLS 客户端侧的不安全连接。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2041
-msgid "Allow insecure connection by default when add nodes from subscriptions."
+msgid ""
+"Allow insecure connection by default when add nodes from subscriptions."
 msgstr "从订阅获取节点时，默认允许不安全连接。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1529
@@ -225,10 +224,11 @@ msgstr "AnyTLS 填充方案。"
 msgid ""
 "Append a <code>edns0-subnet</code> OPT extra record with the specified IP "
 "prefix to every query by default.<br/>If value is an IP address instead of "
-"prefix, <code>/32</code> or <code>/128</code> will be appended automatically."
+"prefix, <code>/32</code> or <code>/128</code> will be appended "
+"automatically."
 msgstr ""
-"将带有指定 IP 前缀的 <code>edns0-subnet</code> OPT 记录附加到每个查询。如果值"
-"是 IP 地址而不是前缀，则会自动添加 <code>/32</code> 或 <code>/128</code>。"
+"将带有指定 IP 前缀的 <code>edns0-subnet</code> OPT 记录附加到每个查询。如果值是 IP 地址而不是前缀，则会自动添加 "
+"<code>/32</code> 或 <code>/128</code>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1728
 msgid "Append self-signed certificate"
@@ -282,9 +282,7 @@ msgstr "自动选择"
 msgid ""
 "Auto select picks the lowest-latency node; manual select can be switched at "
 "runtime; picking a single node uses only that node."
-msgstr ""
-"自动选择会按延迟自动挑选最快节点；手动选择可在面板中随时切换；直接选一个节点"
-"则只使用该节点。"
+msgstr "自动选择会按延迟自动挑选最快节点；手动选择可在面板中随时切换；直接选一个节点则只使用该节点。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2912
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1989
@@ -455,11 +453,9 @@ msgstr "客户端"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2364
 msgid ""
-"Client DNS queries match DNS rules from top to bottom; matching stops at the "
-"first hit, and unmatched queries go to the default DNS server."
-msgstr ""
-"客户端 DNS 查询按从上到下的顺序匹配 DNS 规则，命中即停止；未命中任何规则的查"
-"询交给默认 DNS 服务器。"
+"Client DNS queries match DNS rules from top to bottom; matching stops at the"
+" first hit, and unmatched queries go to the default DNS server."
+msgstr "客户端 DNS 查询按从上到下的顺序匹配 DNS 规则，命中即停止；未命中任何规则的查询交给默认 DNS 服务器。"
 
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:14
 msgid "Client Settings"
@@ -591,8 +587,8 @@ msgstr "DTLS"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1905
 msgid ""
-"Daily domain name resolution for clients. Choose an overseas DNS if DNS leak "
-"protection is required."
+"Daily domain name resolution for clients. Choose an overseas DNS if DNS leak"
+" protection is required."
 msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:306
@@ -628,9 +624,8 @@ msgstr "默认 DNS 服务器"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1006
 msgid "Default DNS server for resolving domain name in the server address."
 msgstr ""
-"填写国内DNS，Sing-box在连接这个代理节点前，需要先解析节点域名，这里就决定用哪"
-"个DNS去解析这个“代理服务器域名”，不要选走代理的国外 DNS，否则可能出现“代理还"
-"没连上，却要先通过代理解析代理服务器”的循环问题。"
+"填写国内DNS，Sing-box在连接这个代理节点前，需要先解析节点域名，这里就决定用哪个DNS去解析这个“代理服务器域名”，不要选走代理的国外 "
+"DNS，否则可能出现“代理还没连上，却要先通过代理解析代理服务器”的循环问题。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2367
 msgid "Default DNS server: %s (via outbound: %s)"
@@ -760,9 +755,7 @@ msgstr "禁用 UDP 域名映射"
 msgid ""
 "Disables Path MTU Discovery (RFC 8899). Packets will then be at most 1252 "
 "(IPv4) / 1232 (IPv6) bytes in size."
-msgstr ""
-"禁用路径 MTU 发现 (RFC 8899)。 数据包的大小最多为 1252 (IPv4) / 1232 (IPv6) "
-"字节。"
+msgstr "禁用路径 MTU 发现 (RFC 8899)。 数据包的大小最多为 1252 (IPv4) / 1232 (IPv6) 字节。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1836
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2246
@@ -863,12 +856,12 @@ msgstr "丢弃请求"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2032
 msgid ""
 "Drop/keep nodes that contain the specific keywords. <a target=\"_blank\" "
-"href=\"https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/"
-"Regular_Expressions\">Regex</a> is supported."
+"href=\"https://developer.mozilla.org/en-"
+"US/docs/Web/JavaScript/Guide/Regular_Expressions\">Regex</a> is supported."
 msgstr ""
-"丢弃/保留 包含指定关键词的节点。支持<a target=\"_blank\" href=\"https://"
-"developer.mozilla.org/zh-CN/docs/Web/JavaScript/Guide/Regular_Expressions\">"
-"正则表达式</a>。"
+"丢弃/保留 包含指定关键词的节点。支持<a target=\"_blank\" "
+"href=\"https://developer.mozilla.org/zh-"
+"CN/docs/Web/JavaScript/Guide/Regular_Expressions\">正则表达式</a>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1434
 msgid "Drop/keep specific nodes from outbounds."
@@ -880,22 +873,19 @@ msgstr "从订阅中 丢弃/保留 指定节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:700
 msgid ""
-"EAB (External Account Binding) contains information necessary to bind or map "
-"an ACME account to some other account known by the CA.<br/>External account "
-"bindings are \"used to associate an ACME account with an existing account in "
-"a non-ACME system, such as a CA customer database."
+"EAB (External Account Binding) contains information necessary to bind or map"
+" an ACME account to some other account known by the CA.<br/>External account"
+" bindings are \"used to associate an ACME account with an existing account "
+"in a non-ACME system, such as a CA customer database."
 msgstr ""
-"EAB（外部帐户绑定）包含将 ACME 帐户绑定或映射到 CA 已知的其他帐户所需的信息。"
-"<br/>外部帐户绑定“用于将 ACME 帐户与非 ACME 系统中的现有帐户相关联，例如 CA "
-"客户数据库。"
+"EAB（外部帐户绑定）包含将 ACME 帐户绑定或映射到 CA 已知的其他帐户所需的信息。<br/>外部帐户绑定“用于将 ACME 帐户与非 ACME "
+"系统中的现有帐户相关联，例如 CA 客户数据库。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1750
 msgid ""
 "ECH (Encrypted Client Hello) is a TLS extension that allows a client to "
 "encrypt the first part of its ClientHello message."
-msgstr ""
-"ECH（Encrypted Client Hello）是一个 TLS 扩展，它允许客户端加密其 ClientHello "
-"信息的第一部分。"
+msgstr "ECH（Encrypted Client Hello）是一个 TLS 扩展，它允许客户端加密其 ClientHello 信息的第一部分。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1765
 #: htdocs/luci-static/resources/view/homeproxy/server.js:844
@@ -955,11 +945,11 @@ msgstr "启用"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:380
 msgid ""
 "Enable 0-RTT QUIC connection handshake on the client side. This is not "
-"impacting much on the performance, as the protocol is fully multiplexed.<br/"
-">Disabling this is highly recommended, as it is vulnerable to replay attacks."
+"impacting much on the performance, as the protocol is fully "
+"multiplexed.<br/>Disabling this is highly recommended, as it is vulnerable "
+"to replay attacks."
 msgstr ""
-"在客户端启用 0-RTT QUIC 连接握手。由于协议是完全复用的，这对性能影响不大。"
-"<br/>强烈建议禁用此功能，因为它容易受到重放攻击。"
+"在客户端启用 0-RTT QUIC 连接握手。由于协议是完全复用的，这对性能影响不大。<br/>强烈建议禁用此功能，因为它容易受到重放攻击。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1376
 #: htdocs/luci-static/resources/view/homeproxy/server.js:379
@@ -1442,17 +1432,15 @@ msgstr "空闲超时"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1739
 msgid ""
-"If enabled, attempts to connect UDP connection to the destination instead of "
-"listen."
+"If enabled, attempts to connect UDP connection to the destination instead of"
+" listen."
 msgstr "如果启用，尝试主动连接到目标的 UDP 而不是监听。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1733
 msgid ""
 "If enabled, for UDP proxy requests addressed to a domain, the original "
 "packet address will be sent in the response instead of the mapped domain."
-msgstr ""
-"如果启用，对于发送到域名的 UDP 代理请求，响应中将发送原始数据包地址而不是映射"
-"的域名。"
+msgstr "如果启用，对于发送到域名的 UDP 代理请求，响应中将发送原始数据包地址而不是映射的域名。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1474
 msgid ""
@@ -1470,9 +1458,7 @@ msgstr "如果设置，请求的域名将在路由前被解析为 IP 地址。"
 msgid ""
 "If the transport doesn't see any activity after a duration of this time (in "
 "seconds), it pings the client to check if the connection is still active."
-msgstr ""
-"如果传输在此时间段（单位：秒）后没有看到任何活动，它会向客户端发送 ping 请求"
-"以检查连接是否仍然活动。"
+msgstr "如果传输在此时间段（单位：秒）后没有看到任何活动，它会向客户端发送 ping 请求以检查连接是否仍然活动。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1729
 msgid ""
@@ -1499,12 +1485,10 @@ msgstr "导入分享链接"
 msgid ""
 "In default mode, rule fields are matched by category. Any condition in the "
 "same category can match, while different categories must match at the same "
-"time. Rule sets are merged into the rule for matching and are not treated as "
-"separate sub-rules."
+"time. Rule sets are merged into the rule for matching and are not treated as"
+" separate sub-rules."
 msgstr ""
-"默认模式下，规则会按条件类别进行匹配。同一类别内任意条件命中即可，不同类别之"
-"间需要同时满足。规则集会合并到当前规则中参与匹配，不会作为独立子规则单独生"
-"效。"
+"默认模式下，规则会按条件类别进行匹配。同一类别内任意条件命中即可，不同类别之间需要同时满足。规则集会合并到当前规则中参与匹配，不会作为独立子规则单独生效。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:964
 #: htdocs/luci-static/resources/view/homeproxy/server.js:869
@@ -1626,9 +1610,8 @@ msgid ""
 "domains you visit (DNS leak). Add rules for sensitive domains, or set the "
 "default DNS server to one that goes through a proxy."
 msgstr ""
-"防泄漏提示：未命中任何规则的查询会交给默认 DNS 服务器解析。若它直连出网，局域"
-"网或运营商就能看到你访问的域名（DNS 泄漏）。建议为敏感域名单独添加规则，或把"
-"默认 DNS 服务器设为走代理的那一个。"
+"防泄漏提示：未命中任何规则的查询会交给默认 DNS 服务器解析。若它直连出网，局域网或运营商就能看到你访问的域名（DNS "
+"泄漏）。建议为敏感域名单独添加规则，或把默认 DNS 服务器设为走代理的那一个。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2011
 msgid "Leave empty to use the default port."
@@ -1639,9 +1622,7 @@ msgstr "留空则表示使用默认端口。"
 msgid ""
 "Legacy protocol support (VMess MD5 Authentication) is provided for "
 "compatibility purposes only, use of alterId > 1 is not recommended."
-msgstr ""
-"提供旧协议支持（VMess MD5 身份验证）仅出于兼容性目的，不建议使用 alterId > "
-"1。"
+msgstr "提供旧协议支持（VMess MD5 身份验证）仅出于兼容性目的，不建议使用 alterId > 1。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:960
 msgid "Less compatibility and sometimes better performance."
@@ -1767,7 +1748,8 @@ msgstr "持久化 DNS 缓存、保存代理选择的总开关"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2589
 msgid ""
-"Match IP CIDR with query response. Current rule will be skipped if not match."
+"Match IP CIDR with query response. Current rule will be skipped if not "
+"match."
 msgstr "使用查询响应匹配 IP CIDR。如果不匹配，则跳过当前规则。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1853
@@ -1898,11 +1880,9 @@ msgstr "最大连接数"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1629
 msgid ""
-"Maximum multiplexed streams in a connection before opening a new connection."
-"<br/>Conflict with <code>%s</code> and <code>%s</code>."
-msgstr ""
-"在打开新连接之前，连接中的最大多路复用流数量。与 <code>%s</code> 和 "
-"<code>%s</code> 冲突。"
+"Maximum multiplexed streams in a connection before opening a new "
+"connection.<br/>Conflict with <code>%s</code> and <code>%s</code>."
+msgstr "在打开新连接之前，连接中的最大多路复用流数量。与 <code>%s</code> 和 <code>%s</code> 冲突。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1628
 msgid "Maximum streams"
@@ -1999,8 +1979,8 @@ msgid ""
 "verification, VMess, Reality/uTLS and other time-sensitive connection "
 "scenarios."
 msgstr ""
-"NTP服务固定走直连，主要提供给Sing-box某些依赖准确时间的功能使用,如：TLS证书校"
-"验、VMess、Reality/uTLS等对时间敏感的连接场景。"
+"NTP服务固定走直连，主要提供给Sing-"
+"box某些依赖准确时间的功能使用,如：TLS证书校验、VMess、Reality/uTLS等对时间敏感的连接场景。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2977
 msgid "NTP time synchronization interval"
@@ -2154,9 +2134,8 @@ msgid ""
 "that the token is stored in plain text in /etc/config/homeproxy, so use a "
 "read-only one."
 msgstr ""
-"可选。仅在检查资源更新时用于提高 GitHub API 配额（每小时 60 → 5000 次）。留空"
-"即可，除非反复出现「获取最新版本失败」。注意：令牌会以明文保存在 /etc/config/"
-"homeproxy，建议使用只读令牌。"
+"可选。仅在检查资源更新时用于提高 GitHub API 配额（每小时 60 → 5000 "
+"次）。留空即可，除非反复出现「获取最新版本失败」。注意：令牌会以明文保存在 /etc/config/homeproxy，建议使用只读令牌。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1615
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2394
@@ -2797,11 +2776,11 @@ msgstr "嗅探到的客户端类型（QUIC 客户端类型或 SSH 客户端名�
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1645
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2433
 msgid ""
-"Sniffed protocol, see <a target=\"_blank\" href=\"https://sing-box.sagernet."
-"org/configuration/route/sniff/\">Sniff</a> for details."
+"Sniffed protocol, see <a target=\"_blank\" href=\"https://sing-"
+"box.sagernet.org/configuration/route/sniff/\">Sniff</a> for details."
 msgstr ""
-"嗅探协议，具体参见 <a target=\"_blank\" href=\"https://sing-box.sagernet.org/"
-"configuration/route/sniff/\">Sniff</a>。"
+"嗅探协议，具体参见 <a target=\"_blank\" href=\"https://sing-"
+"box.sagernet.org/configuration/route/sniff/\">Sniff</a>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1096
 #: htdocs/luci-static/resources/view/homeproxy/server.js:192
@@ -2851,24 +2830,21 @@ msgstr "指定使用的 DNS 服务器，而不是通过 DNS 规则选择。"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1451
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1503
 msgid ""
-"Specifies the period of time (in seconds) after which a health check will be "
-"performed using a ping frame if no frames have been received on the "
+"Specifies the period of time (in seconds) after which a health check will be"
+" performed using a ping frame if no frames have been received on the "
 "connection.<br/>Please note that a ping response is considered a received "
 "frame, so if there is no other traffic on the connection, the health check "
 "will be executed every interval."
 msgstr ""
-"如果连接上没有收到任何帧，指定一段时间（单位：秒）后将使用 PING 帧执行健康检"
-"查。<br/>需要注意的是，PING 响应被视为已接收的帧，因此如果连接上没有其他流"
-"量，则健康检查将在每个间隔执行一次。"
+"如果连接上没有收到任何帧，指定一段时间（单位：秒）后将使用 PING 帧执行健康检查。<br/>需要注意的是，PING "
+"响应被视为已接收的帧，因此如果连接上没有其他流量，则健康检查将在每个间隔执行一次。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:431
 #: htdocs/luci-static/resources/view/homeproxy/server.js:466
 msgid ""
 "Specifies the time (in seconds) until idle clients should be closed with a "
 "GOAWAY frame. PING frames are not considered as activity."
-msgstr ""
-"指定闲置客户端应在多长时间（单位：秒）内使用 GOAWAY 帧关闭。PING 帧不被视为活"
-"动。"
+msgstr "指定闲置客户端应在多长时间（单位：秒）内使用 GOAWAY 帧关闭。PING 帧不被视为活动。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1455
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1511
@@ -2878,8 +2854,7 @@ msgid ""
 "frame is not received within the specified timeout duration, the connection "
 "will be closed."
 msgstr ""
-"指定发送 PING 帧后，在指定的超时时间（单位：秒）内必须接收到响应。<br/>如果在"
-"指定的超时时间内没有收到 PING 帧的响应，则连接将关闭。"
+"指定发送 PING 帧后，在指定的超时时间（单位：秒）内必须接收到响应。<br/>如果在指定的超时时间内没有收到 PING 帧的响应，则连接将关闭。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:900
 msgid ""
@@ -2955,10 +2930,9 @@ msgid ""
 "share links, as well as Clash (mihomo) proxy lists, sing-box outbound JSON "
 "and SIP008 JSON. SSR and KCP transport are not supported."
 msgstr ""
-"支持 AnyTLS、HTTP/HTTPS、Hysteria、Hysteria2、Shadowsocks（SIP002、"
-"Shadowrocket 与 SIP008）、SOCKS（4 / 4a / 5）、Trojan、TUIC、VLESS、VMess 分"
-"享链接，以及 Clash（mihomo）节点列表、sing-box 出站 JSON 和 SIP008 JSON。不支"
-"持 SSR 与 KCP 传输。"
+"支持 AnyTLS、HTTP/HTTPS、Hysteria、Hysteria2、Shadowsocks（SIP002、Shadowrocket 与 "
+"SIP008）、SOCKS（4 / 4a / 5）、Trojan、TUIC、VLESS、VMess 分享链接，以及 "
+"Clash（mihomo）节点列表、sing-box 出站 JSON 和 SIP008 JSON。不支持 SSR 与 KCP 传输。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:948
 msgid "System"
@@ -3049,7 +3023,8 @@ msgstr "目标版本：%s"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:336
 msgid ""
-"Tell the client to use the BBR flow control algorithm instead of Hysteria CC."
+"Tell the client to use the BBR flow control algorithm instead of Hysteria "
+"CC."
 msgstr "让客户端使用 BBR 流控算法。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:857
@@ -3127,17 +3102,15 @@ msgstr "用于测试的 URL。"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:688
 msgid ""
 "The alternate port to use for the ACME HTTP challenge; if non-empty, this "
-"port will be used instead of 80 to spin up a listener for the HTTP challenge."
-msgstr ""
-"用于 ACME HTTP 质询的备用端口；如果非空，将使用此端口而不是 80 来启动 HTTP 质"
-"询的侦听器。"
+"port will be used instead of 80 to spin up a listener for the HTTP "
+"challenge."
+msgstr "用于 ACME HTTP 质询的备用端口；如果非空，将使用此端口而不是 80 来启动 HTTP 质询的侦听器。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:694
 msgid ""
 "The alternate port to use for the ACME TLS-ALPN challenge; the system must "
 "forward 443 to this port for challenge to succeed."
-msgstr ""
-"用于 ACME TLS-ALPN 质询的备用端口； 系统必须将 443 转发到此端口以使质询成功。"
+msgstr "用于 ACME TLS-ALPN 质询的备用端口； 系统必须将 443 转发到此端口以使质询成功。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2851
 msgid "The default rule set directory is /etc/homeproxy/ruleset/."
@@ -3229,8 +3202,8 @@ msgstr "服务端公钥，需要 PEM 格式。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1358
 msgid ""
-"The tag of the upstream outbound.<br/>Other dial fields will be ignored when "
-"enabled."
+"The tag of the upstream outbound.<br/>Other dial fields will be ignored when"
+" enabled."
 msgstr "上游出站的标签。<br/>启用时，其他拨号字段将被忽略。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:772
@@ -3248,12 +3221,10 @@ msgstr "测试容差时间（单位：毫秒）。"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1462
 #: htdocs/luci-static/resources/view/homeproxy/server.js:474
 msgid ""
-"The timeout (in seconds) that after performing a keepalive check, the client "
-"will wait for activity. If no activity is detected, the connection will be "
+"The timeout (in seconds) that after performing a keepalive check, the client"
+" will wait for activity. If no activity is detected, the connection will be "
 "closed."
-msgstr ""
-"经过一段时间（单位：秒）之后，客户端将执行 keepalive 检查并等待活动。如果没有"
-"检测到任何活动，则会关闭连接。"
+msgstr "经过一段时间（单位：秒）之后，客户端将执行 keepalive 检查并等待活动。如果没有检测到任何活动，则会关闭连接。"
 
 #: htdocs/luci-static/resources/homeproxy.js:1562
 msgid "The unzip command is unavailable."
@@ -3264,16 +3235,13 @@ msgstr "unzip 命令不可用。"
 msgid ""
 "This is <strong>DANGEROUS</strong>, your traffic is almost like "
 "<strong>PLAIN TEXT</strong>! Use at your own risk!"
-msgstr ""
-"这是危险行为，您的流量将几乎等同于<strong>明文</strong>！使用风险自负！"
+msgstr "这是危险行为，您的流量将几乎等同于<strong>明文</strong>！使用风险自负！"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1372
 msgid ""
 "This is the TUIC port of the UDP over TCP protocol, designed to provide a "
 "QUIC stream based UDP relay mode that TUIC does not provide."
-msgstr ""
-"这是 TUIC 的 UDP over TCP 协议移植， 旨在提供 TUIC 不提供的基于 QUIC 流的 "
-"UDP 中继模式。"
+msgstr "这是 TUIC 的 UDP over TCP 协议移植， 旨在提供 TUIC 不提供的基于 QUIC 流的 UDP 中继模式。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1230
 msgid "This node dials out directly."
@@ -3297,23 +3265,21 @@ msgstr "超时"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1745
 msgid ""
-"Timeout for UDP connections.<br/>Setting a larger value than the UDP timeout "
-"in inbounds will have no effect."
+"Timeout for UDP connections.<br/>Setting a larger value than the UDP timeout"
+" in inbounds will have no effect."
 msgstr "UDP 连接的超时时间。<br/>设置比入站的 UDP 超时更大的值将无效。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:500
 msgid ""
-"To be compatible with Xray-core, set this to <code>Sec-WebSocket-Protocol</"
-"code>."
-msgstr ""
-"要与 Xray-core 兼容，请将其设置为 <code>Sec-WebSocket-Protocol</code>。"
+"To be compatible with Xray-core, set this to <code>Sec-WebSocket-"
+"Protocol</code>."
+msgstr "要与 Xray-core 兼容，请将其设置为 <code>Sec-WebSocket-Protocol</code>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:927
 msgid ""
 "To enable Tun support, you need to install <code>ip-full</code> and "
 "<code>kmod-tun</code>"
-msgstr ""
-"要启用 Tun 支持，您需要安装 <code>ip-full</code> 和 <code>kmod-tun</code>。"
+msgstr "要启用 Tun 支持，您需要安装 <code>ip-full</code> 和 <code>kmod-tun</code>。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1428
 #: htdocs/luci-static/resources/view/homeproxy/server.js:408
@@ -3530,7 +3496,8 @@ msgstr "使用 ACME TLS 证书颁发机构。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2391
 msgid ""
-"Used as the displayed DNS rule name. Chinese is supported. It must be unique."
+"Used as the displayed DNS rule name. Chinese is supported. It must be "
+"unique."
 msgstr "作为 DNS 规则的显示名，支持中文。需唯一。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1951
@@ -3553,19 +3520,18 @@ msgstr "作为服务器的显示名，支持中文。需唯一。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:384
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2794
 msgid ""
-"Used as the sing-box rule set tag and display name. Only letters, digits, \"."
-"\", \"_\" and \"-\" are allowed. Chinese is not supported. It must be unique."
-msgstr ""
-"同时作为 sing-box 规则集标签与显示名。仅允许字母、数字、\".\"、\"_\"、\"-\"，"
-"不支持中文，且需唯一。"
+"Used as the sing-box rule set tag and display name. Only letters, digits, "
+"\".\", \"_\" and \"-\" are allowed. Chinese is not supported. It must be "
+"unique."
+msgstr "同时作为 sing-box 规则集标签与显示名。仅允许字母、数字、\".\"、\"_\"、\"-\"，不支持中文，且需唯一。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2056
 msgid ""
 "Used to resolve DNS server addresses in domain form. IP addresses do not "
 "require it."
 msgstr ""
-"用于解析域名形式的DNS，如：https://dns.alidns.com/dns-query，数字形式则不需要"
-"如：https://223.5.5.5/dns-query"
+"用于解析域名形式的DNS，如：https://dns.alidns.com/dns-"
+"query，数字形式则不需要如：https://223.5.5.5/dns-query"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1687
 #: htdocs/luci-static/resources/view/homeproxy/server.js:570
@@ -3787,8 +3753,7 @@ msgstr "uTLS 指纹"
 msgid ""
 "uTLS is a fork of \"crypto/tls\", which provides ClientHello fingerprinting "
 "resistance."
-msgstr ""
-"uTLS 是 \"crypto/tls\" 的一个分支，拥有抵抗 ClientHello 指纹识别的能力。"
+msgstr "uTLS 是 \"crypto/tls\" 的一个分支，拥有抵抗 ClientHello 指纹识别的能力。"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:418
 #: htdocs/luci-static/resources/view/homeproxy/status.js:457
@@ -3884,17 +3849,15 @@ msgstr "…（仅显示最近 %s 行）"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1974
 msgid ""
-"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns."
-"alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns."
-"alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议"
-"若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失"
-"败。"
+"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns.alidns.com<br/>HTTPS：https://dns.alidns.com/dns-"
+"query<br/>HTTP/3：h3://dns.alidns.com/dns-"
+"query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议若填 IP，须在下方「TLS "
+"SNI」填真实域名（如 dns.alidns.com），否则证书校验失败。"
 msgstr ""
-"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns."
-"alidns.com<br/>HTTPS：https://dns.alidns.com/dns-query<br/>HTTP/3：h3://dns."
-"alidns.com/dns-query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议"
-"若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失"
-"败。"
+"示例：<br/>UDP：udp://223.5.5.5<br/>TCP：tcp://223.5.5.5<br/>TLS：tls://dns.alidns.com<br/>HTTPS：https://dns.alidns.com/dns-"
+"query<br/>HTTP/3：h3://dns.alidns.com/dns-"
+"query<br/>QUIC：quic://dns.alidns.com<br/>注：TLS/QUIC 类协议若填 IP，须在下方「TLS "
+"SNI」填真实域名（如 dns.alidns.com），否则证书校验失败。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:89
 msgid "订阅名称"
@@ -3919,6 +3882,22 @@ msgstr "订阅地址"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr "订阅地址不能重复"
+
+msgid "No."
+msgstr "序号"
+
+msgid ""
+"Drag policy groups by their order number from top to bottom; the pinned one "
+"cannot be dragged."
+msgstr "可拖动策略组按序号从上到下排序，置顶不可拖动。"
+
+msgid "Pinned"
+msgstr "置顶"
+
+msgid ""
+"Default outbound (route.final): always pinned to the top of the panel and "
+"cannot be reordered here."
+msgstr "默认出口（route.final）：在面板中始终置顶，此处不可重新排序。"
 
 #~ msgid "Current DNS resolution flow: "
 #~ msgstr "当前 DNS 解析流程："
