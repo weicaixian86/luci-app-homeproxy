@@ -44,6 +44,51 @@ function readProcess(fd) {
 	return payload;
 }
 
+/* 诊断日志统一入口：失败原因进 syslog（logger -t homeproxy-dns），成功不记。
+   日志本身绝不能把测试搞挂，任何异常都吞掉。
+   现场排查：logread -e homeproxy-dns */
+function traceLog(msg) {
+	try {
+		system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
+	}
+	catch (e) {}
+}
+
+/* ⚠️ ucode 没有 JS 的包装对象：Math / JSON / Object / Array 全都不存在，
+   `Math.round(x)` 实际是「对 null 取成员」，运行时报
+   “left side of . operator is not an object”；rpcd 再把它折叠成
+   Command failed: Unknown error，前端只剩「失败」两个字。DNS 延迟测试长期
+   全失败就是这么来的 —— curl 和 ping 其实都跑通，卡在最后取整这一步，
+   所以日志停在 curl 那行、连 ping 的失败原因都打不出来。
+   下面是替代实现：ucode 同样没有 parseFloat，一元 + 对数字串的转换也不在
+   文档保证范围内，故一律用字符串拆解，结果确定、不依赖隐式类型转换。 */
+
+/* curl 的 %{time_xxx} 以秒为单位（"0.050306"）→ 毫秒整数 50（截断到毫秒） */
+function secToMs(v) {
+	const m = match(`${v}`, /^([0-9]+)(?:\.([0-9]+))?$/);
+	if (!m)
+		return null;
+
+	let frac = m[2] || '';
+	while (length(frac) < 3)
+		frac += '0';
+
+	return int(m[1]) * 1000 + int(substr(frac, 0, 3));
+}
+
+/* "22.809"(毫秒) → 23，四舍五入到整毫秒 */
+function textToInt(v) {
+	const m = match(`${v}`, /^([0-9]+)(?:\.([0-9]+))?$/);
+	if (!m)
+		return null;
+
+	let n = int(m[1]);
+	if (m[2] && int(substr(m[2], 0, 1)) >= 5)
+		n++;
+
+	return n;
+}
+
 /* Clash API 请求统一走这两个包装：curl 是包的硬依赖（Makefile 的
    LUCI_DEPENDS 里有 +curl），wget 只是精简镜像里可能存在的替代品。
    原来这里把 /usr/bin/wget 写死，镜像里没有 wget 时面板下载、延迟测试
@@ -105,8 +150,6 @@ function clashAPIRequest(api, method, path, timeout) {
 	 * and surface as a misleading "unknown error". */
 	return length(payload) ? payload : null;
 }
-
-
 
 /* Append a timestamped panel-download event to the dedicated runtime log
    file so it is visible in the HomeProxy "Logs" page, and also keep a syslog
@@ -254,6 +297,235 @@ function coreUpdateOutput() {
 		return '';
 	}
 }
+
+	/* DNS 延迟测试的实体实现。独立成模块级函数，由上面的 call 统一 try/catch：
+	   ucode 的运行时异常会被 rpcd 折叠成 Command failed: Unknown error，
+	   前端只剩「失败」两个字，现场无法定位。
+	   探测口径见需求书十一.8。 */
+	function dnsServerTest(req) {
+		const section = req.args?.section || '';
+
+		if (!match(section, /^[A-Za-z0-9_]+$/))
+			return { result: false, error: 'illegal section' };
+
+		const uci = cursor();
+		let type = null,
+		    server = null;
+
+		uci.foreach('homeproxy', 'dns_server', (sec) => {
+			if (sec['.name'] === section) {
+				type = sec.type || 'udp';
+				server = sec.server || '';
+			}
+		});
+
+		if (!server)
+			return { result: false, error: 'no such section or empty address' };
+
+		/* 从带协议头的地址里提取主机名（scheme 允许数字，如 h3://） */
+		let host = server;
+		const m = match(server, /^[a-z][a-z0-9+.-]*:\/\/(.+)$/i);
+
+		if (m)
+			host = m[1];
+
+		/* 去掉端口、路径、IPv6 方括号。三类要分开处理：
+		   一、[2606:4700::1111]:53 → 取方括号内；
+		   二、裸 IPv6 2606:4700::1111 → 整串就是主机，不能按 ':' 切，
+		       否则会截成 "2606"，ping 必然失败（前端校验允许裸 IPv6）；
+		   三、主机名 / IPv4，可能带 :端口 或 /路径。 */
+		const bracketed = match(host, /^\[([^\]]+)\]/);
+
+		if (bracketed) {
+			host = bracketed[1];
+		}
+		else if (!match(host, /^[0-9a-fA-F:.]+$/) || split(host, ':')[2] == null) {
+			host = match(host, /^([^:\/]+)/)?.[1] || host;
+		}
+
+		if (!host)
+			return { result: false, error: 'failed to extract host from address' };
+
+		/* 可执行文件不写死单一绝对路径：不同固件/发行版把 curl 放在
+		   /usr/bin、/bin 或 /usr/sbin，写死一个会让 HTTPS 全部落到 ping 分支，
+		   表现成「延迟测试全失败」。按顺序取第一个可执行的即可。
+		   用下标循环而不是 for-in：ucode 的 for-in 语义与 JS 不同，
+		   这里不冒这个险。 */
+		const findExec = (paths) => {
+			for (let i = 0; i < length(paths); i++)
+				if (access(paths[i]))
+					return paths[i];
+
+			return null;
+		};
+
+		const curl = findExec([ '/usr/bin/curl', '/bin/curl', '/usr/sbin/curl' ]),
+		      ping = findExec([ '/bin/ping', '/usr/bin/ping', '/sbin/ping' ]),
+		      ping6 = findExec([ '/bin/ping6', '/usr/bin/ping6', '/sbin/ping6' ]);
+
+		/* 每种 DNS 类型的真实探测目标。
+		   之前只有 https 走 curl，其余协议一律 ping ICMP —— 但 ICMP 只能证明
+		   「这台机器能 ping 通」，既不覆盖服务端口，也会在禁 ping 的网络里把
+		   完全可用的 DNS 误判为「失败」。现在按协议挑端口做真实建连：
+		   - https(DoH)：用地址里的完整 URL 做 TLS 握手（端口默认 443，路径保留）
+		   - tls(DoT)  ：853/TCP + TLS 握手
+		   - tcp       ：53/TCP 建连
+		   - udp       ：53/TCP 建连（DNS 规范要求同一端口同时监听 TCP，纯 UDP
+		                 的无副作用探测不可靠，故用 TCP 同端口作为可达性近似）
+		   - h3(DoH3)  ：443/TCP + TLS 握手（同一端点一般也开 443/TCP；真正的 QUIC
+		                 握手需要 curl --http3，OpenWrt 的 curl 多数没编进去）
+		   - quic(DoQ) ：853/TCP + TLS 握手（DoQ 端点多数不监听 TCP，失败会自动回退 ICMP）
+		   探测失败一律回退 ICMP ping，两条都失败才判「失败」，并把两段原因都带回。 */
+		const PROBE_BY_TYPE = {
+			tls:  { scheme: 'https', port: 853 },
+			tcp:  { scheme: 'http',  port: 53  },
+			udp:  { scheme: 'http',  port: 53  },
+			h3:   { scheme: 'https', port: 443 },
+			quic: { scheme: 'https', port: 853 }
+		};
+
+		const probe = (type === 'https')
+			? { scheme: 'https', port: null }
+			: (PROBE_BY_TYPE[type] || null);
+
+		/* curl 分支：https 用完整 URL，其它协议用 host + 协议默认端口重拼。
+		   -k 是必需的：DoH/DoT 地址经常直接填 IP（https://223.5.5.5/dns-query），
+		   证书签给域名，SNI/校验都对不上，不加 -k 会直接以「证书校验失败」退出，
+		   一个时间都拿不到。这里只量延迟，不承担证书校验职责。 */
+		let probe_error = null;
+
+		if (curl && probe) {
+			let url;
+
+			if (probe.port == null) {
+				url = server;
+
+				if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
+					url = 'https://' + url;
+			}
+			else {
+				/* IPv6 字面量要加方括号，否则 host:853 会被解析成非法 URL */
+				const ipv6 = (index(host, ':') >= 0);
+
+				url = `${probe.scheme}://${ipv6 ? '[' + host + ']' : host}:${probe.port}/`;
+			}
+
+			/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
+			   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直读到
+			   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。
+			   https 保持 6 秒总预算；其它协议是「建连探测」，在 53/TCP 上发
+			   HTTP 请求必然等不到正常响应、靠超时收尾，收紧到 3 秒。 */
+			const maxtime = (probe.port == null) ? 6 : 3;
+			const errfile = `/tmp/.hp_dns_curl_${section}`,
+			      fd = popen(`${curl} -k --connect-timeout 3 --max-time ${maxtime} -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
+
+			let line = '';
+
+			if (fd) {
+				line = trim(fd.read('line') || '');
+				fd.close();
+			}
+			else {
+				traceLog(`test ${section}: failed to spawn ${curl}`);
+			}
+
+			const details = trim(readfile(errfile) || '');
+			unlink(errfile);
+
+			const parts = split(line, ' ');
+			const time_connect = parts[0] ? secToMs(parts[0]) : null,
+			      time_appconnect = parts[1] ? secToMs(parts[1]) : null;
+
+			/* 握手耗时 = time_appconnect（含 TLS），否则退回 time_connect（仅 TCP）。
+			   变量名避开外层的 latency_ms，不做同名遮蔽，省得踩 let 作用域的坑。 */
+			let hs_ms = (time_appconnect !== null && time_appconnect > 0)
+				? time_appconnect
+				: ((time_connect !== null && time_connect > 0) ? time_connect : null);
+
+			/* 亚毫秒握手四舍五入为 0：钳到 1ms，避免误判失败 */
+			if (hs_ms !== null && hs_ms < 1)
+				hs_ms = 1;
+
+			if (hs_ms !== null && hs_ms > 0)
+				return {
+					result: true,
+					latency_ms: hs_ms,
+					kind: (probe.scheme === 'https') ? 'tls' : 'tcp',
+					port: probe.port || null
+				};
+
+			/* 测不出来（端口不通 / 被阻断 / 域名解析失败）：记下原始报错，
+			   继续往下走 ping 兜底，而不是直接判失败。 */
+			probe_error = details ? split(details, '\n')[0] : 'curl probe failed';
+			traceLog(`test ${section}: curl ${url} -> ${probe_error}`);
+		}
+
+		/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
+		   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
+		   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
+		if (!ping) {
+			const reason = probe_error
+				? ('probe failed: ' + probe_error)
+				: 'missing ping executable';
+
+			traceLog(`test ${section}: ${reason}`);
+
+			return {
+				result: false,
+				error: reason,
+				latency_ms: null,
+				kind: probe_error ? 'probe' : 'ping'
+			};
+		}
+
+		/* IPv6 字面量（含冒号）走 ping6：busybox 的 ping 默认只发 IPv4，
+		   裸 IPv6 会被当作主机名去做 DNS 查询，必然失败。 */
+		const pingbin = (index(host, ':') >= 0 && ping6) ? ping6 : ping;
+
+		/* 直接读 ping 的 stdout，不再「system + /tmp 临时文件 + readfile」：
+		   后者要经过 shell 重定向、临时文件写入、再次读文件三步，任何一步
+		   出问题都只能得到一句笼统的 ping failed，且 system 的退出码与输出
+		   分属两条路径、无法互相印证。popen 在本文件里已被 httpCommand()
+		   长期使用，可用性有保障。 */
+		const pingfd = popen(`${pingbin} -c 1 -W 2 ${shellquote(host)} 2>/dev/null`);
+		const out = pingfd ? readProcess(pingfd) : '';
+
+		if (!pingfd)
+			traceLog(`test ${section}: failed to spawn ${pingbin}`);
+
+		let latency_ms = null;
+		const rt = match(out, /round-trip min\/avg\/max = ([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
+
+		if (rt)
+			latency_ms = textToInt(rt[2]);
+		else {
+			const t = match(out, /time[=<]\s*([0-9.]+)\s*ms/);
+			if (t)
+				latency_ms = textToInt(t[1]);
+		}
+
+		/* 亚毫秒 RTT 四舍五入为 0：钳到 1ms，避免误判失败 */
+		if (latency_ms !== null && latency_ms < 1)
+			latency_ms = 1;
+
+		if (latency_ms !== null && latency_ms > 0)
+			return { result: true, latency_ms: latency_ms, kind: 'ping' };
+
+		/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始报错
+		   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
+		const fail_reason = probe_error
+			? ('probe failed: ' + probe_error)
+			: (pingfd ? 'ping failed' : ('failed to spawn ' + pingbin));
+
+		traceLog(`test ${section}: ${pingbin} ${host} -> ${fail_reason}`);
+
+		return {
+			result: false,
+			error: fail_reason,
+			latency_ms: null,
+			kind: probe_error ? 'probe' : 'ping'
+		};
+	}
 
 const methods = {
 	acllist_read: {
@@ -1476,7 +1748,7 @@ const methods = {
 				let latency_ms = null;
 				if (started_ms !== null && ended_ms !== null && ended_ms >= started_ms)
 					latency_ms = ended_ms - started_ms;
-				return { probe_exit, latency_ms };
+				return { probe_exit: probe_exit, latency_ms: latency_ms };
 			};
 
 			let icmp_latency_ms = null;
@@ -2104,238 +2376,24 @@ const methods = {
 		dns_server_test: {
 			args: { section: 'string' },
 			call: function(req) {
-				const section = req.args?.section || '';
-
-				if (!match(section, /^[A-Za-z0-9_]+$/))
-					return { result: false, error: 'illegal section' };
-
-				const uci = cursor();
-				let type = null,
-				    server = null;
-
-				uci.foreach('homeproxy', 'dns_server', (sec) => {
-					if (sec['.name'] === section) {
-						type = sec.type || 'udp';
-						server = sec.server || '';
-					}
-				});
-
-				if (!server)
-					return { result: false, error: 'no such section or empty address' };
-
-				/* 从带协议头的地址里提取主机名（scheme 允许数字，如 h3://） */
-				let host = server;
-				const m = match(server, /^[a-z][a-z0-9+.-]*:\/\/(.+)$/i);
-
-				if (m)
-					host = m[1];
-
-				/* 去掉端口、路径、IPv6 方括号。三类要分开处理：
-				   一、[2606:4700::1111]:53 → 取方括号内；
-				   二、裸 IPv6 2606:4700::1111 → 整串就是主机，不能按 ':' 切，
-				       否则会截成 "2606"，ping 必然失败（前端校验允许裸 IPv6）；
-				   三、主机名 / IPv4，可能带 :端口 或 /路径。 */
-				const bracketed = match(host, /^\[([^\]]+)\]/);
-
-				if (bracketed) {
-					host = bracketed[1];
+				/* 统一兜底：ucode 的运行时异常会被 rpcd 折叠成
+				   Command failed: Unknown error，前端和 syslog 都拿不到任何
+				   线索（DNS 延迟测试就曾因误用 JS 的 Math 对象整列失败，
+				   日志却停在 curl 阶段，ping 那行都没打出来）。这里把实体
+				   函数包起来，异常文本既写日志也回传前端。 */
+				try {
+					return dnsServerTest(req);
 				}
-				else if (!match(host, /^[0-9a-fA-F:.]+$/) || split(host, ':')[2] == null) {
-					host = match(host, /^([^:\/]+)/)?.[1] || host;
-				}
-
-				if (!host)
-					return { result: false, error: 'failed to extract host from address' };
-
-				/* 可执行文件不写死单一绝对路径：不同固件/发行版把 curl 放在
-				   /usr/bin、/bin 或 /usr/sbin，写死一个会让 HTTPS 全部落到 ping 分支，
-				   表现成「延迟测试全失败」。按顺序取第一个可执行的即可。
-				   用下标循环而不是 for-in：ucode 的 for-in 语义与 JS 不同，
-				   这里不冒这个险。 */
-				const findExec = (paths) => {
-					for (let i = 0; i < length(paths); i++)
-						if (access(paths[i]))
-							return paths[i];
-
-					return null;
-				};
-
-				const curl = findExec([ '/usr/bin/curl', '/bin/curl', '/usr/sbin/curl' ]),
-				      ping = findExec([ '/bin/ping', '/usr/bin/ping', '/sbin/ping' ]),
-				      ping6 = findExec([ '/bin/ping6', '/usr/bin/ping6', '/sbin/ping6' ]);
-
-				/* 每种 DNS 类型的真实探测目标。
-				   之前只有 https 走 curl，其余协议一律 ping ICMP —— 但 ICMP 只能证明
-				   「这台机器能 ping 通」，既不覆盖服务端口，也会在禁 ping 的网络里把
-				   完全可用的 DNS 误判为「失败」。现在按协议挑端口做真实建连：
-				   - https(DoH)：用地址里的完整 URL 做 TLS 握手（端口默认 443，路径保留）
-				   - tls(DoT)  ：853/TCP + TLS 握手
-				   - tcp       ：53/TCP 建连
-				   - udp       ：53/TCP 建连（DNS 规范要求同一端口同时监听 TCP，纯 UDP
-				                 的无副作用探测不可靠，故用 TCP 同端口作为可达性近似）
-				   - h3(DoH3)  ：443/TCP + TLS 握手（同一端点一般也开 443/TCP；真正的 QUIC
-				                 握手需要 curl --http3，OpenWrt 的 curl 多数没编进去）
-				   - quic(DoQ) ：853/TCP + TLS 握手（DoQ 端点多数不监听 TCP，失败会自动回退 ICMP）
-				   探测失败一律回退 ICMP ping，两条都失败才判「失败」，并把两段原因都带回。 */
-				const PROBE_BY_TYPE = {
-					tls:  { scheme: 'https', port: 853 },
-					tcp:  { scheme: 'http',  port: 53  },
-					udp:  { scheme: 'http',  port: 53  },
-					h3:   { scheme: 'https', port: 443 },
-					quic: { scheme: 'https', port: 853 }
-				};
-
-				const probe = (type === 'https')
-					? { scheme: 'https', port: null }
-					: (PROBE_BY_TYPE[type] || null);
-
-				/* 失败原因写系统日志，便于现场直接 logread -e homeproxy-dns 定位，
-				   不必再靠猜（以前只能看到界面上的「失败」两个字）。
-				   诊断日志本身绝不能把测试搞挂：任何异常都吞掉。 */
-				const trace = (msg) => {
-					try {
-						system(`logger -t homeproxy-dns ${shellquote(msg)} 2>/dev/null`);
-					}
-					catch (e) {}
-				};
-
-				/* curl 分支：https 用完整 URL，其它协议用 host + 协议默认端口重拼。
-				   -k 是必需的：DoH/DoT 地址经常直接填 IP（https://223.5.5.5/dns-query），
-				   证书签给域名，SNI/校验都对不上，不加 -k 会直接以「证书校验失败」退出，
-				   一个时间都拿不到。这里只量延迟，不承担证书校验职责。 */
-				let probe_error = null;
-
-				if (curl && probe) {
-					let url;
-
-					if (probe.port == null) {
-						url = server;
-
-						if (!match(url, /^[a-z][a-z0-9+.-]*:\/\//i))
-							url = 'https://' + url;
-					}
-					else {
-						/* IPv6 字面量要加方括号，否则 host:853 会被解析成非法 URL */
-						const ipv6 = (index(host, ':') >= 0);
-
-						url = `${probe.scheme}://${ipv6 ? '[' + host + ']' : host}:${probe.port}/`;
-					}
-
-					/* stderr 单独收集：失败时把 curl 的原始报错带回前端做 tooltip。
-					   -w 结尾补 \n：fs.proc 的 read('line') 在数据没有换行时会一直读到
-					   EOF 才返回，补上换行能让计时串立刻返回，避免读到空串。
-					   https 保持 6 秒总预算；其它协议是「建连探测」，在 53/TCP 上发
-					   HTTP 请求必然等不到正常响应、靠超时收尾，收紧到 3 秒。 */
-					const maxtime = (probe.port == null) ? 6 : 3;
-					const errfile = `/tmp/.hp_dns_curl_${section}`,
-					      fd = popen(`${curl} -k --connect-timeout 3 --max-time ${maxtime} -s -o /dev/null -w "%{time_connect} %{time_appconnect} %{time_total}\\n" ${shellquote(url)} 2> ${shellquote(errfile)}`);
-
-					let line = '';
-
-					if (fd) {
-						line = trim(fd.read('line') || '');
-						fd.close();
-					}
-					else {
-						trace(`test ${section}: failed to spawn ${curl}`);
-					}
-
-					const details = trim(readfile(errfile) || '');
-					unlink(errfile);
-
-					const parts = split(line, ' ');
-					const time_connect = parts[0] ? +parts[0] * 1000 : null,
-					      time_appconnect = parts[1] ? +parts[1] * 1000 : null;
-
-					/* 握手耗时 = time_appconnect（含 TLS），否则退回 time_connect（仅 TCP）。
-					   变量名避开外层的 latency_ms，不做同名遮蔽，省得踩 let 作用域的坑。 */
-					let hs_ms = (time_appconnect !== null && time_appconnect > 0)
-						? Math.round(time_appconnect)
-						: ((time_connect !== null && time_connect > 0) ? Math.round(time_connect) : null);
-
-					/* 亚毫秒握手四舍五入为 0：钳到 1ms，避免误判失败 */
-					if (hs_ms !== null && hs_ms < 1)
-						hs_ms = 1;
-
-					if (hs_ms !== null && hs_ms > 0)
-						return {
-							result: true,
-							latency_ms: hs_ms,
-							kind: (probe.scheme === 'https') ? 'tls' : 'tcp',
-							port: probe.port || null
-						};
-
-					/* 测不出来（端口不通 / 被阻断 / 域名解析失败）：记下原始报错，
-					   继续往下走 ping 兜底，而不是直接判失败。 */
-					probe_error = details ? split(details, '\n')[0] : 'curl probe failed';
-					trace(`test ${section}: curl ${url} -> ${probe_error}`);
-				}
-
-				/* UDP/TCP/TLS(DoT)/HTTP3(DoH3)/QUIC：ping 测往返。用 ping 自己
-				   打印的 round-trip 平均 RTT，而非包裹整个进程的墙钟时间——后者
-				   含 fork/exec 与域名解析开销，低端路由上会把 8ms 虚报成 40ms+。 */
-				if (!ping) {
-					const reason = probe_error
-						? ('probe failed: ' + probe_error)
-						: 'missing ping executable';
-
-					trace(`test ${section}: ${reason}`);
+				catch (e) {
+					traceLog(`dns_server_test ${req.args?.section || ''}: exception ${e}`);
 
 					return {
 						result: false,
-						error: reason,
+						error: `internal error: ${e}`,
 						latency_ms: null,
-						kind: probe_error ? 'probe' : 'ping'
+						kind: 'error'
 					};
 				}
-
-				/* IPv6 字面量（含冒号）走 ping6：busybox 的 ping 默认只发 IPv4，
-				   裸 IPv6 会被当作主机名去做 DNS 查询，必然失败。 */
-				const pingbin = (index(host, ':') >= 0 && ping6) ? ping6 : ping;
-
-				/* 直接读 ping 的 stdout，不再「system + /tmp 临时文件 + readfile」：
-				   后者要经过 shell 重定向、临时文件写入、再次读文件三步，任何一步
-				   出问题都只能得到一句笼统的 ping failed，且 system 的退出码与输出
-				   分属两条路径、无法互相印证。popen 在本文件里已被 httpCommand()
-				   长期使用，可用性有保障。 */
-				const pingfd = popen(`${pingbin} -c 1 -W 2 ${shellquote(host)} 2>/dev/null`);
-				const out = pingfd ? readProcess(pingfd) : '';
-
-				if (!pingfd)
-					trace(`test ${section}: failed to spawn ${pingbin}`);
-
-				let latency_ms = null;
-				const rt = match(out, /round-trip min\/avg\/max = ([0-9.]+)\/([0-9.]+)\/([0-9.]+)/);
-
-				if (rt)
-					latency_ms = Math.round(+rt[2]);
-				else {
-					const t = match(out, /time[=<]\s*([0-9.]+)\s*ms/);
-					if (t)
-						latency_ms = Math.round(+t[1]);
-				}
-
-				/* 亚毫秒 RTT 四舍五入为 0：钳到 1ms，避免误判失败 */
-				if (latency_ms !== null && latency_ms < 1)
-					latency_ms = 1;
-
-				if (latency_ms !== null && latency_ms > 0)
-					return { result: true, latency_ms, kind: 'ping' };
-
-				/* 走到这里说明 ping 也没成功；若之前握手已失败，把 curl 的原始报错
-				   一并带回，前端 tooltip 能直接看出是证书 / DNS / 连通性问题 */
-				const fail_reason = probe_error
-					? ('probe failed: ' + probe_error)
-					: (pingfd ? 'ping failed' : ('failed to spawn ' + pingbin));
-
-				trace(`test ${section}: ${pingbin} ${host} -> ${fail_reason}`);
-
-				return {
-					result: false,
-					error: fail_reason,
-					latency_ms: null,
-					kind: probe_error ? 'probe' : 'ping'
-				};
 			}
 		}
 	};

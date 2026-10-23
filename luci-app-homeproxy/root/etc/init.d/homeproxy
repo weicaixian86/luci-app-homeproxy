@@ -401,7 +401,14 @@ setup_auto_update_cron() {
 # to look exactly like "nothing happened".
 sync_rulesets() {
 	local ruleset_script="$HP_DIR/scripts/fetch_rulesets.sh"
-	[ -f "$ruleset_script" ] || return 0
+
+	# 以前这里直接 `[ -f ... ] || return 0`：脚本一旦缺失就静默退出，主日志
+	# 里连一行「规则集」都不会出现，用户看到的现象与「保存并应用根本没触发
+	# 规则集同步」完全无法区分。现在每一层都必须留痕。
+	if [ ! -f "$ruleset_script" ]; then
+		log "规则集检查：下载脚本 $ruleset_script 缺失，跳过预下载（内核将退化为按 remote 自行下载，首启动会很慢）。"
+		return 0
+	fi
 
 	# --check prints "total=N missing=M" on stdout (exit 1 only when M > 0).
 	local report total missing sec_count
@@ -412,7 +419,7 @@ sync_rulesets() {
 	case "$missing" in ''|*[!0-9]*) missing="" ;; esac
 
 	if [ -z "$total" ] || [ -z "$missing" ]; then
-		log "规则集检查：未能获取规则集状态（$ruleset_script --check 无输出），跳过。"
+		log "规则集检查：未能获取规则集状态（$ruleset_script --check 输出「${report}」），跳过。"
 		return 0
 	fi
 
@@ -422,6 +429,8 @@ sync_rulesets() {
 		log "规则集检查：当前没有已启用的远程规则集，跳过。"
 		if [ "${sec_count:-0}" -gt 0 ]; then
 			log "提示：配置里共有 ${sec_count} 个 ruleset 段，但没有一条满足「启用 + 远程」。请到规则集页面确认每条的「启用」开关与「类型」（类型为本地的规则集不会下载）。"
+		else
+			log "提示：配置里没有任何 ruleset 段。规则集需要在「规则集」页手动添加（如 geosite-cn），插件不预置；添加后点「保存并应用」即会下载。"
 		fi
 		return 0
 	fi
@@ -499,6 +508,12 @@ sync_rulesets() {
 		fi
 	fi
 	rm -f "$rs_pos" "$rs_flag" "$rs_rcf" 2>/dev/null
+
+	if [ "$rs_rc" -eq 75 ]; then
+		# 75 = fetch_rulesets.sh 让路（另一个下载任务正在跑）。
+		log "规则集检查：另一个规则集下载任务正在运行，本次跳过补齐（不影响服务启动）。"
+		return 0
+	fi
 
 	if [ "$rs_rc" -eq 0 ]; then
 		log "规则集预下载完成：${missing} 条缺失已补齐。"

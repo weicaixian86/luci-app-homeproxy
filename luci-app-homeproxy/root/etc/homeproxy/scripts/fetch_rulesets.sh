@@ -339,7 +339,7 @@ LOCK_HELD=0
 
 # $1 = 最多等待秒数（0 表示拿不到就立刻返回 1）
 lock_acquire() {
-	local wait_s="${1:-0}" holder waited=0
+	local wait_s="${1:-0}" holder waited=0 tries=0
 
 	mkdir -p "$RUN_DIR" 2>/dev/null
 
@@ -361,6 +361,16 @@ lock_acquire() {
 
 		# 持有者已不在：陈旧锁，清掉后重试
 		rm -rf "$LOCK_DIR" 2>/dev/null
+
+		# 清锁后若仍 mkdir 不出来（$RUN_DIR 不可写、或 LOCK_DIR 被一个同名
+		# 普通文件占着），旧实现是 `while :` 空转死循环：CPU 打满、服务启动
+		# 永久卡住、且一行日志都不留。这里给上限并明确报错。
+		tries=$((tries + 1))
+		if [ "$tries" -ge 3 ]; then
+			log_msg "错误：无法创建规则集下载锁 $LOCK_DIR（目录不可写或被同名文件占用），本次跳过下载。"
+			return 1
+		fi
+		sleep 1
 	done
 }
 
@@ -386,8 +396,10 @@ if [ -n "$ONLY" ]; then
 		exit 1
 	fi
 elif ! lock_acquire 0; then
+	# 75 = 让路（另一个任务在跑）。以前这里 exit 0，init.d 就把它当成
+	# 「下载成功」并打印「N 条缺失已补齐」—— 明明一条都没下，日志却报完成。
 	log_msg "另一个规则集下载任务正在运行，本次跳过。"
-	exit 0
+	exit 75
 fi
 
 trap 'lock_release' EXIT INT TERM
