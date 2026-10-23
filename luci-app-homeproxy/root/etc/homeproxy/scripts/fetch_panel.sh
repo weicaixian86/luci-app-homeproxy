@@ -27,6 +27,10 @@
 # restart needed.
 
 CONF="homeproxy"
+# 显式固定 PATH：本脚本会被 init.d、LuCI（ubus）、install.sh 以不同环境调用，
+# PATH 不全时 uci/curl 之类的调用会静默失败（stderr 多被 /dev/null 吞掉），
+# 表现为「什么都没发生」而不是报错。
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 HP_DIR="/etc/homeproxy"
 RUN_DIR="/var/run/homeproxy"
 LOG_FILE="$RUN_DIR/panel_download.log"

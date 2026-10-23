@@ -14,7 +14,7 @@ import { connect } from 'ubus';
 import { cursor } from 'uci';
 
 import {
-	isEmpty, parseURL, shellQuote, strToBool, strToInt, strToTime,
+	isEmpty, isSectionEnabled, parseURL, shellQuote, strToBool, strToInt, strToTime,
 	removeBlankAttrs, validation, HP_DIR, RUN_DIR
 } from 'homeproxy';
 
@@ -406,7 +406,7 @@ function collect_policy_nodes(nodes, current) {
 			continue;
 
 		const outbound = uci.get_all(uciconfig, node) || {};
-		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && outbound.enabled === '1' && outbound.node in ['urltest', 'selector'])
+		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && isSectionEnabled(outbound.enabled) && outbound.node in ['urltest', 'selector'])
 			push(result, node);
 	}
 
@@ -541,7 +541,7 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 });
 
 uci.foreach(uciconfig, uciroutingnode, (cfg) => {
-	if (cfg.enabled === '1')
+	if (isSectionEnabled(cfg.enabled))
 		register_outbound_tag(cfg['.name'], section_display_name(cfg));
 });
 
@@ -1016,7 +1016,7 @@ if (!isEmpty(main_node)) {
 } else if (!isEmpty(default_outbound)) {
 	/* DNS servers */
 	uci.foreach(uciconfig, ucidnsserver, (cfg) => {
-		if (cfg.enabled !== '1')
+		if (!isSectionEnabled(cfg.enabled))
 			return;
 
 		let outbound = get_outbound(cfg.outbound);
@@ -1041,7 +1041,7 @@ if (!isEmpty(main_node)) {
 
 	/* DNS rules */
 	uci.foreach(uciconfig, ucidnsrule, (cfg) => {
-		if (cfg.enabled !== '1')
+		if (!isSectionEnabled(cfg.enabled))
 			return;
 
 		push(config.dns.rules, {
@@ -1305,7 +1305,7 @@ if (!isEmpty(main_node)) {
 	    routing_nodes = [];
 
 	uci.foreach(uciconfig, uciroutingnode, (cfg) => {
-		if (cfg.enabled !== '1')
+		if (!isSectionEnabled(cfg.enabled))
 			return;
 
 		if (cfg.node === 'urltest') {
@@ -1531,7 +1531,7 @@ if (!isEmpty(main_node)) {
 		});
 
 	uci.foreach(uciconfig, uciroutingrule, (cfg) => {
-		if (cfg.enabled !== '1')
+		if (!isSectionEnabled(cfg.enabled))
 			return null;
 
 		push(config.route.rules, {
@@ -1582,7 +1582,7 @@ if (!isEmpty(main_node)) {
 
 	/* Rule set */
 	uci.foreach(uciconfig, uciruleset, (cfg) => {
-		if (cfg.enabled !== '1')
+		if (!isSectionEnabled(cfg.enabled))
 			return null;
 
 		const tag = !isEmpty(cfg.tag) ? cfg.tag : ('cfg-' + cfg['.name'] + '-rule');

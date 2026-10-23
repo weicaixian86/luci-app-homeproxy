@@ -155,6 +155,240 @@ else
 	skip "no conffiles block found"
 fi
 
+# ------------------------------------------------- same_scripts --check contract
+# fetch_rulesets.sh 的 --check 输出是 init.d 依赖的契约（见需求书十.13）。
+# 用 stub uci 跑真实脚本，确认段名扫描、排除原因、统计行都正确。
+# 这一项能直接抓到两类曾经把现场变成黑洞的回归：
+#   · awk 里写 /* */ 注释 → "unterminated regexp" → 输出为空（伪装成「没有规则集」）
+#   · 依赖 awk -F'[.=]' 正则 FS → 某些 BusyBox 构建下一条段名都提取不到
+section "Ruleset --check contract"
+RS="$PKG/root/etc/homeproxy/scripts/fetch_rulesets.sh"
+# stub 目录必须用 POSIX 路径：Git Bash 下 mktemp 与 $TMPDIR 都会给出
+# "C:/.../Temp/xxx" 这种带盘符的路径，放进 PATH 后命令查找直接失败
+# （uci: command not found），于是 --check 输出为空、看起来像「扫描不到
+# 规则集」——测试自己先踩一次坑。优先用 /tmp，不存在时才回落到 TMPDIR。
+rs_tmp=/tmp
+[ -d "$rs_tmp" ] || rs_tmp="${TMPDIR:-/tmp}"
+RS_STUB="$rs_tmp/hp-rs-stub.$$"
+RS_CONF="$rs_tmp/hp-rs-conf.$$"
+rm -rf "$RS_STUB" "$RS_CONF" 2>/dev/null
+mkdir -p "$RS_STUB" 2>/dev/null
+
+# 固定样本：4 段启用且远程（其中 1 段没写 enabled，应当按「启用」算）、
+# 1 段显式 enabled=0、1 段 type=local。
+RS_DATA='homeproxy.config=homeproxy
+homeproxy.rs_cn=ruleset
+homeproxy.rs_cn.enabled=1
+homeproxy.rs_cn.type=remote
+homeproxy.rs_gfw=ruleset
+homeproxy.rs_gfw.enabled=1
+homeproxy.rs_gfw.type=remote
+homeproxy.rs_legacy=ruleset
+homeproxy.rs_legacy.type=remote
+homeproxy.rs_off=ruleset
+homeproxy.rs_off.enabled=0
+homeproxy.rs_off.type=remote
+homeproxy.rs_local=ruleset
+homeproxy.rs_local.enabled=1
+homeproxy.rs_local.type=local'
+
+if [ -f "$RS" ]; then
+	cat > "$RS_STUB/uci" <<'STUB'
+#!/bin/sh
+[ "${1:-}" = "-q" ] && shift
+cmd="${1:-}"; shift 2>/dev/null || true
+case "$cmd" in
+show)
+	[ "${STUB_SHOW_EMPTY:-0}" = "1" ] && exit 0
+	printf '%s\n' "$STUB_DATA"
+	;;
+get)
+	[ "${STUB_GET_EMPTY:-0}" = "1" ] && exit 1
+	case "${1:-}" in
+	*.enabled)
+		case "${1:-}" in
+		*rs_cn.enabled|*rs_gfw.enabled|*rs_local.enabled) echo 1 ;;
+		*rs_off.enabled) echo 0 ;;
+		*) exit 1 ;;
+		esac
+		;;
+	*.type)
+		case "${1:-}" in
+		*rs_local.type) echo local ;;
+		*) echo remote ;;
+		esac
+		;;
+	*.tag) echo geosite-x ;;
+	*.format) echo binary ;;
+	*.url) echo https://example.com/x.srs ;;
+	*) exit 1 ;;
+	esac
+	;;
+esac
+STUB
+	chmod +x "$RS_STUB/uci"
+
+	# 文件兜底用的 /etc/config/homeproxy 等价物
+	{
+		echo "config homeproxy 'config'"
+		# 与真实配置同形的一段：libuci 支持多行单引号值（parse.c 里
+		# "Multi-line str value"），订阅用量 subinfo_* 就是以这种形式落盘的。
+		# 文件兜底解析必须原样扛住——否则一段订阅用量就会让它后面的
+		# 规则集全部扫不到，而那恰恰是线上最常见的配置形态。
+		echo "config homeproxy 'subscription'"
+		echo "	option user_agent 'Wget/1.21 (HomeProxy, like v2rayN)'"
+		echo "	option subinfo_xdefault '{"
+		echo '	"upload": 1, "download": 2,'
+		echo '	"total": 3'
+		echo "}'"
+		echo "config ruleset 'rs_cn'"
+		echo "	option enabled '1'"
+		echo "	option type 'remote'"
+		echo "config ruleset 'rs_gfw'"
+		echo "	option enabled '1'"
+		echo "	option type 'remote'"
+		echo "config ruleset 'rs_legacy'"
+		echo "	option type 'remote'"
+		echo "config ruleset 'rs_off'"
+		echo "	option enabled '0'"
+		echo "	option type 'remote'"
+		echo "config ruleset 'rs_local'"
+		echo "	option enabled '1'"
+		echo "	option type 'local'"
+	} > "$RS_CONF"
+
+	run_rs_check() {
+		PATH="$RS_STUB:$PATH" STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
+			STUB_SHOW_EMPTY="${1:-0}" STUB_GET_EMPTY="${2:-0}" \
+			sh "$RS" --check 2>"$WORK/rs.err"
+	}
+
+	rs_out="$(run_rs_check 0 0)"
+	rs_rc=$?
+	rs_one="$(printf '%s' "$rs_out" | tr '\n' '|')"
+
+	if [ -s "$WORK/rs.err" ]; then
+		bad "ruleset --check writes nothing to stderr  <- $(tr '\n' ' ' < "$WORK/rs.err" | head -c 200)"
+	else
+		ok "ruleset --check writes nothing to stderr"
+	fi
+
+	case "$rs_out" in
+	*sections=5*) ok "ruleset --check reports sections=5" ;;
+	*) bad "ruleset --check reports sections=5  <- got: $rs_one" ;;
+	esac
+	# rs_legacy 没写 enabled，必须算「启用」（与界面 Flag 的 default 一致），
+	# 于是应纳入下载的段是 rs_cn / rs_gfw / rs_legacy 三段。
+	case "$rs_out" in
+	*total=3\ missing=3*) ok "ruleset --check treats unset enabled as enabled" ;;
+	*) bad "ruleset --check treats unset enabled as enabled  <- got: $rs_one" ;;
+	esac
+	case "$rs_out" in
+	*"skip rs_local reason=type=local"*) ok "ruleset --check explains local type" ;;
+	*) bad "ruleset --check explains local type  <- got: $rs_one" ;;
+	esac
+	case "$rs_out" in
+	*"skip rs_off reason=enabled=0"*) ok "ruleset --check explains disabled section" ;;
+	*) bad "ruleset --check explains disabled section  <- got: $rs_one" ;;
+	esac
+	if [ "$rs_rc" -eq 1 ]; then
+		ok "ruleset --check exits 1 when copies are missing"
+	else
+		bad "ruleset --check exits 1 when copies are missing  <- rc=$rs_rc"
+	fi
+
+	# uci 完全读不出来时（show 空、get 失败）必须靠 /etc/config 兜底，
+	# 且结论与正常路径完全一致 —— 这条防的是「接口改版/输出异常 ⇒ 一条
+	# 规则集都扫不到 ⇒ 日志谎报『没有已启用的远程规则集』」。
+	rs_out2="$(run_rs_check 1 1)"
+	rs_two="$(printf '%s' "$rs_out2" | tr '\n' '|')"
+	case "$rs_out2" in
+	*sections=5\ total=3\ missing=3*)
+		ok "ruleset --check falls back to /etc/config when uci is unusable" ;;
+	*)
+		bad "ruleset --check falls back to /etc/config when uci is unusable  <- got: $rs_two" ;;
+	esac
+
+	# 多行单引号值（subinfo_*）不得把兜底解析带偏：上面这些 sections=5
+	# 断言是在带多行值的 fixture 上跑出来的，这里再单独断言一次，避免以后
+	# 有人「简化」fixture 时把这条覆盖悄悄弄丢。
+	case "$rs_out2" in
+	*sections=5*) ok "ruleset --check survives multi-line option values" ;;
+	*) bad "ruleset --check survives multi-line option values  <- got: $rs_two" ;;
+	esac
+
+	# PATH 里彻底没有 uci（不是「有但报错」）：必须只留一行 warn 当证据，
+	# 结论仍来自 /etc/config，且不得刷满屏 command not found。
+	# 0.1.19 现场最可能就是这一类：init.d 从不设置 PATH，uci 找不到，
+	# 所有调用又都带 2>/dev/null，于是「21 条规则集」变成「一条都没有」。
+	rs_out3="$(PATH=/usr/bin:/bin STUB_DATA="$RS_DATA" CONF_FILE="$RS_CONF" \
+		sh "$RS" --check 2>"$WORK/rs3.err")"
+	rs_three="$(printf '%s' "$rs_out3" | tr '\n' '|')"
+	case "$rs_out3" in
+	*"warn uci_missing source=file"*)
+		ok "ruleset --check reports uci_missing when PATH has no uci" ;;
+	*)
+		bad "ruleset --check reports uci_missing when PATH has no uci  <- got: $rs_three" ;;
+	esac
+	case "$rs_out3" in
+	*sections=5\ total=3\ missing=3*)
+		ok "ruleset --check still resolves sections without uci" ;;
+	*)
+		bad "ruleset --check still resolves sections without uci  <- got: $rs_three" ;;
+	esac
+	if [ -s "$WORK/rs3.err" ]; then
+		bad "no uci must not spam stderr  <- $(tr '\n' ' ' < "$WORK/rs3.err" | head -c 160)"
+	else
+		ok "no uci must not spam stderr"
+	fi
+
+	rm -rf "$RS_STUB" "$RS_CONF" 2>/dev/null
+else
+	bad "fetch_rulesets.sh is missing from the package tree"
+fi
+
+
+# ------------------------------------------------- section enable semantics
+section "Section enable semantics"
+
+# 「界面勾选 ⇒ 后端必须当成启用」这条语义只有一个实现点：homeproxy.uc 的
+# isSectionEnabled()。任何脚本再自己写 `enabled === '1'`，只要 UCI 里没有
+# 这个键（旧版本建的段、备份还原、手工编辑），就会出现「界面显示启用、
+# 后端当成关闭」——规则集一条都不下载、出站不进生成配置，日志里却没有
+# 任何异常。下面的断言就是为了不再退回去。
+HP_UC="$PKG/root/etc/homeproxy/scripts/homeproxy.uc"
+GC_UC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+RS_SH="$PKG/root/etc/homeproxy/scripts/fetch_rulesets.sh"
+
+case "$(grep -c 'export function isSectionEnabled' "$HP_UC" 2>/dev/null)" in
+1) ok "homeproxy.uc exports isSectionEnabled" ;;
+*) bad "homeproxy.uc exports isSectionEnabled" ;;
+esac
+
+case "$(grep -c 'isSectionEnabled' "$GC_UC" 2>/dev/null)" in
+''|0) bad "generate_client.uc uses isSectionEnabled" ;;
+*) ok "generate_client.uc uses isSectionEnabled" ;;
+esac
+
+gc_strict="$(grep -cE "\.enabled (===|!==) '1'" "$GC_UC" 2>/dev/null)"
+case "$gc_strict" in
+0) ok "generate_client.uc has no strict enabled gate" ;;
+*) bad "generate_client.uc has no strict enabled gate  <- found $gc_strict" ;;
+esac
+
+case "$(grep -c 'section_enabled' "$RS_SH" 2>/dev/null)" in
+''|0) bad "fetch_rulesets.sh gates on section_enabled" ;;
+*) ok "fetch_rulesets.sh gates on section_enabled" ;;
+esac
+
+# 旧的严格门（正文里写成 enabled 必须等于 "1"）不得再出现：用固定串匹配，
+# 避免把引号逃进模式里。
+rs_strict="$(grep -cF '"$CONF.$sec.enabled")" = "1"' "$RS_SH" 2>/dev/null)"
+case "$rs_strict" in
+0) ok "fetch_rulesets.sh has no strict enabled gate" ;;
+*) bad "fetch_rulesets.sh has no strict enabled gate  <- found $rs_strict" ;;
+esac
+
 # -------------------------------------------------------------- poll registry
 section "Poll registry (hp.pollAdd)"
 "$NODE" "$ROOT/tools/tests/poll_registry.test.cjs" > "$WORK/poll.out" 2>&1

@@ -25,7 +25,28 @@
 # whenever a validated copy exists and falls back to `remote` only when there
 # is none, so a broken line still behaves exactly as it used to.
 
+# 显式固定 PATH。本脚本会被 procd（init.d）、install.sh、cron、LuCI（ubus）
+# 各自以完全不同的环境变量调用。PATH 里少了 /sbin 时 `uci` 直接
+# command not found，而所有 uci 调用的 stderr 都被 /dev/null 吞掉，于是
+# 「一条规则集都扫不到」和「用户根本没配规则集」在日志里一模一样。
+# 0.1.19 现场就是这样：配置里 21 条 enabled=1/remote 的规则集，启动日志却
+# 报「当前没有已启用的远程规则集」，且没有任何报错可查。
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 CONF="homeproxy"
+# 允许覆盖，便于自检时用临时文件演练「uci 读不出来」的兜底路径。
+CONF_FILE="${CONF_FILE:-/etc/config/$CONF}"
+
+# uci 是否可用。不可用时用一个同名 shell 函数顶掉外部命令，让所有 uci 调用
+# 安静地失败（返回非 0、不刷满屏 command not found），由下级函数统一走
+# CONF_FILE 兜底；--check 会额外输出一行 warn uci_missing 作为证据。
+# 函数必须在 command -v 之后定义，否则这里自己就会先被匹配到。
+if command -v uci >/dev/null 2>&1; then
+	UCI_OK=1
+else
+	UCI_OK=0
+	uci() { return 127; }
+fi
 HP_DIR="/etc/homeproxy"
 RULESET_DIR="$HP_DIR/ruleset"
 RUN_DIR="/var/run/homeproxy"
@@ -284,28 +305,149 @@ resolve_path() {
 # whole download chain: --check reported "nothing missing", the download pass
 # exited before mkdir could even create /etc/homeproxy/ruleset, no log line
 # was written, and the core quietly re-fetched every rule-set on each start.
+# 所有 ruleset 段（不论启用与否），一行一个段名。
+# 这里不用 `awk -F'[.=]'` + `NF==3`：BusyBox awk 的正则 FS 并非所有构建都
+# 支持，一旦被当成普通字符串 '[...]' 处理，就一条段名都提取不到，而空列表
+# 与「本来就没有规则集」完全无法区分。用 substr/index 纯位置判断，任何 awk
+# 都能跑，并且能正确处理段名里带点、以及同名子键（xxx.enabled）的情况。
+all_sections() {
+	local out
+	out="$(uci -q show "$CONF" 2>/dev/null | awk -v c="$CONF" '
+		{
+			line = $0
+			eq = index(line, "=")
+			if (eq == 0) next
+			key = substr(line, 1, eq - 1)
+			val = substr(line, eq + 1)
+			# `=<type>` 只出现在段声明行（homeproxy.NAME=ruleset）；
+			# 形如 NAME.enabled 的子键行右侧是取值，不会是段类型。
+			# 注意：awk 的注释是 #，写成 /* */ 会报 unterminated regexp。
+			if (val != "ruleset") next
+			if (substr(key, 1, length(c) + 1) != c ".") next
+			rest = substr(key, length(c) + 2)
+			if (rest == "") next
+			print rest
+		}')"
+	if [ -n "$out" ]; then
+		printf '%s\n' "$out"
+		return 0
+	fi
+	# uci 一句话都没解析出来时才走文件解析。正常情况下不会到这里；一旦
+	# 到了，说明「拿不到段名」这个故障本身要被记录下来，而不是伪装成
+	# 「用户没有配置规则集」—— 0.1.19 就是这样：界面里 5 条远程规则集，
+	# start_service 却报告「当前没有已启用的远程规则集」。
+	all_sections_from_file
+	return 0
+}
+
+# 兜底：直接读 /etc/config/homeproxy 的 `config ruleset 'name'` 行。
+# 不经过 uci 的输出格式，不会因为 uci 输出被改版/被截断而整段失效。
+# 只覆盖具名段；匿名段（@ruleset[N]）只能靠 uci show 拿到，那种写法本插件
+# 从不生成，故不在兜底范围内。
+all_sections_from_file() {
+	[ -f "$CONF_FILE" ] || return 0
+	awk '
+		$1 == "config" && $2 == "ruleset" {
+			name = $3
+			if (name == "") next
+			c1 = substr(name, 1, 1)
+			if (c1 == "\047" || c1 == "\"") name = substr(name, 2)
+			c2 = substr(name, length(name), 1)
+			if (c2 == "\047" || c2 == "\"") name = substr(name, 1, length(name) - 1)
+			if (name != "") print name
+		}' "$CONF_FILE" 2>/dev/null
+	return 0
+}
+
+# $1 = 段名，$2 = 选项名。直接从 CONF_FILE 里取某个 option 的值（去引号）。
+# 只在 uci 取值为空时使用：兜底路径下 uci 很可能整体不可用，此时若一律
+# 当作「未设置」，用户显式关掉的规则集也会被下载，属于静默违背配置。
+conf_file_option() {
+	[ -f "$CONF_FILE" ] || return 0
+	awk -v s="$1" -v o="$2" '
+		function unq(v) {
+			c = substr(v, 1, 1)
+			if (c == "\047" || c == "\"") v = substr(v, 2)
+			c = substr(v, length(v), 1)
+			if (c == "\047" || c == "\"") v = substr(v, 1, length(v) - 1)
+			return v
+		}
+		$1 == "config" && $2 == "ruleset" { cur = unq($3); next }
+		cur == s && $1 == "option" && $2 == o { print unq($3); exit }
+	' "$CONF_FILE" 2>/dev/null
+	return 0
+}
+
+# $1 = 段名。返回 0 表示启用。
+# 未写 enabled 按「启用」处理，与界面语义保持一致：form.Flag 的 default
+# 被设为 '1'，所以界面在 enabled 缺失时显示为勾选；而 LuCI 保存时
+# rmempty=false 会把关闭状态明确写成 '0'。也就是说「缺失」只可能来自
+# 没走过保存流程的旧段或备份还原，这时界面显示启用、后端却当成关闭，
+# 就是最典型的「界面里明明开着，规则集却一条都不下载」。
+section_enabled() {
+	local v
+	v="$(uci -q get "$CONF.$1.enabled")"
+	[ -n "$v" ] || v="$(conf_file_option "$1" enabled)"
+	case "$v" in
+		0|false|no|off|disabled) return 1 ;;
+	esac
+	return 0
+}
+
+# $1 = 段名。未写 type 一律按 remote 处理，与内核/rpcd 的默认值保持一致。
+section_type() {
+	local t
+	t="$(uci -q get "$CONF.$1.type")"
+	[ -n "$t" ] || t="$(conf_file_option "$1" type)"
+	[ -n "$t" ] || t="remote"
+	printf '%s' "$t"
+}
+
+# Every enabled remote rule-set, one section name per line.
 list_sections() {
-	local sec type
-	uci -q show "$CONF" 2>/dev/null | awk -F'[.=]' -v c="$CONF" '
-		$1 == c && $3 == "ruleset" && NF == 3 { print $2 }' | while read -r sec; do
-			[ -n "$sec" ] || continue
-			[ "$(uci -q get "$CONF.$sec.enabled")" = "1" ] || continue
-			type="$(uci -q get "$CONF.$sec.type")"
-			# 未写 type 一律按 remote 处理，与内核/rpcd 的默认值保持一致。
-			[ -n "$type" ] || type="remote"
-			[ "$type" = "remote" ] && printf '%s\n' "$sec"
-		done
+	local sec
+	all_sections | while read -r sec; do
+		[ -n "$sec" ] || continue
+		section_enabled "$sec" || continue
+		[ "$(section_type "$sec")" = "remote" ] || continue
+		printf '%s\n' "$sec"
+	done
 	return 0
 }
 
 # ---------------------------------------------------------------------------
 # --check: report whether every enabled rule-set already has a valid copy
+#
+# 输出约定（init.d 依赖，勿随意改动）：
+#   最后一行  sections=<全部 ruleset 段数> total=<纳入下载的段数> missing=<缺失数>
+#   之前若干行 skip <段名> reason=<原因>   —— 每条被排除的段一行
+# 之所以要把「为什么被排除」打出来：这几行是唯一能在现场区分
+#   「界面显示已启用、UCI 里其实没有 enabled=1」
+#   「类型是 local 所以本来就不下载」
+#   「段名都提取不到」
+# 的证据。没有它，三种情况的日志表现完全相同，只能靠反复猜。
 # ---------------------------------------------------------------------------
 
 if [ "$CHECK_ONLY" = "1" ]; then
 	missing=0
 	total=0
-	for sec in $(list_sections); do
+	sections=0
+	for sec in $(all_sections); do
+		sections=$((sections + 1))
+
+		if ! section_enabled "$sec"; then
+			skip_reason="$(uci -q get "$CONF.$sec.enabled")"
+			[ -n "$skip_reason" ] || skip_reason="$(conf_file_option "$sec" enabled)"
+			printf 'skip %s reason=enabled=%s\n' "$sec" "${skip_reason:-<unset>}"
+			continue
+		fi
+
+		sec_type="$(section_type "$sec")"
+		if [ "$sec_type" != "remote" ]; then
+			printf 'skip %s reason=type=%s\n' "$sec" "$sec_type"
+			continue
+		fi
+
 		total=$((total + 1))
 		fmt="$(uci -q get "$CONF.$sec.format")"
 		tag="$(uci -q get "$CONF.$sec.tag")"
@@ -317,10 +459,28 @@ if [ "$CHECK_ONLY" = "1" ]; then
 		recently_unavailable "$path.unavailable" "$url" && continue
 		missing=$((missing + 1))
 	done
+	# 段名扫描失败的自证：uci 里确实有 ruleset 段，但 all_sections 一条都
+	# 没解析出来。这种情况以前会表现成「当前没有已启用的远程规则集」，
+	# 把解析器 bug 伪装成「用户没配置」，是最难查的一类静默失败。
+	# uci 整体不可用时另有 warn：兜底能跑通不等于环境正常，必须留证，
+	# 否则「一直靠兜底」这件事永远不会有人发现。
+	if [ "$UCI_OK" = "0" ]; then
+		if [ -f "$CONF_FILE" ]; then
+			printf 'warn uci_missing source=file\n'
+		else
+			printf 'warn uci_missing source=none\n'
+		fi
+	elif [ "$sections" = "0" ]; then
+		rs_raw="$(uci -q show "$CONF" 2>/dev/null | grep -c '=ruleset$')"
+		case "$rs_raw" in ''|*[!0-9]*) rs_raw=0 ;; esac
+		[ "$rs_raw" -gt 0 ] && \
+			printf 'warn section_scan_failed uci_ruleset_lines=%s\n' "$rs_raw"
+	fi
+
 	# 无论是否缺失都输出统计，供 init.d 打印「共 N 条，缺失 M 条」：
 	# 「保存并应用」时若本地副本都是有效的，日志里要能看到「已检查、跳过下载」，
 	# 否则静默跳过和「根本没检查」在用户看来完全一样。
-	printf 'total=%s missing=%s\n' "$total" "$missing"
+	printf 'sections=%s total=%s missing=%s\n' "$sections" "$total" "$missing"
 	[ "$missing" -eq 0 ] && exit 0
 	exit 1
 fi

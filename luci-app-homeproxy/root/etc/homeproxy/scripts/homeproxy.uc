@@ -241,6 +241,28 @@ export function strToBool(str) {
 	return (str === '1') || null;
 };
 
+/* 段「启用」状态的唯一判断口径，供所有生成/探测脚本共用。
+ *
+ * LuCI 的 form.Flag 在本插件的每个表格里都是「默认勾选」：default = '1'
+ * （`so.default = so.enabled`）、rmempty = false（关闭一定会被明确写成
+ * '0'）。也就是说，取值缺失只可能意味着这一段从没走过保存流程 —— 旧版本
+ * 创建的段、备份还原、手工编辑 /etc/config/homeproxy —— 而界面照样把它
+ * 显示成「已启用」。
+ *
+ * 各处原先一律写 `cfg.enabled === '1'`，于是键一缺失就变成「界面显示启用、
+ * 后端当成关闭」：规则集一条都不下载、出站不进生成配置、内核直接「未运行」，
+ * 且日志里没有任何异常。统一成「只有明确写 0/false 才算关闭」。 */
+export function isSectionEnabled(value) {
+	/* 只用 null 判断：ucode 里成员缺失就是 null；真拿到 undefined 时下面
+	   的模板串会退化成 "undefined"，同样落在「不是明确关闭」的一侧。 */
+	if (value === null || value === '')
+		return true;
+
+	const v = `${value}`;
+
+	return !(v in [ '0', 'false', 'no', 'off', 'disabled' ]);
+};
+
 export function strToInt(str) {
 	return !isEmpty(str) ? (int(str) || null) : null;
 };

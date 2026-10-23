@@ -25,6 +25,10 @@
 
 set -u
 
+# 显式固定 PATH：本脚本会被 init.d、LuCI（ubus）、install.sh 以不同环境调用，
+# PATH 不全时 uci/awk/tar 之类的调用会静默失败（stderr 多被 /dev/null 吞掉）。
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 HP_DIR="/etc/homeproxy"
 RUN_DIR="/var/run/homeproxy"
 CORE_BIN="/usr/bin/sing-box"

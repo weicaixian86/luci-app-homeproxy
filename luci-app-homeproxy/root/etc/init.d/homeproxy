@@ -8,6 +8,13 @@ USE_PROCD=1
 START=99
 STOP=10
 
+# 显式固定 PATH，而且必须放在本文件第一次调用 uci 之前（下面
+# DNSMASQ_UCI_CONFIG 就在加载期调用）。本脚本会被 procd、install.sh、
+# LuCI（ubus → rc.init）、cron 各自以不同环境启动；PATH 里缺 /sbin 时
+# uci 会 command not found，而绝大多数调用都带 2>/dev/null，于是所有读取
+# 都静默变成空值 / 默认值——「配置没生效」看起来和「用户没配」完全一样。
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
+
 CONF="homeproxy"
 PROG="/usr/bin/sing-box"
 # Runtime reF1nd sing-box core downloader (architecture independent package).
@@ -410,11 +417,16 @@ sync_rulesets() {
 		return 0
 	fi
 
-	# --check prints "total=N missing=M" on stdout (exit 1 only when M > 0).
-	local report total missing sec_count
-	report="$(/bin/sh "$ruleset_script" --check 2>/dev/null | tail -n 1)"
+	# --check 的完整输出：最后一行是 sections=/total=/missing= 统计，
+	# 之前的 skip 行逐条说明「这一段为什么没被纳入下载」。旧版脚本只打
+	# total=/missing=，这里的解析对两种格式都成立。
+	local report_full report sections total missing sec_count
+	report_full="$(/bin/sh "$ruleset_script" --check 2>/dev/null)"
+	report="$(printf '%s\n' "$report_full" | tail -n 1)"
+	sections="$(printf '%s\n' "$report" | sed -n 's/.*sections=\([0-9]*\).*/\1/p')"
 	total="$(printf '%s\n' "$report" | sed -n 's/.*total=\([0-9]*\).*/\1/p')"
 	missing="$(printf '%s\n' "$report" | sed -n 's/.*missing=\([0-9]*\).*/\1/p')"
+	case "$sections" in ''|*[!0-9]*) sections="" ;; esac
 	case "$total" in ''|*[!0-9]*) total="" ;; esac
 	case "$missing" in ''|*[!0-9]*) missing="" ;; esac
 
@@ -423,7 +435,33 @@ sync_rulesets() {
 		return 0
 	fi
 
-	sec_count="$(uci -q show "$CONF" 2>/dev/null | grep -c "=ruleset")"
+	# 把逐条排除原因转进主日志。
+	# 「界面显示已启用、UCI 里其实没有 enabled=1」「类型是 local」这类问题
+	# 以前完全没有痕迹，用户只能反复猜，这里必须留证。
+	# 分两轮：warn（异常证据）先全部输出且不限行数——它永远排在 skip 之后、
+	# 统计行之前，若和 skip 一起 head 掉，规则集一多就会被截掉，而它恰恰是
+	# 唯一能指出「扫描本身失败」的那一行。
+	local rs_line
+	printf '%s\n' "$report_full" | while IFS= read -r rs_line; do
+		case "$rs_line" in
+			"warn section_scan_failed"*)
+				log "规则集检查：【异常】UCI 里存在 ruleset 段，但扫描不到段名（解析失败），请连同本日志反馈。" ;;
+			"warn uci_missing source=file"*)
+				log "规则集检查：【异常】uci 命令不可用（运行环境 PATH 不完整），本次结论来自直接解析 /etc/config/$CONF。" ;;
+			"warn uci_missing source=none"*)
+				log "规则集检查：【异常】uci 命令不可用，且 /etc/config/$CONF 也读不到，无法区分「没有规则集」与「读取失败」。" ;;
+			warn\ *)
+				log "规则集检查：${rs_line#warn }" ;;
+		esac
+	done
+	printf '%s\n' "$report_full" \
+		| grep '^skip ' \
+		| head -n 10 \
+		| while IFS= read -r rs_line; do
+			log "规则集检查：未纳入下载 ${rs_line#skip }"
+		done
+
+	sec_count="${sections:-$(uci -q show "$CONF" 2>/dev/null | grep -c "=ruleset")}"
 
 	if [ "$total" = "0" ]; then
 		log "规则集检查：当前没有已启用的远程规则集，跳过。"
@@ -590,6 +628,27 @@ start_service() {
 	( prefetch_panel ) &
 
 	config_load "$CONF"
+
+	# 自证：配置读不出来时 /lib/functions.sh 会把整包当成空的，之后每一个
+	# config_get 都静默返回默认值 —— outbound_node 变成 "nil"，于是流程走到
+	# 下面「未配置代理节点且服务端未启用」的早退分支：一个 procd 实例都不建、
+	# 规则集也不同步，而日志通篇说「没配置」，与现实恰好相反。
+	# 0.1.19 现场就是这种形态：配置里 21 条 enabled=1/remote 的规则集、上百个
+	# 节点，日志却报「当前没有已启用的远程规则集」+「未配置代理节点」，且没有
+	# 任何一行报错可查。这里把「读不到」与「真的没配」明确区分开。
+	local conf_secs
+	conf_secs="$(uci -q show "$CONF" 2>/dev/null | grep -c '=')"
+	case "$conf_secs" in ''|*[!0-9]*) conf_secs=0 ;; esac
+	if [ "$conf_secs" -eq 0 ]; then
+		if ! command -v uci >/dev/null 2>&1; then
+			log "错误：找不到 uci 命令（运行环境 PATH 不完整），无法读取配置 /etc/config/$CONF。"
+		else
+			log "错误：读取不到配置 /etc/config/$CONF（uci show 返回 0 个条目）。文件可能不存在、为空或存在语法错误，此时所有配置项都会按默认值处理，服务不会启动。请执行「uci show $CONF」查看具体报错，或用备份恢复该文件。"
+		fi
+		panel_log "配置读取失败：/etc/config/$CONF 无法解析（详见 $LOG_PATH）。"
+		return 1
+	fi
+
 	setup_auto_update_cron
 
 	# 「保存并应用」走 reload_service() = stop + start，同样会执行到这里，

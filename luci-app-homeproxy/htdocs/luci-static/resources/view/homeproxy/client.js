@@ -3590,6 +3590,21 @@ return view.extend({
 				// Non-blocking: the panel auto-installs in the background via
 				// the init script, so just kick this off and return immediately.
 				ensurePanelInstalled();
+
+				/* 「保存并应用」原本完全依赖 procd 的 config.change 触发器去重启
+				   服务。但 procd 只会重启「已经有运行实例」的服务，而本插件在
+				   「没配节点、也没开服务端」时会提前 return，一个实例都不创建，
+				   触发器于是什么也不做 —— start_service 不执行，sync_rulesets
+				   也就不跑，现象就是「点了保存并应用，日志里连一行规则集都没
+				   有」。这里在服务确实没在跑时补一次显式 reload 兜底；服务在跑
+				   时触发器已经完成重启（reload_service = stop + start），不再重复
+				   重启，避免连接被断开两次。 */
+				if (result && typeof result.then === 'function')
+					result.then(() => getServiceStatus()).then((running) => {
+						if (!running)
+							return callRCInit('homeproxy', 'reload');
+					}).catch(() => {});
+
 				return result;
 			};
 		}
