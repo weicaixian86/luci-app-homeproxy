@@ -944,6 +944,11 @@ return baseclass.extend({
 			document.head.appendChild(E('style', [ `
 				.hp-top-hint { margin: .2rem 0 .4rem 0; }
 				.hp-index-cell { opacity: .65; }
+				/* route.final 行的「置顶」标记，紧跟名称文字之后 */
+				.hp-pin-badge { display: inline-block; margin-left: .45em; padding: 0 .45em;
+					border-radius: 4px; background: #fde8e8; color: #c5221f;
+					font-size: .78rem; line-height: 1.6; vertical-align: middle;
+					white-space: nowrap; cursor: default; }
 				.hp-chips { display: inline-flex; flex-wrap: wrap; gap: 4px;
 					justify-content: center; max-width: 280px; }
 				.hp-chip { display: inline-block; padding: 1px 8px; border-radius: 10px;

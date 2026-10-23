@@ -1042,7 +1042,7 @@ return view.extend({
 		hp.prependIndexColumn(ss, _('No.'));
 		ss.renderSectionAdd = L.bind(hp.renderSectionAdd, this, ss, null,
 			_('Will be used as the sing-box outbound tag and display name. Chinese is supported. It must be unique and must not contain slashes, "?", "#" or "%".'),
-			_('Drag policy groups by their order number from top to bottom; the pinned one cannot be dragged.'));
+			_('Drag policy groups by their order number from top to bottom; the pinned one cannot be dragged. This determines the order of the panel cards.'));
 
 		/* 建议3：类型徽章列。urltest/selector 不再以英文术语裸露在表格里，
 		   改为徽章显示（自动测速 / 手动选择）；urltest 的测速参数放在徽章
@@ -1258,6 +1258,74 @@ return view.extend({
 		   insertBefore + uci.move，**不会重绘表格**，并且会 stopPropagation，
 		   所以不能靠 drop 事件回调补救；这里用 MutationObserver 盯 tbody 的
 		   子节点变化，在排序落盘后再应用一次「置顶 + 重编号」。 */
+		/* 「置顶」徽章：贴在名称格内、名称文字之后。
+		   名称格在两种 luci-base 上都是 td.cbi-section-table-titles——
+		   25.12 由内核渲染，24.10 由 hp.moveEnableColumn 用 tr[data-title]
+		   补出来，因此这里不需要区分版本。找不到名称格时退回到操作列，
+		   保证徽章一定可见。 */
+		const addPinBadge = function(row) {
+			if (row.querySelector('.hp-pin-badge'))
+				return;
+
+			const nameTd = row.querySelector('td.cbi-section-table-titles')
+				|| row.querySelector('td.cbi-value-field[data-title]')
+				|| row.querySelector('td.cbi-section-actions');
+
+			if (!nameTd)
+				return;
+
+			nameTd.appendChild(E('span', {
+				'class': 'hp-pin-badge',
+				'title': _('Default outbound (route.final): always pinned to the top of the panel and cannot be reordered here.')
+			}, _('Pinned')));
+		};
+
+		/* 封禁 final 行的拖动，两层保险：
+		   ① 手柄本体克隆替换——luci 的 dragstart / touchmove / touchend 是
+		      addEventListener 挂在手柄节点上的，克隆换掉原节点即连带剥离；
+		      置顶行不保留灰色手柄，而是直接 display:none 把拖动按钮藏掉，
+		      界面上彻底看不到 ☰，更直观；
+		   ② tbody 捕获阶段拦截 dragstart / touchmove——即使某些主题把拖拽
+		      监听器改挂在行或容器上，也会在这里被 preventDefault 掐断。 */
+		const lockFinalRow = function(row, tbody) {
+			row.dataset.hpPin = '1';
+			row.setAttribute('draggable', 'false');
+
+			const handle = row.querySelector('.drag-handle');
+
+			if (handle && handle.dataset.hpDead !== '1') {
+				const dead = handle.cloneNode(true);
+
+				dead.dataset.hpDead = '1';
+				dead.setAttribute('draggable', 'false');
+				dead.setAttribute('aria-hidden', 'true');
+				dead.setAttribute('title', _('Default outbound (route.final): always pinned to the top of the panel and cannot be reordered here.'));
+				/* 直接隐藏拖动按钮，而非仅置灰 */
+				dead.style.display = 'none';
+
+				/* replaceChild 兼容老浏览器（replaceWith 在旧内核 WebView 上可能缺失） */
+				if (handle.parentNode)
+					handle.parentNode.replaceChild(dead, handle);
+			}
+
+			if (!tbody.dataset.hpPinGuard) {
+				tbody.dataset.hpPinGuard = '1';
+
+				const blockDrag = function(ev) {
+					const t = ev.target,
+					      tr = (t && t.closest) ? t.closest('tr[data-sid]') : null;
+
+					if (tr && tr.dataset.hpPin === '1') {
+						ev.preventDefault();
+						ev.stopPropagation();
+					}
+				};
+
+				tbody.addEventListener('dragstart', blockDrag, true);
+				tbody.addEventListener('touchmove', blockDrag, { capture: true, passive: false });
+			}
+		};
+
 		const pinFinalRoutingNode = function(el) {
 			try {
 				const tbody = el.querySelector('tbody.cbi-section-tbody') || el.querySelector('tbody');
@@ -1300,6 +1368,11 @@ return view.extend({
 				for (const tr of dataRows()) {
 					idx++;
 
+					/* 默认出口改成别的组后，清掉旧行的封禁标记，
+					   避免它继续被捕获阶段的 dragstart 拦截 */
+					if (tr !== finalRow && tr.dataset.hpPin === '1')
+						delete tr.dataset.hpPin;
+
 					const cell = tr.querySelector('td.hp-index-cell');
 
 					if (cell && cell.textContent !== String(idx))
@@ -1311,42 +1384,9 @@ return view.extend({
 					stripe++;
 				}
 
-				/* 禁用 final 行的拖拽手柄（route.final 不可拖动），并标「置顶」徽章。
-				   桌面拖拽（draggable + dragstart）与触屏排序（touchend）的监听器都挂在
-				   手柄节点上，因此先克隆一份替换掉原节点（监听器随之剥离），再关掉
-				   pointer-events，两条路径同时封死。 */
-				const handle = finalRow.querySelector('button.drag-handle')
-					|| finalRow.querySelector('.drag-handle');
-
-				if (handle && !finalRow.dataset.hpPinDisabled) {
-					const dead = handle.cloneNode(true);
-
-					dead.setAttribute('draggable', 'false');
-					dead.setAttribute('title', _('Default outbound (route.final): always pinned to the top of the panel and cannot be reordered here.'));
-					dead.style.cursor = 'not-allowed';
-					dead.style.opacity = '0.35';
-					dead.style.pointerEvents = 'none';
-
-					/* replaceChild 兼容老浏览器（replaceWith 在旧内核 WebView 上可能缺失） */
-					if (handle.parentNode)
-						handle.parentNode.replaceChild(dead, handle);
-
-					finalRow.dataset.hpPinDisabled = '1';
-
-					const actionsTd = finalRow.querySelector('td.cbi-section-actions');
-
-					if (actionsTd && !actionsTd.querySelector('.hp-pin-badge')) {
-						const badge = E('span', {
-							'class': 'hp-pin-badge',
-							'style': 'display:inline-block; margin-right:.3em; padding:0 .45em; '
-								+ 'border-radius:3px; background:#e8f0fe; color:#1a73e8; '
-								+ 'font-size:.78rem; line-height:1.6; cursor:default; white-space:nowrap;',
-							'title': _('Default outbound (route.final): always pinned to the top of the panel and cannot be reordered here.')
-						}, _('Pinned'));
-
-						actionsTd.insertBefore(badge, actionsTd.firstElementChild);
-					}
-				}
+				/* 名称后面标「置顶」，并封禁该行的拖动手柄 */
+				addPinBadge(finalRow);
+				lockFinalRow(finalRow, tbody);
 			}
 			catch (e) {}
 		};

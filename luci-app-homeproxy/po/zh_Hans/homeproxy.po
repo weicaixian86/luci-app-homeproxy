@@ -859,8 +859,8 @@ msgstr "正在下载 sing-box 内核…"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1045
 msgid ""
 "Drag policy groups by their order number from top to bottom; the pinned one "
-"cannot be dragged."
-msgstr "可拖动策略组按序号从上到下排序，置顶不可拖动。"
+"cannot be dragged. This determines the order of the panel cards."
+msgstr "可拖动策略组按序号从上到下排序，置顶不可拖动，用于面板卡片的排序。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1932
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1938
