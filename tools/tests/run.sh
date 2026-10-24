@@ -1188,10 +1188,11 @@ else
 	bad "the log page still filters with the sing-box severity ladder only"
 fi
 
-# 内核级别的显示名必须是中文，括号里留 sing-box 的原值（配置文件里存的是
-# log_level 'debug' 这种英文，排查时要能对上）。只靠 _() 不够：homeproxy 的
-# .lmo 没加载时 _() 原样返回英文 msgid，界面就又变回 Debug / Info / Warn /
-# Error —— 所以四个都走 zh(en, _('X'), '中文') 兜底，en 与 msgid 逐字一致。
+# 内核级别的显示名必须是纯中文，界面上不出现 debug/info/warn/error 这些英文。
+# 只靠 _() 不够：homeproxy 的 .lmo 没加载时 _() 原样返回英文 msgid，界面就又
+# 变回 Debug / Info / Warn / Error —— 所以四个都走 zh(en, _('X'), '中文')
+# 兜底，en 与 msgid 逐字一致。括号形式的「调试（debug）」也被否掉（用户要求
+# 只看中文，配置里存的原值对操作者没有意义）。
 lv_cn=0
 for pair in "Debug:调试" "Info:信息" "Warn:警告" "Error:错误"; do
 	en="${pair%%:*}"; cn="${pair##*:}"
@@ -1199,8 +1200,8 @@ for pair in "Debug:调试" "Info:信息" "Warn:警告" "Error:错误"; do
 		lv_cn=$((lv_cn + 1))
 	fi
 done
-if [ "$lv_cn" = 4 ] && grep -q '（debug）' "$LOGJS" && grep -q '（error）' "$LOGJS"; then
-	ok "core level labels read Chinese even when the .lmo is missing"
+if [ "$lv_cn" = 4 ] && ! grep -qE '（debug）|（info）|（warn）|（error）' "$LOGJS"; then
+	ok "core level labels are plain Chinese, no English original appended"
 else
 	bad "core level labels can fall back to English (Debug / Info / Warn / Error)"
 fi

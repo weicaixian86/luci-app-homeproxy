@@ -508,13 +508,13 @@ function renderUnifiedLog() {
 
 	/* ── 控件二：内核输出级别（sing-box 写多少） ────────────────────────
 	   这个真的会改配置并重启内核，所以单独放一个下拉、并写清后果。
-	   显示名一律中文，括号里留 sing-box 的原值：/etc/config 里存的是
-	   `log_level 'debug'` 这种英文，排查时要能一一对上。 */
+	   显示名一律纯中文——界面上不出现 debug/info/warn/error 这些英文，
+	   配置里存的原值是什么对操作者没有意义。 */
 	const log_level_choices = {
-		debug: zh('Debug', _('Debug'), '调试') + '（debug）',
-		info:  zh('Info',  _('Info'),  '信息') + '（info）',
-		warn:  zh('Warn',  _('Warn'),  '警告') + '（warn）',
-		error: zh('Error', _('Error'), '错误') + '（error）'
+		debug: zh('Debug', _('Debug'), '调试'),
+		info:  zh('Info',  _('Info'),  '信息'),
+		warn:  zh('Warn',  _('Warn'),  '警告'),
+		error: zh('Error', _('Error'), '错误')
 	};
 
 	let selected = normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
@@ -526,8 +526,7 @@ function renderUnifiedLog() {
 	const level_sel = E('select', {
 		'id': 'hp_unified_log_level',
 		'class': 'cbi-input-select',
-		/* 比「显示视图」宽：选项是「警告（warn）」这种中文＋原值，7em 会被裁掉。 */
-		'style': 'margin-left: 4px; width: 11em;',
+		'style': 'margin-left: 4px; width: 8em;',
 		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
 		'change': ui.createHandlerFn(this, (ev) => {
 			const v = ev.target.value;
