@@ -2,12 +2,13 @@ diff --git a/experimental/clashapi/provider.go b/experimental/clashapi/provider.
 index e2c7713..e719e73 100644
 --- a/experimental/clashapi/provider.go
 +++ b/experimental/clashapi/provider.go
-@@ -3,10 +3,14 @@ package clashapi
+@@ -3,10 +3,15 @@ package clashapi
  import (
  	"context"
  	"net/http"
 +	"os/exec"
 +	"regexp"
++	"sync"
 +	"time"
  
  	"github.com/sagernet/sing-box/adapter"
@@ -33,7 +34,7 @@ index e2c7713..e719e73 100644
  			r.Get("/healthcheck", getProxyDelay(server))
  		})
  	})
-@@ -31,56 +35,123 @@ func proxyProviderRouter(server *Server) http.Handler {
+@@ -31,56 +35,160 @@ func proxyProviderRouter(server *Server) http.Handler {
  
  func getProviders(server *Server) func(w http.ResponseWriter, r *http.Request) {
  	return func(w http.ResponseWriter, r *http.Request) {
@@ -144,15 +145,52 @@ index e2c7713..e719e73 100644
 -	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
 -	provider.HealthCheck(r.Context())
 -	render.NoContent(w, r)
++// 面板的「测速」按钮（供应商卡片左上角那个闪电图标）打的就是这个端点：
++// zashboard 用 axios 发 GET /providers/proxies/<name>/healthcheck，超时 15s，
++// 回来之后立刻重新拉一次 /proxies 把延迟画到节点上。
++//
++// 原来的实现是「按顺序一个一个测、每个最多等 10 秒」：一个机场几十个节点，
++// 只要有几个连不通，整条请求就超过 15 秒被浏览器掐断 —— 用户看到的就是
++// 「按钮转圈、然后报错、节点延迟一片空白」，和没做一模一样。
++// 现在改成 8 路并发、单节点 3 秒、整批 10 秒封顶，测完立刻回 204。
++const (
++	providerHealthCheckConcurrency = 8
++	providerHealthCheckTimeout     = 3 * time.Second
++	providerHealthCheckBudget      = 10 * time.Second
++)
++
 +func healthCheckProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
 +	return func(w http.ResponseWriter, r *http.Request) {
 +		provider := r.Context().Value(CtxKeyProvider).(option.ClashProxyProviderOptions)
++		proxies := make([]adapter.Outbound, 0, len(provider.Proxies))
 +		for _, proxyName := range provider.Proxies {
 +			proxy, exist := lookupProxyByName(server, proxyName)
 +			if !exist {
 +				continue
 +			}
-+			testProxyDelay(server, proxy)
++			proxies = append(proxies, proxy)
++		}
++
++		done := make(chan struct{})
++		go func() {
++			defer close(done)
++			var wg sync.WaitGroup
++			semaphore := make(chan struct{}, providerHealthCheckConcurrency)
++			for _, proxy := range proxies {
++				wg.Add(1)
++				go func(proxy adapter.Outbound) {
++					defer wg.Done()
++					semaphore <- struct{}{}
++					defer func() { <-semaphore }()
++					testProxyDelay(server, proxy)
++				}(proxy)
++			}
++			wg.Wait()
++		}()
++
++		select {
++		case <-done:
++		case <-time.After(providerHealthCheckBudget):
 +		}
 +		render.NoContent(w, r)
 +	}
@@ -160,7 +198,7 @@ index e2c7713..e719e73 100644
 +
 +func testProxyDelay(server *Server, proxy adapter.Outbound) {
 +	const testURL = "https://www.gstatic.com/generate_204"
-+	ctx, cancel := context.WithTimeout(urltest.ContextWithUnifiedDelay(server.ctx, urltest.UnifiedDelayFromContext(server.ctx)), 10*time.Second)
++	ctx, cancel := context.WithTimeout(urltest.ContextWithUnifiedDelay(server.ctx, urltest.UnifiedDelayFromContext(server.ctx)), providerHealthCheckTimeout)
 +	defer cancel()
 +	delay, err := urltest.URLTest(ctx, testURL, proxy)
 +	realTag := group.RealTag(server.outbound, proxy)

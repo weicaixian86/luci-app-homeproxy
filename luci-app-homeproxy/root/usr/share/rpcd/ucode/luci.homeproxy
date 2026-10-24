@@ -1971,7 +1971,9 @@ const methods = {
 		call: function(req) {
 			if (req.args?.type) {
 				const type = shellquote(req.args?.type);
-				const exit_code = system(`${HP_DIR}/scripts/update_resources.sh ${type}`);
+				/* 显式走 /bin/sh：脚本的执行位万一丢了（644），直接调用会
+				 * "Permission denied"，而按钮只会回一个含糊的失败码。 */
+				const exit_code = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/update_resources.sh')} ${type}`);
 				return { status: exit_code };
 			} else
 				return { status: 255, error: 'illegal type' };

@@ -1182,6 +1182,10 @@ msgstr "失败"
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:666
+msgid "Failed to load the log: %s"
+msgstr "日志加载失败：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/log.js:308
 msgid "Failed to read %s: %s"
 msgstr "读取 %s 失败：%s"

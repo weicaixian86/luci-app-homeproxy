@@ -833,6 +833,23 @@ case $? in
 		;;
 esac
 
+# ------------------------------------------------------ unified log rendering
+# Renders the real log view under jsdom and fires one poll tick. This is the
+# only check that would have caught a `shift` that fell out of scope between two
+# .then callbacks: the promise chain rejected at request time, the box kept its
+# "Collecting data..." spinner, and the page looked permanently unloaded.
+section "Unified log rendering (jsdom)"
+"$NODE" "$ROOT/tools/tests/logview_render.test.cjs" > "$WORK/logview.out" 2>&1
+case $? in
+	0)  ok "logview_render.test.cjs"; sed 's/^/       /' "$WORK/logview.out" | tail -3 ;;
+	*)  if grep -q '^SKIP' "$WORK/logview.out"; then
+			skip "jsdom unavailable (npm install jsdom)"
+		else
+			bad "logview_render.test.cjs"; sed 's/^/       /' "$WORK/logview.out" | tail -30
+		fi
+		;;
+esac
+
 # ------------------------------------------------ detached launcher (no nohup)
 # iStoreOS 等精简 BusyBox **不带 nohup**（现场 `nohup: not found`，前台 shell
 # 得到 Done(127)）。规则集下载曾用 `nohup ... &` 启动，于是 ubus 返回成功、
@@ -968,6 +985,34 @@ else
 	bad "ruleset sync does not wait for apply to finish (reads stale config)"
 fi
 
+# 0.1.24 现场：uci-applied **不是每次保存并应用都派发**。ui.js 的 apply()
+# POST admin/uci/apply_rollback，rpcd 侧「没有任何待提交变更」时回 204，
+# LuCI 走 "There are no changes to apply" 分支 —— 不派发事件、不触发
+# luci-reload、页面也不刷新。于是「SSH 里删了规则集文件、界面什么都没改、
+# 想靠保存并应用补回来」这个最常见场景两条腿全不动，与 0.1.23 的死代码
+# 表现完全一致。必须有定时兜底。
+if grep -q 'rulesetSyncNet = setTimeout' "$CJS"; then
+	ok "ruleset sync has a timer fallback (no uci-applied when there is nothing to apply)"
+else
+	bad "ruleset sync depends on uci-applied alone: LuCI skips it on a no-change apply (HTTP 204)"
+fi
+
+# 75 = 脚本让路（另一个下载在跑）。把它当失败弹红色警告是假警报。
+if grep -q 'ret.rc === 75' "$CJS"; then
+	ok "ruleset sync treats \"already running\" (rc=75) as success"
+else
+	bad "ruleset sync reports rc=75 (another download in progress) as a failure"
+fi
+
+# init.d 侧自登记：postinst 被跳过或 ucitrack 被清空时，服务启动一次就能补回。
+INIT="$PKG/root/etc/init.d/homeproxy"
+if grep -q 'hp_ucitrack_register' "$INIT" \
+   && grep -A12 '^start_service()' "$INIT" | grep -q 'hp_ucitrack_register'; then
+	ok "init.d re-registers ucitrack on every start (idempotent)"
+else
+	bad "init.d never self-heals the ucitrack entry"
+fi
+
 # 后端兜底：没有 procd 实例时 procd_add_reload_trigger 不生效，
 # 只能靠 ucitrack 让 /sbin/luci-reload 主动调 init 脚本。
 TRACK_UCI="$PKG/root/etc/uci-defaults/luci-homeproxy"
@@ -975,6 +1020,107 @@ if grep -q 'ucitrack' "$TRACK_UCI" && grep -q 'ucitrack' "$PKG/Makefile"; then
 	ok "ucitrack entry is registered (install + uci-defaults)"
 else
 	bad "no ucitrack entry: Save&Apply cannot reload the service without a procd instance"
+fi
+
+# 面板供应商卡片的「更新」按钮（PUT /providers/proxies/{name}）最终落到
+# update_provider.sh。内核执行它时只要 /bin/sh 起来了就立刻回 204，脚本内部
+# 任何提前退出都不会反馈给面板 —— 现象就是「按钮点了没反应」。所以：一不许
+# 依赖外部 lock/flock（BusyBox 没有；util-linux 的 lock 还必须带命令），
+# 二不许用 set -e 把失败变成静默退出，三必须每步写主日志。
+PROV="$PKG/root/etc/homeproxy/scripts/update_provider.sh"
+if grep -vE '^[[:space:]]*#' "$PROV" | grep -qE '(^|[;[:space:]&|])(lock|flock)[[:space:]]'; then
+	bad "update_provider.sh calls the external lock/flock command (absent on BusyBox, wrong syntax anyway)"
+else
+	ok "update_provider.sh never shells out to lock/flock"
+fi
+
+if grep -q 'mkdir "$LOCK_DIR"' "$PROV"; then
+	ok "update_provider.sh serialises updates with an atomic mkdir lock"
+else
+	bad "update_provider.sh has no mkdir lock (two updates can clobber each other)"
+fi
+
+if grep -qE '^set -e' "$PROV"; then
+	bad "update_provider.sh runs under set -e (a failure exits silently; the panel already got 204)"
+else
+	ok "update_provider.sh keeps failures visible (no blanket set -e)"
+fi
+
+if grep -q '机场更新完成' "$PROV" && grep -q '机场更新失败' "$PROV"; then
+	ok "update_provider.sh logs both outcomes to the main log"
+else
+	bad "update_provider.sh does not log success/failure (a dead update looks identical to a working one)"
+fi
+
+if grep -q 'command -v ucode' "$PROV"; then
+	ok "update_provider.sh runs the ucode updater through ucode (no exec bit needed)"
+else
+	bad "update_provider.sh execs the .uc file directly (a 644 script fails with Permission denied after the kernel already returned 204)"
+fi
+
+# 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
+# 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
+# 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，
+# 表现为「按钮转圈→报错→节点延迟一片空白」。必须并发测 + 整批封顶。
+PATCH="$ROOT/tools/sing-box-patches/002-support-clash-proxy-providers-1.14.3-reF1nd.patch"
+if grep -q 'providerHealthCheckConcurrency' "$PATCH" && grep -q 'sync\.WaitGroup' "$PATCH"; then
+	ok "provider health check runs its nodes concurrently"
+else
+	bad "provider health check is serial (a 30-node airport blows past the panel's 15s timeout)"
+fi
+
+if grep -q 'time\.After(providerHealthCheckBudget)' "$PATCH" \
+   && grep -q 'providerHealthCheckTimeout     = 3 \* time\.Second' "$PATCH"; then
+	ok "provider health check is bounded (3s per node, 10s per batch)"
+else
+	bad "provider health check has no batch budget: one dead node can hold the whole reply"
+fi
+
+if grep -q '10\*time\.Second' "$PATCH"; then
+	bad "provider health check still waits 10s per node"
+else
+	ok "provider health check no longer waits 10s per node"
+fi
+
+# 定时更新（cron → update_crond.sh → update_subscriptions.uc）必须在主日志里
+# 留下可检索的痕迹，否则「到点了到底跑没跑」只能靠猜。
+CRON="$PKG/root/etc/homeproxy/scripts/update_crond.sh"
+if grep -q '^export PATH=' "$CRON"; then
+	ok "update_crond.sh exports a usable PATH (cron has no login shell)"
+else
+	bad "update_crond.sh relies on cron's minimal PATH (curl/md5sum may be missing)"
+fi
+
+if grep -q '\[SCHEDULE\]' "$CRON" && grep -q '定时任务开始' "$CRON" && grep -q '定时任务结束' "$CRON"; then
+	ok "update_crond.sh brackets a scheduled run with [SCHEDULE] lines"
+else
+	bad "update_crond.sh leaves no trace in the main log when cron fires"
+fi
+
+if grep -q 'ucode "$SCRIPTS_DIR/update_subscriptions.uc"' "$CRON"; then
+	ok "update_crond.sh invokes the subscription updater through ucode"
+else
+	bad "update_crond.sh execs update_subscriptions.uc directly (silent Permission denied under cron)"
+fi
+
+if grep -q 'schedule-run' "$CRON" && grep -q "schedule-run" "$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"; then
+	ok "scheduled runs are tagged so the log can tell cron from a manual click"
+else
+	bad "the subscription updater cannot tell a scheduled run from a manual one"
+fi
+
+SUB_UC="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+if grep -q '订阅更新开始：来源' "$SUB_UC" && grep -q '订阅更新完成' "$SUB_UC"; then
+	ok "update_subscriptions.uc logs a readable start/finish banner"
+else
+	bad "update_subscriptions.uc logs neither a start nor a finish banner"
+fi
+
+INITD="$PKG/root/etc/init.d/homeproxy"
+if grep -q '订阅自动更新已登记' "$INITD" && grep -q '未登记 cron' "$INITD"; then
+	ok "init.d reports whether the subscription cron entry was registered"
+else
+	bad "init.d registers the subscription cron silently (an invalid time leaves no clue)"
 fi
 
 # ----------------------------------------------------------------- summary

@@ -1413,6 +1413,14 @@ function parse_mihomo_yaml(text) {
 function main() {
 	cleanup_subscription_info();
 
+	/* 定时任务由 update_crond.sh 先写一个标记文件，这里据此区分触发来源：
+	 * 否则日志里只有「Successfully updated subscriptions.」，用户没法判断
+	 * 到底是 cron 到点跑了，还是自己点了按钮。 */
+	const scheduled = !isEmpty(readfile(RUN_DIR + '/schedule-run') || ''),
+	      trigger = provider_update_id ? '面板单个机场' :
+	                (scheduled ? '定时任务' : (via_proxy === '1' ? '手动（经代理）' : '手动'));
+	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
+
 	if (via_proxy !== '1' && !provider_update_id) {
 		log('Stopping service...');
 		init_action('homeproxy', 'stop');
@@ -1672,6 +1680,7 @@ function main() {
 
 	log(sprintf('%s nodes added, %s removed.', added, removed));
 	log('Successfully updated subscriptions.');
+	log(sprintf('==== 订阅更新完成：新增 %s 个节点，删除 %s 个，共 %d 个订阅 ====', added, removed, length(subscription_urls)));
 }
 
 if (provider_update_id && isEmpty(subscription_urls)) {

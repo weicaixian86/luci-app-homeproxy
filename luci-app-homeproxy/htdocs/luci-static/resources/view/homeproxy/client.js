@@ -270,9 +270,41 @@ function ensurePanelInstalled() {
 
    可靠时机是 uci-applied：LuCI 在 apply 成功、页面 reload 之前派发它
    （ui.js 的 confirm()），此刻 commit 已完成，脚本读到的必然是刚保存的
-   配置。页面随后会被 reload，所以监听器不需要常驻。 */
+   配置。页面随后会被 reload，所以监听器不需要常驻。
+
+   ⚠️ 但 uci-applied **不是每次保存并应用都有的**（0.1.24 现场）：
+   ui.js 的 apply() 先 POST admin/uci/apply_rollback，rpcd 侧若
+   「没有任何待提交的变更」直接回 204，LuCI 就走
+   `There are no changes to apply` 分支 —— 既不派发 uci-applied，
+   也不会触发 /sbin/luci-reload（没变更就不 reload），页面还不刷新。
+   于是「用户在 SSH 里删掉了 /etc/homeproxy/ruleset、界面上什么都没改，
+   想靠点保存并应用把规则集补回来」这个最常见场景，两条腿全都不动。
+   光靠事件监听做不到「点了就一定补」，所以下面还有一个定时兜底。 */
 let rulesetSyncPending = false;
 let rulesetSyncDrop = null;
+let rulesetSyncNet = null;
+
+/* 75 = fetch_rulesets.sh 让路（另一个下载任务正在跑）。这不是失败：
+   说明补全已经在进行中，弹红色警告只会让人以为坏了。 */
+function fireRulesetSync() {
+	return callRulesetSync().then((ret) => {
+		if (!ret || ret.result !== false || ret.rc === 75)
+			return null;
+
+		ui.addNotification(null, E('p', {},
+			_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
+		return null;
+	}).catch((e) => {
+		/* 请求被拒绝不能静默：升级后 rpcd 未重启时 ubus 回
+		   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。
+		   同时退回 init 脚本那条路：reload = stop + start，
+		   start_service() 里同样会同步规则集。 */
+		ui.addNotification(null, E('p', {},
+			_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
+
+		return L.resolveDefault(callRCInit('homeproxy', 'reload'), null);
+	});
+}
 
 function armRulesetSync() {
 	if (rulesetSyncPending)
@@ -280,39 +312,39 @@ function armRulesetSync() {
 
 	rulesetSyncPending = true;
 
-	const fire = () => {
-		if (!rulesetSyncPending)
-			return;
-
+	const clear = () => {
 		rulesetSyncPending = false;
-		document.removeEventListener('uci-applied', fire);
+		document.removeEventListener('uci-applied', onApplied);
+
+		if (rulesetSyncNet) {
+			clearTimeout(rulesetSyncNet);
+			rulesetSyncNet = null;
+		}
 
 		if (rulesetSyncDrop) {
 			clearTimeout(rulesetSyncDrop);
 			rulesetSyncDrop = null;
 		}
-
-		callRulesetSync().then((ret) => {
-			if (ret && ret.result === false)
-				ui.addNotification(null, E('p', {},
-					_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
-		}).catch((e) => {
-			/* 请求被拒绝不能静默：升级后 rpcd 未重启时 ubus 回
-			   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。 */
-			ui.addNotification(null, E('p', {},
-				_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
-		});
 	};
 
-	document.addEventListener('uci-applied', fire);
+	const run = () => {
+		clear();
+		fireRulesetSync();
+	};
 
-	/* 只点了「保存」（不应用）时不会派发 uci-applied，这里到期自清理，
-	   免得监听器一直挂在 document 上。 */
-	rulesetSyncDrop = setTimeout(() => {
-		document.removeEventListener('uci-applied', fire);
-		rulesetSyncPending = false;
-		rulesetSyncDrop = null;
-	}, 120000);
+	const onApplied = () => run();
+
+	document.addEventListener('uci-applied', onApplied);
+
+	/* 兜底：等 12 秒（默认 apply_rollback 是 10 秒，confirm 最坏也就
+	   拖这么久）事件还没来就自己同步一次。覆盖两种「事件永远不来」的
+	   情形：① 没有待应用的变更（rpcd 回 204，见上方注释）；② 点了
+	   「保存」而不是「保存并应用」。同步是幂等的：本地已有有效副本的段
+	   会被跳过，重复跑不会重复下载。 */
+	rulesetSyncNet = setTimeout(run, 12000);
+
+	/* 到期自清理，免得监听器一直挂在 document 上。 */
+	rulesetSyncDrop = setTimeout(clear, 150000);
 }
 
 function openDashboard() {

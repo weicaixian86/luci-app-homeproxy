@@ -508,7 +508,14 @@ setup_auto_update_cron() {
 		if valid_update_cron "$auto_update_time"; then
 			echo -e "$auto_update_time sh $HP_DIR/scripts/update_crond.sh #${CONF}_autosetup" >> "/etc/crontabs/root"
 			cron_reload="1"
+			# 留痕：到点时日志里会出现 [SCHEDULE] 段；先在这里确认 cron 到底
+			# 登记上没登记上，才不用靠猜。
+			log "订阅自动更新已登记：$auto_update_time（cron → update_crond.sh）"
+		else
+			log "订阅自动更新已启用，但时间表达式无效（'$auto_update_time'），未登记 cron。请在「订阅链接」页重新选择更新时间。"
 		fi
+	else
+		log "订阅自动更新未启用（auto_update=0），不会登记 cron。"
 	fi
 
 	local ruleset_cron_list=""
@@ -659,8 +666,32 @@ sync_rulesets() {
 	return 0
 }
 
+# ucitrack 自登记：让 LuCI 的 /sbin/luci-reload 在 /etc/config/homeproxy
+# 变化后主动跑 /etc/init.d/homeproxy reload。装包时（Makefile postinst 与
+# /etc/uci-defaults）已经写过一次，这里再兜一层 —— postinst 被跳过、
+# ucitrack 被后来的固件覆盖或清空、或用户自己删了这一段时，只要服务启动过
+# 一次就能补回来。幂等：段存在就直接返回，不写盘。
+hp_ucitrack_register() {
+	command -v uci >/dev/null 2>&1 || return 0
+	uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1 && return 0
+
+	local t
+	t="$(uci -q add ucitrack homeproxy 2>/dev/null)"
+	[ -n "$t" ] || return 0
+
+	uci -q set "ucitrack.$t.init=homeproxy"
+	uci -q add_list "ucitrack.$t.affects=homeproxy"
+	uci -q commit ucitrack
+	log "已登记 ucitrack：/etc/config/homeproxy 变更后由 LuCI 自动执行 /etc/init.d/homeproxy reload。"
+	return 0
+}
+
 start_service() {
 	init_logs
+
+	# 放在所有早退分支之前：没配节点、内核缺失时也要把 ucitrack 补上，
+	# 否则「保存并应用」永远唤不醒本服务。
+	hp_ucitrack_register
 
 	# sing-box 默认以 root 运行即可（iStoreOS 等 busybox 环境无 adduser/
 	# addgroup，创建专用用户必然失败）；不再主动创建用户，也不打印提示。

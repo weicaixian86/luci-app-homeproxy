@@ -102,8 +102,7 @@ const callLogClean = rpc.declare({
    treat that as "unknown" rather than an error. */
 const callSystemInfo = rpc.declare({
 	object: 'system',
-	method: 'info',
-	expect: { localtime: 0 }
+	method: 'info'
 });
 
 /* "YYYY-MM-DD HH:MM:SS" for a Unix-seconds stamp. Rendered in the browser's
@@ -116,10 +115,16 @@ function fmtEpoch(sec) {
 	       ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
 
-/* Device clock as a stamp, or null when rpcd will not tell us. */
+/* Device clock as a stamp, or null when rpcd will not tell us.
+   Accept both shapes: the whole ubus reply (`{ localtime: <sec> }`) and a bare
+   number, so a future `expect` mapping cannot turn this into a silent null
+   that drops the "device time" half of the notice. */
 function readDeviceTime() {
 	return callSystemInfo()
-		.then((res) => (res && res.localtime) ? fmtEpoch(res.localtime) : null)
+		.then((res) => {
+			const lt = (typeof res === 'number') ? res : (res && res.localtime);
+			return (lt > 0) ? fmtEpoch(lt) : null;
+		})
 		.catch(() => null);
 }
 
@@ -592,13 +597,23 @@ function renderUnifiedLog() {
 		const scroll = scrollState();
 
 		return readCoreShift()
+			/* The shift has to travel to the render step below, which is a
+			   separate callback: returning only the two value arrays here
+			   leaves `shift` out of scope there and the whole refresh dies
+			   with a ReferenceError, leaving the spinner on screen forever.
+			   Carry it inside the resolved snapshot instead. */
 			.then((shift) => Promise.all([
 				readDeviceTime(),
 				Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
-			]))
-			.then((vals) => {
-				const devtime = vals[0] || null;
-				const results = vals[1] || [];
+			]).then((vals) => ({
+				shift: shift,
+				devtime: vals[0] || null,
+				results: vals[1] || []
+			})))
+			.then((snap) => {
+				const shift = snap.shift;
+				const devtime = snap.devtime;
+				const results = snap.results;
 				let merged = mergeRecords(results);
 				merged = filterByLevel(merged, cutoffWeight());
 
@@ -641,6 +656,16 @@ function renderUnifiedLog() {
 
 				dom.content(log_body, renderLogBox(merged));
 				restoreScroll(scroll);
+			})
+			/* A rejected refresh used to leave the "Collecting data..."
+			   spinner on screen forever: the box is only replaced on success,
+			   so any runtime error inside the chain above looks exactly like
+			   "the page never finished loading" — no message, nothing to act
+			   on. Say what broke instead, in the same box. */
+			.catch((err) => {
+				dom.content(log_body, E('div', { 'class': 'hp-log-empty' }, [
+					_('Failed to load the log: %s').format(err && err.message ? err.message : err)
+				]));
 			});
 	}
 
