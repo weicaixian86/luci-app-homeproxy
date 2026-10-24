@@ -27,8 +27,12 @@ mkdir -p "$RUN_DIR" 2>/dev/null
 # 互斥用 mkdir（POSIX 原子操作，BusyBox 必有）。
 #
 # ⚠️ 这里原来写的是 `lock -n "$LOCK_FILE"` / `lock "$LOCK_FILE"`，那是
-# util-linux 的 lock，语法是 `lock [选项] 文件 命令 [参数]` —— 不带命令
-# 本身就报错；而且 iStoreOS 的 BusyBox 既没有 `lock` 也没有 `flock`。
+# util-linux 的 lock，语法是 `lock [选项] 文件 命令 [参数]` —— **不带命令
+# 本身就报错**（rc≠0），`! lock` 于是恒为真。注意 `/bin/lock`、`/usr/bin/flock`
+# 在部分机器上是装了的（现场 iStoreOS 就都有），所以「命令不存在」不是根因，
+# 裸调用写法本身就是错的；而 `lock` 即便写对，也会在它那条命令结束时立刻
+# 释放锁，保护不到脚本后续步骤，`flock` 又不一定在所有镜像里、cron 的 PATH
+# 还常常找不到 /usr/bin。
 # 于是脚本在写请求文件之前就退出（127），而内核那边 `command.Start()`
 # 早已成功返回 204，面板显示「操作成功」却什么都没发生 —— 现场感受
 # 就是「面板上那个刷新按钮点了没反应」。所以：绝不能用外部 lock 命令，

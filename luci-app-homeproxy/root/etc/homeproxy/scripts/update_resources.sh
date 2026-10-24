@@ -44,10 +44,14 @@ check_list_update() {
 	# ⚠️ 这里原来写的是 `if ! lock -n "$LOCK_FILE"; then … return 2; fi`，于是
 	# 四份内置资源（china_ip4 / china_ip6 / gfw_list / china_list）**从来没有被
 	# 更新过**，日志里还只留一句误导性的「A task is already running.」：
-	#   ① iStoreOS 的 BusyBox 既没有 `lock` 也没有 `flock`；
-	#   ② 即使装了 util-linux，`lock` 的语法是 `lock [选项] 文件 命令 [参数]`，
-	#      不带要执行的命令本身就是错误 → `lock` 恒失败 → `! lock` 恒为真
-	#      → 永远走「已有任务在跑」分支直接 return 2。
+	#   ① util-linux 的 `lock` 语法是 `lock [选项] 文件 命令 [参数]` —— **不带
+	#      要执行的命令本身就是错误**（现场 iStoreOS 上 `/bin/lock` 是存在的，
+	#      `command -v lock` 能查到，所以「命令不存在」不是原因）：裸写
+	#      `lock -n 文件` 恒失败 → `! lock` 恒为真 → 永远走「已有任务在跑」
+	#      分支直接 return 2。可现场复现：`lock -n /tmp/t.lock; echo rc=$?`。
+	#   ② 就算写成 `lock -n 文件 true` 也不对：它在命令结束时就把锁释放了，
+	#      保护不到后面的 curl/mv；`flock` 又只在部分镜像里有，且 cron 的
+	#      PATH 极短（不带 /usr/bin 时根本找不到 /usr/bin/flock）。
 	# 现场证据：/etc/homeproxy/resources/ 下 8 个文件的 mtime 一直是打包日期。
 	# 互斥改用 mkdir（POSIX 原子，BusyBox 必有），锁内写 pid 判陈旧。
 	LOCK_DIR="$RUN_DIR/update_resources-$LIST_FILE.lock"
