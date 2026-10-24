@@ -1152,6 +1152,26 @@ else
 	bad "update_resources.sh still logs a bare 'Failed to get the latest version' (rate limit vs network is indistinguishable)"
 fi
 
+# ── 日志页顶部那条 note 里的「设备当前时间」（0.1.25 装机发现，前端第三个时区坑）
+# 原实现读 rpcd 的 `system.info.localtime`，再在浏览器里按浏览器时区格式化。可
+# 这个字段的语义在不同 OpenWrt/rpcd 版本上并不一致：有的返回真实 epoch，有的把
+# 本地墙上时间**当成 UTC** 编码 —— 浏览器再解释一次就整体偏移一个 UTC 偏移量。
+# 现场：日志行写着 20:02:54（10-24），note 却报设备当前时间 04:03:38（10-25），
+# 正好快 8 小时。正确做法是让设备自己 `date`（它读 /etc/TZ）并返回格式化好的
+# 字符串：既不经浏览器时区，也不依赖那个字段的语义。
+RPC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+if grep -q 'device_time' "$RPC" && grep -q "popen('date" "$RPC"; then
+	ok "rpcd exposes device_time (the device formats its own clock, no browser re-interpretation)"
+else
+	bad "device clock still comes from system.info.localtime, which is off by one UTC offset on some rpcd builds"
+fi
+
+if grep -q "object: 'luci.homeproxy'" "$LOGJS" && grep -q "method: 'device_time'" "$LOGJS"; then
+	ok "log.js asks the plugin for the device clock before falling back to system.info"
+else
+	bad "log.js never calls device_time; the notice keeps showing a clock off by 8h"
+fi
+
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
 # 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
 # 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，

@@ -1815,19 +1815,22 @@ msgstr "日志已复制到剪贴板。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:648
 msgid ""
-"Log files are appended and only rotated by size, never by age: oldest %s, "
-"newest %s (device time %s). Use the Clean log button to drop the history."
+"Log lines stay in write order; a file is only rotated once it hits its size "
+"limit, so old lines are never dropped just for being old: oldest %s, newest "
+"%s (device time %s). Use the Clean log button to drop the history."
 msgstr ""
-"日志文件是追加写入的，只按大小轮转、不按时间清理：最早 %s，最新 %s（设备当前"
-"时间 %s）。点「清空日志」可清除历史记录。"
+"日志按写入顺序排列；只有写满限制大小才会轮转，所以旧记录不会因为「时间久"
+"了」被自动删除：最早 %s，最新 %s（设备当前时间 %s）。点「清空日志」可清除历"
+"史记录。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:650
 msgid ""
-"Log files are appended and only rotated by size, never by age: oldest %s, "
-"newest %s. Use the Clean log button to drop the history."
+"Log lines stay in write order; a file is only rotated once it hits its size "
+"limit, so old lines are never dropped just for being old: oldest %s, newest "
+"%s. Use the Clean log button to drop the history."
 msgstr ""
-"日志文件是追加写入的，只按大小轮转、不按时间清理：最早 %s，最新 %s。点「清空"
-"日志」可清除历史记录。"
+"日志按写入顺序排列；只有写满限制大小才会轮转，所以旧记录不会因为「时间久"
+"了」被自动删除：最早 %s，最新 %s。点「清空日志」可清除历史记录。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:384
 msgid "Log is empty."

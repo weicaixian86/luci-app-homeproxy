@@ -115,17 +115,40 @@ function fmtEpoch(sec) {
 	       ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
 }
 
+/* Preferred source of the device clock: our own rpcd method runs `date` on the
+   device and hands back an already-formatted string. Nothing is re-interpreted
+   in the browser's zone, and we do not depend on what a given OpenWrt/rpcd
+   build happens to put in `system.info.localtime` — on 0.1.25 that field made
+   the notice report 04:03:38 (10-25) while the log lines read 20:02:54 (10-24),
+   exactly one UTC offset ahead. */
+const callDeviceTime = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'device_time'
+});
+
 /* Device clock as a stamp, or null when rpcd will not tell us.
-   Accept both shapes: the whole ubus reply (`{ localtime: <sec> }`) and a bare
-   number, so a future `expect` mapping cannot turn this into a silent null
-   that drops the "device time" half of the notice. */
+   `system.info` stays as the fallback for an rpcd that predates device_time;
+   it accepts both shapes (the whole ubus reply `{ localtime: <sec> }` and a
+   bare number) so a future `expect` mapping cannot turn this into a silent
+   null that drops the "device time" half of the notice. */
 function readDeviceTime() {
-	return callSystemInfo()
+	return callDeviceTime()
 		.then((res) => {
-			const lt = (typeof res === 'number') ? res : (res && res.localtime);
-			return (lt > 0) ? fmtEpoch(lt) : null;
+			const s = res && res.stamp;
+			return (typeof s === 'string' && s !== '') ? s : null;
 		})
-		.catch(() => null);
+		.catch(() => null)
+		.then((stamp) => {
+			if (stamp)
+				return stamp;
+
+			return callSystemInfo()
+				.then((res) => {
+					const lt = (typeof res === 'number') ? res : (res && res.localtime);
+					return (lt > 0) ? fmtEpoch(lt) : null;
+				})
+				.catch(() => null);
+		});
 }
 
 /* Max lines shown in the merged log box; older lines are dropped. */
@@ -617,16 +640,18 @@ function renderUnifiedLog() {
 				let merged = mergeRecords(results);
 				merged = filterByLevel(merged, cutoffWeight());
 
-				/* The six files are append-only and are rotated by SIZE, not
-				   by age (clean_log.sh), so a line dated days ago is almost
-				   always genuine history rather than a broken clock — the box
-				   simply never told the reader how far back it reaches. Spell
-				   out the span and, when rpcd gives us the device clock, put
-				   it next to the newest stamp: if the two agree, the old line
-				   is just old; if the newest stamp is also far in the past,
-				   the device clock is wrong (no NTP) and every new line will
-				   keep that bogus date. Unshifted before the UTC notice below
-				   so the clock explanation stays the first thing read. */
+				/* The six files are append-only — every line keeps its place
+				   in write order — and are rotated by SIZE, not by age
+				   (clean_log.sh). "Rotated by size, never by age" means an old
+				   line is not dropped for being old: the box can still hold
+				   records from days ago, which is why a stamp far in the past
+				   is almost always genuine history rather than a broken clock.
+				   Spell out the span and, when rpcd gives us the device clock,
+				   put it next to the newest stamp: if the two agree, the old
+				   line is just old; if the newest stamp is also far in the
+				   past, the device clock is wrong (no NTP) and every new line
+				   will keep that bogus date. Unshifted before the UTC notice
+				   below so the clock explanation stays the first thing read. */
 				const stamps = merged.filter((r) => r.ts !== '').map((r) => r.ts);
 
 				/* Say it out loud when the stamps above had to be moved:
@@ -645,9 +670,9 @@ function renderUnifiedLog() {
 
 				if (stamps.length) {
 					notes.push(devtime
-						? _('Log files are appended and only rotated by size, never by age: oldest %s, newest %s (device time %s). Use the Clean log button to drop the history.')
+						? _('Log lines stay in write order; a file is only rotated once it hits its size limit, so old lines are never dropped just for being old: oldest %s, newest %s (device time %s). Use the Clean log button to drop the history.')
 							.format(stamps[0], stamps[stamps.length - 1], devtime)
-						: _('Log files are appended and only rotated by size, never by age: oldest %s, newest %s. Use the Clean log button to drop the history.')
+						: _('Log lines stay in write order; a file is only rotated once it hits its size limit, so old lines are never dropped just for being old: oldest %s, newest %s. Use the Clean log button to drop the history.')
 							.format(stamps[0], stamps[stamps.length - 1]));
 				}
 
