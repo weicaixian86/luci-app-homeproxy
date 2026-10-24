@@ -257,7 +257,7 @@ msgstr ""
 msgid "Authentication type"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:702
+#: htdocs/luci-static/resources/view/homeproxy/log.js:653
 msgid "Auto refresh"
 msgstr ""
 
@@ -436,11 +436,11 @@ msgstr ""
 msgid "Clash API unavailable."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:717
+#: htdocs/luci-static/resources/view/homeproxy/log.js:668
 msgid "Clean log"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:737
+#: htdocs/luci-static/resources/view/homeproxy/log.js:688
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr ""
 
@@ -480,7 +480,7 @@ msgid "CloudFlare Public DNS (DoH)"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:817
-#: htdocs/luci-static/resources/view/homeproxy/log.js:491
+#: htdocs/luci-static/resources/view/homeproxy/log.js:456
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
 msgid "Collecting data..."
 msgstr ""
@@ -498,7 +498,7 @@ msgstr ""
 msgid "Connection check"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:728
+#: htdocs/luci-static/resources/view/homeproxy/log.js:679
 msgid "Copy log"
 msgstr ""
 
@@ -596,7 +596,7 @@ msgid ""
 "protection is required."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:443
+#: htdocs/luci-static/resources/view/homeproxy/log.js:408
 msgid "Debug"
 msgstr ""
 
@@ -1016,7 +1016,7 @@ msgstr ""
 msgid "Encrypt method"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:446
+#: htdocs/luci-static/resources/view/homeproxy/log.js:411
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
 msgstr ""
@@ -1144,11 +1144,11 @@ msgstr ""
 msgid "Failed to generate %s, error: %s."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:667
+#: htdocs/luci-static/resources/view/homeproxy/log.js:618
 msgid "Failed to load the log: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:313
+#: htdocs/luci-static/resources/view/homeproxy/log.js:278
 msgid "Failed to read %s: %s"
 msgstr ""
 
@@ -1562,7 +1562,7 @@ msgid ""
 "seconds."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:444
+#: htdocs/luci-static/resources/view/homeproxy/log.js:409
 msgid "Info"
 msgstr ""
 
@@ -1634,7 +1634,7 @@ msgstr ""
 msgid "Invert match result."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:644
+#: htdocs/luci-static/resources/view/homeproxy/log.js:603
 msgid ""
 "Kernel log timestamps were in UTC (this device has no time zone data); they "
 "are shown converted to local time (%s)."
@@ -1743,7 +1743,7 @@ msgstr ""
 msgid "Listen port"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:489
+#: htdocs/luci-static/resources/view/homeproxy/log.js:454
 msgid "Loading"
 msgstr ""
 
@@ -1755,27 +1755,15 @@ msgstr ""
 msgid "Local address"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:725
+#: htdocs/luci-static/resources/view/homeproxy/log.js:676
 msgid "Log copied to clipboard."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:648
-msgid ""
-"Log files are appended and only rotated by size, never by age: oldest %s, "
-"newest %s (device time %s). Use the Clean log button to drop the history."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:650
-msgid ""
-"Log files are appended and only rotated by size, never by age: oldest %s, "
-"newest %s. Use the Clean log button to drop the history."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:384
+#: htdocs/luci-static/resources/view/homeproxy/log.js:349
 msgid "Log is empty."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:697
+#: htdocs/luci-static/resources/view/homeproxy/log.js:648
 msgid "Log level:"
 msgstr ""
 
@@ -2165,7 +2153,7 @@ msgstr ""
 msgid "Not installed"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:725
+#: htdocs/luci-static/resources/view/homeproxy/log.js:676
 msgid "Nothing to copy."
 msgstr ""
 
@@ -2570,7 +2558,7 @@ msgstr ""
 msgid "Redirect TCP + Tun UDP"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:735
+#: htdocs/luci-static/resources/view/homeproxy/log.js:686
 msgid "Refresh every %s seconds."
 msgstr ""
 
@@ -3651,7 +3639,7 @@ msgstr ""
 msgid "WAN IP Policy"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:445
+#: htdocs/luci-static/resources/view/homeproxy/log.js:410
 msgid "Warn"
 msgstr ""
 
@@ -3917,7 +3905,7 @@ msgstr ""
 msgid "valid uuid"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:417
+#: htdocs/luci-static/resources/view/homeproxy/log.js:382
 msgid "… (only the last %s lines are shown)"
 msgstr ""
 

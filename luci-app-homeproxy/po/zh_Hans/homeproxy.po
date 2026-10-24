@@ -269,7 +269,7 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:702
+#: htdocs/luci-static/resources/view/homeproxy/log.js:653
 msgid "Auto refresh"
 msgstr "自动刷新"
 
@@ -452,11 +452,11 @@ msgstr "Cisco 公共DNS (DoH)"
 msgid "Clash API unavailable."
 msgstr "Clash API 不可用"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:717
+#: htdocs/luci-static/resources/view/homeproxy/log.js:668
 msgid "Clean log"
 msgstr "清空日志"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:737
+#: htdocs/luci-static/resources/view/homeproxy/log.js:688
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr "先点击日志区域，再按 Ctrl+A 即可全选。"
 
@@ -498,7 +498,7 @@ msgid "CloudFlare Public DNS (DoH)"
 msgstr "CloudFlare 公共DNS (DoH)"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:817
-#: htdocs/luci-static/resources/view/homeproxy/log.js:491
+#: htdocs/luci-static/resources/view/homeproxy/log.js:456
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
@@ -516,7 +516,7 @@ msgstr "拥塞控制算法"
 msgid "Connection check"
 msgstr "连接检查"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:728
+#: htdocs/luci-static/resources/view/homeproxy/log.js:679
 msgid "Copy log"
 msgstr "复制日志"
 
@@ -614,7 +614,7 @@ msgid ""
 "protection is required."
 msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:443
+#: htdocs/luci-static/resources/view/homeproxy/log.js:408
 msgid "Debug"
 msgstr "调试"
 
@@ -1049,7 +1049,7 @@ msgstr "启用 SUoT 协议，需要服务端支持。与多路复用冲突。"
 msgid "Encrypt method"
 msgstr "加密方式"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:446
+#: htdocs/luci-static/resources/view/homeproxy/log.js:411
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
 msgstr "错误"
@@ -1182,11 +1182,11 @@ msgstr "失败"
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:667
+#: htdocs/luci-static/resources/view/homeproxy/log.js:618
 msgid "Failed to load the log: %s"
 msgstr "日志加载失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:313
+#: htdocs/luci-static/resources/view/homeproxy/log.js:278
 msgid "Failed to read %s: %s"
 msgstr "读取 %s 失败：%s"
 
@@ -1609,7 +1609,7 @@ msgid ""
 "seconds."
 msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:444
+#: htdocs/luci-static/resources/view/homeproxy/log.js:409
 msgid "Info"
 msgstr "信息"
 
@@ -1682,7 +1682,7 @@ msgstr "反转"
 msgid "Invert match result."
 msgstr "反转匹配结果"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:644
+#: htdocs/luci-static/resources/view/homeproxy/log.js:603
 msgid ""
 "Kernel log timestamps were in UTC (this device has no time zone data); they "
 "are shown converted to local time (%s)."
@@ -1797,7 +1797,7 @@ msgstr "监听接口"
 msgid "Listen port"
 msgstr "监听端口"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:489
+#: htdocs/luci-static/resources/view/homeproxy/log.js:454
 msgid "Loading"
 msgstr "加载中"
 
@@ -1809,15 +1809,15 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:725
+#: htdocs/luci-static/resources/view/homeproxy/log.js:676
 msgid "Log copied to clipboard."
 msgstr "日志已复制到剪贴板。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:384
+#: htdocs/luci-static/resources/view/homeproxy/log.js:349
 msgid "Log is empty."
 msgstr "日志为空。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:697
+#: htdocs/luci-static/resources/view/homeproxy/log.js:648
 msgid "Log level:"
 msgstr "日志级别："
 
@@ -2211,7 +2211,7 @@ msgstr "未下载"
 msgid "Not installed"
 msgstr "未安装"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:725
+#: htdocs/luci-static/resources/view/homeproxy/log.js:676
 msgid "Nothing to copy."
 msgstr "没有可复制的内容。"
 
@@ -2619,7 +2619,7 @@ msgstr "Redirect TCP + TProxy UDP"
 msgid "Redirect TCP + Tun UDP"
 msgstr "Redirect TCP + Tun UDP"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:735
+#: htdocs/luci-static/resources/view/homeproxy/log.js:686
 msgid "Refresh every %s seconds."
 msgstr "每 %s 秒刷新。"
 
@@ -3729,7 +3729,7 @@ msgstr "WAN DNS（从接口获取）"
 msgid "WAN IP Policy"
 msgstr "WAN IP 策略"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:445
+#: htdocs/luci-static/resources/view/homeproxy/log.js:410
 msgid "Warn"
 msgstr "警告"
 
@@ -3996,7 +3996,7 @@ msgstr "有效标签"
 msgid "valid uuid"
 msgstr "有效 uuid"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:417
+#: htdocs/luci-static/resources/view/homeproxy/log.js:382
 msgid "… (only the last %s lines are shown)"
 msgstr "…（仅显示最近 %s 行）"
 
