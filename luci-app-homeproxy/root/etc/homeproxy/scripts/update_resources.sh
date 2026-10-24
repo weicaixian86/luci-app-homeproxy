@@ -41,17 +41,22 @@ check_list_update() {
 	local GITHUB_TOKEN="$(uci -q get homeproxy.config.github_token)"
 	local holder
 
-	# ⚠️ 这里原来写的是 `if ! lock -n "$LOCK_FILE"; then … return 2; fi`，于是
-	# 四份内置资源（china_ip4 / china_ip6 / gfw_list / china_list）**从来没有被
-	# 更新过**，日志里还只留一句误导性的「A task is already running.」：
-	#   ① util-linux 的 `lock` 语法是 `lock [选项] 文件 命令 [参数]` —— **不带
-	#      要执行的命令本身就是错误**（现场 iStoreOS 上 `/bin/lock` 是存在的，
-	#      `command -v lock` 能查到，所以「命令不存在」不是原因）：裸写
-	#      `lock -n 文件` 恒失败 → `! lock` 恒为真 → 永远走「已有任务在跑」
-	#      分支直接 return 2。可现场复现：`lock -n /tmp/t.lock; echo rc=$?`。
-	#   ② 就算写成 `lock -n 文件 true` 也不对：它在命令结束时就把锁释放了，
-	#      保护不到后面的 curl/mv；`flock` 又只在部分镜像里有，且 cron 的
-	#      PATH 极短（不带 /usr/bin 时根本找不到 /usr/bin/flock）。
+	# ⚠️ 这里原来写的是 `if ! lock -n "$LOCK_FILE" 2>/dev/null; then …
+	# return 2; fi`，于是四份内置资源（china_ip4 / china_ip6 / gfw_list /
+	# china_list）**从来没有被更新过**，日志里还只留一句误导性的
+	# 「A task is already running.」。真因不是「命令不存在」也不是「语法错」：
+	#   ① 现场 iStoreOS 上 `/bin/lock`、`/usr/bin/flock` 都有，且
+	#      `lock -n /tmp/t.lock` 对**一个新路径**返回 **0**（裸调用是能成功的）；
+	#   ② 脚本用的是**固定路径**且**从不释放**（没有 `lock -u`，也没有任何
+	#      清理）。只要某一次在拿锁之后中途失败 —— 例如 `curl` 取不到最新
+	#      release tag 就 `return 1`、或下载失败 `return 1` —— 那个锁文件就
+	#      永久留在 `/var/run` 里，此后**每一次**都是 rc=2「已有任务在跑」，
+	#      再也跑不动（/var/run 是内存盘，只有重启才清）。
+	#   ③ 即使换成 `lock -n 文件 true`，锁也会在那条命令结束时释放，保护不到
+	#      后面的 curl/mv；`flock` 又只在部分镜像里有，cron 的 PATH 还常常
+	#      不含 /usr/bin。
+	# 现场判据：`ls -l /etc/homeproxy/resources/` 的 mtime 一直是打包日期；
+	# `ls /var/run/homeproxy/*.lock` 能看到残留的锁文件。
 	# 现场证据：/etc/homeproxy/resources/ 下 8 个文件的 mtime 一直是打包日期。
 	# 互斥改用 mkdir（POSIX 原子，BusyBox 必有），锁内写 pid 判陈旧。
 	LOCK_DIR="$RUN_DIR/update_resources-$LIST_FILE.lock"

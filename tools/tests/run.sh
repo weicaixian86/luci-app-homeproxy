@@ -1055,8 +1055,8 @@ fi
 # update_provider.sh。内核执行它时只要 /bin/sh 起来了就立刻回 204，脚本内部
 # 任何提前退出都不会反馈给面板 —— 现象就是「按钮点了没反应」。所以：一不许
 # 依赖外部 lock/flock（不是「没有」——iStoreOS 上 /bin/lock、/usr/bin/flock 都有，
-# 而是 util-linux 的 lock 必须写成「文件 + 命令」，裸调用恒失败，写对了锁也会
-# 随那条命令结束而释放），二不许用 set -e 把失败变成静默退出，三必须每步写主日志。
+# 而是这套写法既不释放锁、也保护不到后续步骤），二不许用 set -e 把失败变成静默
+# 退出，三必须每步写主日志。
 PROV="$PKG/root/etc/homeproxy/scripts/update_provider.sh"
 if grep -vE '^[[:space:]]*#' "$PROV" | grep -qE '(^|[;[:space:]&|])(lock|flock)[[:space:]]'; then
 	bad "update_provider.sh calls the external lock/flock command (absent on BusyBox, wrong syntax anyway)"
@@ -1090,12 +1090,14 @@ fi
 
 # 内置资源（china_ip4 / china_ip6 / gfw_list / china_list）走的是
 # update_resources.sh，它和 update_provider.sh 犯过同一个错：用 `if ! lock -n …`
-# 当互斥。注意 `lock` 在不少机器上是**存在**的（现场 iStoreOS `command -v lock`
-# → /bin/lock），问题在写法：util-linux 的 `lock` 要求「文件 + 要执行的命令」，
-# 裸 `lock -n 文件` 恒失败 → `! lock` 恒为真 → 永远 return 2，日志里还写着
-# 「A task is already running.」。现场证据：/etc/homeproxy/resources/ 下文件的
-# mtime 一直是打包日期，四份列表从来没更新过。反过来 grep 日志查不到这一句
-# **不能证伪**：/var/run 是内存盘，重启即清空，只能说明这条链近期没跑过。
+# 当互斥，而且**从不释放**（没有 `lock -u`、没有任何清理）。注意 `lock` 在这台
+# 机器上是存在的（/bin/lock + /usr/bin/flock），`lock -n <新路径>` 也确实返回 0，
+# 所以失败不是「命令不存在」也不是语法错 —— 是**锁文件残留**：只要某一次拿锁后
+# 中途失败（curl 取不到 release tag、下载失败就 return 1），锁文件就永久留在
+# /var/run 里，此后每次都是 rc=2「A task is already running.」，再也跑不动。
+# 现场证据：/etc/homeproxy/resources/ 下文件 mtime 一直是打包日期（Mar 3 2026），
+# 四份列表从来没更新过；`ls /var/run/homeproxy/*.lock` 能看到残留。反过来 grep
+# 日志查不到这一句**不能证伪**：/var/run 是内存盘，重启即清空。
 RES="$PKG/root/etc/homeproxy/scripts/update_resources.sh"
 if grep -vE '^[[:space:]]*#' "$RES" | grep -qE '(^|[;[:space:]&|])(lock|flock)[[:space:]]'; then
 	bad "update_resources.sh shells out to lock/flock (geodata never updates, log says \"A task is already running\")"
