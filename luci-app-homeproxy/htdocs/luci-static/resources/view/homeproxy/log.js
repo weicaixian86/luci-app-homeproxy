@@ -753,31 +753,36 @@ function renderUnifiedLog() {
 					auto_cb,
 					_('Auto refresh')
 				]),
-				E('button', {
-						'class': 'btn cbi-button cbi-button-action',
-						'click': ui.createHandlerFn(this, () => {
-							return Promise.all(log_sources.map((src) =>
-								L.resolveDefault(callLogClean(src.file), {})
-							)).then(() => {
-								/* Re-read right away: without this the box
-								   keeps showing the rows that were just
-								   deleted until the next 5 s poll tick,
-								   which reads as "clean does nothing". */
-								return refresh(true);
-							});
-						})
-					}, [ _('Clean log') ]),
-				/* Selecting with Ctrl+A only works while the box has focus,
-				   which is easy to miss; this always copies everything. */
-				E('button', {
-						'class': 'btn cbi-button',
-						'click': ui.createHandlerFn(this, () => {
-							const ok = copyLogText();
-							ui.addNotification(null,
-								E('p', ok ? _('Log copied to clipboard.') : _('Nothing to copy.')),
-								ok ? 'info' : 'warning');
-						})
-					}, [ _('Copy log') ])
+				/* 两个按钮合成一组紧跟在「自动刷新」后面。整行是
+				   justify-content: flex-start，任何控件都不许被推到右边，
+				   顶栏一律左对齐、右侧不留空白。 */
+				E('div', { 'style': 'display:flex; align-items:center; gap:8px;' }, [
+					E('button', {
+							'class': 'btn cbi-button cbi-button-action',
+							'click': ui.createHandlerFn(this, () => {
+								return Promise.all(log_sources.map((src) =>
+									L.resolveDefault(callLogClean(src.file), {})
+								)).then(() => {
+									/* Re-read right away: without this the box
+									   keeps showing the rows that were just
+									   deleted until the next 5 s poll tick,
+									   which reads as "clean does nothing". */
+									return refresh(true);
+								});
+							})
+						}, [ _('Clean log') ]),
+					/* Selecting with Ctrl+A only works while the box has focus,
+					   which is easy to miss; this always copies everything. */
+					E('button', {
+							'class': 'btn cbi-button',
+							'click': ui.createHandlerFn(this, () => {
+								const ok = copyLogText();
+								ui.addNotification(null,
+									E('p', ok ? _('Log copied to clipboard.') : _('Nothing to copy.')),
+									ok ? 'info' : 'warning');
+							})
+						}, [ _('Copy log') ])
+				])
 			])
 			]),
 			E('div', { 'class': 'cbi-section' }, [

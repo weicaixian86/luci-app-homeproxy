@@ -1206,6 +1206,15 @@ else
 	bad "core level labels can fall back to English (Debug / Info / Warn / Error)"
 fi
 
+# 顶栏所有控件一律左对齐：「清空日志 / 复制日志」紧跟在「自动刷新」后面，
+# 不许用 auto 外边距或右浮动把按钮推到右边（用户明确要求往左靠）。
+if ! grep -qE 'margin-left:[[:space:]]*auto|float:[[:space:]]*right' "$LOGJS" \
+   && awk '/^\.hp-log-topbar \{/,/^\}/' "$LOGJS" | grep -q 'justify-content: flex-start'; then
+	ok "every control in the log top bar stays left-aligned"
+else
+	bad "a log top-bar control is pushed to the right (should follow 'auto refresh')"
+fi
+
 if grep -q "_('Show:')" "$LOGJS" && grep -q "_('Core log level:')" "$LOGJS"; then
 	ok "display filter and core verbosity are two separate controls"
 else
