@@ -1178,12 +1178,31 @@ fi
 # 旧版只有一个「日志级别」下拉，装的是 sing-box 的四个级别；而插件自己的日志
 # （主日志、三份下载日志）行里根本没有级别 token —— 过滤对它们完全无效，选
 # 「错误」时满屏仍是下载进度和规则集明细。现在两个控件各管一件事。
+vc="$(sed -n '/const view_choices = {/,/};/p' "$LOGJS" \
+	| sed -n 's/^[[:space:]]*\([a-z]*\)[[:space:]]*:.*/\1/p' | sort | tr '\n' ' ')"
 if grep -q 'filterByView' "$LOGJS" && grep -q 'normalizeView' "$LOGJS" \
-   && grep -q "all:   _('All')" "$LOGJS" && grep -q "event: _('Events')" "$LOGJS" \
+   && [ "$vc" = "all error event warn " ] \
    && ! grep -q 'filterByLevel' "$LOGJS"; then
 	ok "the log page filters by view (all/events/warnings/errors), not by core severity"
 else
 	bad "the log page still filters with the sing-box severity ladder only"
+fi
+
+# 内核级别的显示名必须是中文，括号里留 sing-box 的原值（配置文件里存的是
+# log_level 'debug' 这种英文，排查时要能对上）。只靠 _() 不够：homeproxy 的
+# .lmo 没加载时 _() 原样返回英文 msgid，界面就又变回 Debug / Info / Warn /
+# Error —— 所以四个都走 zh(en, _('X'), '中文') 兜底，en 与 msgid 逐字一致。
+lv_cn=0
+for pair in "Debug:调试" "Info:信息" "Warn:警告" "Error:错误"; do
+	en="${pair%%:*}"; cn="${pair##*:}"
+	if grep -qE "zh\('$en',[[:space:]]*_\('$en'\),[[:space:]]*'$cn'\)" "$LOGJS"; then
+		lv_cn=$((lv_cn + 1))
+	fi
+done
+if [ "$lv_cn" = 4 ] && grep -q '（debug）' "$LOGJS" && grep -q '（error）' "$LOGJS"; then
+	ok "core level labels read Chinese even when the .lmo is missing"
+else
+	bad "core level labels can fall back to English (Debug / Info / Warn / Error)"
 fi
 
 if grep -q "_('Show:')" "$LOGJS" && grep -q "_('Core log level:')" "$LOGJS"; then

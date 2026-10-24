@@ -136,6 +136,18 @@ function normalizeLevel(v) {
 		? v : 'info';
 }
 
+/* 界面文案的中文兜底。`_()` 只在 homeproxy 的 .lmo 被加载时才翻译，否则
+   原样返回英文 msgid —— 于是「内核日志级别」下拉里直接冒出 Debug / Info /
+   Warn / Error（这四个词 luci-base 里也有同名条目，靠继承不保险）。
+   面板文案要求全中文，所以再压一层：翻译没命中就用内置中文名。
+   en 用来判断「到底命中没有」；translated 必须是对 _() 的直接字面量调用，
+   而不是把变量传进去，否则 Rescan-Translation 提取不到 msgid，po 里的
+   条目会被当成死条目清掉。（注意注释里也别写带引号的 _() 调用：pocheck
+   把整份源码当文本扫，会把它当成一个真的 msgid 去 po 里找。） */
+function zh(en, translated, fallback) {
+	return (translated && translated !== en) ? translated : fallback;
+}
+
 /* init.d records whether the core actually got a usable timezone in
    CORE_TZ_FILE: "local" when it did, "utc <seconds east of UTC>" when the
    image has no tzdata and sing-box therefore logs in UTC. Go cannot parse
@@ -463,10 +475,10 @@ function renderUnifiedLog() {
 	/* ── 控件一：显示视图（看什么） ──────────────────────────────────────
 	   与「内核输出级别」是两件事：这里只改前端过滤，不重启任何东西。 */
 	const view_choices = {
-		all:   _('All'),
-		event: _('Events'),
-		warn:  _('Warnings'),
-		error: _('Errors')
+		all:   zh('All',      _('All'),      '全部'),
+		event: zh('Events',   _('Events'),   '事件'),
+		warn:  zh('Warnings', _('Warnings'), '警告'),
+		error: zh('Errors',   _('Errors'),   '错误')
 	};
 
 	let view = normalizeView(uci.get('homeproxy', 'config', 'log_view'));
@@ -495,12 +507,14 @@ function renderUnifiedLog() {
 	});
 
 	/* ── 控件二：内核输出级别（sing-box 写多少） ────────────────────────
-	   这个真的会改配置并重启内核，所以单独放一个下拉、并写清后果。 */
+	   这个真的会改配置并重启内核，所以单独放一个下拉、并写清后果。
+	   显示名一律中文，括号里留 sing-box 的原值：/etc/config 里存的是
+	   `log_level 'debug'` 这种英文，排查时要能一一对上。 */
 	const log_level_choices = {
-		debug: _('Debug'),
-		info:  _('Info'),
-		warn:  _('Warn'),
-		error: _('Error')
+		debug: zh('Debug', _('Debug'), '调试') + '（debug）',
+		info:  zh('Info',  _('Info'),  '信息') + '（info）',
+		warn:  zh('Warn',  _('Warn'),  '警告') + '（warn）',
+		error: zh('Error', _('Error'), '错误') + '（error）'
 	};
 
 	let selected = normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
@@ -512,7 +526,8 @@ function renderUnifiedLog() {
 	const level_sel = E('select', {
 		'id': 'hp_unified_log_level',
 		'class': 'cbi-input-select',
-		'style': 'margin-left: 4px; width: 7em;',
+		/* 比「显示视图」宽：选项是「警告（warn）」这种中文＋原值，7em 会被裁掉。 */
+		'style': 'margin-left: 4px; width: 11em;',
 		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
 		'change': ui.createHandlerFn(this, (ev) => {
 			const v = ev.target.value;
