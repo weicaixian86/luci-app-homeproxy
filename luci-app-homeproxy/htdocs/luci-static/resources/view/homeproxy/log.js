@@ -93,6 +93,36 @@ const callLogClean = rpc.declare({
 	expect: { '': {} }
 });
 
+/* rpcd's own system plugin: localtime is the device clock in Unix seconds.
+   It is what lets the reader tell the two failure modes apart when a log
+   line carries a date from days ago — either the line is old history (the
+   files are only rotated by size, see clean_log.sh) or the device itself has
+   no correct clock (no NTP), in which case *every* new line is stamped with
+   that wrong date. Rejects when the plugin or the ACL is missing; callers
+   treat that as "unknown" rather than an error. */
+const callSystemInfo = rpc.declare({
+	object: 'system',
+	method: 'info',
+	expect: { localtime: 0 }
+});
+
+/* "YYYY-MM-DD HH:MM:SS" for a Unix-seconds stamp. Rendered in the browser's
+   zone, which is the same clock the reader is comparing against. */
+function fmtEpoch(sec) {
+	const d = new Date(sec * 1000);
+	const p = (n) => (n < 10 ? '0' : '') + n;
+
+	return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+	       ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+/* Device clock as a stamp, or null when rpcd will not tell us. */
+function readDeviceTime() {
+	return callSystemInfo()
+		.then((res) => (res && res.localtime) ? fmtEpoch(res.localtime) : null)
+		.catch(() => null);
+}
+
 /* Max lines shown in the merged log box; older lines are dropped. */
 const LOG_MAX_LINES = 1000;
 
@@ -263,11 +293,19 @@ function readSourceLog(src, shift) {
 		return { src: src, records: text ? splitRecords(text, src.core ? shift : 0) : [], error: null };
 	})
 	.catch((err) => {
+		/* A file that was never written (service not started yet, panel never
+		   updated, ...) is simply absent, which is the normal state of half
+		   the sources — it must NOT add a row. Six sources would otherwise
+		   open the box with a stack of identical "Log file does not exist."
+		   notices that do not even say which file is missing, and the reader
+		   reads them as log lines produced by the plugin. A real failure
+		   (permission denied, I/O error) is worth a row, and it names the
+		   file so it can be acted on. */
 		const missing = err.toString().includes('NotFoundError');
 		return {
 			src: src,
 			records: [],
-			error: missing ? _('Log file does not exist.') : _('Unknown error: %s').format(err)
+			error: missing ? null : _('Failed to read %s: %s').format(src.file + '.log', err)
 		};
 	});
 }
@@ -344,10 +382,16 @@ function renderLogBox(merged) {
 
 	let truncated = false;
 	if (flat.length > LOG_MAX_LINES) {
-		/* The one-off notice (UTC→local conversion) sits at the very front;
-		   dropping it would leave the reader with two clocks and no
-		   explanation exactly when the log is long enough to be interesting. */
-		const keep = (flat[0] && flat[0].note) ? 1 : 0;
+		/* Every leading notice line is kept: the UTC→local explanation and
+		   the "oldest/newest/device time" span both sit at the very front,
+		   and dropping either one leaves the reader with two clocks and no
+		   explanation exactly when the log is long enough to be interesting.
+		   Counting lines (not "the first row") matters because both notices
+		   travel in one record — see the unshift in refresh(). */
+		let keep = 0;
+		while (keep < flat.length && flat[keep].note)
+			keep++;
+
 		flat.splice(keep, flat.length - LOG_MAX_LINES);
 		truncated = true;
 	}
@@ -548,26 +592,56 @@ function renderUnifiedLog() {
 		const scroll = scrollState();
 
 		return readCoreShift()
-			.then((shift) => Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
-			.then((results) => {
+			.then((shift) => Promise.all([
+				readDeviceTime(),
+				Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
+			]))
+			.then((vals) => {
+				const devtime = vals[0] || null;
+				const results = vals[1] || [];
 				let merged = mergeRecords(results);
 				merged = filterByLevel(merged, cutoffWeight());
+
+				/* The six files are append-only and are rotated by SIZE, not
+				   by age (clean_log.sh), so a line dated days ago is almost
+				   always genuine history rather than a broken clock — the box
+				   simply never told the reader how far back it reaches. Spell
+				   out the span and, when rpcd gives us the device clock, put
+				   it next to the newest stamp: if the two agree, the old line
+				   is just old; if the newest stamp is also far in the past,
+				   the device clock is wrong (no NTP) and every new line will
+				   keep that bogus date. Unshifted before the UTC notice below
+				   so the clock explanation stays the first thing read. */
+				const stamps = merged.filter((r) => r.ts !== '').map((r) => r.ts);
 
 				/* Say it out loud when the stamps above had to be moved:
 				   otherwise the core lines disagree with logread / SSH.
 				   Skip the notice when no core line is on screen — a device
 				   marker alone is not something to explain. */
 				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
-				if (shift && coreLines) {
-					merged.unshift({
-						si: 0, ts: '', level: null, note: true,
-						lines: [ _('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)) ]
-					});
+
+				/* Both notices travel as ONE record: renderLogBox() keeps a
+				   single leading note row when it truncates to LOG_MAX_LINES,
+				   so two separate records would silently lose the second. */
+				const notes = [];
+
+				if (shift && coreLines)
+					notes.push(_('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)));
+
+				if (stamps.length) {
+					notes.push(devtime
+						? _('Log files are appended and only rotated by size, never by age: oldest %s, newest %s (device time %s). Use the Clean log button to drop the history.')
+							.format(stamps[0], stamps[stamps.length - 1], devtime)
+						: _('Log files are appended and only rotated by size, never by age: oldest %s, newest %s. Use the Clean log button to drop the history.')
+							.format(stamps[0], stamps[stamps.length - 1]));
 				}
+
+				if (notes.length)
+					merged.unshift({ si: 0, ts: '', level: null, note: true, lines: notes });
 
 				dom.content(log_body, renderLogBox(merged));
 				restoreScroll(scroll);
-			}));
+			});
 	}
 
 	/* Auto-refresh checkbox: when checked the log reloads on every poll tick
@@ -607,7 +681,13 @@ function renderUnifiedLog() {
 						'click': ui.createHandlerFn(this, () => {
 							return Promise.all(log_sources.map((src) =>
 								L.resolveDefault(callLogClean(src.file), {})
-							));
+							)).then(() => {
+								/* Re-read right away: without this the box
+								   keeps showing the rows that were just
+								   deleted until the next 5 s poll tick,
+								   which reads as "clean does nothing". */
+								return refresh(true);
+							});
 						})
 					}, [ _('Clean log') ]),
 				/* Selecting with Ctrl+A only works while the box has focus,

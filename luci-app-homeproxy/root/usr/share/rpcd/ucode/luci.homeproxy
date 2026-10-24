@@ -1630,7 +1630,14 @@ const methods = {
 	log_clean: {
 		args: { type: 'string' },
 		call: function(req) {
-			if (!(req.args?.type in ['homeproxy', 'sing-box-c', 'sing-box-s', 'core_download', 'panel_download']))
+			/* ruleset_download MUST be listed: it is one of the sources the
+			   log view merges (added when the ruleset download log was hooked
+			   up directly), so leaving it out made "Clean log" silently
+			   fail for that one file — the rpcd call rejected with
+			   "illegal type", the frontend swallowed it with
+			   L.resolveDefault(), and the oldest, most confusing history
+			   (ruleset downloads from weeks ago) could never be dropped. */
+			if (!(req.args?.type in ['homeproxy', 'ruleset_download', 'sing-box-c', 'sing-box-s', 'core_download', 'panel_download']))
 				return { result: false, error: 'illegal type' };
 
 			const filestat = lstat(`${RUN_DIR}/${req.args?.type}.log`);

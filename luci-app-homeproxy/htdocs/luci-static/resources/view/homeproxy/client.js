@@ -257,6 +257,64 @@ function ensurePanelInstalled() {
 	}).catch(() => {});
 }
 
+/* 「保存并应用」之后补一次规则集同步。
+
+   ⚠️ 0.1.23 现场教训（代价最大的一条）：这段逻辑原来写成
+   `m.handleSaveApply = ...`（m 是 form.Map 实例），外面还套了一层
+   `if (typeof m.handleSaveApply === 'function')`。但 LuCI 的
+   handleSaveApply 定义在 **view** 上（luci.js 的 view 基类），form.Map
+   根本没有这个方法 —— 判断恒为假，整段是死代码，从引入那天起就没执行过。
+   于是「保存并应用」只能靠 procd 的 config.change 触发器重启服务来间接
+   完成同步；而没配节点时 start_service 早退、连 procd 实例都不创建，
+   触发器形同虚设 → 点了完全没有反应，两处日志都空白。
+
+   可靠时机是 uci-applied：LuCI 在 apply 成功、页面 reload 之前派发它
+   （ui.js 的 confirm()），此刻 commit 已完成，脚本读到的必然是刚保存的
+   配置。页面随后会被 reload，所以监听器不需要常驻。 */
+let rulesetSyncPending = false;
+let rulesetSyncDrop = null;
+
+function armRulesetSync() {
+	if (rulesetSyncPending)
+		return;
+
+	rulesetSyncPending = true;
+
+	const fire = () => {
+		if (!rulesetSyncPending)
+			return;
+
+		rulesetSyncPending = false;
+		document.removeEventListener('uci-applied', fire);
+
+		if (rulesetSyncDrop) {
+			clearTimeout(rulesetSyncDrop);
+			rulesetSyncDrop = null;
+		}
+
+		callRulesetSync().then((ret) => {
+			if (ret && ret.result === false)
+				ui.addNotification(null, E('p', {},
+					_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
+		}).catch((e) => {
+			/* 请求被拒绝不能静默：升级后 rpcd 未重启时 ubus 回
+			   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。 */
+			ui.addNotification(null, E('p', {},
+				_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
+		});
+	};
+
+	document.addEventListener('uci-applied', fire);
+
+	/* 只点了「保存」（不应用）时不会派发 uci-applied，这里到期自清理，
+	   免得监听器一直挂在 document 上。 */
+	rulesetSyncDrop = setTimeout(() => {
+		document.removeEventListener('uci-applied', fire);
+		rulesetSyncPending = false;
+		rulesetSyncDrop = null;
+	}, 120000);
+}
+
 function openDashboard() {
 	let api = getClashApiInfo();
 	let params = new URLSearchParams({
@@ -3602,84 +3660,6 @@ return view.extend({
 		so.rmempty = false;
 		} /* Panel settings end (tab only registered for Clash-API-enabled routing modes) */
 
-		/* After "Save & Apply" in custom mode, make sure the panel is installed.
-		 * The real download is triggered by the init script in the background
-		 * when the service restarts (ensure_panel in /etc/init.d/homeproxy), so
-		 * we must NOT await the synchronous /upgrade/ui call here: on a slow
-		 * mirror that download takes ~10 minutes and would freeze this screen
-		 * the whole time. Fire it off without blocking Save & Apply. */
-		if (typeof m.handleSaveApply === 'function') {
-			const handleSaveApply = m.handleSaveApply;
-
-			m.handleSaveApply = function(ev, mode) {
-				const result = handleSaveApply.call(this, ev, mode);
-				// Non-blocking: the panel auto-installs in the background via
-				// the init script, so just kick this off and return immediately.
-				ensurePanelInstalled();
-
-				/* 「保存并应用」原本完全依赖 procd 的 config.change 触发器去重启
-				   服务。但 procd 只会重启「已经有运行实例」的服务（没有实例就
-				   没有 procd service 对象，`procd_add_reload_trigger` 也就无从生
-				   效），而本插件在「没配节点、也没开服务端」时会提前 return，一个
-				   实例都不创建 —— start_service 不执行，sync_rulesets 也就不跑，
-				   现象就是「点了保存并应用，日志里连一行规则集都没有」。这里在
-				   服务确实没在跑时补一次显式 reload 兜底；服务在跑时触发器已经完
-				   成重启（reload_service = stop + start），不再重复重启。
-
-				   ⚠️ 时序坑（0.1.20 现场）：不能拿到 handleSaveApply 的返回值就
-				   立刻判断。LuCI 的 `view.handleSaveApply()` 只
-				   `classes.ui.changes.apply(...)` 而**不 return 它**，所以它的
-				   promise 在 uci commit 真正开始之前就 resolve 了；此时 reload
-				   读到的是**旧配置**，规则集依旧一条都不下载，日志里也依旧没有
-				   任何「重新加载服务」的痕迹。正确做法是等「uci 待应用变更清空」
-				   = commit 完成，再判断服务状态。 */
-				const waitApplied = (remaining) => L.resolveDefault(uci.changes(), {}).then((changes) => {
-					const pending = (changes && Object.keys(changes).length > 0);
-
-					if (!pending || remaining <= 1)
-						return;
-
-					return new Promise((r) => setTimeout(r, 600))
-						.then(() => waitApplied(remaining - 1));
-				}).catch(() => { });
-
-				waitApplied(14).then(() => {
-					/* commit 已完成。先无条件触发一次后台规则集同步 ——
-					   这条路不依赖服务是否被重启，所以「保存并应用后就该
-					   下载规则集」这件一定能做到；脚本与 start_service 的
-					   预下载用同一把锁，重复触发只会让路。
-
-					   启动失败（脚本缺失、权限不足）必须弹出来：以前 ubus
-					   调用失败被 catch 吞掉，「点了保存并应用什么都没发生」
-					   就是这么变成哑巴的。 */
-					callRulesetSync().then((ret) => {
-						if (ret && ret.result === false)
-							ui.addNotification(null, E('p', {},
-								_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
-					}).catch((e) => {
-						/* 请求本身被拒绝绝不能静默：升级后 rpcd 未重启时 ubus 回
-						   "Method not found"，.catch(() => {}) 一吞，「点了保存并
-						   应用、规则集毫无动静、日志里什么都不存在」就成立了，
-						   且任何地方都查不到证据。这里必须弹出来。 */
-						ui.addNotification(null, E('p', {},
-							_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
-					});
-
-					return getServiceStatus();
-				}).then((running) => {
-					if (!running)
-						return callRCInit('homeproxy', 'reload');
-				}).catch((e) => {
-					/* 同理：拿不到服务状态 / reload 兜底失败也不能一声不吭，
-					   否则「服务没起来、规则集也没人补」完全无从排查。 */
-					ui.addNotification(null, E('p', {},
-						_('Could not verify the service state after applying: %s').format(e)), 'warning');
-				});
-
-				return result;
-			};
-		}
-
 		const node = m.render();
 
 		/* 表格列文字统一居中：名称列原本左对齐，与「启用/节点/出站」等
@@ -3696,5 +3676,36 @@ return view.extend({
 		}
 
 		return node;
+	},
+
+	/* 「保存并应用」→ 保存 + 应用，并在 apply 成功后补一次规则集同步。
+
+	   ⚠️ 必须写在 view 上：footer 的按钮绑的是 view.handleSaveApply
+	   （luci.js: `classes.ui.createHandlerFn(this, 'handleSaveApply')`），
+	   而 form.Map 根本没有这个方法。此前把同样的逻辑写在
+	   `m.handleSaveApply = ...` 上，外面还套了 typeof 判断，于是整段
+	   从未执行（详见 armRulesetSync 上方注释）。 */
+	handleSaveApply: function(ev, mode) {
+		const base = view.prototype.handleSaveApply;
+
+		/* 基类实现（LuCI 各版本一致）：先保存页面里所有 `.cbi-map`，
+		   再 `ui.changes.apply()`。注意它**不 return apply 的 promise**，
+		   所以「commit 何时完成」只能靠 uci-applied 事件判断。
+		   若某个极老版本没有基类方法，这里手动走等价流程，绝不能让
+		   「保存并应用」变成什么都不做。 */
+		const result = (typeof base === 'function')
+			? base.call(this, ev, mode)
+			: Promise.resolve(this.handleSave(ev)).then(() => {
+				ui.changes.apply(mode == '0');
+			});
+
+		/* 面板：后台安装，不阻塞（慢镜像上要 10 分钟）。
+		   rpcd 的 only_if_missing 会在已装时直接 skipped。 */
+		ensurePanelInstalled();
+
+		/* 规则集：等 uci-applied（apply 成功、commit 已完成）。 */
+		armRulesetSync();
+
+		return result;
 	}
 });

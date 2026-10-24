@@ -398,6 +398,55 @@ for gen in generate_client.uc generate_server.uc; do
 	fi
 done
 
+# A source that simply has no file yet (service never started, panel never
+# updated) is the normal state of half the sources. It used to add one
+# "Log file does not exist." row per missing file — indistinguishable from a
+# real log line and useless because it never named the file. Now: absent is
+# silent, a genuine read failure names the file.
+if grep -q "missing ? null" "$LOG_JS" && grep -q "src.file + '.log'" "$LOG_JS"; then
+	ok "missing log files are silent; real read errors name the file"
+else
+	bad "missing log files still render as rows (or errors are unnamed)"
+fi
+
+# "Clean log" walks the frontend's log_sources, but the rpcd call has its own
+# whitelist. When a source is added to the view and not to the whitelist the
+# call rejects with 'illegal type' and L.resolveDefault() hides it — the
+# button looks fine while one file is never cleared. Keep the two lists equal.
+UCODE="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+log_srcs="$(sed -n '/const log_sources = \[/,/\];/p' "$LOG_JS" \
+	| sed -n "s/.*{ file: '\(.*\)'.*/\1/p" | sort | tr '\n' ' ')"
+clean_wl="$(sed -n "/log_clean: {/,/return { result: true }/p" "$UCODE" \
+	| sed -n "s/.*in \[\(.*\)\].*/\1/p" | tr -d "'" | tr ',' '\n' \
+	| sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort | tr '\n' ' ')"
+if [ -n "$log_srcs" ] && [ "$log_srcs" = "$clean_wl" ]; then
+	ok "log_clean whitelist matches the merged log sources"
+else
+	bad "log_clean whitelist '$clean_wl' != log sources '$log_srcs' (Clean log no-ops on one)"
+fi
+
+# Notices (UTC shift, oldest/newest span) are one record with several lines.
+# Keeping "the first row" on truncation silently dropped the second notice,
+# which is the one that explains a log line dated days ago.
+if grep -qF 'while (keep < flat.length && flat[keep].note)' "$LOG_JS"; then
+	ok "truncation keeps every leading notice line"
+else
+	bad "truncation keeps only the first notice line (second notice is lost)"
+fi
+
+# Download logs are event logs: a handful of lines per run, never big enough
+# for the size-based rotation of the main logs, so entries from weeks ago sat
+# in the file and showed up below today's lines — which reads as "the date is
+# wrong". They now rotate on their own (smaller) budget.
+CL_LOG="$PKG/root/etc/homeproxy/scripts/clean_log.sh"
+if grep -q "core_download.log" "$CL_LOG" \
+   && grep -q "panel_download.log" "$CL_LOG" \
+   && grep -q "ruleset_download.log" "$CL_LOG"; then
+	ok "download logs are rotated as well (no month-old lines in today's view)"
+else
+	bad "download logs never rotate (old downloads linger in /var/run)"
+fi
+
 # ----------------------------------------------------------------- catalog
 section "gettext catalog"
 "$PY" "$ROOT/tools/tests/pocheck.py" > "$WORK/po.out" 2>&1
@@ -888,10 +937,44 @@ else
 	bad "frontend swallows ruleset_sync rejections (.catch(() => {}))"
 fi
 
-if grep -A4 "return callRCInit('homeproxy', 'reload')" "$CJS" | grep -q 'catch((e)'; then
-	ok "frontend surfaces the service-reload fallback failure"
+# 0.1.23 现场：整段「保存并应用 → 规则集同步」其实从未执行过。
+# 它被写成 `m.handleSaveApply = ...`（m 是 form.Map），外面还套了
+# `typeof m.handleSaveApply === 'function'`；而 handleSaveApply 只存在于
+# **view** 上（luci.js 的 view 基类，footer 按钮 createHandlerFn(this, ...)
+# 绑的也是 view），form.Map 没有这个方法 → 判断恒假。
+if grep -qE '^[[:space:]]*m\.handleSaveApply[[:space:]]*=' "$CJS"; then
+	bad "Save&Apply hook is attached to form.Map (dead code: Map has no handleSaveApply)"
 else
-	bad "frontend swallows the reload fallback failure"
+	ok "Save&Apply hook is not attached to form.Map"
+fi
+
+if grep -qE "^	handleSaveApply: function\(" "$CJS"; then
+	ok "Save&Apply hook lives on the view definition"
+else
+	bad "view has no handleSaveApply override (Save&Apply cannot trigger anything)"
+fi
+
+if grep -q 'view.prototype.handleSaveApply' "$CJS"; then
+	ok "view hook still runs the stock save+apply"
+else
+	bad "view hook would skip save+apply (base implementation not called)"
+fi
+
+# apply 成功、页面 reload 之前 LuCI 会派发 uci-applied；这是唯一能保证
+# 「commit 已完成」的时机。轮询 uci.changes() 会与页面 reload 赛跑。
+if grep -q "addEventListener('uci-applied'" "$CJS"; then
+	ok "ruleset sync waits for the uci-applied event"
+else
+	bad "ruleset sync does not wait for apply to finish (reads stale config)"
+fi
+
+# 后端兜底：没有 procd 实例时 procd_add_reload_trigger 不生效，
+# 只能靠 ucitrack 让 /sbin/luci-reload 主动调 init 脚本。
+TRACK_UCI="$PKG/root/etc/uci-defaults/luci-homeproxy"
+if grep -q 'ucitrack' "$TRACK_UCI" && grep -q 'ucitrack' "$PKG/Makefile"; then
+	ok "ucitrack entry is registered (install + uci-defaults)"
+else
+	bad "no ucitrack entry: Save&Apply cannot reload the service without a procd instance"
 fi
 
 # ----------------------------------------------------------------- summary

@@ -71,6 +71,19 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	# 用子 shell + || true 兜底：postinst 返回非 0 会导致整包安装失败。
 	( /etc/init.d/rpcd restart >/dev/null 2>&1 || service rpcd restart >/dev/null 2>&1 ) || true
 	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
+	# ucitrack：「保存并应用」改 /etc/config/homeproxy 后由 LuCI 的
+	# /sbin/luci-reload 调 /etc/init.d/homeproxy reload。procd 的
+	# reload 触发器只对已有实例的服务生效，而本插件没配节点时会早退、
+	# 不创建实例，所以必须靠 ucitrack。这里装包即登记，不必等下次
+	# 启动再跑 /etc/uci-defaults（同一个段，幂等）。
+	if ! uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1; then
+		hp_track="$$(uci -q add ucitrack homeproxy)"
+		if [ -n "$$hp_track" ]; then
+			uci -q set "ucitrack.$$hp_track.init=homeproxy"
+			uci -q add_list "ucitrack.$$hp_track.affects=homeproxy"
+			uci -q commit ucitrack
+		fi
+	fi
 fi
 endef
 

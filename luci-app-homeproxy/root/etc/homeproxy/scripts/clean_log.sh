@@ -26,14 +26,23 @@ main_log_file="/var/run/$NAME/$NAME.log"
 singc_log_file="/var/run/$NAME/sing-box-c.log"
 sings_log_file="/var/run/$NAME/sing-box-s.log"
 
+# 下载类日志（内核 / 面板 / 规则集）原先完全不在轮转名单里：它们只在脚本
+# 被触发时才追加几行，永远攒不到主日志那样的体积，于是几周前的记录会一直
+# 挂在文件里，混在今天的日志中间显示（界面上就是「日期和当前根本不对」）。
+# 它们是"事件型"日志，价值只在最近几次，所以用更低的 256 KiB 上限单独限制。
+dl_log_max_bytes=$((256 * 1024))
+core_dl_log_file="/var/run/$NAME/core_download.log"
+panel_dl_log_file="/var/run/$NAME/panel_download.log"
+ruleset_dl_log_file="/var/run/$NAME/ruleset_download.log"
+
 rotate_log() {
-	local f="$1" size
+	local f="$1" limit="$2" size
 	[ -s "$f" ] || return 0
 	size="$(wc -c < "$f" 2>/dev/null | tr -d ' ')"
 	case "$size" in
 		''|*[!0-9]*) return 0 ;;
 	esac
-	[ "$size" -ge "$log_max_bytes" ] || return 0
+	[ "$size" -ge "$limit" ] || return 0
 	# 保留一代历史：先复制再截断，写者即便正好在写也只会丢最后一行
 	cp -f "$f" "$f.1" 2>/dev/null
 	: > "$f" 2>/dev/null
@@ -42,7 +51,10 @@ rotate_log() {
 
 while true; do
 	sleep 180
-	for i in "$main_log_file" "$singc_log_file" "$sings_log_file"; do
-		rotate_log "$i"
-	done
+	rotate_log "$main_log_file" "$log_max_bytes"
+	rotate_log "$singc_log_file" "$log_max_bytes"
+	rotate_log "$sings_log_file" "$log_max_bytes"
+	rotate_log "$core_dl_log_file" "$dl_log_max_bytes"
+	rotate_log "$panel_dl_log_file" "$dl_log_max_bytes"
+	rotate_log "$ruleset_dl_log_file" "$dl_log_max_bytes"
 done

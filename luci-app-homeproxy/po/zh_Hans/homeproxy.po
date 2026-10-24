@@ -1190,6 +1190,10 @@ msgstr "生成 %s 失败，错误：%s。"
 msgid "Failed to start rule-set download: %s"
 msgstr "启动规则集下载失败：%s"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:308
+msgid "Failed to read %s: %s"
+msgstr "读取 %s 失败：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3052
 msgid "Failed to update rule set: %s"
 msgstr "规则集更新失败：%s"
@@ -1812,6 +1816,14 @@ msgstr "日志已复制到剪贴板。"
 #: htdocs/luci-static/resources/view/homeproxy/log.js:270
 msgid "Log file does not exist."
 msgstr "日志文件不存在。"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:627
+msgid "Log files are appended and only rotated by size, never by age: oldest %s, newest %s (device time %s). Use the Clean log button to drop the history."
+msgstr "日志文件是追加写入的，只按大小轮转、不按时间清理：最早 %s，最新 %s（设备当前时间 %s）。点「清空日志」可清除历史记录。"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:629
+msgid "Log files are appended and only rotated by size, never by age: oldest %s, newest %s. Use the Clean log button to drop the history."
+msgstr "日志文件是追加写入的，只按大小轮转、不按时间清理：最早 %s，最新 %s。点「清空日志」可清除历史记录。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:341
 msgid "Log is empty."

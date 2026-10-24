@@ -65,4 +65,26 @@ uci -q batch <<-EOF >"/dev/null"
 	commit firewall
 EOF
 
+# ---------------------------------------------------------------------------
+# ucitrack：把 /etc/config/homeproxy 的变化登记给 LuCI 的 /sbin/luci-reload，
+# 这样「保存并应用」会主动执行 /etc/init.d/homeproxy reload。
+#
+# 为什么需要它：procd 的 reload 触发器只对「已经有运行实例」的服务生效。
+# 本插件在没配代理节点、也没开服务端时会提前 return，一个实例都不创建，
+# 于是 `procd_add_reload_trigger` 无从生效 —— 用户看到的就是「点保存并应用，
+# 规则集一条都不下载，日志里连一行都没有」。ucitrack 是 LuCI 自己调 init
+# 脚本的标准机制，不依赖 procd 实例是否存在。
+#
+# 幂等：已有段就不重复添加（重装、升级、恢复出厂后再次执行都安全）。
+# 主路径仍是前端 apply 成功后直接调 rpcd ruleset_sync（见 client.js 的
+# armRulesetSync），ucitrack 只是让「改了配置就重启服务」这条语义成立。
+if ! uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1; then
+	hp_track="$(uci -q add ucitrack homeproxy)"
+	if [ -n "$hp_track" ]; then
+		uci -q set "ucitrack.$hp_track.init=homeproxy"
+		uci -q add_list "ucitrack.$hp_track.affects=homeproxy"
+		uci -q commit ucitrack
+	fi
+fi
+
 exit 0
