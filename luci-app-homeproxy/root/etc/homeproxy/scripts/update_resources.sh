@@ -60,6 +60,16 @@ check_list_update() {
 	# 现场证据：/etc/homeproxy/resources/ 下 8 个文件的 mtime 一直是打包日期。
 	# 互斥改用 mkdir（POSIX 原子，BusyBox 必有），锁内写 pid 判陈旧。
 	LOCK_DIR="$RUN_DIR/update_resources-$LIST_FILE.lock"
+
+	# 旧版（≤0.1.24）用**同名文件**当锁，且从不释放；升级后那个文件还留在
+	# /var/run 里，正好挡住新版要建的**同名目录** —— 不处理的话用户装完新版
+	# 还是「A task is already running.」，必须重启才见效。凡「存在但不是目录」
+	# 必是旧版残留，直接删掉。
+	if [ -e "$LOCK_DIR" ] && [ ! -d "$LOCK_DIR" ]; then
+		log "[$(to_upper "$LIST_FILE")] 清理旧版遗留的锁文件（$LOCK_DIR）。"
+		rm -f "$LOCK_DIR" 2>"/dev/null"
+	fi
+
 	if ! mkdir "$LOCK_DIR" 2>"/dev/null"; then
 		holder="$(cat "$LOCK_DIR/pid" 2>"/dev/null")"
 		if [ -n "$holder" ] && [ ! -d "/proc/$holder" ]; then

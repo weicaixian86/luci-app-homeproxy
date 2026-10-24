@@ -45,6 +45,14 @@ mkdir -p "$RUN_DIR" 2>/dev/null
 lock_acquire() {
 	local waited=0 holder
 
+	# 旧版（≤0.1.24）用**同名文件**当锁，且从不释放；升级后它还留在 /var/run
+	# 里，正好挡住新版要建的**同名目录** —— 不处理的话「点了没反应」会一直
+	# 持续到重启。凡「存在但不是目录」必是旧版残留，直接删掉。
+	if [ -e "$LOCK_DIR" ] && [ ! -d "$LOCK_DIR" ]; then
+		log "清理旧版遗留的锁文件（$LOCK_DIR）。"
+		rm -f "$LOCK_DIR" 2>/dev/null
+	fi
+
 	while ! mkdir "$LOCK_DIR" 2>/dev/null; do
 		holder="$(cat "$LOCK_DIR/pid" 2>/dev/null)"
 		if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then

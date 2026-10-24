@@ -1111,6 +1111,18 @@ else
 	bad "update_resources.sh has no mkdir lock (or still relies on the external lock command)"
 fi
 
+# 升级兼容（0.1.25 现场）：旧版用 **同名文件** 当锁（`lock -n` 创建、从不释放），
+# 新版用的是 **同名目录**。升级后那个文件还留在 /var/run（内存盘，重启才清）里
+# 挡路 → mkdir 恒失败 → 日志照样是「A task is already running.」，用户会以为
+# 修复没生效，只能靠重启。两个脚本都必须先识别「存在但不是目录」再删掉。
+for f in "$PROV" "$RES"; do
+	if grep -q '\[ ! -d "\$LOCK_DIR" \]' "$f"; then
+		ok "$(basename "$f") clears the stale lock FILE left by <= 0.1.24"
+	else
+		bad "$(basename "$f") cannot recover from the old lock file: the fix only works after a reboot"
+	fi
+done
+
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
 # 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
 # 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，
