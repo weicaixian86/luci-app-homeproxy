@@ -1152,24 +1152,26 @@ else
 	bad "update_resources.sh still logs a bare 'Failed to get the latest version' (rate limit vs network is indistinguishable)"
 fi
 
-# ── 日志页顶部那条 note 里的「设备当前时间」（0.1.25 装机发现，前端第三个时区坑）
-# 原实现读 rpcd 的 `system.info.localtime`，再在浏览器里按浏览器时区格式化。可
-# 这个字段的语义在不同 OpenWrt/rpcd 版本上并不一致：有的返回真实 epoch，有的把
-# 本地墙上时间**当成 UTC** 编码 —— 浏览器再解释一次就整体偏移一个 UTC 偏移量。
-# 现场：日志行写着 20:02:54（10-24），note 却报设备当前时间 04:03:38（10-25），
-# 正好快 8 小时。正确做法是让设备自己 `date`（它读 /etc/TZ）并返回格式化好的
-# 字符串：既不经浏览器时区，也不依赖那个字段的语义。
-RPC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
-if grep -q 'device_time' "$RPC" && grep -q "popen('date" "$RPC"; then
-	ok "rpcd exposes device_time (the device formats its own clock, no browser re-interpretation)"
+# ── 日志框里只放日志（0.1.26：删掉顶部那条「最早/最新/设备当前时间」note）──────
+# 0.1.24~0.1.25 在日志框最前面插了一条说明：「日志文件是追加写入的、只按大小轮转…
+# 最早 X，最新 Y（设备当前时间 Z）· 点清空日志可清除历史记录」。用户明确要求删掉：
+# 日志框是看日志的地方，不是读说明书的地方。而且那句「设备当前时间」在现场比日志行
+# 快 8 小时（rpcd 的 system.info.localtime 语义不一致），留着反而误导读者以为日志
+# 或设备时钟坏了。只保留 UTC→本地 的换算说明——那是读懂内核行必需的。
+# 删 note 后后端 device_time 没有调用者，一并删掉：别留下没人用的死代码（本项目在
+# handleSaveApply 上已经踩过一次，那次死了四个版本）。
+# 匹配 msgid 原文（而不是日志框里任何一段文字）：正文注释里也会提到这条 note，
+# 用宽泛的模式只会把注释本身判成失败。
+if grep -q "Log lines stay in write order\|oldest %s, newest" "$LOGJS"; then
+	bad "log.js still prints the oldest/newest/device-time note above the log lines"
 else
-	bad "device clock still comes from system.info.localtime, which is off by one UTC offset on some rpcd builds"
+	ok "the log box holds log lines only (no oldest/newest/device-time note)"
 fi
 
-if grep -q "object: 'luci.homeproxy'" "$LOGJS" && grep -q "method: 'device_time'" "$LOGJS"; then
-	ok "log.js asks the plugin for the device clock before falling back to system.info"
+if grep -q 'device_time' "$RPCD" || grep -q 'device_time' "$LOGJS"; then
+	bad "device_time survives without a caller; delete it instead of leaving dead code"
 else
-	bad "log.js never calls device_time; the notice keeps showing a clock off by 8h"
+	ok "the device_time rpcd method is gone with its only consumer (no dead code)"
 fi
 
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，

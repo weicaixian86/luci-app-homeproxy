@@ -168,11 +168,7 @@ function boot(opts) {
 		form: {},
 		fs: { read_direct: (p) => opts.read(p) },
 		rpc: {
-			declare: () => () => {
-				if (opts.boom)
-					throw new Error('boom');
-				return Promise.resolve(opts.systemInfo || {});
-			}
+			declare: () => () => Promise.resolve(opts.systemInfo || {})
 		},
 		uci: { get: () => (opts.logLevel || 'info'), set: () => {} },
 		ui: {
@@ -244,29 +240,27 @@ function run(name, opts, assertions) {
 }
 
 /* --- 1. normal device: every source has content ---------------------------- */
+/* The box must contain log lines and nothing else: the "oldest / newest /
+   device time" paragraph that used to be prepended was removed on request
+   (0.1.26), and a reader who opened this page complained it read like a
+   manual rather than a log. A UTC→local conversion notice is still allowed,
+   but only when the core really logged in UTC — here it does not. */
 const CASES = [
 {
 	name: 'log view: every source readable',
 	opts: {
-		read: (p) => Promise.resolve(String(p).indexOf('core.zone') >= 0 ? 'local\n' : SAMPLE),
-		systemInfo: { localtime: 1792000000 }
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'local\n' : SAMPLE)
 	},
 	assertions: (box) => {
 		check('the merged box shows the log lines',
 			box.querySelectorAll('.hp-log-line').length > 0,
 			box.querySelectorAll('.hp-log-line').length + ' rows');
-		check('a leading notice is rendered',
-			box.querySelectorAll('.hp-log-note').length === 1,
+		check('no explanatory note is prepended to the lines',
+			box.querySelectorAll('.hp-log-note').length === 0,
 			box.querySelectorAll('.hp-log-note').length + ' notes');
-
-		const note = box.querySelector('.hp-log-note');
-
-		check('the notice reports the oldest/newest span',
-			note && /oldest .*newest /i.test(note.textContent),
-			note ? JSON.stringify(note.textContent.slice(0, 60)) : 'no note');
-		check('the notice carries the device clock from rpcd',
-			note && /device time \d{4}-\d{2}-\d{2}/.test(note.textContent),
-			note ? JSON.stringify(note.textContent.slice(-40)) : 'no note');
+		check('the removed span/device-time sentence is gone',
+			!/oldest .*newest |device time/i.test(box.textContent),
+			JSON.stringify(box.textContent.slice(0, 60)));
 	}
 },
 
@@ -276,8 +270,8 @@ const CASES = [
 {
 	name: 'log view: files that were never written',
 	opts: {
-		read: (p) => (String(p).indexOf('core.zone') >= 0)
-			? Promise.reject(new Error('NotFoundError: core.zone'))
+		read: (p) => (String(p).indexOf('core_tz') >= 0)
+			? Promise.reject(new Error('NotFoundError: core_tz'))
 			: Promise.reject(new Error('NotFoundError: ENOENT')),
 		systemInfo: {}
 	},
@@ -293,8 +287,8 @@ const CASES = [
 {
 	name: 'log view: unreadable file',
 	opts: {
-		read: (p) => (String(p).indexOf('core.zone') >= 0)
-			? Promise.reject(new Error('NotFoundError: core.zone'))
+		read: (p) => (String(p).indexOf('core_tz') >= 0)
+			? Promise.reject(new Error('NotFoundError: core_tz'))
 			: (String(p).indexOf('sing-box-s.log') >= 0
 				? Promise.reject(new Error('Permission denied'))
 				: Promise.resolve(SAMPLE)),
@@ -310,13 +304,19 @@ const CASES = [
 /* --- 4. a broken promise chain must say so, not spin forever -------------- */
 /* The box is only redrawn on success, so anything that throws inside the chain
    leaves the loading spinner up indefinitely. The catch at the end of
-   refresh() has to replace it with a message. */
+   refresh() has to replace it with a message. The failure is injected in the
+   source reads, not in rpc: since the span/device-time notice was removed
+   (0.1.26) the refresh chain makes no rpc call at all, so an rpc-side throw
+   would never run and this case would pass for the wrong reason. */
 {
 	name: 'log view: broken refresh',
 	opts: {
-		read: () => Promise.resolve(SAMPLE),
-		systemInfo: {},
-		boom: true
+		read: (p) => {
+			if (String(p).indexOf('core_tz') >= 0)
+				return Promise.resolve('local\n');
+
+			throw new Error('boom');
+		}
 	},
 	assertions: (box) => {
 		check('a failing refresh reports the error in the box',
@@ -325,6 +325,32 @@ const CASES = [
 		check('the loading spinner is gone',
 			box.querySelectorAll('img').length === 0 &&
 			box.textContent.indexOf('Collecting data') < 0);
+	}
+},
+
+/* --- 5. core logged in UTC: the one notice that must survive ------------- */
+/* With the span/device-time paragraph gone, the UTC→local conversion notice is
+   the only thing that may still be prepended. It has to keep working: without
+   it the reader sees core lines eight hours off every other source and has no
+   way to know they were converted on purpose. */
+{
+	name: 'log view: core logged in UTC',
+	opts: {
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'utc 28800\n' : SAMPLE)
+	},
+	assertions: (box) => {
+		check('the UTC→local conversion is still explained',
+			box.querySelectorAll('.hp-log-note').length === 1,
+			box.querySelectorAll('.hp-log-note').length + ' notes');
+
+		const note = box.querySelector('.hp-log-note');
+
+		check('the notice names the applied offset',
+			note && note.textContent.indexOf('+08:00') >= 0,
+			note ? JSON.stringify(note.textContent) : 'no note');
+		check('the converted core line is on a local clock',
+			box.textContent.indexOf('2026-10-24 17:54:05') >= 0,
+			JSON.stringify(box.textContent.slice(-60)));
 	}
 }
 ];

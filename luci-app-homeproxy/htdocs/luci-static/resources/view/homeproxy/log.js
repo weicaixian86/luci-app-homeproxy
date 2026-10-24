@@ -93,64 +93,6 @@ const callLogClean = rpc.declare({
 	expect: { '': {} }
 });
 
-/* rpcd's own system plugin: localtime is the device clock in Unix seconds.
-   It is what lets the reader tell the two failure modes apart when a log
-   line carries a date from days ago — either the line is old history (the
-   files are only rotated by size, see clean_log.sh) or the device itself has
-   no correct clock (no NTP), in which case *every* new line is stamped with
-   that wrong date. Rejects when the plugin or the ACL is missing; callers
-   treat that as "unknown" rather than an error. */
-const callSystemInfo = rpc.declare({
-	object: 'system',
-	method: 'info'
-});
-
-/* "YYYY-MM-DD HH:MM:SS" for a Unix-seconds stamp. Rendered in the browser's
-   zone, which is the same clock the reader is comparing against. */
-function fmtEpoch(sec) {
-	const d = new Date(sec * 1000);
-	const p = (n) => (n < 10 ? '0' : '') + n;
-
-	return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
-	       ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-}
-
-/* Preferred source of the device clock: our own rpcd method runs `date` on the
-   device and hands back an already-formatted string. Nothing is re-interpreted
-   in the browser's zone, and we do not depend on what a given OpenWrt/rpcd
-   build happens to put in `system.info.localtime` — on 0.1.25 that field made
-   the notice report 04:03:38 (10-25) while the log lines read 20:02:54 (10-24),
-   exactly one UTC offset ahead. */
-const callDeviceTime = rpc.declare({
-	object: 'luci.homeproxy',
-	method: 'device_time'
-});
-
-/* Device clock as a stamp, or null when rpcd will not tell us.
-   `system.info` stays as the fallback for an rpcd that predates device_time;
-   it accepts both shapes (the whole ubus reply `{ localtime: <sec> }` and a
-   bare number) so a future `expect` mapping cannot turn this into a silent
-   null that drops the "device time" half of the notice. */
-function readDeviceTime() {
-	return callDeviceTime()
-		.then((res) => {
-			const s = res && res.stamp;
-			return (typeof s === 'string' && s !== '') ? s : null;
-		})
-		.catch(() => null)
-		.then((stamp) => {
-			if (stamp)
-				return stamp;
-
-			return callSystemInfo()
-				.then((res) => {
-					const lt = (typeof res === 'number') ? res : (res && res.localtime);
-					return (lt > 0) ? fmtEpoch(lt) : null;
-				})
-				.catch(() => null);
-		});
-}
-
 /* Max lines shown in the merged log box; older lines are dropped. */
 const LOG_MAX_LINES = 1000;
 
@@ -410,12 +352,12 @@ function renderLogBox(merged) {
 
 	let truncated = false;
 	if (flat.length > LOG_MAX_LINES) {
-		/* Every leading notice line is kept: the UTC→local explanation and
-		   the "oldest/newest/device time" span both sit at the very front,
-		   and dropping either one leaves the reader with two clocks and no
-		   explanation exactly when the log is long enough to be interesting.
-		   Counting lines (not "the first row") matters because both notices
-		   travel in one record — see the unshift in refresh(). */
+		/* Every leading notice line is kept: the UTC→local explanation sits
+		   at the very front, and dropping it would leave the reader with two
+		   clocks and no explanation exactly when the log is long enough to
+		   be interesting. Counting lines (not "the first row") matters
+		   because notices travel in one record — see the unshift in
+		   refresh(). */
 		let keep = 0;
 		while (keep < flat.length && flat[keep].note)
 			keep++;
@@ -625,56 +567,40 @@ function renderUnifiedLog() {
 			   leaves `shift` out of scope there and the whole refresh dies
 			   with a ReferenceError, leaving the spinner on screen forever.
 			   Carry it inside the resolved snapshot instead. */
-			.then((shift) => Promise.all([
-				readDeviceTime(),
-				Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
-			]).then((vals) => ({
-				shift: shift,
-				devtime: vals[0] || null,
-				results: vals[1] || []
-			})))
+			.then((shift) => Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
+				.then((results) => ({
+					shift: shift,
+					results: results || []
+				})))
 			.then((snap) => {
 				const shift = snap.shift;
-				const devtime = snap.devtime;
 				const results = snap.results;
 				let merged = mergeRecords(results);
 				merged = filterByLevel(merged, cutoffWeight());
 
-				/* The six files are append-only — every line keeps its place
-				   in write order — and are rotated by SIZE, not by age
-				   (clean_log.sh). "Rotated by size, never by age" means an old
-				   line is not dropped for being old: the box can still hold
-				   records from days ago, which is why a stamp far in the past
-				   is almost always genuine history rather than a broken clock.
-				   Spell out the span and, when rpcd gives us the device clock,
-				   put it next to the newest stamp: if the two agree, the old
-				   line is just old; if the newest stamp is also far in the
-				   past, the device clock is wrong (no NTP) and every new line
-				   will keep that bogus date. Unshifted before the UTC notice
-				   below so the clock explanation stays the first thing read. */
-				const stamps = merged.filter((r) => r.ts !== '').map((r) => r.ts);
+				/* One notice only: the UTC→local explanation, which is there
+				   because the core lines would otherwise disagree with
+				   logread / SSH. Say it out loud only when the stamps were
+				   actually moved and a core line is on screen — a device
+				   marker alone is not something to explain.
 
-				/* Say it out loud when the stamps above had to be moved:
-				   otherwise the core lines disagree with logread / SSH.
-				   Skip the notice when no core line is on screen — a device
-				   marker alone is not something to explain. */
-				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
+				   A second notice used to sit in front of the lines, spelling
+				   out "oldest / newest / device time" plus the rotation rule.
+				   It was removed on request (0.1.26): readers want the log box
+				   to contain log lines, not a paragraph about the log box, and
+				   the span it printed could not be trusted as a clock check
+				   anyway — the device clock it was compared against came out
+				   one UTC offset ahead on the reporter's firmware. Do not
+				   reintroduce it; the file/rotation facts belong in the docs.
 
-				/* Both notices travel as ONE record: renderLogBox() keeps a
+				   All notes travel as ONE record: renderLogBox() keeps a
 				   single leading note row when it truncates to LOG_MAX_LINES,
-				   so two separate records would silently lose the second. */
+				   so separate records would silently lose the rest. */
+				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
 				const notes = [];
 
 				if (shift && coreLines)
 					notes.push(_('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)));
-
-				if (stamps.length) {
-					notes.push(devtime
-						? _('Log lines stay in write order; a file is only rotated once it hits its size limit, so old lines are never dropped just for being old: oldest %s, newest %s (device time %s). Use the Clean log button to drop the history.')
-							.format(stamps[0], stamps[stamps.length - 1], devtime)
-						: _('Log lines stay in write order; a file is only rotated once it hits its size limit, so old lines are never dropped just for being old: oldest %s, newest %s. Use the Clean log button to drop the history.')
-							.format(stamps[0], stamps[stamps.length - 1]));
-				}
 
 				if (notes.length)
 					merged.unshift({ si: 0, ts: '', level: null, note: true, lines: notes });
