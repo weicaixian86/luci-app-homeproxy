@@ -39,6 +39,23 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
 	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
 
 const provider_update_id = trim(readfile(RUN_DIR + '/provider-update-id') || '');
+
+/* 触发来源：命令行 `--source` 优先（调用方最清楚自己是谁），其次才沿用标记
+ * 文件那套判定（schedule-run / provider-update-id）。ucode 把多余的命令行
+ * 参数放进全局 ARGV（见 ucode 文档 "Script arguments"），没有参数时是空数组。
+ * exists() 是编译期的特殊形式，用它守卫一层：万一某个 ucode 版本没定义这个
+ * 全局，也不能让订阅更新整个崩掉。 */
+let cli_source = '';
+if (exists(ARGV)) {
+	const argv = ARGV || [];
+	for (let i = 0; i < length(argv) - 1; i++) {
+		if (argv[i] === '--source') {
+			cli_source = trim(argv[i + 1] || '');
+			break;
+		}
+	}
+}
+
 let subscription_urls = all_subscription_urls;
 if (provider_update_id)
 	subscription_urls = filter(all_subscription_urls, (url) =>
@@ -1417,8 +1434,9 @@ function main() {
 	 * 否则日志里只有「Successfully updated subscriptions.」，用户没法判断
 	 * 到底是 cron 到点跑了，还是自己点了按钮。 */
 	const scheduled = !isEmpty(readfile(RUN_DIR + '/schedule-run') || ''),
-	      trigger = provider_update_id ? '面板单个机场' :
-	                (scheduled ? '定时任务' : (via_proxy === '1' ? '手动（经代理）' : '手动'));
+	      trigger = cli_source ||
+	                (provider_update_id ? '面板单个机场「更新」按钮' :
+	                (scheduled ? '定时任务（cron，update_crond.sh）' : (via_proxy === '1' ? '手动（经代理）' : '手动（终端/SSH）')));
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
 	if (via_proxy !== '1' && !provider_update_id) {

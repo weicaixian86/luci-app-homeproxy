@@ -1322,6 +1322,44 @@ else
 	bad "update_core_async.sh does not pass --source"
 fi
 
+# 订阅：批量按钮、单个机场按钮、定时任务，以前在日志里都只写「手动」。
+SUB="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+if grep -q 'exists(ARGV)' "$SUB" && grep -q "argv\[i\] === '--source'" "$SUB" \
+   && grep -q 'cli_source ||' "$SUB"; then
+	ok "update_subscriptions.uc accepts --source from its caller (ARGV)"
+else
+	bad "update_subscriptions.uc ignores argv: the trigger cannot be told apart"
+fi
+
+if grep -q 'LuCI「更新全部订阅」按钮' "$PKG/htdocs/luci-static/resources/view/homeproxy/node.js"; then
+	ok "the \"update N subscriptions\" button names itself in the log"
+else
+	bad "the batch subscription update button still logs as a bare 手动"
+fi
+
+if grep -q -- '--source "定时任务' "$PKG/root/etc/homeproxy/scripts/update_crond.sh" \
+   && grep -q -- '--source "面板单个机场' "$PKG/root/etc/homeproxy/scripts/update_provider.sh"; then
+	ok "cron and the per-airport button both name themselves"
+else
+	bad "subscription triggers are not all named in the log"
+fi
+
+# 规则集的定时更新以前只有 fetch_rulesets.sh 的几行输出，没有自己的首尾横幅，
+# 「到底有没有按点跑」只能靠文件 mtime 猜。
+RSCRON="$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"
+if grep -q '规则集定时更新开始' "$RSCRON" && grep -q '规则集定时更新结束' "$RSCRON" \
+   && grep -q 'CRON_EXPR' "$RSCRON"; then
+	ok "the cron rule-set refresh writes its own start/end banner with the cron expression"
+else
+	bad "no banner for the scheduled rule-set refresh: nothing shows it ever ran"
+fi
+
+if grep -q "update_rulesets.sh '\$update_time'" "$INIT"; then
+	ok "the crontab entry passes the cron expression to the script"
+else
+	bad "the crontab entry does not pass the expression: the log cannot say which schedule fired"
+fi
+
 # ── 服务启停事件必须可追溯（0.1.27） ────────────────────────────────────────
 # 以前主日志只有「sing-box x 已启动 / 服务已停止」，看不出是开机自启、LuCI
 # 保存并应用、界面按钮、cron 还是脚本内部调用的 —— 而这些场景排查方向完全

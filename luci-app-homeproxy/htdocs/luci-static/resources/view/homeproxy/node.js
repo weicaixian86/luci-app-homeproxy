@@ -2089,7 +2089,11 @@ return view.extend({
 			}
 		}
 		o.onclick = function() {
-			return fs.exec_direct('/etc/homeproxy/scripts/update_subscriptions.uc').then((res) => {
+			/* 第二个参数是 argv（rpcd file.exec 的 params）：让订阅日志自己
+			   写明这次是界面上的「更新 N 个订阅」按钮触发的，而不是 SSH 里
+			   手动跑脚本 —— 两者以前在日志里都只写「手动」，事后无法区分。 */
+			return fs.exec_direct('/etc/homeproxy/scripts/update_subscriptions.uc',
+				['--source', 'LuCI「更新全部订阅」按钮']).then((res) => {
 				return location.reload();
 			}).catch((err) => {
 				ui.addNotification(null, E('p', _('An error occurred during updating subscriptions: %s').format(err)));

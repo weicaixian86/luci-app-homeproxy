@@ -543,7 +543,10 @@ add_ruleset_cron() {
 	valid_update_cron "$update_time" || return
 	has_ruleset_cron "$update_time" && return
 
-	echo -e "$update_time sh $HP_DIR/scripts/update_rulesets.sh #${CONF}_autosetup" >> "/etc/crontabs/root"
+	# 把 cron 表达式作为参数传给脚本：日志里就能写明「是哪一条定时规则触发
+	# 的」，而不是笼统一句「定时更新」。表达式已过 valid_update_cron()，不含
+	# shell 元字符，单引号只为让它作为一个整体参数（它本身含空格）。
+	echo -e "$update_time sh $HP_DIR/scripts/update_rulesets.sh '$update_time' #${CONF}_autosetup" >> "/etc/crontabs/root"
 	ruleset_cron_list="${ruleset_cron_list}
 ${update_time}"
 	cron_reload="1"

@@ -126,9 +126,9 @@ rc=0
 # 优先用 ucode 显式执行：脚本执行位万一丢了（644），直接调用只会
 # "Permission denied"，而面板早已收到内核的 204，看起来就像「点了没反应」。
 if command -v ucode >"/dev/null" 2>&1; then
-	ucode "$UPDATER" || rc=$?
+	ucode "$UPDATER" --source "面板单个机场「更新」按钮" || rc=$?
 elif [ -x "$UPDATER" ]; then
-	"$UPDATER" || rc=$?
+	"$UPDATER" --source "面板单个机场「更新」按钮" || rc=$?
 else
 	log "更新失败：$UPDATER 既不可执行，也找不到 ucode。"
 	exit 5

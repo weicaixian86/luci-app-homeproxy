@@ -54,11 +54,13 @@ log "开始更新订阅…"
 
 # 用 ucode 显式执行：脚本自身如果少了执行位（644），直接调用会
 # "Permission denied"，而 cron 把这句话吞掉，日志里只剩下一片空白。
+# --source 显式告诉脚本「这次是定时任务」：脚本自己也看 schedule-run 标记，
+# 但那是间接证据（标记文件残留就会标错），调用方直接说清楚更可靠。
 if command -v ucode >"/dev/null" 2>&1; then
-	ucode "$SCRIPTS_DIR/update_subscriptions.uc"
+	ucode "$SCRIPTS_DIR/update_subscriptions.uc" --source "定时任务（cron，update_crond.sh）"
 	rc="$?"
 else
-	"$SCRIPTS_DIR/update_subscriptions.uc"
+	"$SCRIPTS_DIR/update_subscriptions.uc" --source "定时任务（cron，update_crond.sh）"
 	rc="$?"
 fi
 
