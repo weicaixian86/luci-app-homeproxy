@@ -1371,6 +1371,17 @@ else
 	bad "the crontab entry does not pass the expression: the log cannot say which schedule fired"
 fi
 
+# 界面上曾并排放着「重载服务」和「重启服务」：本插件的 reload_service() 就是
+# stop + start，rc.common 的 restart 也是 stop + start，两者等价（sing-box 不
+# 支持热重载配置），留两个只是让人纠结该点哪个 —— 去掉 restart。
+if grep -q "'Reload Service'" "$CJS2" \
+   && ! grep -q "'Restart Service'" "$CJS2" \
+   && ! grep -q "callRCInit('homeproxy', 'restart')" "$CJS2"; then
+	ok "only one service action button remains (reload), no duplicate restart"
+else
+	bad "the panel still offers a restart button that does exactly what reload does"
+fi
+
 # ── 服务启停事件必须可追溯（0.1.27） ────────────────────────────────────────
 # 以前主日志只有「sing-box x 已启动 / 服务已停止」，看不出是开机自启、LuCI
 # 保存并应用、界面按钮、cron 还是脚本内部调用的 —— 而这些场景排查方向完全

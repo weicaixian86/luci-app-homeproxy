@@ -2572,7 +2572,7 @@ msgstr ""
 msgid "Reject"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:772
+#: htdocs/luci-static/resources/view/homeproxy/client.js:779
 msgid "Reload Service"
 msgstr ""
 
@@ -2610,10 +2610,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:253
 msgid "Resources management"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:776
-msgid "Restart Service"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1687

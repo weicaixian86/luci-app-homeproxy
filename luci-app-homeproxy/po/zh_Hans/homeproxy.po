@@ -2633,7 +2633,7 @@ msgstr "区域 ID"
 msgid "Reject"
 msgstr "拒绝"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:772
+#: htdocs/luci-static/resources/view/homeproxy/client.js:779
 msgid "Reload Service"
 msgstr "重载服务"
 
@@ -2672,10 +2672,6 @@ msgstr "解析策略"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:253
 msgid "Resources management"
 msgstr "资源管理"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:776
-msgid "Restart Service"
-msgstr "重启服务"
 
 #: htdocs/luci-static/resources/homeproxy.js:1687
 #: htdocs/luci-static/resources/view/homeproxy/client.js:207

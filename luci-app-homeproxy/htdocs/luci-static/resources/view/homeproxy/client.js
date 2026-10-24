@@ -765,15 +765,18 @@ return view.extend({
 			   避免同一个轮询被叠加成多份、每周期多发一次 RPC。 */
 			hp.pollAdd('client-status', statusPoll);
 
+			/* 只留一个服务操作按钮。以前这里并排放着「重载服务」和「重启服务」，
+			   但本插件的 reload 就是 reload_service() { stop; start; }，而 restart
+			   走 rc.common 的默认实现同样是 stop + start —— 两者做的事完全一致
+			   （sing-box 不支持热重载配置，SIGHUP 没有意义，配置变更必然重启进程）。
+			   留两个同名实异的按钮只会让人纠结该点哪个，所以去掉 restart，
+			   保留 reload（它也是「保存并应用」自动走的那条路，口径统一）。
+			   需要更彻底的重来就在 SSH 里 `/etc/init.d/homeproxy restart`。 */
 			let actions = [
 				E('button', {
 					'class': 'btn cbi-button cbi-button-action',
 					'click': ui.createHandlerFn(this, () => callRCInit('homeproxy', 'reload'))
-				}, [ _('Reload Service') ]),
-				E('button', {
-					'class': 'btn cbi-button cbi-button-negative',
-					'click': ui.createHandlerFn(this, () => callRCInit('homeproxy', 'restart'))
-				}, [ _('Restart Service') ])
+				}, [ _('Reload Service') ])
 			];
 
 			/* The Clash API is enabled in both custom and
