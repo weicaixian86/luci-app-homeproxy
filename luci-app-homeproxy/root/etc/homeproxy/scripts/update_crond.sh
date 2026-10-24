@@ -9,6 +9,21 @@
 # 没发生」。
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
 
+# ── 时区修正：必须放在任何 date / ucode 调用之前 ─────────────────────────────
+# ucode 是 C 程序跑在 musl 上，musl 的 localtime 只认 POSIX 串（如 CST-8）和
+# IANA 名，**不支持「冒号 + 任意 TZif 路径」** 那种 Go 才认的写法；解析失败会
+# 静默回退 UTC，于是订阅日志的时间比 shell 的 date 早 8 小时（面板按钮那条链路
+# 会继承内核的 `TZ=:/var/run/homeproxy/core.zone`，已实测到 11:51:52 vs
+# 19:51:52）。cron 的环境同样不保证有 TZ，所以这里统一改回系统时区：优先
+# /etc/TZ（OpenWrt 标准的 POSIX 串），都没有就 unset，让 libc 走默认路径。
+if [ -s /etc/TZ ]; then
+	hp_tz="$(cat /etc/TZ 2>/dev/null)"
+	[ -n "$hp_tz" ] && { TZ="$hp_tz"; export TZ; }
+	unset hp_tz
+else
+	unset TZ
+fi
+
 SCRIPTS_DIR="/etc/homeproxy/scripts"
 RUN_DIR="${HP_RUN_DIR:-/var/run/homeproxy}"
 LOG_FILE="$RUN_DIR/homeproxy.log"

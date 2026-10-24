@@ -3,6 +3,26 @@
 
 set -u
 
+# ── 时区修正：必须放在任何 date / ucode 调用之前 ─────────────────────────────
+# 本脚本是被 sing-box 内核 exec 起来的（面板「更新」按钮那条链路），而内核为了
+# 让 Go 拿到正确时区，给自己设了 `TZ=:/var/run/homeproxy/core.zone` —— 那是 Go
+# 认得的「冒号 + TZif 文件路径」写法。子进程会**继承**这个变量，可 ucode 是 C
+# 程序跑在 musl 上，musl 只认 POSIX 串（如 CST-8）和 IANA 名，**不支持任意路径
+# 的 TZif**，遇到这个值会静默回退 UTC。于是 ucode 写的 [SUBSCRIBE] 日志比 shell
+# 的 date 整整早 8 小时。
+# 现场（0.1.25 装机）：19:51:52 的 [DAEMON] 行后面紧跟着 11:51:52 的 [SUBSCRIBE]
+# 行，而手动在 shell 里跑 `sh update_crond.sh` 的时间是对的（那种环境没有 TZ，
+# musl 会读 /etc/TZ）。「只有面板触发的日志时间错」就是这条继承链的标志。
+# 修法：把 TZ 改回系统时区。/etc/TZ 是 OpenWrt 标准的 POSIX 串，musl 能解析；
+# 都没有就 unset，让 libc 走默认路径（比设一个它解析不了的值安全）。
+if [ -s /etc/TZ ]; then
+	hp_tz="$(cat /etc/TZ 2>/dev/null)"
+	[ -n "$hp_tz" ] && { TZ="$hp_tz"; export TZ; }
+	unset hp_tz
+else
+	unset TZ
+fi
+
 NAME="homeproxy"
 RUN_DIR="/var/run/$NAME"
 REQUEST_FILE="$RUN_DIR/provider-update-id"

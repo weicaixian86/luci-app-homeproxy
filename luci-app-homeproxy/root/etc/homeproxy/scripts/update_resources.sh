@@ -3,6 +3,21 @@
 #
 # Copyright (C) 2022-2025 ImmortalWrt.org
 
+# ── 时区修正：必须放在任何 date 调用之前 ─────────────────────────────────────
+# 本脚本可能被 sing-box 内核 exec 起来，而内核为了让 Go 拿到正确时区，给自己设了
+# `TZ=:/var/run/homeproxy/core.zone` —— 那是 Go 认得的「冒号 + TZif 文件路径」，
+# 子进程会继承它。C 程序（musl）不认这种写法，解析失败静默回退 UTC，于是日志时间
+# 比 `date` 早 8 小时（0.1.25 现场：[DAEMON] 19:51:52 后面跟着 [SUBSCRIBE]
+# 11:51:52）。这里统一改回系统时区：优先 /etc/TZ（OpenWrt 标准的 POSIX 串，musl
+# 能解析），都没有就 unset，让 libc 走默认路径。
+if [ -s /etc/TZ ]; then
+	hp_tz="$(cat /etc/TZ 2>/dev/null)"
+	[ -n "$hp_tz" ] && { TZ="$hp_tz"; export TZ; }
+	unset hp_tz
+else
+	unset TZ
+fi
+
 NAME="homeproxy"
 
 RESOURCES_DIR="/etc/$NAME/resources"
@@ -83,9 +98,27 @@ check_list_update() {
 	fi
 	printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>"/dev/null"
 
-	local NEW_VER=$(curl -sL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$REPO_NAME/releases/latest" | jsonfilter -e "@.tag_name")
+	# 「取不到版本号」至少有四种完全不同的原因，只写一句 "Failed to get the
+	# latest version, please retry later." 会让排障的人以为插件坏了：
+	#   ① GitHub 未认证 API 限流（60 次/小时/IP）—— 最常见，连着跑几次就撞上；
+	#   ② 网络/DNS 不通；③ 仓库或 release 不存在；④ 返回体结构变了。
+	# 现场（0.1.25）：连跑四次内置资源就撞上 ①，日志却只说「请稍后重试」，只能
+	# 手工 curl 才知道是限流。所以把 API 的 message 与响应片段一起写进日志。
+	local API_RESP API_REASON API_SNIP
+	API_RESP=$(curl -sL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$REPO_NAME/releases/latest" 2>"/dev/null")
+	local NEW_VER=$(printf '%s' "$API_RESP" | jsonfilter -e "@.tag_name")
 	if [ -z "$NEW_VER" ]; then
-		log "[$(to_upper "$LIST_FILE")] Failed to get the latest version, please retry later."
+		API_REASON=$(printf '%s' "$API_RESP" | jsonfilter -e "@.message" 2>"/dev/null")
+		API_SNIP=$(printf '%s' "$API_RESP" | tr '\n\t' '  ' | head -c 120)
+
+		case "$API_REASON" in
+			*"rate limit"*)
+				log "[$(to_upper "$LIST_FILE")] 获取最新版本失败：GitHub API 限流（未认证每小时 60 次/IP）。请在插件设置里填 GitHub Token（可提到每小时 5000 次），或稍后重试。"
+				;;
+			*)
+				log "[$(to_upper "$LIST_FILE")] 获取最新版本失败：${API_REASON:-API 无响应或返回无法解析}（响应前 120 字节：$API_SNIP）"
+				;;
+		esac
 
 		return 1
 	fi

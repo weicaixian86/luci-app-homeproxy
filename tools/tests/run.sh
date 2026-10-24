@@ -1123,6 +1123,35 @@ for f in "$PROV" "$RES"; do
 	fi
 done
 
+# ── 时区继承（0.1.25 现场：修 Go 时区时引入的副作用）────────────────────────
+# 内核为了让 Go 拿到正确时区，给自己设了 `TZ=:/var/run/homeproxy/core.zone`
+# —— 那是 Go 认得的「冒号 + TZif 文件路径」。被内核 exec 出来的子进程会**继承**
+# 它，而 ucode 是 C 程序跑在 musl 上，musl 只认 POSIX 串（CST-8）和 IANA 名，
+# **不支持任意路径的 TZif**，解析失败会静默回退 UTC。于是面板触发的 [SUBSCRIBE]
+# 日志比 [DAEMON] 整整早 8 小时（现场：19:51:52 的 [DAEMON] 后面跟着 11:51:52
+# 的 [SUBSCRIBE]；手动在 shell 里跑则是对的，因为那种环境没有 TZ，musl 会读
+# /etc/TZ）。「只有面板触发的日志时间错」就是这条继承链的标志。
+# 凡是被内核 exec / 被 cron 拉起、且会用 date 或 ucode 写日志的脚本，都必须在
+# 用它们之前把 TZ 改回系统时区（优先 /etc/TZ 的 POSIX 串）。
+CROND="$PKG/root/etc/homeproxy/scripts/update_crond.sh"
+for f in "$PROV" "$CROND" "$RES"; do
+	if grep -q 'hp_tz' "$f" && grep -q 'export TZ' "$f" && grep -q '/etc/TZ' "$f"; then
+		ok "$(basename "$f") resets the inherited TZ before logging (Go's TZif path is invalid for musl)"
+	else
+		bad "$(basename "$f") inherits the core's TZ=:<core.zone>; ucode/C logs fall back to UTC (8h behind)"
+	fi
+done
+
+# 「取不到最新版本号」必须说清原因，不能只有一句 please retry later。四种成因
+# （GitHub 未认证限流 / 网络不通 / 仓库不存在 / 返回体结构变了）的处置完全不同，
+# 现场连跑四次就撞上限流（60 次/小时/IP），日志却只说「请稍后重试」，只能手工
+# curl 才知道真相。日志里必须能看到 API 的 message 与响应片段。
+if grep -q 'rate limit' "$RES" && grep -q 'jsonfilter -e "@.message"' "$RES"; then
+	ok "update_resources.sh explains why it could not read the latest version"
+else
+	bad "update_resources.sh still logs a bare 'Failed to get the latest version' (rate limit vs network is indistinguishable)"
+fi
+
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
 # 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
 # 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，
