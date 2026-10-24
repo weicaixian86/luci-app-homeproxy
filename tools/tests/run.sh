@@ -425,9 +425,9 @@ else
 	bad "log_clean whitelist '$clean_wl' != log sources '$log_srcs' (Clean log no-ops on one)"
 fi
 
-# Notices (UTC shift, oldest/newest span) are one record with several lines.
-# Keeping "the first row" on truncation silently dropped the second notice,
-# which is the one that explains a log line dated days ago.
+# The leading notice (UTC shift) is one record and may carry several lines.
+# Keeping "the first row" on truncation silently dropped the rest of it, which
+# is exactly the part that explains why the two clocks disagree.
 if grep -qF 'while (keep < flat.length && flat[keep].note)' "$LOG_JS"; then
 	ok "truncation keeps every leading notice line"
 else

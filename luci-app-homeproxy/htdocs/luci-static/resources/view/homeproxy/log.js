@@ -563,7 +563,7 @@ function renderUnifiedLog() {
 
 		return readCoreShift()
 			/* The shift has to travel to the render step below, which is a
-			   separate callback: returning only the two value arrays here
+			   separate callback: resolving with only the source reads here
 			   leaves `shift` out of scope there and the whole refresh dies
 			   with a ReferenceError, leaving the spinner on screen forever.
 			   Carry it inside the resolved snapshot instead. */
