@@ -850,6 +850,35 @@ case $? in
 		;;
 esac
 
+# ------------------------------------------- CI 环境本身能否真跑这两个 DOM 测试
+# 两个 jsdom 测试都有「装不上就 SKIP、退出码 0」的自我保护，这本来是防止 npm
+# 抽风把 Lint 变红；但也意味着 **CI 上可能一次都没跑过而面板全绿**。jsdom >= 27
+# 依赖 undici 7，undici 7 用到 node 22.15+ 才有的 zlib zstd 接口 —— Node 20 上
+# require('jsdom') 直接抛 "Cannot read properties of undefined (reading 'bind')"，
+# 于是两个 DOM 测试静默跳过（0.1.24 那个 `shift` 掉出作用域的 bug 正是靠它们才
+# 抓到的）。反过来，jsdom 不钉版本时 npm 会自动升到新版，某个版本的 DOM 行为
+# 差异又能把 Lint 变红（jsdom 26 的 InvalidCharacterError 就是这么来的）。
+# 所以这两件事必须写死并被断言守住。
+section "CI 环境（jsdom DOM 测试真的会跑）"
+
+LINT_YML="$ROOT/.github/workflows/lint.yml"
+if [ -f "$LINT_YML" ]; then
+	if grep -qE "jsdom@[0-9]+\.[0-9]+" "$LINT_YML"; then
+		ok "lint.yml pins the jsdom version"
+	else
+		bad "lint.yml installs an unpinned jsdom (a version bump can turn Lint red)"
+	fi
+
+	nv=$(grep -oE "node-version: *'[0-9]+'" "$LINT_YML" | grep -oE "[0-9]+" | head -1)
+	if [ -n "$nv" ] && [ "$nv" -ge 22 ]; then
+		ok "lint.yml runs Node >= 22"
+	else
+		bad "lint.yml runs Node ${nv:-?}: jsdom >= 27 cannot load there, both DOM tests silently skip"
+	fi
+else
+	skip "lint.yml not present"
+fi
+
 # ------------------------------------------------ detached launcher (no nohup)
 # iStoreOS 等精简 BusyBox **不带 nohup**（现场 `nohup: not found`，前台 shell
 # 得到 Done(127)）。规则集下载曾用 `nohup ... &` 启动，于是 ubus 返回成功、
@@ -1056,6 +1085,25 @@ if grep -q 'command -v ucode' "$PROV"; then
 	ok "update_provider.sh runs the ucode updater through ucode (no exec bit needed)"
 else
 	bad "update_provider.sh execs the .uc file directly (a 644 script fails with Permission denied after the kernel already returned 204)"
+fi
+
+# 内置资源（china_ip4 / china_ip6 / gfw_list / china_list）走的是
+# update_resources.sh，它和 update_provider.sh 犯过同一个错：用 `if ! lock -n …`
+# 当互斥。`lock` 在 BusyBox 上不存在，即便存在也要求「文件 + 要执行的命令」，
+# 裸 `lock -n 文件` 恒失败 → `! lock` 恒为真 → 永远 return 2，日志里还写着
+# 「A task is already running.」。现场证据：/etc/homeproxy/resources/ 下文件的
+# mtime 一直是打包日期，四份列表从来没更新过。
+RES="$PKG/root/etc/homeproxy/scripts/update_resources.sh"
+if grep -vE '^[[:space:]]*#' "$RES" | grep -qE '(^|[;[:space:]&|])(lock|flock)[[:space:]]'; then
+	bad "update_resources.sh shells out to lock/flock (geodata never updates, log says \"A task is already running\")"
+else
+	ok "update_resources.sh never shells out to lock/flock"
+fi
+
+if grep -q 'mkdir "$LOCK_DIR"' "$RES"; then
+	ok "update_resources.sh uses an atomic mkdir lock"
+else
+	bad "update_resources.sh has no mkdir lock (or still relies on the external lock command)"
 fi
 
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，

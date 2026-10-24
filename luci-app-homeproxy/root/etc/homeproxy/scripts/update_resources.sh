@@ -20,18 +20,49 @@ to_upper() {
 	echo -e "$1" | tr "[a-z]" "[A-Z]"
 }
 
+# 锁目录（本脚本一次只处理一份列表，所以一个就够）。
+LOCK_DIR=""
+cleanup() {
+	if [ -n "$LOCK_DIR" ]; then
+		rm -rf "$LOCK_DIR" 2>"/dev/null"
+		LOCK_DIR=""
+	fi
+	return 0
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 check_list_update() {
 	local LIST_FILE="$1"
 	local REPO_NAME="$2"
 	local REPO_BRANCH="$3"
 	local REPO_FILE="$4"
-	local LOCK_FILE="$RUN_DIR/update_resources-$LIST_FILE.lock"
 	local GITHUB_TOKEN="$(uci -q get homeproxy.config.github_token)"
+	local holder
 
-	if ! lock -n "$LOCK_FILE" 2>"/dev/null"; then
-		log "[$(to_upper "$LIST_FILE")] A task is already running."
-		return 2
+	# ⚠️ 这里原来写的是 `if ! lock -n "$LOCK_FILE"; then … return 2; fi`，于是
+	# 四份内置资源（china_ip4 / china_ip6 / gfw_list / china_list）**从来没有被
+	# 更新过**，日志里还只留一句误导性的「A task is already running.」：
+	#   ① iStoreOS 的 BusyBox 既没有 `lock` 也没有 `flock`；
+	#   ② 即使装了 util-linux，`lock` 的语法是 `lock [选项] 文件 命令 [参数]`，
+	#      不带要执行的命令本身就是错误 → `lock` 恒失败 → `! lock` 恒为真
+	#      → 永远走「已有任务在跑」分支直接 return 2。
+	# 现场证据：/etc/homeproxy/resources/ 下 8 个文件的 mtime 一直是打包日期。
+	# 互斥改用 mkdir（POSIX 原子，BusyBox 必有），锁内写 pid 判陈旧。
+	LOCK_DIR="$RUN_DIR/update_resources-$LIST_FILE.lock"
+	if ! mkdir "$LOCK_DIR" 2>"/dev/null"; then
+		holder="$(cat "$LOCK_DIR/pid" 2>"/dev/null")"
+		if [ -n "$holder" ] && [ ! -d "/proc/$holder" ]; then
+			rm -rf "$LOCK_DIR" 2>"/dev/null"
+			mkdir "$LOCK_DIR" 2>"/dev/null"
+		fi
+		if [ ! -d "$LOCK_DIR" ]; then
+			log "[$(to_upper "$LIST_FILE")] A task is already running."
+			return 2
+		fi
 	fi
+	printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>"/dev/null"
 
 	local NEW_VER=$(curl -sL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$REPO_NAME/releases/latest" | jsonfilter -e "@.tag_name")
 	if [ -z "$NEW_VER" ]; then

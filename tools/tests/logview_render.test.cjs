@@ -99,6 +99,18 @@ function boot(opts) {
 
 	let pollFn = null;
 
+	/* LuCI's E() has an optional attributes argument: the second argument is
+	   treated as children whenever it is not a plain attribute map, so
+	   `E('style', [css])` and `E('small', 'text')` are both legal. Getting this
+	   wrong is not cosmetic — the naive version iterated the array's indices as
+	   attribute names and called setAttribute('0', ...), which newer jsdom
+	   rejects with `InvalidCharacterError: "0" did not match the Name
+	   production` and older jsdom happens to tolerate. */
+	function isAttrsMap(v) {
+		return v !== null && typeof v === 'object' &&
+			!Array.isArray(v) && !v.nodeType;
+	}
+
 	function E(tag, attrs, children) {
 		if (Array.isArray(tag)) {
 			const frag = document.createDocumentFragment();
@@ -107,6 +119,12 @@ function boot(opts) {
 		}
 
 		const el = document.createElement(tag);
+
+		if (attrs !== undefined && attrs !== null && !isAttrsMap(attrs)) {
+			/* Second argument was really the first child. */
+			children = (children === undefined) ? attrs : [ attrs, children ];
+			attrs = null;
+		}
 
 		if (attrs)
 			for (const k in attrs) {
