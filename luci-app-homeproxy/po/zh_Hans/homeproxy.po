@@ -1818,8 +1818,36 @@ msgid "Log is empty."
 msgstr "日志为空。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:648
-msgid "Log level:"
-msgstr "日志级别："
+msgid "Show:"
+msgstr "显示："
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:671
+msgid "Core log level:"
+msgstr "内核日志级别："
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:428
+msgid "All"
+msgstr "全部"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:429
+msgid "Events"
+msgstr "事件"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:430
+msgid "Warnings"
+msgstr "警告"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:431
+msgid "Errors"
+msgstr "错误"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:436
+msgid "What to show. Purely a display filter: nothing is restarted."
+msgstr "选择要看什么。这只是显示过滤，不会重启任何服务。"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:465
+msgid "Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core."
+msgstr "内核 sing-box 输出多少日志。改动会保存并应用配置，内核重启后才生效。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1585
 msgid "MTU"

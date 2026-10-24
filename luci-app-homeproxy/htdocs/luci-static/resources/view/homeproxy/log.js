@@ -317,20 +317,76 @@ function mergeRecords(results) {
 	return all;
 }
 
-/* Filter a merged record list by severity cutoff. Only records whose `level`
-   resolves to a weight >= cutoff_weight survive; records with level=null
-   (shell logger output, errors, homeproxy, download logs, ...) and records
-   whose level token is unknown are always shown, so non-sing-box sources
-   are effectively immune to the dropdown. */
-function filterByLevel(merged, cutoffWeight) {
-	if (cutoffWeight == null)
-		return merged;
-	return merged.filter((rec) => {
-		if (rec.level == null) return true;        /* non-sing-box, keep */
-		const w = LEVEL_ORDER[rec.level];
-		if (w == null) return true;                 /* unknown token, keep */
-		return w >= cutoffWeight;
-	});
+/* ── 显示视图：想看什么 ────────────────────────────────────────────────────
+   旧实现只有一个「日志级别」下拉，装的是 sing-box 的四个级别。问题是插件
+   自己的日志（主日志、三份下载日志）**行里根本没有级别 token**——过滤对它们
+   完全无效，于是选「错误」时屏幕上照样是满屏下载进度和规则集明细，这就是
+   「日志级别显示非常乱」的根因。
+   现在把两件事彻底分开：
+     · 显示视图（全部 / 事件 / 警告 / 错误）：纯前端过滤，不写服务配置、
+       不重启内核，选择记在 `config.log_view`；
+     · 内核输出级别（debug / info / warn / error）：仍是 sing-box 的
+       verbosity，写 `config.log_level` + `server.log_level`，需保存并应用。
+   插件日志没有级别 token，所以「警告 / 错误」除了看 token 还要按中文关键字
+   判定，否则这两个视图里会一条插件告警都筛不出来。 */
+const VIEW_KEYS = { all: 0, event: 1, warn: 2, error: 3 };
+
+function normalizeView(v) {
+	return (v === 'event' || v === 'warn' || v === 'error' || v === 'all') ? v : 'all';
+}
+
+/* 事件：0.1.27 起所有事件都写成统一横幅（==== 服务启动/停止/重载 ====、
+   ==== 规则集预下载开始/结束 ====、==== 订阅更新开始 ====、==== 规则集定时
+   更新开始/结束 ====、==== 脚本启动 ====）。少数结果行不是横幅但同样属于
+   事件（内核已启动、服务已停止、自动启动…），用一组显式动词兜住。
+   `让路`/`跳过下载` 也算事件：它们是「这次没做」的结论，不是告警。 */
+const EVENT_LINE_RE = /====|已启动|已停止|已退出|已更新|已下载|已清除|已注册|已完成|下载成功|更新结束|自动启动|让路|跳过下载|预下载完成/;
+
+function isEventRecord(rec) {
+	/* 界面自己的提示（内核 UTC→本地 换算）永远保留，它不是日志行。 */
+	if (rec.note)
+		return true;
+
+	return rec.lines.some((l) => EVENT_LINE_RE.test(l));
+}
+
+function isWarnRecord(rec) {
+	if (rec.note)
+		return false;
+
+	/* 分级语义：warn 视图包含 warn 及更严重的。level 为 null（插件日志）时
+	   LEVEL_ORDER[...] 是 undefined，比较为 false，落到下面的文本判定。 */
+	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.warn)
+		return true;
+
+	return rec.lines.some((l) => /警告|\bWARN(ING)?\b/i.test(l));
+}
+
+function isErrorRecord(rec) {
+	if (rec.note)
+		return false;
+
+	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.error)
+		return true;
+
+	/* 插件日志用中文写严重性：「错误：…」「下载失败 …」。只认英文 token 的话，
+	   选「错误」视图会一条插件错误都看不到。
+	   ⚠️ `失败(?!\s*\d)` 这个负向前瞻是必须的：结束横幅里那句
+	   「…已缓存 0，失败 0」是**统计**，不是错误；写成 `失败` 会把每一次成功
+	   的预下载都标成错误，「错误」视图反而被成功记录淹没。
+	   「错误」要求紧跟冒号，避免把「HTML 错误页」这类描述性文字算进来。 */
+	return rec.lines.some((l) => /错误[:：]|失败(?!\s*\d)|\bERROR\b|\bFATAL\b|\bPANIC\b/i.test(l));
+}
+
+function filterByView(merged, view) {
+	if (view === 'event')
+		return merged.filter(isEventRecord);
+	if (view === 'warn')
+		return merged.filter((rec) => isWarnRecord(rec) || isErrorRecord(rec));
+	if (view === 'error')
+		return merged.filter(isErrorRecord);
+
+	return merged;   /* all — and any unknown key falls back to showing everything */
 }
 
 /* Render merged records into the single scrollable box as plain log text.
@@ -404,6 +460,42 @@ function renderUnifiedLog() {
 		{ file: 'sing-box-s', core: true }
 	];
 
+	/* ── 控件一：显示视图（看什么） ──────────────────────────────────────
+	   与「内核输出级别」是两件事：这里只改前端过滤，不重启任何东西。 */
+	const view_choices = {
+		all:   _('All'),
+		event: _('Events'),
+		warn:  _('Warnings'),
+		error: _('Errors')
+	};
+
+	let view = normalizeView(uci.get('homeproxy', 'config', 'log_view'));
+
+	const view_sel = E('select', {
+		'id': 'hp_log_view',
+		'class': 'cbi-input-select',
+		'style': 'margin-left: 4px; width: 8em;',
+		'title': _('What to show. Purely a display filter: nothing is restarted.'),
+		'change': ui.createHandlerFn(this, (ev) => {
+			view = normalizeView(ev.target.value);
+			/* 只 commit 不 apply：改的是「看什么」，不该为此重启内核。
+			   （uci.save() = 写回 /etc/config；apply 才会触发 reload。） */
+			uci.set('homeproxy', 'config', 'log_view', view);
+			uci.save();
+			/* 立刻重画，不等下一个 5 秒轮询。 */
+			return refresh(true);
+		})
+	});
+
+	Object.keys(view_choices).forEach((v) => {
+		view_sel.appendChild(E('option', {
+			'value': v,
+			'selected': (v === view) ? '' : null
+		}, [ view_choices[v] ]));
+	});
+
+	/* ── 控件二：内核输出级别（sing-box 写多少） ────────────────────────
+	   这个真的会改配置并重启内核，所以单独放一个下拉、并写清后果。 */
 	const log_level_choices = {
 		debug: _('Debug'),
 		info:  _('Info'),
@@ -414,21 +506,20 @@ function renderUnifiedLog() {
 	let selected = normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
 
 	/* Unified log level switcher: writes both the client (config) and the
-	   server (server) section so a single control tunes sing-box verbosity,
-	   AND immediately triggers a frontend re-filter so the view updates
-	   without waiting for the 5 s poll tick. */
+	   server (server) section so a single control tunes sing-box verbosity.
+	   Unlike the view selector above this one changes what the CORE writes,
+	   so it has to be saved AND applied (which restarts sing-box). */
 	const level_sel = E('select', {
 		'id': 'hp_unified_log_level',
 		'class': 'cbi-input-select',
 		'style': 'margin-left: 4px; width: 7em;',
+		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
 		'change': ui.createHandlerFn(this, (ev) => {
 			const v = ev.target.value;
 			selected = v;
 			uci.set('homeproxy', 'config', 'log_level', v);
 			uci.set('homeproxy', 'server', 'log_level', v);
-			/* save+apply restarts sing-box (kernel picks up the new level),
-			   but we also re-filter the currently-shown logs right now so
-			   the UI reacts instantly; wait for apply to finish afterwards. */
+			/* save+apply restarts sing-box (kernel picks up the new level). */
 			refresh(true);
 			return this.map.save(null, true).then(() => {
 				ui.changes.apply(true);
@@ -509,14 +600,6 @@ function renderUnifiedLog() {
 
 	let autoRefresh = true;
 
-	/* Compute the severity cutoff weight from the current dropdown value.
-	   null means "show everything" — but the dropdown's options table has
-	   entries for debug/info/warn/error only, so in practice cutoff is
-	   always set from the dropdown default (info) or the user's pick. */
-	function cutoffWeight() {
-		return LEVEL_ORDER[selected] != null ? LEVEL_ORDER[selected] : null;
-	}
-
 	/* Scroll state of the merged box. Rebuilding the box on every poll tick
 	   empties the scroller first, so the browser clamps scrollTop back to 0
 	   and the reader lands on the oldest line right after a refresh — while
@@ -576,7 +659,7 @@ function renderUnifiedLog() {
 				const shift = snap.shift;
 				const results = snap.results;
 				let merged = mergeRecords(results);
-				merged = filterByLevel(merged, cutoffWeight());
+				merged = filterByView(merged, view);
 
 				/* One notice only: the UTC→local explanation, which is there
 				   because the core lines would otherwise disagree with
@@ -642,10 +725,14 @@ function renderUnifiedLog() {
 		E('div', { 'class': 'cbi-map' }, [
 			E('div', { 'class': 'cbi-section hp-log-topbar' }, [
 			/* All controls are left-aligned in a single row:
-			   log level -> auto refresh -> clean log. */
+			   what to show -> core verbosity -> auto refresh -> clean log. */
 			E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, [
 				E('div', { 'style': 'display:flex; align-items:center;' }, [
-					_('Log level:'),
+					_('Show:'),
+					view_sel
+				]),
+				E('div', { 'style': 'display:flex; align-items:center;' }, [
+					_('Core log level:'),
 					level_sel
 				]),
 				E('label', { 'style': 'display:flex; align-items:center;' }, [

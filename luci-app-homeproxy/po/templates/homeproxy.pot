@@ -1764,7 +1764,28 @@ msgid "Log is empty."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:648
-msgid "Log level:"
+msgid "Show:"
+msgstr ""
+
+msgid "Core log level:"
+msgstr ""
+
+msgid "All"
+msgstr ""
+
+msgid "Events"
+msgstr ""
+
+msgid "Warnings"
+msgstr ""
+
+msgid "Errors"
+msgstr ""
+
+msgid "What to show. Purely a display filter: nothing is restarted."
+msgstr ""
+
+msgid "Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1585

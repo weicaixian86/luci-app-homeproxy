@@ -1174,6 +1174,39 @@ else
 	ok "the device_time rpcd method is gone with its only consumer (no dead code)"
 fi
 
+# ── 日志页：「看什么」必须和「内核写多少」分开（0.1.27） ──────────────────
+# 旧版只有一个「日志级别」下拉，装的是 sing-box 的四个级别；而插件自己的日志
+# （主日志、三份下载日志）行里根本没有级别 token —— 过滤对它们完全无效，选
+# 「错误」时满屏仍是下载进度和规则集明细。现在两个控件各管一件事。
+if grep -q 'filterByView' "$LOGJS" && grep -q 'normalizeView' "$LOGJS" \
+   && grep -q "all:   _('All')" "$LOGJS" && grep -q "event: _('Events')" "$LOGJS" \
+   && ! grep -q 'filterByLevel' "$LOGJS"; then
+	ok "the log page filters by view (all/events/warnings/errors), not by core severity"
+else
+	bad "the log page still filters with the sing-box severity ladder only"
+fi
+
+if grep -q "_('Show:')" "$LOGJS" && grep -q "_('Core log level:')" "$LOGJS"; then
+	ok "display filter and core verbosity are two separate controls"
+else
+	bad "one dropdown still mixes \"what to show\" with \"what the core writes\""
+fi
+
+# 插件日志没有级别 token，只认 token 会让「警告/错误」视图里一条插件告警都没有。
+if grep -q '错误\[:：\]|失败(?!' "$LOGJS"; then
+	ok "warnings/errors also match the Chinese severity words the scripts actually write"
+else
+	bad "severity matching ignores the plugin's own 错误/失败 wording"
+fi
+
+# 「…已缓存 0，失败 0」是统计不是错误：不加负向前瞻会把每次成功的预下载都
+# 标成错误，「错误」视图反而被成功记录淹没。
+if grep -q '失败(?!\\s\*\\d)' "$LOGJS"; then
+	ok "the \"failed 0\" counter in a summary banner is not treated as an error"
+else
+	bad "a plain 失败 match would mark every successful run as an error"
+fi
+
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
 # 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
 # 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，
