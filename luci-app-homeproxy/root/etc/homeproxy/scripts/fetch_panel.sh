@@ -40,6 +40,11 @@ BUDGET=900
 FORCE=0
 QUIET=0
 
+# 谁触发了这次面板下载，由调用方显式传入并写进日志。
+# 以前面板日志只有「开始下载面板」，看不出是开机自动下、还是界面点了按钮，
+# 出问题时只能靠时间戳猜。
+SOURCE="手动执行（终端/SSH）"
+
 log_msg() {
 	mkdir -p "$RUN_DIR" 2>/dev/null
 	local msg="面板: $*"
@@ -127,6 +132,13 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--force) FORCE=1 ;;
 		--quiet) QUIET=1 ;;
+		--source)
+			shift
+			case "${1:-}" in
+				''|-*) log_msg "错误：--source 需要一段说明文字（谁触发了这次下载）"; exit 2 ;;
+			esac
+			SOURCE="$1"
+			;;
 		--budget)
 			shift
 			case "$1" in
@@ -180,7 +192,7 @@ panel_dir="$(sanitize_panel_dir "$panel_dir")"
 panel_url="$(uci -q get "$CONF.clash_api.external_ui_download_url" 2>/dev/null)"
 
 if [ "$FORCE" != "1" ] && [ -f "$panel_dir/index.html" ]; then
-	[ "$QUIET" = "1" ] || log_msg "面板已存在（$panel_dir/index.html），跳过下载。"
+	[ "$QUIET" = "1" ] || log_msg "面板已存在（来源=「$SOURCE」，$panel_dir/index.html），跳过下载。"
 	exit 0
 fi
 
@@ -347,7 +359,7 @@ got=0
 codes=""
 used_url=""
 
-log_msg "开始下载面板（不依赖 clash API）：$panel_url"
+log_msg "开始下载面板（来源=「$SOURCE」，不依赖 clash API）：$panel_url"
 
 for u in $(build_candidates "$panel_url" | awk '!seen[$0]++'); do
 	now=$(date +%s)

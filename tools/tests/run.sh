@@ -1239,6 +1239,126 @@ else
 	bad "init.d registers the subscription cron silently (an invalid time leaves no clue)"
 fi
 
+# ── 下载日志必须写明「谁触发的」（0.1.27） ──────────────────────────────────
+# 现场（0.1.26 装机）：ruleset_download.log 只有「共 21 条，预算 600s」，来源
+# 只能靠预算秒数反推（600=面板、240=服务启动、900=cron、90=页面按钮）——手动
+# 执行撞同一个默认值，而且预算一改这条隐式契约就断，此后没有任何第二条线索。
+# 现在由调用方显式传 --source，写进开始/结束横幅。
+RS="$PKG/root/etc/homeproxy/scripts/fetch_rulesets.sh"
+if grep -q -- '--source' "$RS" && grep -q 'SOURCE=' "$RS" \
+   && grep -q '来源=「${SOURCE}」' "$RS"; then
+	ok "fetch_rulesets.sh records who triggered the run in its banner (--source)"
+else
+	bad "fetch_rulesets.sh has no --source: the trigger is only inferable from the budget"
+fi
+
+if grep -q -- '--autostart' "$RS" && grep -q 'AUTOSTART' "$RS"; then
+	ok "fetch_rulesets.sh can start the service after a pass (--autostart)"
+else
+	bad "no --autostart: a filled rule-set cache still leaves the plugin not running"
+fi
+
+# 判断服务在不在跑不能用 kill -0：某些 shell 对兄弟进程恒失败，会得出
+# 「一直没跑完」的错判。
+# 只看探测函数本身：脚本里另外用 `kill -0 <pid>` 判**陈旧锁的持有进程是否
+# 存活**是标准做法（那是任意 pid，不是后台兄弟 job），不能一概禁止。
+probe_body="$(sed -n '/^hp_service_running()/,/^}/p' "$RS")"
+if printf '%s' "$probe_body" | grep -q 'ubus call service list' \
+   && printf '%s' "$probe_body" | grep -q 'ps ' \
+   && ! printf '%s' "$probe_body" | grep -q 'kill -0'; then
+	ok "the auto-start probe asks ubus then ps, never kill -0"
+else
+	bad "the auto-start probe uses kill -0 (unreliable for a sibling job) or has no fallback"
+fi
+
+HPUC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+if grep -q -- '--autostart' "$HPUC" && grep -q 'LuCI 保存并应用' "$HPUC"; then
+	ok "rpcd names the trigger (LuCI save & apply) and asks for --autostart"
+else
+	bad "rpcd no longer tells the fetcher that LuCI save & apply triggered it"
+fi
+
+if grep -q '规则集页面「立即更新」' "$HPUC"; then
+	ok "the per-rule-set update button names itself in the log"
+else
+	bad "ruleset_update does not pass --source"
+fi
+
+if grep -q -- '--source "服务启动预取' "$INIT"; then
+	ok "init.d names the start-up pre-fetch as the trigger"
+else
+	bad "init.d sync_rulesets does not pass --source"
+fi
+
+if grep -q -- '--source "定时更新' "$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"; then
+	ok "the cron rule-set refresh names itself in the log"
+else
+	bad "update_rulesets.sh (cron) does not pass --source"
+fi
+
+FP="$PKG/root/etc/homeproxy/scripts/fetch_panel.sh"
+if grep -q -- '--source' "$FP" && grep -q '来源=「$SOURCE」' "$FP"; then
+	ok "fetch_panel.sh records the trigger in panel_download.log"
+else
+	bad "fetch_panel.sh has no --source"
+fi
+
+if [ "$(grep -c -- '--source' "$INIT")" -ge 2 ] && grep -q 'LuCI「更新面板」按钮' "$HPUC"; then
+	ok "every panel download caller names itself"
+else
+	bad "some panel download caller still runs without --source"
+fi
+
+UC="$PKG/root/etc/homeproxy/scripts/update_core.sh"
+if grep -q -- '--source' "$UC" && grep -q '来源=${source}' "$UC"; then
+	ok "update_core.sh records the trigger in core_download.log"
+else
+	bad "update_core.sh has no --source"
+fi
+
+if grep -q 'LuCI「更新内核」按钮' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh"; then
+	ok "the LuCI core-update button names itself in the log"
+else
+	bad "update_core_async.sh does not pass --source"
+fi
+
+# ── 服务启停事件必须可追溯（0.1.27） ────────────────────────────────────────
+# 以前主日志只有「sing-box x 已启动 / 服务已停止」，看不出是开机自启、LuCI
+# 保存并应用、界面按钮、cron 还是脚本内部调用的 —— 而这些场景排查方向完全
+# 不同（「保存并应用没重载」和「启动失败」表面一模一样）。
+if grep -q 'hp_caller()' "$INIT" && grep -q 'hp_event()' "$INIT"; then
+	ok "init.d can name the caller of a start/stop/reload"
+else
+	bad "no caller attribution: service start/stop lines cannot say who asked"
+fi
+
+if grep -q 'hp_event "服务启动"' "$INIT" && grep -q 'hp_event "服务停止"' "$INIT" \
+   && grep -q 'hp_event "服务重载"' "$INIT"; then
+	ok "start, stop and reload each write a [DAEMON] event line"
+else
+	bad "service lifecycle events are not all logged"
+fi
+
+# 启动被拒（没配节点/内核缺失/配置校验失败）也必须留下痕迹，否则
+# 「启动被拒」和「根本没人启动」在主日志里长得一样。
+if grep -A6 '^start_service()' "$INIT" | grep -q 'hp_event'; then
+	ok "the start event is written before any early return"
+else
+	bad "the start event comes after early returns: a refused start leaves no trace"
+fi
+
+if grep -q '内核进程已退出' "$INIT"; then
+	ok "a core exit (including a crash) is recorded in the main log"
+else
+	bad "nothing is written when the core process exits"
+fi
+
+if grep -q '已注册实例' "$INIT"; then
+	ok "the start line says which instances registered (client / server / both)"
+else
+	bad "the start line does not say which core instances came up"
+fi
+
 # ----------------------------------------------------------------- summary
 printf '\n----------------------------------------\n'
 if [ "$FAILED" -eq 0 ]; then

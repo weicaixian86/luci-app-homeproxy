@@ -80,7 +80,7 @@ trap 'exit 1' INT TERM
 # stdout carries the machine-readable verdict ("ok" / "unsupported" /
 # "no_asset" / "failed"); stderr is merged in so a fatal shell error (bad
 # syntax, missing interpreter) is preserved for the UI instead of vanishing.
-/bin/sh "$CORE_SCRIPT" update > "$OUT_FILE" 2>&1
+/bin/sh "$CORE_SCRIPT" update --source "LuCI「更新内核」按钮" > "$OUT_FILE" 2>&1
 rc=$?
 
 echo "$rc" > "$RC_FILE" 2>/dev/null

@@ -98,6 +98,19 @@ CHECK_ONLY=0
 QUIET=0
 ONLY=""
 
+# 这次下载是谁触发的。写进开始/结束横幅，让 ruleset_download.log 自己就能
+# 回答「这批规则集哪来的」——以前只能靠预算秒数反推（600=面板、240=服务
+# 启动、900=cron、90=页面按钮），而默认值和手动执行撞号，且脚本升级后预算
+# 随时会变，这个隐式契约一断就没有第二条线索。现在由调用方显式传入。
+SOURCE="手动执行（终端/SSH）"
+
+# 下载结束后若服务未运行就把它拉起来。只有面板「保存并应用」这条路径传：
+# 它把「同步规则集」从「重启服务」里拆出来后就没接回去，于是现场出现了
+# 「规则集补齐了、插件还是未运行、新文件也没生效」——补全的意义只有服务
+# 真的跑起来才成立。cron 路径不需要（update_rulesets.sh 末尾自己 restart），
+# init.d 路径本来就在启动流程里。
+AUTOSTART=0
+
 log_msg() {
 	local line
 
@@ -120,6 +133,21 @@ log_msg() {
 	[ "$QUIET" = "1" ] || logger -t homeproxy "$*" 2>/dev/null
 
 	return 0
+}
+
+# 服务是否在运行。
+# 不能 `kill -0` 判兄弟进程（某些 shell 下对非子进程恒失败，会得出「一直没
+# 跑完」的错判），也不能假定有 pgrep（精简 BusyBox 常常没有）。先问 ubus
+# ——procd 自己维护的状态，最准；没有 ubus 或查不到时退回看进程命令行。
+hp_service_running() {
+	if command -v ubus >/dev/null 2>&1; then
+		if ubus call service list '{"name":"homeproxy"}' 2>/dev/null \
+			| grep -q '"running": *true'; then
+			return 0
+		fi
+	fi
+
+	ps 2>/dev/null | grep -F 'sing-box' | grep -v -F 'grep' | grep -q -F 'run --config'
 }
 
 # 把字节数格式化为可读字符串（B/KB/MB/GB），便于日志阅读。
@@ -162,6 +190,10 @@ Usage: fetch_rulesets.sh [options]
                   传的是 section id；--check 模式忽略此参数)
   --detach       fork into background immediately (no nohup needed; the
                  minimal BusyBox on iStoreOS ships without it)
+  --source TEXT  who asked for this run, printed in both banners, e.g.
+                 "LuCI 保存并应用". Defaults to 手动执行（终端/SSH）.
+  --autostart    when the pass finishes and the service is NOT running, start
+                 it (only the LuCI save & apply path passes this)
 EOF
 }
 
@@ -170,6 +202,14 @@ while [ $# -gt 0 ]; do
 		--force) FORCE=1 ;;
 		--check) CHECK_ONLY=1 ;;
 		--quiet) QUIET=1 ;;
+		--autostart) AUTOSTART=1 ;;
+		--source)
+			shift
+			case "${1:-}" in
+				''|-*) log_msg "错误：--source 需要一段说明文字（谁触发了这次下载）"; exit 2 ;;
+			esac
+			SOURCE="$1"
+			;;
 		--only)
 			shift
 			# 值可以是段名（ruleset_geosite_cn）也可以是 tag（geosite-cn）。
@@ -704,7 +744,7 @@ idx=0
 total_sections=0
 for __s in $sections; do total_sections=$((total_sections + 1)); done
 
-log_msg "==== 规则集预下载开始（共 ${total_sections} 条，预算 ${BUDGET}s）===="
+log_msg "==== 规则集预下载开始：来源=「${SOURCE}」，共 ${total_sections} 条，预算 ${BUDGET}s ===="
 
 for sec in $sections; do
 	total=$((total + 1))
@@ -824,7 +864,30 @@ if [ "$out_of_time" = "1" ]; then
 	log_msg "预算 ${BUDGET}s 已用尽，剩余规则集留待下次或由内核按 remote 方式下载。"
 fi
 
-log_msg "==== 规则集预下载结束：共 ${total} 条，新下载 ${ok}，已缓存 ${cached}，失败 ${failed} ===="
+log_msg "==== 规则集预下载结束：来源=「${SOURCE}」，共 ${total} 条，新下载 ${ok}，已缓存 ${cached}，失败 ${failed} ===="
+
+# 把「补规则集」接回「服务真的跑起来」。
+# 0.1.22 为了修「保存并应用不下规则集」，把同步从重启服务里拆了出来，拆完
+# 却没接回去：下载结束即脚本结束，没人再去启动服务。于是现场出现了
+# 「22:49 补齐 21 条 → 插件仍显示未运行 → 新 .srs 也没被 generate_client
+# 引用 → 23:06 手动 restart 才生效」。补全的意义只在服务跑起来时才成立，
+# 所以这条路径结束后必须自己补上这一步。
+# 只在 --autostart 时做：cron 路径末尾自己 restart，init.d 路径本就在启动
+# 流程中，重复 start 只会互相打断。
+if [ "$AUTOSTART" = "1" ]; then
+	if hp_service_running; then
+		log_msg "自动启动：服务已在运行，跳过启动（本次新下载的规则集需重启服务后才会被内核引用）。"
+	else
+		log_msg "自动启动：规则集已处理完毕但服务未运行，执行 /etc/init.d/homeproxy start …"
+		/etc/init.d/homeproxy start >>"$LOG_FILE" 2>&1
+		rc=$?
+		if [ "$rc" = "0" ]; then
+			log_msg "自动启动：服务已启动（rc=0）。"
+		else
+			log_msg "自动启动：启动未成功（rc=${rc}）。常见原因：① 未配置主节点且服务端未启用（start_service 判定无事可做）；② sing-box 配置校验失败。详见主日志 $RUN_DIR/homeproxy.log。"
+		fi
+	fi
+fi
 
 # Any unresolved rule-set is a real problem: the core will try to fetch it as
 # `remote` while initialising, and a 404 there aborts the whole instance. Report

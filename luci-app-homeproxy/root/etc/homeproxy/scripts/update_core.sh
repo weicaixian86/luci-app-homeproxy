@@ -797,13 +797,38 @@ print_status() {
 	echo "target_version=${CORE_TARGET_VERSION}"
 }
 
+# 这次内核下载是谁触发的。三条入口：init.d 启动时的 ensure、面板「更新内核」
+# 按钮（经 update_core_async.sh 调 update）、终端手动执行。以前日志只写
+# 「命令=ensure/update」，看不出是谁发起的，排障时只能靠时间猜。
+default_source() {
+	case "${1:-}" in
+		ensure) printf '%s' "服务启动（init.d 自动检查内核）" ;;
+		update) printf '%s' "手动执行（终端/SSH）" ;;
+		status) printf '%s' "状态查询" ;;
+		*) printf '%s' "未标注" ;;
+	esac
+}
+
 main() {
-	local cmd="${1:-ensure}"
+	local cmd="" source=""
+	while [ $# -gt 0 ]; do
+		case "$1" in
+			ensure|update|status) cmd="$1" ;;
+			--source)
+				shift
+				source="${1:-}"
+				;;
+		esac
+		shift
+	done
+	[ -n "$cmd" ] || cmd="ensure"
+	[ -n "$source" ] || source="$(default_source "$cmd")"
+
 	# Start marker: lets us tell "the helper never ran at all" (e.g. a fatal
 	# parse error before this point, or the file missing) apart from "it ran
 	# but failed early". On a fresh boot /var/run/homeproxy may not exist yet,
 	# so ensure_log() inside log_download creates it first.
-	log_download "==== 脚本启动：命令=${cmd} ===="
+	log_download "==== 脚本启动：命令=${cmd}，来源=${source} ===="
 	case "$cmd" in
 		ensure)
 			# 另一个实例正在下载/安装内核：它做的正是 ensure 要做的事，

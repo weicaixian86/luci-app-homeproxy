@@ -16,6 +16,7 @@ RUN_DIR="/var/run/homeproxy"
 mkdir -p "$RUN_DIR" 2>/dev/null
 if [ -x "$HP_DIR/scripts/fetch_rulesets.sh" ]; then
 	/bin/sh "$HP_DIR/scripts/fetch_rulesets.sh" --force --budget 900 \
+		--source "定时更新（cron #homeproxy_autosetup）" \
 		>>"$RUN_DIR/ruleset_download.log" 2>&1
 else
 	printf '%s 规则集预下载脚本缺失，跳过（内核将按 remote 方式自行下载）\n' \

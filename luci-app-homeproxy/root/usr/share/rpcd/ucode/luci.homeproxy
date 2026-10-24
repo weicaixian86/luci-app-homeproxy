@@ -676,7 +676,7 @@ const methods = {
 			 * from colliding: the script uses the same `<panel_dir>.backup` name. */
 			const fetcher = `${HP_DIR}/scripts/fetch_panel.sh`;
 			if (system(`test -x ${shellquote(fetcher)}`) === 0) {
-				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900`) === 0) {
+				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900 --source ${shellquote('LuCI「更新面板」按钮')}`) === 0) {
 					const installed = lstat(`${panel_dir}/index.html`);
 					if (installed && installed.type === 'file') {
 						panelLog(sprintf('下载成功（第 %d 次尝试，本地预下载）', attempt));
@@ -1743,7 +1743,7 @@ const methods = {
 			if (stype !== 'remote')
 				return { result: false, error: 'not a remote rule set' };
 
-			const rc = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/fetch_rulesets.sh')} --force --only ${shellquote(section)} --quiet --budget 90`);
+			const rc = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/fetch_rulesets.sh')} --force --only ${shellquote(section)} --quiet --budget 90 --source ${shellquote('规则集页面「立即更新」')}`);
 
 			return { result: rc === 0, rc: rc };
 		}
@@ -1780,7 +1780,14 @@ const methods = {
 			   路径本来就不带 --quiet，两条路口径一致）；② 下面补一行
 			   调用审计：logread 里「什么都没有」= rpcd 没收到调用，
 			   「只有这一行、没有下载日志」= 收到了但脚本没能启动。 */
-			const rc = system(`/bin/sh ${shellquote(script)} --detach`);
+			/* --source 让 ruleset_download.log 自己写明「这次是保存并应用触发
+			   的」：以前只有预算秒数（600）这个隐式指纹，手动执行撞同一个
+			   默认值，根本分不开。
+			   --autostart：下载结束后若服务未运行就启动它。规则集同步原本是
+			   从「重启服务」里拆出来的，拆完没接回去，于是现场出现「补齐了
+			   21 条、插件仍显示未运行、新文件也没被引用」，补全的意义只有
+			   服务真跑起来才成立。 */
+			const rc = system(`/bin/sh ${shellquote(script)} --detach --source ${shellquote('LuCI 保存并应用')} --autostart`);
 
 			system(`logger -t homeproxy ruleset_sync: LuCI 保存并应用触发，已后台启动规则集下载（rc=${rc}）`);
 

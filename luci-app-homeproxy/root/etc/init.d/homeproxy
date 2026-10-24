@@ -17,6 +17,12 @@ export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 
 CONF="homeproxy"
 PROG="/usr/bin/sing-box"
+
+# rc.common 是 source 本文件的，所以顶层执行时 $1 就是调用动作
+#（start / stop / restart / reload / boot …）。先存下来：进了
+# start_service()/stop_service() 之后 $1 未必还留着，而「这次是重启还是
+# 重载」恰恰是排障时最想知道的一件事。
+HP_ACTION="${1:-}"
 # Runtime reF1nd sing-box core downloader (architecture independent package).
 CORE_SCRIPT="/etc/homeproxy/scripts/update_core.sh"
 
@@ -216,6 +222,53 @@ log() {
 	echo -e "$ts [DAEMON] ${marker}$*" >> "$LOG_PATH"
 }
 
+# ── 服务启停的「谁干的」 ────────────────────────────────────────────────────
+# 主日志以前只有「sing-box x 已启动 / 服务已停止」，看不出是开机自启、LuCI
+# 保存并应用（reload）、界面按钮、定时任务、还是某个脚本内部调的 —— 而这些
+# 场景的排查方向完全不同（比如「保存并应用」不重载服务和「启动失败」表象
+# 一模一样）。这里靠父进程命令行来认定触发者：/etc/rc.common 是被 source
+# 的，所以 $PPID 就是真正发起这次调用的那个进程。
+hp_caller() {
+	local cmd=""
+	if [ -r "/proc/$PPID/cmdline" ]; then
+		cmd="$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null)"
+	fi
+
+	case "$cmd" in
+		*luci-reload*) printf '%s' "LuCI 保存并应用（luci-reload）" ;;
+		*rpcd*|*uhttpd*) printf '%s' "LuCI 界面按钮（rpcd）" ;;
+		*crond*) printf '%s' "定时任务（cron）" ;;
+		*"/sbin/service"*|*"/sbin/rc "*) printf '%s' "service/rc 命令（终端或脚本）" ;;
+		*sshd*|*dropbear*) printf '%s' "SSH 终端手动执行" ;;
+		*update_subscriptions*) printf '%s' "订阅更新脚本（stop/start）" ;;
+		*update_rulesets*|*fetch_rulesets*) printf '%s' "规则集脚本自动拉起" ;;
+		*update_core*) printf '%s' "内核更新脚本" ;;
+		*procd*|*"/sbin/init"*|*rcS*) printf '%s' "系统启动（procd/开机自启）" ;;
+		'') printf '%s' "未知（读不到父进程命令行）" ;;
+		*) printf '%s' "未识别（${cmd}）" ;;
+	esac
+}
+
+# rc.common 把动作留在 $1，部分路径也提供 $ACTION；两者都拿不到时如实写
+# 「未标注」，不要猜 —— 猜错比不说更糟。
+hp_action() {
+	local a="${1:-}"
+	[ -n "$a" ] || a="${HP_ACTION:-}"
+	[ -n "$a" ] || a="${ACTION:-}"
+
+	case "$a" in
+		start|stop|restart|reload|boot|enable|disable|running|status)
+			printf '%s' "$a" ;;
+		'') printf '%s' "未标注" ;;
+		*) printf '%s' "未标注（$a）" ;;
+	esac
+}
+
+# 统一格式的服务事件行，便于日志页按 [DAEMON] 一眼看清时间线。
+hp_event() {
+	log "==== $1：命令=$(hp_action "${2:-}")，触发=$(hp_caller) ===="
+}
+
 # Panel download log: mirror the RPC panelLog() format so the "Logs" page
 # shows one consistent timeline for both the UI-triggered and the
 # boot-time (service-start) panel downloads.
@@ -292,7 +345,8 @@ ensure_panel() {
 	# the core nor the API: it downloads, validates the zip magic, unpacks and
 	# installs into external_ui, which the core serves statically.
 	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
-		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900; then
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 \
+			--source "服务启动（内核就绪后，ensure_panel）"; then
 			if [ -f "$panel_dir/index.html" ]; then
 				panel_log "下载成功（本地预下载，未依赖 clash API）"
 				return 0
@@ -442,7 +496,8 @@ prefetch_panel() {
 	[ -f "$panel_dir/index.html" ] && return 0
 
 	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
-		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900; then
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 \
+			--source "服务启动前预下载（不依赖内核）"; then
 			if [ -f "$panel_dir/index.html" ]; then
 				panel_log "面板已提前下载（本地预下载，不依赖服务启动）。"
 			fi
@@ -629,7 +684,9 @@ sync_rulesets() {
 	# 这里忽略它，保证 21 条规则集能跑完（脚本自身不依赖 nohup）。
 	(
 		trap '' HUP
-		/bin/sh "$ruleset_script" --budget 240 >>"$LOG_PATH" 2>&1
+		# --source 让 ruleset_download.log 自己写明这次是「服务启动预取」：
+		# 以前只有预算 240 这个隐式指纹可推断来源。
+		/bin/sh "$ruleset_script" --budget 240 --source "服务启动预取（init.d sync_rulesets）" >>"$LOG_PATH" 2>&1
 		echo $? > "$rs_rcf"
 		rm -f "$rs_flag"
 	) &
@@ -688,6 +745,11 @@ hp_ucitrack_register() {
 
 start_service() {
 	init_logs
+
+	# 放在最前面：早退分支（没配节点、内核缺失、配置校验失败）也必须留下
+	# 「有人试图启动过」这条记录，否则「启动被拒」和「根本没人启动」在主
+	# 日志里长得一模一样。
+	hp_event "服务启动" "${1:-}"
 
 	# 放在所有早退分支之前：没配节点、内核缺失时也要把 ucitrack 补上，
 	# 否则「保存并应用」永远唤不醒本服务。
@@ -1049,7 +1111,13 @@ start_service() {
 	fw4 reload >"/dev/null" 2>&1
 	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
 
-	log "sing-box $(sing-box version -n) 已启动。"
+	# 写清注册了哪些实例：只有客户端、只有服务端、还是两者都有。以前只写
+	# 一句「sing-box x 已启动」，服务端没起来时也看不出来。
+	local inst=""
+	[ "$outbound_node" != "nil" ] && inst="sing-box-c（客户端）"
+	[ "$server_enabled" = "1" ] && inst="${inst:+$inst + }sing-box-s（服务端）"
+
+	log "内核已启动：sing-box $(sing-box version -n)，已注册实例：${inst:-无}。"
 
 	# Auto-install the dashboard panel after the core is up, the same way the
 	# kernel is fetched at start. Run detached so service start is not blocked
@@ -1058,6 +1126,8 @@ start_service() {
 }
 
 stop_service() {
+	hp_event "服务停止" "${1:-}"
+
 	sed -i "/#${CONF}_autosetup/d" "/etc/crontabs/root" 2>"/dev/null"
 	/etc/init.d/cron restart >"/dev/null" 2>&1
 
@@ -1115,10 +1185,14 @@ stop_service() {
 	rm -f "$RUN_DIR/sing-box-c.json" "$RUN_DIR/sing-box-s.json"
 	init_logs
 
-	log "服务已停止。"
+	log "服务已停止（防火墙/DNS 劫持已撤销，内核实例由 procd 回收）。"
 }
 
 service_stopped() {
+	# procd 在实例退出时回调这里 —— 正常停止会走到，内核崩溃/被 respawn
+	# 之前也会走到。记一行，时间线上才能看出「是停了，还是挂了又被拉起」。
+	log "内核进程已退出（procd service_stopped 回调）。"
+
 	# Load config
 	config_load "$CONF"
 	local tun_name
@@ -1130,7 +1204,10 @@ service_stopped() {
 }
 
 reload_service() {
-	log "正在重新加载服务..."
+	# 重载是「保存并应用」和「WAN 口变化」共用的入口，触发者不同排查方向
+	# 完全不同，所以这里要和 stop/start 一样把来源记下来。
+	hp_event "服务重载" "${1:-}"
+	log "正在重新加载服务（reload = stop + start）..."
 
 	stop
 	start
