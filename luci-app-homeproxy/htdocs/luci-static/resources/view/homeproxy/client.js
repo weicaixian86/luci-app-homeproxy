@@ -1084,13 +1084,18 @@ return view.extend({
 		so.default = so.enabled;
 		so.rmempty = false;
 
+		/* 这一项其实是「整个插件的总开关」，却被放在「流量怎么走」的下拉里：
+		   原来的文案 `Disable (the service)` 被读成「禁用漏网之鱼这条规则」，
+		   而它的真实行为是 start_service 直接 return 1 —— 插件完全不运行、
+		   所有路由规则一起失效。所以文案必须把动作和后果写到明面上，
+		   并在说明里点破与「直连」的区别（想让未匹配的流量走直连要选直连）。 */
 		so = ss.option(form.ListValue, 'default_outbound', _('Default outbound (fallback)'),
-			_('Default outbound for connections not matched by any routing rules.'));
+			_('Default outbound for connections not matched by any routing rules. Choosing "Stop the plugin" stops the service entirely — the plugin will not run and no routing rule takes effect. Pick "Direct" instead if you only want unmatched traffic to go out directly.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
 
-			this.value('nil', _('Disable (the service)'));
+			this.value('nil', _('Stop the plugin'));
 			this.value('direct-out', _('Direct'));
 			this.value('block-out', _('Block'));
 			uci.sections(data[0], 'routing_node', (res) => {

@@ -683,9 +683,9 @@ msgstr "默认出口（route.final）：在面板中始终置顶，此处不可�
 msgid "Default outbound DNS"
 msgstr "默认出站 DNS"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1088
-msgid "Default outbound for connections not matched by any routing rules."
-msgstr "用于未被任何路由规则匹配的连接的默认出站。"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1091
+msgid "Default outbound for connections not matched by any routing rules. Choosing \"Stop the plugin\" stops the service entirely — the plugin will not run and no routing rule takes effect. Pick \"Direct\" instead if you only want unmatched traffic to go out directly."
+msgstr "用于未被任何路由规则匹配的连接的默认出站。选「停止插件」会停掉整个服务——插件不再运行、所有路由规则一并失效；只想让未匹配的流量直接出网，请选「直连」。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2057
 msgid "Default packet encoding"
@@ -742,9 +742,9 @@ msgstr "直连 MAC 地址"
 msgid "Disable"
 msgstr "禁用"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1093
-msgid "Disable (the service)"
-msgstr "禁用（服务）"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1098
+msgid "Stop the plugin"
+msgstr "停止插件"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2149
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2262

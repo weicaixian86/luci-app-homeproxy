@@ -1322,6 +1322,17 @@ else
 	bad "update_core_async.sh does not pass --source"
 fi
 
+# 「默认出站（漏网之鱼）」下拉里那个 nil 选项其实是整个插件的总开关：选它
+# start_service 直接 return 1，插件完全不运行。旧文案 `Disable (the service)`
+# 被读成「禁用漏网之鱼这条规则」，于是用户配好一堆规则却发现插件不起来。
+CJS2="$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"
+if grep -q "'nil', _('Stop the plugin')" "$CJS2" \
+   && grep -q 'stops the service entirely' "$CJS2"; then
+	ok "the default-outbound nil option says plainly that it stops the whole plugin"
+else
+	bad "the \"Disable\" default-outbound option still hides that it stops the service"
+fi
+
 # 订阅：批量按钮、单个机场按钮、定时任务，以前在日志里都只写「手动」。
 SUB="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
 if grep -q 'exists(ARGV)' "$SUB" && grep -q "argv\[i\] === '--source'" "$SUB" \

@@ -662,8 +662,8 @@ msgstr ""
 msgid "Default outbound DNS"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1088
-msgid "Default outbound for connections not matched by any routing rules."
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1093
+msgid "Default outbound for connections not matched by any routing rules. Choosing \"Stop the plugin\" stops the service entirely — the plugin will not run and no routing rule takes effect. Pick \"Direct\" instead if you only want unmatched traffic to go out directly."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2057
@@ -721,8 +721,8 @@ msgstr ""
 msgid "Disable"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:1093
-msgid "Disable (the service)"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1098
+msgid "Stop the plugin"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2149
