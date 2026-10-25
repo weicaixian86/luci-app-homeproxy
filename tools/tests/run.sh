@@ -1034,9 +1034,12 @@ else
 fi
 
 # init.d 侧自登记：postinst 被跳过或 ucitrack 被清空时，服务启动一次就能补回。
+# 判据不用「前 N 行」——那几个行数是随着注释增减而漂的（改一次顺序就假红），
+# 而是取 start_service() 里**第一个 return 之前**的全部内容。
 INIT="$PKG/root/etc/init.d/homeproxy"
+SS_HEAD="$(sed -n '/^start_service()/,/^}/p' "$INIT" | awk '/^[[:space:]]*return/{exit} {print}')"
 if grep -q 'hp_ucitrack_register' "$INIT" \
-   && grep -A12 '^start_service()' "$INIT" | grep -q 'hp_ucitrack_register'; then
+   && printf '%s\n' "$SS_HEAD" | grep -q 'hp_ucitrack_register'; then
 	ok "init.d re-registers ucitrack on every start (idempotent)"
 else
 	bad "init.d never self-heals the ucitrack entry"
@@ -1463,10 +1466,53 @@ fi
 
 # 启动被拒（没配节点/内核缺失/配置校验失败）也必须留下痕迹，否则
 # 「启动被拒」和「根本没人启动」在主日志里长得一样。
-if grep -A6 '^start_service()' "$INIT" | grep -q 'hp_event'; then
+if printf '%s\n' "$SS_HEAD" | grep -q 'hp_event "服务启动"'; then
 	ok "the start event is written before any early return"
 else
 	bad "the start event comes after early returns: a refused start leaves no trace"
+fi
+
+# rc.common 在 source 本文件之前已经 shift 2，顶层 $1 是动作后面多带的参数
+# （通常为空），动作本身在它的 $action 里。只读 $1 的现场表现：每条事件行都
+# 写成「命令=未标注」，于是「开机自启」和「保存并应用」又变得一模一样。
+if grep -q 'HP_ACTION="${action' "$INIT"; then
+	ok "the action is read from rc.common's \$action, not the shifted \$1"
+else
+	bad "HP_ACTION reads \$1, which rc.common already shifted away: every event says 未标注"
+fi
+
+# 时钟必须在第一行日志之前校正。现场故障：开机后主日志第一条写成 6 天前的
+# 17:15:04（RTC 停在上次关机），NTP 几秒后才把时间改对，日志里留下一道断崖。
+ss_pos_wait=$(sed -n '/^start_service()/,/^}/p' "$INIT" | grep -n 'wait_for_time_sync' | head -1 | cut -d: -f1)
+ss_pos_evt=$(sed -n '/^start_service()/,/^}/p' "$INIT" | grep -n 'hp_event "服务启动"' | head -1 | cut -d: -f1)
+if [ -n "$ss_pos_wait" ] && [ -n "$ss_pos_evt" ] && [ "$ss_pos_wait" -lt "$ss_pos_evt" ]; then
+	ok "the clock is corrected before the first startup line is stamped"
+else
+	bad "the startup line is written before the clock is corrected"
+fi
+
+# 只按年份判「离谱」抓不到「年份正常、差几天」的 RTC 时间，所以开机窗口内
+# （uptime 小）必须无条件试一次校时。
+if grep -q 'uptime_seconds()' "$INIT" && grep -q 'booted_ago" -lt 300' "$INIT" \
+   && grep -q 'ntp_kick' "$INIT"; then
+	ok "a fresh boot re-syncs even when the year looks plausible"
+else
+	bad "a plausible-looking but stale boot clock is never corrected"
+fi
+
+# 事件行必须带开机时长：时间戳不可信时，它是唯一能把日志换算回真实时刻的线索。
+if grep -qF '开机 $((booted / 60))' "$INIT"; then
+	ok "the event line names the uptime, so a wrong timestamp can be converted"
+else
+	bad "the event line cannot be placed in time when the clock is wrong"
+fi
+
+# NTP 在服务跑起来之后才同步上时，日志里会出现一道时间断崖；不解释一句就会被
+# 当成「混进了旧日志」。
+if grep -q '系统时钟在运行中被校正' "$INIT"; then
+	ok "a runtime clock correction is called out instead of looking like stale rows"
+else
+	bad "a clock jump is silent: old-dated rows look like leftover log content"
 fi
 
 if grep -q '内核进程已退出' "$INIT"; then

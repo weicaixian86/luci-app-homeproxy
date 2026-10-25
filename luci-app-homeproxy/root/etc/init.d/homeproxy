@@ -18,11 +18,15 @@ export PATH="/usr/sbin:/usr/bin:/sbin:/bin${PATH:+:$PATH}"
 CONF="homeproxy"
 PROG="/usr/bin/sing-box"
 
-# rc.common 是 source 本文件的，所以顶层执行时 $1 就是调用动作
-#（start / stop / restart / reload / boot …）。先存下来：进了
-# start_service()/stop_service() 之后 $1 未必还留着，而「这次是重启还是
-# 重载」恰恰是排障时最想知道的一件事。
-HP_ACTION="${1:-}"
+# 「这次是谁、用什么动作启动的」是排障时最想知道的一件事，所以先存下来。
+#
+# 注意别读 $1：rc.common 在 source 本文件之前已经 shift 2（$1=脚本路径、
+# $2=动作），顶层能看到的 $1 是动作后面多带的参数，通常为空。只读 $1 的
+# 后果是所有事件行都写成「命令=未标注」——现场日志：
+#   ==== 服务启动：命令=未标注，触发=系统启动（procd/开机自启） ====
+# 真正的动作在 rc.common 自己的 $action 里，它先于 source 被赋值，能读到。
+# $1 / $ACTION 只做兜底（脚本或测试直接 . 本文件时）。
+HP_ACTION="${action:-${1:-}}"
 # Runtime reF1nd sing-box core downloader (architecture independent package).
 CORE_SCRIPT="/etc/homeproxy/scripts/update_core.sh"
 
@@ -39,12 +43,25 @@ else
 fi
 
 # ---------- clock / time-sync helpers ----------
-# Only flag a genuinely implausible clock. A wrong date is what actually breaks
-# HTTPS certificate validation (curl exit 60). We deliberately do NOT compare
-# against the package file mtime here: a freshly installed package has an mtime
-# equal to "now", which would otherwise mark every boot within the first few
-# minutes as "unsynced" even when the clock is already correct. The timestamp
-# carried by the log line is authoritative for humans.
+# 开机时长（秒）。纯 shell 读 /proc/uptime，不起子进程 —— 日志与启动两条
+# 路径都要用它。
+uptime_seconds() {
+	local up
+	read -r up _ </proc/uptime 2>/dev/null || return 1
+	up="${up%%.*}"
+	case "$up" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	printf '%s' "$up"
+}
+
+# Only flag a *genuinely* implausible clock (1970 / 2087): a wrong date also
+# breaks HTTPS certificate validation (curl exit 60). We deliberately do NOT
+# compare against the package file mtime here: a freshly installed package has
+# an mtime equal to "now", which would otherwise mark every boot within the
+# first few minutes as "unsynced" even when the clock is already correct.
+# 它抓不到「年份合理、只差几天」的偏差，那种交给 wait_for_time_sync 的
+# 开机窗口分支。
 clock_looks_unsynced() {
 	local y
 	y="$(date +%Y 2>/dev/null)" || return 1
@@ -55,40 +72,53 @@ clock_looks_unsynced() {
 	[ "$y" -lt 2024 ] || [ "$y" -gt 2035 ]
 }
 
-# Give NTP a brief chance to correct an implausible (boot-time) clock. Only
-# waits when the clock actually looks wrong, so a normally-synced boot is
-# unaffected; a ~12-second cap keeps service start from hanging on a network
-# that simply has no reachable NTP server.
-wait_for_time_sync() {
-	clock_looks_unsynced || return 0
-	# Best-effort one-shot NTP correction so a fresh boot with a wrong
-	# (boot-time) clock can still validate TLS certificates for the core
-	# download (otherwise curl exits 60). Run detached so the wait loop is not
-	# blocked if no server is reachable. NOTE: BusyBox ntpd requires at least
-	# one `-p PEER` (plain `ntpd -n -q` just prints usage), so servers must be
-	# passed explicitly — preferring the UCI-configured ones.
+# Best-effort one-shot NTP correction. Run detached so the caller is not blocked
+# when no server is reachable. NOTE: BusyBox ntpd requires at least one
+# `-p PEER` (plain `ntpd -n -q` just prints usage), so servers must be passed
+# explicitly — preferring the UCI-configured ones.
+ntp_kick() {
 	local srv s ntp_args=''
+	command -v ntpd >/dev/null 2>&1 || return 0
 	srv="$(uci -q get system.ntp.server 2>/dev/null | tr '\n' ' ')"
-	if command -v ntpd >/dev/null 2>&1; then
-		if [ -n "$srv" ]; then
-			# Build "-p <server>" without relying on `printf --`, which some
-			# minimal BusyBox printf builds do not special-case; a plain loop
-			# is unambiguously ash-safe (matches update_core.sh sync_time).
-			for s in $srv; do
-				ntp_args="$ntp_args -p $s"
-			done
-			# shellcheck disable=SC2086
-			( ntpd -n -q $ntp_args 2>/dev/null ) &
-		else
-			( ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
-		fi
+	if [ -n "$srv" ]; then
+		# Build "-p <server>" without relying on `printf --`, which some
+		# minimal BusyBox printf builds do not special-case; a plain loop is
+		# unambiguously ash-safe (matches update_core.sh sync_time).
+		for s in $srv; do
+			ntp_args="$ntp_args -p $s"
+		done
+		# shellcheck disable=SC2086
+		( ntpd -n -q $ntp_args 2>/dev/null ) &
+	else
+		( ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
 	fi
-	local i=0
-	while [ "$i" -lt 12 ]; do
-		sleep 1
-		i=$((i + 1))
-		clock_looks_unsynced || return 0
-	done
+	return 0
+}
+
+# 在任何一行日志被打上时间戳之前把时钟尽量修对，两种「不对」都要管：
+#  ① 明显离谱（1970 / 2087）：按年份判定，值得等满 12 秒。
+#  ② 看着合理、其实落后几天：没有 RTC 电池的 x86 会把 RTC 停在关机那一刻，
+#     年月日全在合理区间，只有「几天」的偏差，看年份永远抓不到。现场就是
+#     这样：开机后主日志第一行写成 6 天前的 17:15:04，NTP 一校正，日志里
+#     出现一道时间断崖，读起来像「显示了旧日志」。所以开机窗口内
+#     （uptime < 300 秒）无条件试一次，最多等 3 秒；运行期的 reload 不等。
+wait_for_time_sync() {
+	local booted_ago i=0
+
+	if clock_looks_unsynced; then
+		ntp_kick
+		while [ "$i" -lt 12 ]; do
+			sleep 1
+			i=$((i + 1))
+			clock_looks_unsynced || return 0
+		done
+		return 0
+	fi
+
+	booted_ago="$(uptime_seconds)" || return 0
+	[ "$booted_ago" -lt 300 ] || return 0
+	ntp_kick
+	sleep 3
 	return 0
 }
 
@@ -215,8 +245,43 @@ tz_setup_core() {
 	fi
 }
 
+# NTP 往往是在服务跑起来之后才同步上的（现场：开机 3 秒内写的两行是 6 天前
+# 的日期，几秒后突然跳回今天）。不解释一句，日志里那道时间断崖就会被当成
+# 「混进了旧日志」。这里用「墙钟走了多少」减「单调时钟走了多少」算出校正
+# 幅度，只在偏差超过 60 秒时补一行 —— 正常的 NTP 微调不值得刷屏。
+_CLOCK_T0_REAL=""
+_CLOCK_T0_UP=""
+_CLOCK_JUMP_NOTED=0
+
+clock_jump_note() {
+	[ "$_CLOCK_JUMP_NOTED" = 1 ] && return 0
+	local now_real now_up d_real d_up jump
+	now_real="$(date +%s 2>/dev/null)"
+	now_up="$(uptime_seconds)"
+	case "$now_real" in ''|*[!0-9]*) return 0 ;; esac
+	case "$now_up" in ''|*[!0-9]*) return 0 ;; esac
+
+	if [ -z "$_CLOCK_T0_REAL" ]; then
+		_CLOCK_T0_REAL="$now_real"
+		_CLOCK_T0_UP="$now_up"
+		return 0
+	fi
+
+	d_real=$((now_real - _CLOCK_T0_REAL))
+	d_up=$((now_up - _CLOCK_T0_UP))
+	jump=$((d_real - d_up))
+	if [ "$jump" -le 60 ] && [ "$jump" -ge -60 ]; then
+		return 0
+	fi
+
+	_CLOCK_JUMP_NOTED=1
+	echo -e "$(date '+%Y-%m-%d %H:%M:%S') [DAEMON] ==== 系统时钟在运行中被校正 ${jump} 秒：上面几行的时间戳来自校正前的时钟，和后面的时间对不上属于正常 ====" >> "$LOG_PATH"
+	return 0
+}
+
 log() {
 	local ts marker=""
+	clock_jump_note
 	ts="$(date "+%Y-%m-%d %H:%M:%S")"
 	clock_looks_unsynced && marker="（时间未同步）"
 	echo -e "$ts [DAEMON] ${marker}$*" >> "$LOG_PATH"
@@ -264,9 +329,16 @@ hp_action() {
 	esac
 }
 
-# 统一格式的服务事件行，便于日志页按 [DAEMON] 一眼看清时间线。
+# 统一格式的服务事件行，便于日志页按 [DAEMON] 一眼看清时间线。开机时长是
+# 时钟不可信时的唯一参照：万一时间戳是错的，用「开机 N 分 N 秒」也能把它
+# 换算回真实时刻（真实开机时间 = 时间戳 - 开机时长）。
 hp_event() {
-	log "==== $1：命令=$(hp_action "${2:-}")，触发=$(hp_caller) ===="
+	local booted
+	booted="$(uptime_seconds)"
+	if [ -n "$booted" ]; then
+		booted="，开机 $((booted / 60)) 分 $((booted % 60)) 秒"
+	fi
+	log "==== $1：命令=$(hp_action "${2:-}")，触发=$(hp_caller)${booted} ===="
 }
 
 # Panel download log: mirror the RPC panelLog() format so the "Logs" page
@@ -749,6 +821,11 @@ hp_ucitrack_register() {
 start_service() {
 	init_logs
 
+	# 时钟必须先校正，再写第一行日志：NTP 之前的时钟可能停在几天前（RTC 没
+	# 电池的 x86 尤其如此），那一行就会被记成几天前的日期，事后根本没法判断
+	# 是旧日志还是刚写的。开机窗口内最多等 3 秒，运行期不额外等待。
+	wait_for_time_sync
+
 	# 放在最前面：早退分支（没配节点、内核缺失、配置校验失败）也必须留下
 	# 「有人试图启动过」这条记录，否则「启动被拒」和「根本没人启动」在主
 	# 日志里长得一模一样。
@@ -763,8 +840,7 @@ start_service() {
 	# 若系统已存在 sing-box 用户，下方 ujail 分支（have_sing_box_user 判断）
 	# 仍会自动降权。
 
-	# Avoid stamping startup log lines with the pre-NTP (sysfixtime) clock.
-	wait_for_time_sync
+	# 时钟已在函数开头校正过（必须早于第一行日志），这里不再重复等待。
 
 	# Ensure the reF1nd sing-box core for this architecture is installed.
 	# HomeProxy no longer bundles a single-arch binary; the correct build is
