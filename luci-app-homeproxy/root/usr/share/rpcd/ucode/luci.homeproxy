@@ -256,6 +256,95 @@ function coreUpdateOutput() {
 	}
 }
 
+/* ── 日志设置 ────────────────────────────────────────────────────────────────
+   /etc/homeproxy/log.conf，纯 key=value：
+     refresh=5       日志页面多久重读一次文件（秒）
+     size=1          单个日志文件的大小上限
+     unit=MB         上限的单位（MB / KB）
+   clean_log.sh 用同一份文件、同一套范围与下限，所以界面上写的数字和实际
+   轮转时的阈值不可能不一致。
+
+   注意这里一律用 index()/substr() 逐字符校验，不用正则：rpcd 的 match()
+   走 C 的 regexec（musl TRE），带 `?` 量词或 `\d` 的写法会直接抛
+   "Repetition not preceded by valid expression"，整条调用失败。 */
+const LOG_CONF = `${HP_DIR}/log.conf`;
+
+const LOG_DEFAULTS = { refresh: 5, size: 1, unit: 'MB' };
+
+const LOG_LIMITS = {
+	refresh_min: 2, refresh_max: 120,
+	size_min: 1, size_max: 1024,
+	/* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。 */
+	min_bytes: 64 * 1024
+};
+
+function parseDigits(v) {
+	const s = trim(sprintf('%s', v ?? ''));
+
+	if (!length(s))
+		return null;
+
+	for (let i = 0; i < length(s); i++)
+		if (index('0123456789', substr(s, i, 1)) < 0)
+			return null;
+
+	return int(s);
+}
+
+function clampDigits(v, lo, hi, dflt) {
+	const n = parseDigits(v);
+
+	if (n === null)
+		return dflt;
+
+	return (n < lo) ? lo : ((n > hi) ? hi : n);
+}
+
+function readLogSettings() {
+	const out = {
+		refresh: LOG_DEFAULTS.refresh,
+		size: LOG_DEFAULTS.size,
+		unit: LOG_DEFAULTS.unit
+	};
+
+	let raw = null;
+
+	try {
+		raw = readfile(LOG_CONF);
+	} catch (e) {
+		raw = null;
+	}
+
+	if (!length(raw || ''))
+		return out;
+
+	for (let line in split(raw, '\n')) {
+		line = trim(line);
+
+		const eq = index(line, '=');
+
+		if (eq <= 0)
+			continue;
+
+		const k = trim(substr(line, 0, eq)),
+		      v = trim(substr(line, eq + 1));
+
+		if (k === 'refresh')
+			out.refresh = clampDigits(v, LOG_LIMITS.refresh_min, LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh);
+		else if (k === 'size')
+			out.size = clampDigits(v, LOG_LIMITS.size_min, LOG_LIMITS.size_max, LOG_DEFAULTS.size);
+		else if (k === 'unit')
+			out.unit = (v === 'KB') ? 'KB' : 'MB';
+	}
+
+	out.bytes = out.size * ((out.unit === 'KB') ? 1024 : 1024 * 1024);
+
+	if (out.bytes < LOG_LIMITS.min_bytes)
+		out.bytes = LOG_LIMITS.min_bytes;
+
+	return out;
+}
+
 const methods = {
 	acllist_read: {
 		args: { type: 'string' },
@@ -1648,6 +1737,51 @@ const methods = {
 				writefile(`${RUN_DIR}/${req.args?.type}.log`, '');
 			}
 			return { result: true };
+		}
+	},
+
+	/* ── 日志设置（刷新间隔 / 文件大小上限）────────────────────────────────
+	   为什么存在 /etc/homeproxy/log.conf 而不是 uci：这不是服务配置，改它
+	   不该重启内核。`uci commit homeproxy` 会改 /etc/config/homeproxy 的
+	   mtime → procd 的 config.change 触发器 → reload_service（= stop +
+	   start，所有连接断一次）。为了一个刷新间隔去重启隧道显然不能接受，
+	   所以单独一个文件，由本文件与 clean_log.sh 各读一次，两边同一个阈值。
+	   好处是备份/恢复也简单：删掉它就是默认值。 */
+	log_settings: {
+		call: function() {
+			return readLogSettings();
+		}
+	},
+
+	log_settings_save: {
+		args: { refresh: 'string', size: 'string', unit: 'string' },
+		call: function(req) {
+			const cfg = {
+				refresh: clampDigits(req.args?.refresh, LOG_LIMITS.refresh_min,
+					LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh),
+				size: clampDigits(req.args?.size, LOG_LIMITS.size_min,
+					LOG_LIMITS.size_max, LOG_DEFAULTS.size),
+				unit: (trim(sprintf('%s', req.args?.unit || '')) === 'KB') ? 'KB' : 'MB'
+			};
+
+			const body = sprintf('refresh=%d\nsize=%d\nunit=%s\n', cfg.refresh, cfg.size, cfg.unit);
+			const tmp = LOG_CONF + '.tmp';
+
+			system(`mkdir -p ${shellquote(HP_DIR)}`);
+
+			if (!writefile(tmp, body))
+				return { result: false, error: 'cannot write ' + tmp };
+
+			/* 先写临时文件再 mv，避免 clean_log.sh 正好在 180 秒边界上读到
+			   半截文件（那会被当成「没有设置」而回落到 1 MiB）。 */
+			if (system(`mv -f ${shellquote(tmp)} ${shellquote(LOG_CONF)}`) !== 0) {
+				system(`rm -f ${shellquote(tmp)}`);
+				return { result: false, error: 'cannot replace ' + LOG_CONF };
+			}
+
+			const eff = readLogSettings();
+			eff.result = true;
+			return eff;
 		}
 	},
 

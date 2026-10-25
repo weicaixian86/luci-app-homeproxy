@@ -5,457 +5,24 @@
  */
 
 'use strict';
-'require dom';
 'require form';
-'require fs';
-'require rpc';
 'require uci';
 'require ui';
 'require view';
 
 'require homeproxy as hp';
+'require homeproxy.logview as logview';
 
-const css = `
-#log_textarea {
-	text-align: left;
-	/* Focusable for the Ctrl+A handler; show it rather than the browser's
-	   default outline so it is obvious the box can be selected from. */
-	outline: none;
-}
-#log_textarea:focus {
-	outline: 1px solid #4a90d9;
-	outline-offset: -1px;
-}
-.hp-log-topbar {
-	display: flex;
-	align-items: center;
-	justify-content: flex-start;
-	flex-wrap: wrap;
-	gap: 8px;
-	padding: 8px 10px;
-}
-/* One merged log box with its own scrollbar: all five sources share this
-   viewport, so the page no longer grows with the amount of history. */
-.hp-log-scroll {
-	max-height: 62vh;
-	min-height: 240px;
-	overflow-y: scroll;
-	overflow-x: hidden;
-	background: #fff;
-	border: 1px solid #ddd;
-	border-radius: 4px;
-	padding: 6px 0;
-	font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
-	font-size: 12px;
-	line-height: 1.55;
-}
-.hp-log-line {
-	display: block;
-	white-space: pre-wrap;
-	word-break: break-all;
-	padding: 0 10px;
-	margin: 0;
-}
-/* Continuation line of a multi-line record (e.g. sing-box "Caused by:"),
-   indented so it stays visually grouped with its timestamped first line. */
-.hp-log-cont {
-	padding-left: 24px;
-}
-.hp-log-trunc {
-	padding: 6px 10px;
-	color: #c0392b;
-	font-size: 11px;
-}
-.hp-log-empty {
-	padding: 16px 12px;
-	color: #888;
-}
-/* One-off notice above the merged log (e.g. core timestamps were UTC and have
-   been converted). Sits inside the box so it scrolls away with the content. */
-.hp-log-note {
-	color: #b06a00;
-	font-weight: 600;
-	padding: 2px 10px 6px;
-}
-`;
+/* 界面文案的中文兜底在 homeproxy/logview.js 里（zh），四个页面共用一份；
+   这里的下拉显示名一律走它，界面上一律纯中文。 */
 
-const hp_dir = '/var/run/homeproxy';
-
-/* NOTE: log_sources / log_level_choices are built inside renderUnifiedLog()
-   (render time) rather than at module load, so the gettext lookups (_()) run
-   after the translation catalog is guaranteed to be loaded. Defining them at
-   module top-level risks capturing the English fallback if evaluated too early. */
-
-const callLogClean = rpc.declare({
-	object: 'luci.homeproxy',
-	method: 'log_clean',
-	params: ['type'],
-	expect: { '': {} }
-});
-
-/* Max lines shown in the merged log box; older lines are dropped. */
-const LOG_MAX_LINES = 1000;
-
-/* Leading "YYYY-MM-DD HH:MM:SS" of a log line. An optional "+0800"-style
-   zone prefix is tolerated because some sing-box builds emit it. Accepts
-   both sing-box (YYYY-MM-DD HH:MM:SS / YYYY/MM/DD HH:MM:SS) and Go log default
-   forms so we can split the stream into timestamped records first. The level
-   token is extracted separately (see LEVEL_RE below) so that shell-script
-   logs (homeproxy, core_download, panel_download) — which have timestamps but
-   no level token — still split cleanly into their own records. */
-const TS_RE = /^\s*(?:[+-]\d{4}\s+)?(\d{4}[-/]\d{2}[-/]\d{2})[ T](\d{2}:\d{2}:\d{2})/;
-
-/* Level token extraction. Matches a severity keyword (optional square
-   brackets) that appears *immediately after* the timestamp suffix — i.e.
-   it has to be the first token after the timestamp/zone gap, so we don't
-   accidentally match descriptive words like "error" inside a shell logger's
-   free-form message body. Used inside splitRecords only after TS_RE has
-   already confirmed the line has a timestamp and we've trimmed the suffix. */
-const LEVEL_TOKEN_RE = /^\s*\[?(TRACE|DEBUG|INFO|WARN|WARNING|ERROR|FATAL|PANIC)\]?\b/i;
-
-/* Severity weight: higher = more severe. A record whose level weight is
-   >= the selected cutoff weight survives; others are filtered out on the
-   frontend. Unknown/non-sing-box records (level = null) always pass. */
-const LEVEL_ORDER = {
-	trace:   0,
-	debug:   1,
-	info:    2,
-	warn:    3,
-	warning: 3,
-	error:   4,
-	fatal:   5,
-	panic:   6
-};
-
-/* Only the four levels offered by the dropdown are meaningful here. A value
-   hand-edited into uci (or carried over from an older config) would otherwise
-   leave the <select> showing its first option while the filter cut at a
-   different weight, so clamp it the same way the generators do. */
-function normalizeLevel(v) {
-	return (v === 'debug' || v === 'info' || v === 'warn' || v === 'error')
-		? v : 'info';
-}
-
-/* 界面文案的中文兜底。`_()` 只在 homeproxy 的 .lmo 被加载时才翻译，否则
-   原样返回英文 msgid —— 于是「内核日志级别」下拉里直接冒出 Debug / Info /
-   Warn / Error（这四个词 luci-base 里也有同名条目，靠继承不保险）。
-   面板文案要求全中文，所以再压一层：翻译没命中就用内置中文名。
-   en 用来判断「到底命中没有」；translated 必须是对 _() 的直接字面量调用，
-   而不是把变量传进去，否则 Rescan-Translation 提取不到 msgid，po 里的
-   条目会被当成死条目清掉。（注意注释里也别写带引号的 _() 调用：pocheck
-   把整份源码当文本扫，会把它当成一个真的 msgid 去 po 里找。） */
-function zh(en, translated, fallback) {
-	return (translated && translated !== en) ? translated : fallback;
-}
-
-/* init.d records whether the core actually got a usable timezone in
-   CORE_TZ_FILE: "local" when it did, "utc <seconds east of UTC>" when the
-   image has no tzdata and sing-box therefore logs in UTC. Go cannot parse
-   OpenWrt's POSIX /etc/TZ ("CST-8"), which is what used to leave the core
-   eight hours behind every other source — and, because the merged timeline
-   sorts on the stamp text, out of order too. */
-const CORE_TZ_FILE = hp_dir + '/core_tz';
-
-/* Shift a "YYYY-MM-DD HH:MM:SS" stamp by N minutes. Pure UTC arithmetic, so
-   the browser's own timezone and DST never enter the result. Returns the
-   input untouched when it does not look like a full stamp. */
-function shiftTs(ts, minutes) {
-	const m = /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/.exec(ts);
-	if (!m)
-		return ts;
-
-	const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) + minutes * 60000);
-	const p = (n) => (n < 10 ? '0' : '') + n;
-
-	return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()) +
-	       ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
-}
-
-/* "+08:00" for a signed minute count (used in the notice text). */
-function fmtOffset(minutes) {
-	const p = (n) => (n < 10 ? '0' : '') + n;
-	const a = Math.abs(minutes);
-	return (minutes < 0 ? '-' : '+') + p(Math.floor(a / 60)) + ':' + p(a % 60);
-}
-
-/* Minutes the core's stamps have to move to land on the local clock; 0 when
-   they already are (or when the marker is missing, i.e. an older install). */
-function readCoreShift() {
-	return fs.read_direct(CORE_TZ_FILE, 'text')
-		.then((res) => {
-			const parts = String(res || '').trim().split(/\s+/);
-			if (parts[0] !== 'utc')
-				return 0;
-			const off = parseInt(parts[1], 10);
-			return isFinite(off) ? Math.round(off / 60) : 0;
-		})
-		.catch(() => 0);
-}
-
-/* Split one log file into records: a timestamped line plus the untimestamped
-   continuation lines that follow it (e.g. sing-box "Cause:" / stack traces).
-   Keeping records intact means multi-line entries survive the merge.
-
-   Records that look like sing-box output (a level token appears immediately
-   after the timestamp) get a `level` (lowercase) tagged on the record;
-   records from shell logger (homeproxy, core_download, panel_download) have
-   timestamps but no such token → `level: null` and are always shown when the
-   frontend applies its severity filter. */
-function splitRecords(text, shift) {
-	const out = [];
-	const lines = text.split('\n');
-	let cur = null;
-
-	for (let i = 0; i < lines.length; i++) {
-		const line = lines[i];
-		const m = TS_RE.exec(line);
-
-		if (m) {
-			if (cur)
-				out.push(cur);
-
-			/* Extract level token from the region immediately after the
-			   timestamp match. TS_RE does not capture trailing millis/zone
-			   suffix ("+0000 123.456"), so `m[0].length` already points at
-			   the first character of what should be the sing-box severity
-			   token or a shell-log description. Running LEVEL_TOKEN_RE there
-			   lets us distinguish the two: sing-box has a recognised keyword
-			   right there; shell logs have free-form text. */
-			const tail = line.slice(m[0].length);
-			const lm = LEVEL_TOKEN_RE.exec(tail);
-			const levelTok = lm ? lm[1].toLowerCase() : null;
-
-			/* sing-box prefixes every line with a UTC offset ("+0000 ") from
-			   Go's -0700 layout. TS_RE tolerates it for sorting, but the raw
-			   prefix is noise in the rendered text, so strip it here. */
-			let body = line.replace(/^\s*[+-]\d{4}\s+/, '');
-			let ts = m[1] + ' ' + m[2];
-
-			/* Core stamped in UTC: move both the sort key AND the rendered
-			   text. Shifting only the key would leave a row reading 15:17
-			   sitting between 23:1x rows. */
-			if (shift) {
-				const moved = shiftTs(ts, shift);
-				if (moved !== ts) {
-					body = body.replace(m[1], moved.slice(0, m[1].length))
-					           .replace(m[2], moved.slice(m[1].length + 1));
-					ts = moved;
-				}
-			}
-
-			cur = {
-				ts:    ts,
-				level: levelTok,           /* null = non-sing-box, always shown */
-				lines: [ body ]
-			};
-		}
-		else if (cur) {
-			cur.lines.push(line);
-		}
-		else if (line.trim() !== '') {
-			/* Lines before the first timestamp: keep as an untimed record. */
-			out.push({ ts: '', level: null, lines: [ line ] });
-		}
-	}
-
-	if (cur)
-		out.push(cur);
-
-	return out;
-}
-
-/* Read one log file and resolve to { src, records, error }. Never rejects, so
-   one unreadable source cannot blank out the whole merged view. */
-function readSourceLog(src, shift) {
-	return fs.read_direct(String.format('%s/%s.log', hp_dir, src.file), 'text')
-	.then((res) => {
-		const text = String(res || '').replace(/\r\n/g, '\n').trim();
-		/* Only the core's own log can be on a foreign clock; the shell
-		   scripts always stamp with BusyBox date (local). */
-		return { src: src, records: text ? splitRecords(text, src.core ? shift : 0) : [], error: null };
-	})
-	.catch((err) => {
-		/* A file that was never written (service not started yet, panel never
-		   updated, ...) is simply absent, which is the normal state of half
-		   the sources — it must NOT add a row. Six sources would otherwise
-		   open the box with a stack of identical "Log file does not exist."
-		   notices that do not even say which file is missing, and the reader
-		   reads them as log lines produced by the plugin. A real failure
-		   (permission denied, I/O error) is worth a row, and it names the
-		   file so it can be acted on. */
-		const missing = err.toString().includes('NotFoundError');
-		return {
-			src: src,
-			records: [],
-			error: missing ? null : _('Failed to read %s: %s').format(src.file + '.log', err)
-		};
-	});
-}
-
-/* Merge records from every source into one chronological list. Each item is
-   { si, ts, level, lines }, where si indexes log_sources. Records with a
-   recognised sing-box level (level !== null) can be filtered later by weight;
-   records with level=null (shell-script logs, errors, ...) always survive.
-   Untimed notices (a missing file, for instance) sort first so they stay
-   visible. Ties keep source order. */
-function mergeRecords(results) {
-	const all = [];
-
-	results.forEach((r, si) => {
-		if (r.error) {
-			all.push({ si: si, ts: '', level: null, lines: [ r.error ] });
-			return;
-		}
-
-		/* A source that simply has no output yet is skipped silently: the merged
-		   box should contain real log lines only, not per-source "empty"
-		   placeholders (which just added noise). The whole box still shows
-		   "Log is empty." when every source is empty. */
-		if (r.records.length === 0)
-			return;
-
-		for (let i = 0; i < r.records.length; i++) {
-			const rec = r.records[i];
-			all.push({ si: si, ts: rec.ts, level: rec.level, lines: rec.lines });
-		}
-	});
-
-	all.sort((a, b) => {
-		if (a.ts !== b.ts)
-			return (a.ts < b.ts) ? -1 : 1;
-		return a.si - b.si;
-	});
-
-	return all;
-}
-
-/* ── 显示视图：想看什么 ────────────────────────────────────────────────────
-   旧实现只有一个「日志级别」下拉，装的是 sing-box 的四个级别。问题是插件
-   自己的日志（主日志、三份下载日志）**行里根本没有级别 token**——过滤对它们
-   完全无效，于是选「错误」时屏幕上照样是满屏下载进度和规则集明细，这就是
-   「日志级别显示非常乱」的根因。
-   现在把两件事彻底分开：
-     · 显示视图（全部 / 事件 / 警告 / 错误）：纯前端过滤，不写服务配置、
-       不重启内核，选择记在 `config.log_view`；
-     · 内核输出级别（debug / info / warn / error）：仍是 sing-box 的
-       verbosity，写 `config.log_level` + `server.log_level`，需保存并应用。
-   插件日志没有级别 token，所以「警告 / 错误」除了看 token 还要按中文关键字
-   判定，否则这两个视图里会一条插件告警都筛不出来。 */
-const VIEW_KEYS = { all: 0, event: 1, warn: 2, error: 3 };
-
-function normalizeView(v) {
-	return (v === 'event' || v === 'warn' || v === 'error' || v === 'all') ? v : 'all';
-}
-
-/* 事件：0.1.27 起所有事件都写成统一横幅（==== 服务启动/停止/重载 ====、
-   ==== 规则集预下载开始/结束 ====、==== 订阅更新开始 ====、==== 规则集定时
-   更新开始/结束 ====、==== 脚本启动 ====）。少数结果行不是横幅但同样属于
-   事件（内核已启动、服务已停止、自动启动…），用一组显式动词兜住。
-   `让路`/`跳过下载` 也算事件：它们是「这次没做」的结论，不是告警。 */
-const EVENT_LINE_RE = /====|已启动|已停止|已退出|已更新|已下载|已清除|已注册|已完成|下载成功|更新结束|自动启动|让路|跳过下载|预下载完成/;
-
-function isEventRecord(rec) {
-	/* 界面自己的提示（内核 UTC→本地 换算）永远保留，它不是日志行。 */
-	if (rec.note)
-		return true;
-
-	return rec.lines.some((l) => EVENT_LINE_RE.test(l));
-}
-
-function isWarnRecord(rec) {
-	if (rec.note)
-		return false;
-
-	/* 分级语义：warn 视图包含 warn 及更严重的。level 为 null（插件日志）时
-	   LEVEL_ORDER[...] 是 undefined，比较为 false，落到下面的文本判定。 */
-	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.warn)
-		return true;
-
-	return rec.lines.some((l) => /警告|\bWARN(ING)?\b/i.test(l));
-}
-
-function isErrorRecord(rec) {
-	if (rec.note)
-		return false;
-
-	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.error)
-		return true;
-
-	/* 插件日志用中文写严重性：「错误：…」「下载失败 …」。只认英文 token 的话，
-	   选「错误」视图会一条插件错误都看不到。
-	   ⚠️ `失败(?!\s*\d)` 这个负向前瞻是必须的：结束横幅里那句
-	   「…已缓存 0，失败 0」是**统计**，不是错误；写成 `失败` 会把每一次成功
-	   的预下载都标成错误，「错误」视图反而被成功记录淹没。
-	   「错误」要求紧跟冒号，避免把「HTML 错误页」这类描述性文字算进来。 */
-	return rec.lines.some((l) => /错误[:：]|失败(?!\s*\d)|\bERROR\b|\bFATAL\b|\bPANIC\b/i.test(l));
-}
-
-function filterByView(merged, view) {
-	if (view === 'event')
-		return merged.filter(isEventRecord);
-	if (view === 'warn')
-		return merged.filter((rec) => isWarnRecord(rec) || isErrorRecord(rec));
-	if (view === 'error')
-		return merged.filter(isErrorRecord);
-
-	return merged;   /* all — and any unknown key falls back to showing everything */
-}
-
-/* Render merged records into the single scrollable box as plain log text.
-   The first line of each record is flush; continuation lines are indented. */
-function renderLogBox(merged) {
-	const box = E('div', { 'class': 'hp-log-scroll' });
-	const flat = [];
-
-	for (let i = 0; i < merged.length; i++) {
-		const rec = merged[i];
-		for (let j = 0; j < rec.lines.length; j++)
-			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j], note: (rec.note === true) });
-	}
-
-	if (flat.length === 0) {
-		box.appendChild(E('div', { 'class': 'hp-log-empty' }, [ _('Log is empty.') ]));
-		return box;
-	}
-
-	let truncated = false;
-	if (flat.length > LOG_MAX_LINES) {
-		/* Every leading notice line is kept: the UTC→local explanation sits
-		   at the very front, and dropping it would leave the reader with two
-		   clocks and no explanation exactly when the log is long enough to
-		   be interesting. Counting lines (not "the first row") matters
-		   because notices travel in one record — see the unshift in
-		   refresh(). */
-		let keep = 0;
-		while (keep < flat.length && flat[keep].note)
-			keep++;
-
-		flat.splice(keep, flat.length - LOG_MAX_LINES);
-		truncated = true;
-	}
-
-	for (let i = 0; i < flat.length; i++) {
-		const it = flat[i];
-		/* No per-source badge: the box shows plain log text. The record's
-		   first line is flush, its continuation lines (e.g. sing-box
-		   "Caused by:") are indented so the grouping stays readable. */
-		box.appendChild(E('div', {
-			'class': it.note ? 'hp-log-line hp-log-note'
-			                 : (it.first ? 'hp-log-line' : 'hp-log-line hp-log-cont')
-		}, [ it.text === '' ? ' ' : it.text ]));
-	}
-
-	if (truncated)
-		box.appendChild(E('div', { 'class': 'hp-log-trunc' },
-			[ _('… (only the last %s lines are shown)').format(LOG_MAX_LINES) ]));
-
-	return box;
-}
-
-/* Build the unified log view (top bar with level switch + one merged box). */
+/* Build the merged "runtime log" view: everything at once, plus the two
+   controls that decide what the reader sees. The reading / parsing / rendering
+   half lives in homeproxy/logview.js — 插件日志 and 内核日志 show the same
+   data with a narrower source list and no filters at all. */
 function renderUnifiedLog() {
-	/* Log files merged into the single timeline, in merge order. Only the file
-	   names matter now that the view renders plain log text without per-source
+	/* Merged into the single timeline, in merge order. Only the file names
+	   matter now that the view renders plain log text without per-source
 	   badges.
 
 	   ruleset_download 必须是直接来源：init.d 的预下载会把新增行 tail 进
@@ -475,13 +42,13 @@ function renderUnifiedLog() {
 	/* ── 控件一：显示视图（看什么） ──────────────────────────────────────
 	   与「内核输出级别」是两件事：这里只改前端过滤，不重启任何东西。 */
 	const view_choices = {
-		all:   zh('All',      _('All'),      '全部'),
-		event: zh('Events',   _('Events'),   '事件'),
-		warn:  zh('Warnings', _('Warnings'), '警告'),
-		error: zh('Errors',   _('Errors'),   '错误')
+		all:   logview.zh('All',      _('All'),      '全部'),
+		event: logview.zh('Events',   _('Events'),   '事件'),
+		warn:  logview.zh('Warnings', _('Warnings'), '警告'),
+		error: logview.zh('Errors',   _('Errors'),   '错误')
 	};
 
-	let view = normalizeView(uci.get('homeproxy', 'config', 'log_view'));
+	let view = logview.normalizeView(uci.get('homeproxy', 'config', 'log_view'));
 
 	const view_sel = E('select', {
 		'id': 'hp_log_view',
@@ -489,13 +56,13 @@ function renderUnifiedLog() {
 		'style': 'margin-left: 4px; width: 8em;',
 		'title': _('What to show. Purely a display filter: nothing is restarted.'),
 		'change': ui.createHandlerFn(this, (ev) => {
-			view = normalizeView(ev.target.value);
+			view = logview.normalizeView(ev.target.value);
 			/* 只 commit 不 apply：改的是「看什么」，不该为此重启内核。
 			   （uci.save() = 写回 /etc/config；apply 才会触发 reload。） */
 			uci.set('homeproxy', 'config', 'log_view', view);
 			uci.save();
-			/* 立刻重画，不等下一个 5 秒轮询。 */
-			return refresh(true);
+			/* 立刻重画，不等下一个轮询。 */
+			return page.refresh(true);
 		})
 	});
 
@@ -511,13 +78,13 @@ function renderUnifiedLog() {
 	   显示名一律纯中文——界面上不出现 debug/info/warn/error 这些英文，
 	   配置里存的原值是什么对操作者没有意义。 */
 	const log_level_choices = {
-		debug: zh('Debug', _('Debug'), '调试'),
-		info:  zh('Info',  _('Info'),  '信息'),
-		warn:  zh('Warn',  _('Warn'),  '警告'),
-		error: zh('Error', _('Error'), '错误')
+		debug: logview.zh('Debug', _('Debug'), '调试'),
+		info:  logview.zh('Info',  _('Info'),  '信息'),
+		warn:  logview.zh('Warn',  _('Warn'),  '警告'),
+		error: logview.zh('Error', _('Error'), '错误')
 	};
 
-	let selected = normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
+	let selected = logview.normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
 
 	/* Unified log level switcher: writes both the client (config) and the
 	   server (server) section so a single control tunes sing-box verbosity.
@@ -534,7 +101,7 @@ function renderUnifiedLog() {
 			uci.set('homeproxy', 'config', 'log_level', v);
 			uci.set('homeproxy', 'server', 'log_level', v);
 			/* save+apply restarts sing-box (kernel picks up the new level). */
-			refresh(true);
+			page.refresh(true);
 			return this.map.save(null, true).then(() => {
 				ui.changes.apply(true);
 			});
@@ -548,255 +115,24 @@ function renderUnifiedLog() {
 		}, [ log_level_choices[v] ]));
 	});
 
-	const log_body = E('div', {
-		'id': 'log_textarea',
-		/* Focusable so a click inside the box gives it focus; without this
-		   Ctrl+A never reaches our handler and selects the whole LuCI page. */
-		'tabindex': '0'
-	},
-		E('img', {
-			'src': L.resource('icons/loading.svg'),
-			'alt': _('Loading'),
-			'style': 'vertical-align:middle'
-		}, _('Collecting data...'))
-	);
-
-	/* The log box is a <div> (per-line colouring needs markup, which a
-	   <textarea> cannot do), so the browser's built-in "select all" climbs to
-	   the document and selects the entire page. Handle the shortcut here:
-	   Ctrl/Cmd+A while the box has focus selects only the log text. */
-	log_body.addEventListener('keydown', function(ev) {
-		if (!(ev.ctrlKey || ev.metaKey) || (ev.key !== 'a' && ev.key !== 'A'))
-			return;
-
-		ev.preventDefault();
-		ev.stopPropagation();
-
-		const selection = window.getSelection();
-		const range = document.createRange();
-		range.selectNodeContents(log_body);
-		selection.removeAllRanges();
-		selection.addRange(range);
-	});
-
-	/* Copy the whole log as plain text. navigator.clipboard is unavailable
-	   over plain http (the usual way LuCI is reached on a LAN address), so
-	   fall back to the execCommand path, which works everywhere. */
-	function copyLogText() {
-		/* innerText preserves the line breaks that block elements (one <div>
-		   per log line) render between rows — textContent concatenates them
-		   without newlines, which is why copy gave one long line while Ctrl+A
-		   (browser-rendered selection) kept the breaks. Fall back to
-		   textContent only if innerText is unavailable. */
-		const text = (log_body.innerText || log_body.textContent || '').trim();
-
-		if (!text.length)
-			return false;
-
-		const scratch = document.createElement('textarea');
-		scratch.value = text;
-		scratch.setAttribute('readonly', '');
-		scratch.style.position = 'fixed';
-		scratch.style.top = '-1000px';
-		document.body.appendChild(scratch);
-		scratch.select();
-
-		let copied = false;
-		try {
-			copied = document.execCommand('copy');
-		} catch (e) {
-			copied = false;
-		}
-
-		document.body.removeChild(scratch);
-		return copied;
-	}
-
-	let autoRefresh = true;
-
-	/* Scroll state of the merged box. Rebuilding the box on every poll tick
-	   empties the scroller first, so the browser clamps scrollTop back to 0
-	   and the reader lands on the oldest line right after a refresh — while
-	   the newest lines, the ones worth watching, sit at the bottom. Remember
-	   where we were: follow the tail while the reader is at the tail,
-	   otherwise leave their position untouched. */
-	function scrollState() {
-		const box = log_body.querySelector('.hp-log-scroll');
-
-		if (!box)
-			return { follow: true, top: 0 };
-
-		return {
-			follow: (box.scrollHeight - box.scrollTop - box.clientHeight) < 24,
-			top: box.scrollTop
-		};
-	}
-
-	function restoreScroll(state) {
-		const box = log_body.querySelector('.hp-log-scroll');
-
-		if (!box)
-			return;
-
-		box.scrollTop = state.follow ? box.scrollHeight : state.top;
-	}
-
-	/* `force` re-renders even when auto refresh is off: switching the level
-	   must re-filter what is already on screen, and that is a one-shot user
-	   action rather than a poll tick. */
-	function refresh(force) {
-		if (!autoRefresh && force !== true)
-			return;
-
-		/* Never clobber a selection: with auto-refresh on, the box is rebuilt
-		   every 5 s, which wipes whatever the user selected and makes copying
-		   impossible. Skip this tick while a selection lives inside the box. */
-		const selection = window.getSelection();
-		if (selection && !selection.isCollapsed &&
-			log_body.contains(selection.anchorNode))
-			return;
-
-		const scroll = scrollState();
-
-		return readCoreShift()
-			/* The shift has to travel to the render step below, which is a
-			   separate callback: resolving with only the source reads here
-			   leaves `shift` out of scope there and the whole refresh dies
-			   with a ReferenceError, leaving the spinner on screen forever.
-			   Carry it inside the resolved snapshot instead. */
-			.then((shift) => Promise.all(log_sources.map((src) => readSourceLog(src, shift)))
-				.then((results) => ({
-					shift: shift,
-					results: results || []
-				})))
-			.then((snap) => {
-				const shift = snap.shift;
-				const results = snap.results;
-				let merged = mergeRecords(results);
-				merged = filterByView(merged, view);
-
-				/* One notice only: the UTC→local explanation, which is there
-				   because the core lines would otherwise disagree with
-				   logread / SSH. Say it out loud only when the stamps were
-				   actually moved and a core line is on screen — a device
-				   marker alone is not something to explain.
-
-				   A second notice used to sit in front of the lines, spelling
-				   out "oldest / newest / device time" plus the rotation rule.
-				   It was removed on request (0.1.26): readers want the log box
-				   to contain log lines, not a paragraph about the log box, and
-				   the span it printed could not be trusted as a clock check
-				   anyway — the device clock it was compared against came out
-				   one UTC offset ahead on the reporter's firmware. Do not
-				   reintroduce it; the file/rotation facts belong in the docs.
-
-				   All notes travel as ONE record: renderLogBox() keeps a
-				   single leading note row when it truncates to LOG_MAX_LINES,
-				   so separate records would silently lose the rest. */
-				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
-				const notes = [];
-
-				if (shift && coreLines)
-					notes.push(_('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)));
-
-				if (notes.length)
-					merged.unshift({ si: 0, ts: '', level: null, note: true, lines: notes });
-
-				dom.content(log_body, renderLogBox(merged));
-				restoreScroll(scroll);
-			})
-			/* A rejected refresh used to leave the "Collecting data..."
-			   spinner on screen forever: the box is only replaced on success,
-			   so any runtime error inside the chain above looks exactly like
-			   "the page never finished loading" — no message, nothing to act
-			   on. Say what broke instead, in the same box. */
-			.catch((err) => {
-				dom.content(log_body, E('div', { 'class': 'hp-log-empty' }, [
-					_('Failed to load the log: %s').format(err && err.message ? err.message : err)
-				]));
-			});
-	}
-
-	/* Auto-refresh checkbox: when checked the log reloads on every poll tick
-	   (LuCI default 5s); when unchecked the view freezes on the last snapshot. */
-	const auto_cb = E('input', {
-		'type': 'checkbox',
-		'checked': autoRefresh ? '' : null,
-		'style': 'margin-left: 4px;',
-		'change': ui.createHandlerFn(this, (ev) => {
-			autoRefresh = ev.target.checked;
-			if (autoRefresh)
-				refresh();
-		})
-	});
-
-	/* Keyed registration: request() runs on every re-render and creates a new
-	   closure, which poll.add() would happily stack up. */
-	hp.pollAdd('log-refresh', refresh);
-
-	return E([
-		E('style', [ css ]),
-		E('div', { 'class': 'cbi-map' }, [
-			E('div', { 'class': 'cbi-section hp-log-topbar' }, [
-			/* All controls are left-aligned in a single row:
-			   what to show -> core verbosity -> auto refresh -> clean log. */
-			E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, [
-				E('div', { 'style': 'display:flex; align-items:center;' }, [
-					_('Show:'),
-					view_sel
-				]),
-				E('div', { 'style': 'display:flex; align-items:center;' }, [
-					_('Core log level:'),
-					level_sel
-				]),
-				E('label', { 'style': 'display:flex; align-items:center;' }, [
-					auto_cb,
-					_('Auto refresh')
-				]),
-				/* 两个按钮合成一组紧跟在「自动刷新」后面。整行是
-				   justify-content: flex-start，任何控件都不许被推到右边，
-				   顶栏一律左对齐、右侧不留空白。 */
-				E('div', { 'style': 'display:flex; align-items:center; gap:8px;' }, [
-					E('button', {
-							'class': 'btn cbi-button cbi-button-action',
-							'click': ui.createHandlerFn(this, () => {
-								return Promise.all(log_sources.map((src) =>
-									L.resolveDefault(callLogClean(src.file), {})
-								)).then(() => {
-									/* Re-read right away: without this the box
-									   keeps showing the rows that were just
-									   deleted until the next 5 s poll tick,
-									   which reads as "clean does nothing". */
-									return refresh(true);
-								});
-							})
-						}, [ _('Clean log') ]),
-					/* Selecting with Ctrl+A only works while the box has focus,
-					   which is easy to miss; this always copies everything. */
-					E('button', {
-							'class': 'btn cbi-button',
-							'click': ui.createHandlerFn(this, () => {
-								const ok = copyLogText();
-								ui.addNotification(null,
-									E('p', ok ? _('Log copied to clipboard.') : _('Nothing to copy.')),
-									ok ? 'info' : 'warning');
-							})
-						}, [ _('Copy log') ])
-				])
-			])
+	const page = logview.renderPage(this, {
+		key: 'log-refresh',
+		sources: log_sources,
+		head: [
+			E('div', { 'style': 'display:flex; align-items:center;' }, [
+				_('Show:'),
+				view_sel
 			]),
-			E('div', { 'class': 'cbi-section' }, [
-				log_body,
-				E('div', { 'style': 'text-align:right' },
-					E('small', {}, [
-						_('Refresh every %s seconds.').format(L.env.pollinterval),
-						' · ',
-						_('Click the log first, then Ctrl+A selects it all.')
-					])
-				)
+			E('div', { 'style': 'display:flex; align-items:center;' }, [
+				_('Core log level:'),
+				level_sel
 			])
-		])
-	]);
+		],
+		/* 闭包读的是外面的 view，所以下拉一变、下一次 refresh 就换了过滤。 */
+		filter: (merged) => logview.filterByView(merged, view)
+	});
+
+	return E(page.nodes);
 }
 
 return view.extend({

@@ -524,6 +524,10 @@ msgstr "连接检查"
 msgid "Copy log"
 msgstr "复制日志"
 
+#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:40
+msgid "Core Log"
+msgstr "内核日志"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:815
 msgid "Core Status"
 msgstr "核心状态"
@@ -552,6 +556,10 @@ msgstr "当前架构 reF1nd 暂未支持。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1344
 msgid "Current node / Latency"
 msgstr "当前节点 / 延迟"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:47
+msgid "Currently in effect: %s per log file."
+msgstr "当前生效：每个日志文件 %s。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3647
 msgid "Custom"
@@ -1208,6 +1216,10 @@ msgstr "日志加载失败：%s"
 msgid "Failed to read %s: %s"
 msgstr "读取 %s 失败：%s"
 
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:166
+msgid "Failed to save the log settings: %s"
+msgstr "日志设置保存失败：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:295
 msgid "Failed to start rule-set download: %s"
 msgstr "启动规则集下载失败：%s"
@@ -1827,6 +1839,10 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
+#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:54
+msgid "Log Settings"
+msgstr "日志设置"
+
 #: htdocs/luci-static/resources/view/homeproxy/log.js:781
 msgid "Log copied to clipboard."
 msgstr "日志已复制到剪贴板。"
@@ -1834,6 +1850,22 @@ msgstr "日志已复制到剪贴板。"
 #: htdocs/luci-static/resources/view/homeproxy/log.js:417
 msgid "Log is empty."
 msgstr "日志为空。"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:40
+msgid "Log refresh interval"
+msgstr "日志刷新时间"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:161
+msgid "Log settings saved."
+msgstr "日志设置已保存。"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:53
+msgid "Log size limit"
+msgstr "日志大小上限"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:64
+msgid "Log size limit unit"
+msgstr "日志大小上限单位"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1585
 msgid "MTU"
@@ -2388,6 +2420,10 @@ msgstr "置顶"
 msgid "Plugin"
 msgstr "插件"
 
+#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:47
+msgid "Plugin Log"
+msgstr "插件日志"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:807
 msgid "Plugin Version"
 msgstr "插件版本"
@@ -2686,6 +2722,10 @@ msgstr "解析策略"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:253
 msgid "Resources management"
 msgstr "资源管理"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:196
+msgid "Restore defaults"
+msgstr "恢复默认"
 
 #: htdocs/luci-static/resources/homeproxy.js:1687
 #: htdocs/luci-static/resources/view/homeproxy/client.js:207
@@ -3275,6 +3315,10 @@ msgid ""
 msgstr ""
 "用于 ACME TLS-ALPN 质询的备用端口； 系统必须将 443 转发到此端口以使质询成功。"
 
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_core.js:32
+msgid "The core has not written anything yet."
+msgstr "内核还没有任何输出。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3234
 msgid "The default rule set directory is /etc/homeproxy/ruleset/."
 msgstr "规则集默认目录为 /etc/homeproxy/ruleset/。"
@@ -3347,9 +3391,17 @@ msgstr "PEM 格式的 ECH 配置路径。如果为空，将尝试从 DNS 加载�
 msgid "The path to the server certificate, in PEM format."
 msgstr "服务端证书路径，需要 PEM 格式。"
 
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_plugin.js:31
+msgid "The plugin has not written anything yet."
+msgstr "插件还没有写过任何日志。"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:207
 msgid "The port must be unique."
 msgstr "必须是唯一端口。"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:200
+msgid "The refresh interval only decides how often these log pages re-read their files. It is stored separately from the service configuration, so changing it never restarts the core."
+msgstr "刷新时间只决定这几个日志页面多久重新读一次文件。它和服务配置分开存放，改它不会重启内核。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2920
 msgid "The response code."
@@ -3410,6 +3462,10 @@ msgid ""
 msgstr ""
 "这是 TUIC 的 UDP over TCP 协议移植， 旨在提供 TUIC 不提供的基于 QUIC 流的 "
 "UDP 中继模式。"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:50
+msgid "There are six log files in total."
+msgstr "一共 6 个日志文件。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1376
 msgid "This node dials out directly."
@@ -3774,6 +3830,10 @@ msgstr "三"
 msgid "What to show. Purely a display filter: nothing is restarted."
 msgstr "选择要看什么。这只是显示过滤，不会重启任何服务。"
 
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:204
+msgid "When a log file reaches the size limit it is copied to .1 (one generation) and then emptied, so the oldest lines are the ones that go. The log pages no longer cut the display at a fixed number of lines: whatever is in the file is shown."
+msgstr "日志文件达到上限时先另存为 .1（保留一代）再清空，被丢弃的是最早的行。日志页面不再按固定条数截断显示：文件里有多少行就显示多少行。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1785
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2037
 msgid "Whitelist mode"
@@ -3871,6 +3931,10 @@ msgstr "gRPC 服务名称"
 msgid "gVisor"
 msgstr "gVisor"
 
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:167
+msgid "if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
+msgstr "如果是刚升级完，请先重启 rpcd（/etc/init.d/rpcd restart）"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:336
 msgid "loading..."
 msgstr "加载中..."
@@ -3924,6 +3988,10 @@ msgstr "quic-go / uquic chrome"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:330
 msgid "reF1nd sing-box core"
 msgstr "reF1nd sing-box 内核"
+
+#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:41
+msgid "seconds"
+msgstr "秒"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:291
 msgid "sing-box core management"

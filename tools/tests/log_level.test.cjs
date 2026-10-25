@@ -1,9 +1,9 @@
 /*
- * Filtering of the unified log view — exercised for real.
+ * Filtering of the log view — exercised for real.
  *
- * log.js cannot be `require`d (it ends with `return view.extend(...)`, which is
- * only valid inside LuCI's loader wrapper), so the pure part of the module is
- * sliced out and evaluated here: the regexes, LEVEL_ORDER, normalizeLevel,
+ * logview.js is a plain module (`return { ... }`), so it cannot simply be
+ * require'd here (LuCI's require is not available in bare node), but its pure
+ * part is sliced out and evaluated: the regexes, LEVEL_ORDER, normalizeLevel,
  * normalizeView, shiftTs, splitRecords, mergeRecords and the view filters.
  * Nothing below touches the DOM, rpc or fs, so the slice runs in a bare node
  * process.
@@ -19,6 +19,10 @@
  * every plugin-written line (no level token at all) immune to filtering — the
  * reason the page looked chaotic. These assertions are what keep the two
  * concepts apart from now on.
+ *
+ * The code lives in homeproxy/logview.js rather than in the view itself
+ * (0.1.28 split the log UI into four pages: 运行日志 / 日志设置 / 插件日志 /
+ * 内核日志), and that is the only reason this test reads that file.
  */
 
 'use strict';
@@ -26,16 +30,16 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOG_JS = path.join(__dirname, '..', '..',
-	'luci-app-homeproxy', 'htdocs', 'luci-static', 'resources', 'view', 'homeproxy', 'log.js');
+const LOGVIEW_JS = path.join(__dirname, '..', '..',
+	'luci-app-homeproxy', 'htdocs', 'luci-static', 'resources', 'homeproxy', 'logview.js');
 
-const src = fs.readFileSync(LOG_JS, 'utf8');
+const src = fs.readFileSync(LOGVIEW_JS, 'utf8');
 
 const from = src.indexOf('const TS_RE');
 const to = src.indexOf('/* Render merged records');
 
 if (from < 0 || to < 0 || to <= from) {
-	console.error('could not locate the pure section of log.js (TS_RE .. filterByLevel)');
+	console.error('could not locate the pure section of logview.js (TS_RE .. filterByView)');
 	process.exit(1);
 }
 
@@ -44,9 +48,9 @@ const block = src.slice(from, to);
 let api;
 
 try {
-	/* fs / _ / hp_dir are only referenced by readCoreShift and readSourceLog,
+	/* fs / _ / run_dir are only referenced by readCoreShift and readSourceLog,
 	   which this test never calls; stubs keep the slice evaluable. */
-	api = new Function('fs', '_', 'hp_dir', block + `
+	api = new Function('fs', '_', 'run_dir', block + `
 		return { splitRecords, mergeRecords, filterByView, isEventRecord,
 		         isWarnRecord, isErrorRecord, normalizeLevel, normalizeView,
 		         LEVEL_ORDER, shiftTs };`)({ read_direct: () => Promise.resolve('') }, (s) => s,

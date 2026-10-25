@@ -1,11 +1,12 @@
 /*
- * The unified log view, rendered for real.
+ * The log page, rendered for real.
  *
- * log.js cannot be `require`d (it ends with `return view.extend(...)`), so the
- * whole module body is evaluated inside a Function with the LuCI modules it
- * needs passed in as stubs, renderUnifiedLog() is called, and one poll tick is
- * fired. Nothing here asserts *how* the code is written; it only checks that a
- * poll tick ends with a log box on screen.
+ * homeproxy/logview.js is a plain LuCI module, so its body is evaluated inside
+ * a Function with the LuCI modules it needs passed in as stubs, renderPage()
+ * is called with a source list, and one poll tick is fired. Nothing here
+ * asserts *how* the code is written; it only checks that a poll tick ends with
+ * a log box on screen, and that the box holds exactly the records the page is
+ * supposed to show.
  *
  * This exists because a `shift` that was left in the closure of a previous
  * `.then` only surfaced at request time: the promise chain rejected with
@@ -32,14 +33,28 @@ catch (e) {
 	process.exit(0);
 }
 
-const LOG_JS = path.join(__dirname, '..', '..',
-	'luci-app-homeproxy', 'htdocs', 'luci-static', 'resources', 'view', 'homeproxy', 'log.js');
+const LOGVIEW_JS = path.join(__dirname, '..', '..',
+	'luci-app-homeproxy', 'htdocs', 'luci-static', 'resources', 'homeproxy', 'logview.js');
 
 const SAMPLE = [
 	'2026-10-24 09:46:40 ==== 规则集预下载开始（共 1 条，预算 600s）====',
 	'+0800 2026-10-24 09:54:05 INFO [3784988318 83ms] outbound/vless[hk]: outbound connection to 1.2.3.4:443',
 	'2026-10-24 09:54:06 已更新 geosite-cn（431 KB）'
 ].join('\n');
+
+/* Both pages that are actually mounted pass their own list; the default here
+   mirrors 插件日志 so a case can say "this page shows four files". */
+const PLUGIN_SOURCES = [
+	{ file: 'homeproxy' },
+	{ file: 'ruleset_download' },
+	{ file: 'core_download' },
+	{ file: 'panel_download' }
+];
+
+const CORE_SOURCES = [
+	{ file: 'sing-box-c', core: true },
+	{ file: 'sing-box-s', core: true }
+];
 
 let failures = 0;
 let checks = 0;
@@ -77,17 +92,14 @@ if (typeof String.format !== 'function') {
 }
 
 /**
- * Boot one isolated copy of the view.
+ * Boot one isolated copy of the module.
  *
  * @param {object} opts
  * @param {function} opts.read  (path) => Promise<string>, the fs stub
  * @returns {{ tick: function(): Promise<void>, box: function(): Element }}
  */
 function boot(opts) {
-	const src = fs.readFileSync(LOG_JS, 'utf8')
-		/* Make the module hand back the renderer instead of the view object. */
-		.replace('return view.extend({',
-			'__out.renderUnifiedLog = renderUnifiedLog;\n__out.view = view.extend({')
+	const src = fs.readFileSync(LOGVIEW_JS, 'utf8')
 		.replace(/^'use strict';\n/, '')
 		.replace(/^'require [^']*';\n/gm, '');
 
@@ -98,6 +110,7 @@ function boot(opts) {
 	global.document = dom.window.document;
 
 	let pollFn = null;
+	let pollInterval = null;
 
 	/* LuCI's E() has an optional attributes argument: the second argument is
 	   treated as children whenever it is not a plain attribute map, so
@@ -158,6 +171,8 @@ function boot(opts) {
 			parent.appendChild(c);
 	}
 
+	const settings = opts.settings || { refresh: 5, size: 1, unit: 'MB' };
+
 	const stubs = {
 		dom: {
 			content: function (node, content) {
@@ -165,21 +180,17 @@ function boot(opts) {
 				append(node, content);
 			}
 		},
-		form: {},
 		fs: { read_direct: (p) => opts.read(p) },
 		rpc: {
-			declare: () => () => Promise.resolve(opts.systemInfo || {})
+			declare: () => () => Promise.resolve(settings)
 		},
-		uci: { get: () => (opts.logLevel || 'info'), set: () => {} },
 		ui: {
 			createHandlerFn: (ctx, fn) => fn,
-			addNotification: () => {},
-			changes: { apply: () => {} }
+			addNotification: () => {}
 		},
-		view: { extend: (o) => o },
 		hp: {
 			installCloseButtonText: () => {},
-			pollAdd: (key, fn) => { pollFn = fn; return true; }
+			pollAdd: (key, fn, interval) => { pollFn = fn; pollInterval = interval; return true; }
 		},
 		E: E,
 		_: (s) => s,
@@ -187,18 +198,30 @@ function boot(opts) {
 			resource: () => 'loading.svg',
 			env: { pollinterval: 5 },
 			bind: (f, c) => f.bind(c),
-			resolveDefault: (p) => p
-		},
-		poll: { add: () => true, remove: () => {} }
+			resolveDefault: (p, d) => Promise.resolve(p).catch(() => d)
+		}
 	};
 
+	/* The module body ends with `return { … }`, so it has to be evaluated
+	   inside its own function scope before its exports can be reached. */
 	const fn = new Function(...Object.keys(stubs),
-		'const __out = {};\n' + src + '\nreturn __out;');
-	const out = fn.apply(null, Object.values(stubs));
+		'return (function(){\n' + src + '\n})().renderPage;');
+	const renderPage = fn.apply(null, Object.values(stubs));
 
 	const host = document.createElement('div');
 	host.id = 'host';
-	append(host, out.renderUnifiedLog.call({ map: { save: () => Promise.resolve() } }));
+
+	/* interval is passed explicitly so the settings rpcd call stays out of the
+	   picture: this test is about rendering, not about the settings page. */
+	const page = renderPage({}, {
+		key: 'log-refresh',
+		sources: opts.sources || PLUGIN_SOURCES,
+		filter: opts.filter,
+		empty: opts.empty,
+		interval: 5
+	});
+
+	append(host, page.nodes);
 	document.body.appendChild(host);
 
 	return {
@@ -209,7 +232,8 @@ function boot(opts) {
 
 			return Promise.resolve().then(() => pollFn());
 		},
-		box: () => document.querySelector('#log_textarea')
+		box: () => document.querySelector('#log_textarea'),
+		interval: () => pollInterval
 	};
 }
 
@@ -220,6 +244,9 @@ function run(name, opts, assertions) {
 
 	check('the box starts as a loading placeholder',
 		view.initial().indexOf('Collecting data') >= 0, JSON.stringify(view.initial()));
+
+	check('the poll interval came from the settings, not a hardcoded 5s',
+		view.interval() === 5, String(view.interval()));
 
 	return view.tick()
 		.then(() => {
@@ -247,7 +274,7 @@ function run(name, opts, assertions) {
    but only when the core really logged in UTC — here it does not. */
 const CASES = [
 {
-	name: 'log view: every source readable',
+	name: 'log page: every source readable',
 	opts: {
 		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'local\n' : SAMPLE)
 	},
@@ -268,12 +295,9 @@ const CASES = [
 /* NotFoundError is the normal state (sing-box-s only exists in server mode),
    and must not print a row of its own. */
 {
-	name: 'log view: files that were never written',
+	name: 'log page: files that were never written',
 	opts: {
-		read: (p) => (String(p).indexOf('core_tz') >= 0)
-			? Promise.reject(new Error('NotFoundError: core_tz'))
-			: Promise.reject(new Error('NotFoundError: ENOENT')),
-		systemInfo: {}
+		read: (p) => Promise.reject(new Error('NotFoundError: ENOENT'))
 	},
 	assertions: (box) => {
 		check('an all-missing set renders the empty state',
@@ -285,14 +309,12 @@ const CASES = [
 
 /* --- 3. a real read failure is reported and names the file ---------------- */
 {
-	name: 'log view: unreadable file',
+	name: 'log page: unreadable file',
 	opts: {
-		read: (p) => (String(p).indexOf('core_tz') >= 0)
-			? Promise.reject(new Error('NotFoundError: core_tz'))
-			: (String(p).indexOf('sing-box-s.log') >= 0
-				? Promise.reject(new Error('Permission denied'))
-				: Promise.resolve(SAMPLE)),
-		systemInfo: {}
+		read: (p) => (String(p).indexOf('sing-box-s.log') >= 0
+			? Promise.reject(new Error('Permission denied'))
+			: Promise.resolve(SAMPLE)),
+		sources: CORE_SOURCES
 	},
 	assertions: (box) => {
 		check('a read failure is shown instead of being swallowed',
@@ -305,11 +327,11 @@ const CASES = [
 /* The box is only redrawn on success, so anything that throws inside the chain
    leaves the loading spinner up indefinitely. The catch at the end of
    refresh() has to replace it with a message. The failure is injected in the
-   source reads, not in rpc: since the span/device-time notice was removed
-   (0.1.26) the refresh chain makes no rpc call at all, so an rpc-side throw
-   would never run and this case would pass for the wrong reason. */
+   source reads, not in rpc: the refresh chain makes no rpc call at all (the
+   settings read happens once at render time), so an rpc-side throw would never
+   run and this case would pass for the wrong reason. */
 {
-	name: 'log view: broken refresh',
+	name: 'log page: broken refresh',
 	opts: {
 		read: (p) => {
 			if (String(p).indexOf('core_tz') >= 0)
@@ -334,9 +356,10 @@ const CASES = [
    it the reader sees core lines eight hours off every other source and has no
    way to know they were converted on purpose. */
 {
-	name: 'log view: core logged in UTC',
+	name: 'log page: core logged in UTC',
 	opts: {
-		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'utc 28800\n' : SAMPLE)
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'utc 28800\n' : SAMPLE),
+		sources: CORE_SOURCES
 	},
 	assertions: (box) => {
 		check('the UTC→local conversion is still explained',
@@ -352,10 +375,68 @@ const CASES = [
 			box.textContent.indexOf('2026-10-24 17:54:05') >= 0,
 			JSON.stringify(box.textContent.slice(-60)));
 	}
+},
+
+/* --- 6. the display is bounded by the file size, not by a line count ------ */
+/* 0.1.28: the "only the last N lines are shown" cap was removed on request.
+   Truncation is now the log file's job (日志设置 → 日志大小上限), so a file
+   that holds 1500 lines must render 1500 rows — no red "only the last … lines"
+   footer, and no silently missing history. */
+{
+	name: 'log page: no line cap (size limit replaces it)',
+	opts: {
+		read: (p) => {
+			if (String(p).indexOf('core_tz') >= 0)
+				return Promise.resolve('local\n');
+
+			const lines = [];
+
+			for (let i = 0; i < 1500; i++) {
+				const d = new Date(Date.UTC(2026, 9, 24, 0, 0, 0) + i * 1000);
+				const pad = (n) => ((n < 10 ? '0' : '') + n);
+
+				lines.push('2026-10-24 ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) +
+					':' + pad(d.getUTCSeconds()) + ' 第 ' + i + ' 行');
+			}
+
+			return Promise.resolve(lines.join('\n'));
+		},
+		sources: [ { file: 'homeproxy' } ]
+	},
+	assertions: (box) => {
+		check('every line of a long file is rendered',
+			box.querySelectorAll('.hp-log-line').length === 1500,
+			box.querySelectorAll('.hp-log-line').length + ' rows');
+		check('no "only the last N lines" footer is rendered',
+			!/only the last|只显示最后/i.test(box.textContent));
+		check('the oldest rendered row is the first line of the file',
+			box.textContent.indexOf('第 0 行') >= 0);
+	}
+},
+
+/* --- 7. 插件日志 / 内核日志 show everything ------------------------------- */
+/* These two pages exist precisely so that "the line is in the file but not on
+   screen" cannot happen: no display filter, no verbosity filter. A DEBUG line
+   must be on screen even though the default verbosity is info. */
+{
+	name: 'plugin page: no filter at all',
+	opts: {
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'local\n'
+			: [ '2026-10-24 09:54:05 DEBUG 这条不该被级别过滤掉',
+			    '2026-10-24 09:54:06 错误：这条也不该被隐藏' ].join('\n')),
+		sources: [ { file: 'homeproxy' } ]
+	},
+	assertions: (box) => {
+		check('a DEBUG row survives (no level filter)',
+			box.textContent.indexOf('这条不该被级别过滤掉') >= 0,
+			JSON.stringify(box.textContent.slice(0, 80)));
+		check('an error row survives too',
+			box.textContent.indexOf('这条也不该被隐藏') >= 0);
+	}
 }
 ];
 
-/* One case at a time: each boot() rebinds window/document for the view. */
+/* One case at a time: each boot() rebinds window/document for the module. */
 let chain = Promise.resolve();
 
 CASES.forEach((c) => {
@@ -367,4 +448,3 @@ chain.then(() => {
 		('\nALL ' + checks + ' CHECKS PASSED'));
 	process.exit(failures ? 1 : 0);
 });
-

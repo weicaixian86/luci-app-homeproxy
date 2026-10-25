@@ -336,8 +336,11 @@ else
 fi
 
 LOG_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
-if grep -q 'core_tz' "$LOG_JS" && grep -q 'shiftTs' "$LOG_JS" \
-   && grep -q 'core: true' "$LOG_JS"; then
+# 0.1.28 把读文件 / 切记录 / 合并 / 渲染搬进了共用模块：运行日志、插件日志、
+# 内核日志三个页面各传一份来源清单，解析和渲染只有这一份实现。
+LOGVIEW="$PKG/htdocs/luci-static/resources/homeproxy/logview.js"
+if grep -q 'core_tz' "$LOGVIEW" && grep -q 'shiftTs' "$LOGVIEW" \
+   && grep -q 'core: true' "$LOG_JS" && grep -q 'core: true' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js"; then
 	ok "log view puts the core's stamps on the local clock"
 else
 	bad "log view would keep two clocks (core_tz marker not consumed)"
@@ -358,11 +361,12 @@ else
 	bad "level choices are '$lv' (sing-box accepts debug/info/warn/error)"
 fi
 
-if [ "$(grep -c "hp.pollAdd('log-refresh', refresh)" "$LOG_JS")" = 1 ] \
+if [ "$(grep -c "key: 'log-refresh'" "$LOG_JS")" = 1 ] \
+   && grep -q 'callSettings' "$LOGVIEW" \
    && ! grep -qE "pollAdd\('log-refresh', refresh, *[0-9]" "$LOG_JS"; then
-	ok "one poll registration, no per-level interval"
+	ok "one poll registration per page, interval comes from 日志设置"
 else
-	bad "log refresh interval differs by level (or poll registered twice)"
+	bad "log refresh interval is hardcoded (or poll registered twice)"
 fi
 
 if grep -q "uci.set('homeproxy', 'config', 'log_level'" "$LOG_JS" \
@@ -372,7 +376,7 @@ else
 	bad "level change misses a section (client or server keeps old verbosity)"
 fi
 
-if grep -q 'function scrollState' "$LOG_JS" && grep -q 'restoreScroll(scroll)' "$LOG_JS"; then
+if grep -q 'function scrollState' "$LOGVIEW" && grep -q 'restoreScroll(scroll)' "$LOGVIEW"; then
 	ok "reader keeps their scroll position across a rebuild"
 else
 	bad "every rebuild jumps back to the oldest line (new lines are at the bottom)"
@@ -403,7 +407,7 @@ done
 # "Log file does not exist." row per missing file — indistinguishable from a
 # real log line and useless because it never named the file. Now: absent is
 # silent, a genuine read failure names the file.
-if grep -q "missing ? null" "$LOG_JS" && grep -q "src.file + '.log'" "$LOG_JS"; then
+if grep -q "missing ? null" "$LOGVIEW" && grep -q "src.file + '.log'" "$LOGVIEW"; then
 	ok "missing log files are silent; real read errors name the file"
 else
 	bad "missing log files still render as rows (or errors are unnamed)"
@@ -425,13 +429,14 @@ else
 	bad "log_clean whitelist '$clean_wl' != log sources '$log_srcs' (Clean log no-ops on one)"
 fi
 
-# The leading notice (UTC shift) is one record and may carry several lines.
-# Keeping "the first row" on truncation silently dropped the rest of it, which
-# is exactly the part that explains why the two clocks disagree.
-if grep -qF 'while (keep < flat.length && flat[keep].note)' "$LOG_JS"; then
-	ok "truncation keeps every leading notice line"
+# 0.1.28：显示不再按条数截断。以前是「最多 1000 行 + 一句红字」——文件里
+# 明明有更早的记录、界面上却看不到，而且「能看多少」和「文件能长多大」是两个
+# 互不相干的数字。现在只有一个上限：日志文件本身的大小（日志设置里可改）。
+if ! grep -q 'LOG_MAX_LINES' "$LOGVIEW" && ! grep -q 'flat.splice' "$LOGVIEW" \
+   && ! grep -q 'only the last %s lines' "$LOGVIEW"; then
+	ok "the log box shows every line in the file (no line-count cap)"
 else
-	bad "truncation keeps only the first notice line (second notice is lost)"
+	bad "the log box still truncates by line count (size limit should be the only cap)"
 fi
 
 # Download logs are event logs: a handful of lines per run, never big enough
@@ -446,6 +451,112 @@ if grep -q "core_download.log" "$CL_LOG" \
 else
 	bad "download logs never rotate (old downloads linger in /var/run)"
 fi
+
+# ── 日志设置 + 三个新页面（0.1.28）──────────────────────────────────────────
+# 需求：运行日志下面再加「日志设置 / 插件日志 / 内核日志」三个选项卡；
+#   日志设置能改刷新时间与日志文件大小上限（值 + 单位，见设计稿）；
+#   显示不再限制条数，改为限制文件大小；
+#   插件日志 / 内核日志不分级别、全部显示。
+section "log settings + plugin/core log pages (0.1.28)"
+
+RPCD="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+MENU="$PKG/root/usr/share/luci/menu.d/luci-app-homeproxy.json"
+for pair in "log_settings:Log Settings" "log_plugin:Plugin Log" "log_core:Core Log"; do
+	id="${pair%%:*}"; title="${pair##*:}"
+	if grep -q "\"admin/services/homeproxy/$id\"" "$MENU" \
+	   && grep -qF "\"title\": \"$title\"" "$MENU"; then
+		ok "menu item $id ($title) exists"
+	else
+		bad "menu item $id is missing (a tab would not be rendered)"
+	fi
+done
+
+for v in log_plugin log_core; do
+	if grep -q "'require homeproxy.logview as logview'" "$PKG/htdocs/luci-static/resources/view/homeproxy/$v.js"; then
+		ok "$v reuses the shared logview module (no second parser)"
+	else
+		bad "$v duplicates the parsing/rendering code"
+	fi
+done
+
+# 这两个页面存在的意义就是「原样看全部」：一旦它们开始按视图/级别过滤，
+# 「文件里有、界面上没有」就会重新出现。
+if ! grep -q 'filter:' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_plugin.js" \
+   && ! grep -q 'filter:' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js" \
+   && ! grep -q 'log_view' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js"; then
+	ok "plugin/core pages pass no filter: every level is shown"
+else
+	bad "a plugin/core page filters by view or level (rows would disappear)"
+fi
+
+# 设置必须写在 /etc/homeproxy/log.conf，不能进 uci：uci commit 会改
+# /etc/config/homeproxy 的 mtime → procd 的 config.change → reload_service，
+# 也就是「为了改个刷新间隔把隧道重启一次」。
+LOGSET="$PKG/htdocs/luci-static/resources/view/homeproxy/log_settings.js"
+if ! grep -q 'uci\.' "$LOGSET" && grep -q 'logview.saveSettings' "$LOGSET"; then
+	ok "log settings never touch uci (a commit would restart the core)"
+else
+	bad "log settings go through uci: saving them reloads (stop+start) the service"
+fi
+
+if grep -q 'log_settings_save' "$RPCD" && grep -q '/log.conf' "$RPCD" \
+   && grep -q 'mv -f' "$RPCD"; then
+	ok "rpcd writes log.conf atomically (no half-written file at the 180s boundary)"
+else
+	bad "rpcd has no log_settings_save / writes log.conf in place"
+fi
+
+if grep -q 'LOG_CONF' "$CL_LOG" && grep -q 'resolve_limit' "$CL_LOG" \
+   && [ "$(grep -c 'resolve_limit' "$CL_LOG")" -ge 2 ]; then
+	ok "clean_log.sh re-reads the size limit on every round (no restart needed)"
+else
+	bad "clean_log.sh reads the limit once: a new value only applies after a restart"
+fi
+
+# 功能性验证：把三个函数切出来，按真实的 log.conf 计算阈值。这一项防的是
+# 「写的是 1 MB、实际按 64 KiB 轮转」这种只在设备上才看得见的偏差。
+CL_FN="$WORK/cleanlog.fn.sh"
+sed -n '/^log_conf_get()/,/^}/p;/^resolve_limit()/,/^}/p' "$CL_LOG" > "$CL_FN"
+cat > "$WORK/cleanlog.probe.sh" <<'PROBE'
+NAME=homeproxy
+RUN_DIR=/var/run/homeproxy
+LOG_CONF="$1"
+MIN_BYTES=$((64 * 1024))
+MAX_BYTES=$((1024 * 1024 * 1024))
+uci() { return 1; }
+. "$CL_FN"
+resolve_limit
+printf '%s' "$log_max_bytes"
+PROBE
+
+cl_probe() {
+	printf '%s\n' "$2" > "$WORK/cleanlog.conf"
+	CL_FN="$CL_FN" sh "$WORK/cleanlog.probe.sh" "$WORK/cleanlog.conf" 2>/dev/null | tr -d '\r'
+}
+
+case "$(cl_probe mb 'size=1
+unit=MB')" in
+	1048576) ok "log.conf size=1 unit=MB means 1 MiB (what the UI shows)" ;;
+	*) bad "log.conf size=1 unit=MB does not become 1 MiB" ;;
+esac
+
+case "$(cl_probe kb 'size=512
+unit=KB')" in
+	524288) ok "log.conf size=512 unit=KB means 512 KiB" ;;
+	*) bad "the KB unit is ignored (threshold would be 512 MiB)" ;;
+esac
+
+case "$(cl_probe zero 'size=0
+unit=MB')" in
+	65536) ok "a zero size is clamped to the 64 KiB floor" ;;
+	*) bad "size=0 would leave the log with no room at all" ;;
+esac
+
+: > "$WORK/cleanlog.conf"
+case "$(CL_FN="$CL_FN" sh "$WORK/cleanlog.probe.sh" "$WORK/cleanlog.conf" 2>/dev/null | tr -d '\r')" in
+	1048576) ok "an install without log.conf falls back to 1 MiB" ;;
+	*) bad "no log.conf and no uci value does not fall back to 1 MiB" ;;
+esac
 
 # ----------------------------------------------------------------- catalog
 section "gettext catalog"
@@ -1165,13 +1276,14 @@ fi
 # handleSaveApply 上已经踩过一次，那次死了四个版本）。
 # 匹配 msgid 原文（而不是日志框里任何一段文字）：正文注释里也会提到这条 note，
 # 用宽泛的模式只会把注释本身判成失败。
-if grep -q "Log lines stay in write order\|oldest %s, newest" "$LOGJS"; then
+if grep -q "Log lines stay in write order\|oldest %s, newest" "$LOGJS" \
+   || grep -q "Log lines stay in write order\|oldest %s, newest" "$LOGVIEW"; then
 	bad "log.js still prints the oldest/newest/device-time note above the log lines"
 else
 	ok "the log box holds log lines only (no oldest/newest/device-time note)"
 fi
 
-if grep -q 'device_time' "$RPCD" || grep -q 'device_time' "$LOGJS"; then
+if grep -q 'device_time' "$RPCD" || grep -q 'device_time' "$LOGVIEW" || grep -q 'device_time' "$LOGJS"; then
 	bad "device_time survives without a caller; delete it instead of leaving dead code"
 else
 	ok "the device_time rpcd method is gone with its only consumer (no dead code)"
@@ -1211,8 +1323,8 @@ fi
 
 # 顶栏所有控件一律左对齐：「清空日志 / 复制日志」紧跟在「自动刷新」后面，
 # 不许用 auto 外边距或右浮动把按钮推到右边（用户明确要求往左靠）。
-if ! grep -qE 'margin-left:[[:space:]]*auto|float:[[:space:]]*right' "$LOGJS" \
-   && awk '/^\.hp-log-topbar \{/,/^\}/' "$LOGJS" | grep -q 'justify-content: flex-start'; then
+if ! grep -qE 'margin-left:[[:space:]]*auto|float:[[:space:]]*right' "$LOGVIEW" \
+   && awk '/^\.hp-log-topbar \{/,/^\}/' "$LOGVIEW" | grep -q 'justify-content: flex-start'; then
 	ok "every control in the log top bar stays left-aligned"
 else
 	bad "a log top-bar control is pushed to the right (should follow 'auto refresh')"
@@ -1225,7 +1337,7 @@ else
 fi
 
 # 插件日志没有级别 token，只认 token 会让「警告/错误」视图里一条插件告警都没有。
-if grep -q '错误\[:：\]|失败(?!' "$LOGJS"; then
+if grep -q '错误\[:：\]|失败(?!' "$LOGVIEW"; then
 	ok "warnings/errors also match the Chinese severity words the scripts actually write"
 else
 	bad "severity matching ignores the plugin's own 错误/失败 wording"
@@ -1233,7 +1345,7 @@ fi
 
 # 「…已缓存 0，失败 0」是统计不是错误：不加负向前瞻会把每次成功的预下载都
 # 标成错误，「错误」视图反而被成功记录淹没。
-if grep -q '失败(?!\\s\*\\d)' "$LOGJS"; then
+if grep -q '失败(?!\\s\*\\d)' "$LOGVIEW"; then
 	ok "the \"failed 0\" counter in a summary banner is not treated as an error"
 else
 	bad "a plain 失败 match would mark every successful run as an error"
