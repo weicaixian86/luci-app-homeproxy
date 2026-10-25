@@ -163,10 +163,6 @@ msgstr "阿里 公共DNS (DoH)"
 msgid "Aliyun Connection"
 msgstr "阿里连接"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:139
-msgid "All"
-msgstr "全部"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1005
 msgid "All ports"
 msgstr "所有端口"
@@ -1084,14 +1080,6 @@ msgstr "加密方式"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
 msgstr "错误"
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:142
-msgid "Errors"
-msgstr "错误"
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:140
-msgid "Events"
-msgstr "事件"
 
 #: htdocs/luci-static/resources/homeproxy.js:1613
 msgid "Every %s %s"
@@ -2960,10 +2948,6 @@ msgstr "ShadowTLS 版本"
 msgid "Shadowsocks"
 msgstr "Shadowsocks"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:219
-msgid "Show:"
-msgstr "显示："
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2005
 msgid "Sniffed client type (QUIC client type or SSH client name)."
 msgstr "嗅探到的客户端类型（QUIC 客户端类型或 SSH 客户端名称）。"
@@ -3832,10 +3816,6 @@ msgstr "WAN IP 策略"
 msgid "Warn"
 msgstr "警告"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:141
-msgid "Warnings"
-msgstr "警告"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1435
 #: htdocs/luci-static/resources/view/homeproxy/server.js:414
 msgid "WebSocket"
@@ -3844,10 +3824,6 @@ msgstr "WebSocket"
 #: htdocs/luci-static/resources/homeproxy.js:1608
 msgid "Wed"
 msgstr "三"
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:151
-msgid "What to show. Purely a display filter: nothing is restarted."
-msgstr "选择要看什么。这只是显示过滤，不会重启任何服务。"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:402
 msgid ""

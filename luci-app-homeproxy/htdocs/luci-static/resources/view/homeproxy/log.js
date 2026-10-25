@@ -25,9 +25,9 @@
  * 顶部「运行日志」。
  *
  * 两个日志面板共用 logview.renderPage()，各自只传一份来源清单：插件日志是
- * 插件自己写的四个文件 + 顶栏一个「显示：」下拉（纯前端过滤），内核日志是
- * sing-box 的两个实例 + 顶栏一个「内核日志级别：」下拉（这个会改配置并重启
- * 内核）。日志设置是独立的一组控件，写 /etc/homeproxy/log.conf —— 不进 uci
+ * 插件自己写的四个文件，内核日志是 sing-box 的两个实例 + 顶栏一个「内核日志
+ * 级别：」下拉（这个会改配置并重启内核）。日志设置是独立的一组控件，写
+ * /etc/homeproxy/log.conf —— 不进 uci
  * 的理由见 logview.js 顶部：uci commit 会把隧道重启一次。
  *
  * 页面本身（顶部那个「运行日志」）没有自己的面板，默认显示「插件日志」。
@@ -118,9 +118,7 @@ const css = `
 `;
 
 /* ── 插件日志：插件自己写的那四个文件 ───────────────────────────────────────
-   这一屏是点开「运行日志」时默认显示的那一屏。顶栏那个「显示：」下拉
-   （全部 / 事件 / 警告 / 错误）只改前端过滤，不重启任何东西 —— 换它不该
-   让隧道断一次。 */
+   这一屏是点开「运行日志」时默认显示的那一屏，没有任何过滤器。 */
 const plugin_sources = [
 	{ file: 'homeproxy' },
 	{ file: 'ruleset_download' },
@@ -317,54 +315,16 @@ function renderSettingsPanel(ctx, onSaved) {
 }
 
 /* ── 面板二：插件日志（打开「运行日志」时默认显示的这一屏） ─────────────────
-   插件自己写的四个文件 + 顶栏一个「显示：」下拉（全部 / 事件 / 警告 / 错误）。
-   与「内核日志级别：」是两件事：这里只改前端过滤，不重启任何东西。 */
+   插件自己写的四个文件，**一个过滤器都没有**：这一屏存在的意义就是「原样看
+   全部」，排查时最怕的就是「明明有这行，界面上却看不到」——而原因往往只是
+   某个过滤器还停在上次选的值（0.1.28 末版按用户要求把「显示：」下拉也删了）。
+   警告 / 错误行仍然按内容上色，颜色只帮助扫读、不影响显示哪些行。 */
 function renderPluginPanel(ctx) {
-	const view_choices = {
-		all:   logview.zh('All',      _('All'),      '全部'),
-		event: logview.zh('Events',   _('Events'),   '事件'),
-		warn:  logview.zh('Warnings', _('Warnings'), '警告'),
-		error: logview.zh('Errors',   _('Errors'),   '错误')
-	};
-
-	let view = logview.normalizeView(uci.get('homeproxy', 'config', 'log_view'));
-
-	const view_sel = E('select', {
-		'id': 'hp_log_view',
-		'class': 'cbi-input-select',
-		'style': 'width: 8em;',
-		'title': _('What to show. Purely a display filter: nothing is restarted.'),
-		'change': ui.createHandlerFn(ctx, (ev) => {
-			view = logview.normalizeView(ev.target.value);
-			/* 只 commit 不 apply：改的是「看什么」，不该为此重启内核。
-			   （uci.save() = 写回 /etc/config；apply 才会触发 reload。） */
-			uci.set('homeproxy', 'config', 'log_view', view);
-			uci.save();
-			/* 立刻重画，不等下一个轮询。 */
-			return page.refresh(true);
-		})
-	});
-
-	Object.keys(view_choices).forEach((v) => {
-		view_sel.appendChild(E('option', {
-			'value': v,
-			'selected': (v === view) ? '' : null
-		}, [ view_choices[v] ]));
-	});
-
 	const page = logview.renderPage(ctx, {
 		key: 'log-plugin-refresh',
 		box_id: 'hp_log_plugin',
 		lazy: true,
 		sources: plugin_sources,
-		head: [
-			E('div', { 'style': 'display:flex; align-items:center; gap:4px;' }, [
-				_('Show:'),
-				view_sel
-			])
-		],
-		/* 闭包读的是外面的 view，所以下拉一变、下一次 refresh 就换了过滤。 */
-		filter: (merged) => logview.filterByView(merged, view),
 		/* 框底那行「每 N 秒刷新。· 先点击日志区域…」在这里没有信息量，去掉
 		   （轮询照旧）。 */
 		hint: false,

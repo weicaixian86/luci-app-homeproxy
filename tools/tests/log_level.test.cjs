@@ -1,28 +1,23 @@
 /*
- * Filtering of the log view — exercised for real.
+ * Severity judgement of the log view — exercised for real.
  *
  * logview.js is a LuCI module (`return baseclass.extend({ ... })`), so it cannot
  * simply be require'd here (LuCI's require is not available in bare node), but its pure
  * part is sliced out and evaluated: the regexes, LEVEL_ORDER, normalizeLevel,
- * normalizeView, shiftTs, splitRecords, mergeRecords and the view filters.
+ * shiftTs, splitRecords, mergeRecords and the severity predicates.
  * Nothing below touches the DOM, rpc or fs, so the slice runs in a bare node
  * process.
  *
- * The point is to pin what each of the four display views actually shows:
- *   all    — everything
- *   event  — our own banner lines (==== … ====) plus result lines
- *   warn   — warnings and anything more severe (Chinese 警告 included)
- *   error  — errors and above (Chinese 错误 / 失败 included)
- * and that a record's continuation lines travel with it.
- *
- * The old "log level" dropdown only knew sing-box's four severities, which left
- * every plugin-written line (no level token at all) immune to filtering — the
- * reason the page looked chaotic. These assertions are what keep the two
- * concepts apart from now on.
+ * The point is to pin which records count as warnings/errors: colouring
+ * (hp-log-warn / hp-log-error) and the [LEVEL] tag both derive from these
+ * predicates, so a red row must also carry [ERROR] — and the 「失败 0」 summary
+ * line must be neither. 0.1.28 末版删掉了「显示：」下拉（两个日志屏都不过滤、
+ * 原样全出），filterByView / isEventRecord / normalizeView 随之删除；这里固定
+ * 的是留下来的上色口径。
  *
  * The code lives in homeproxy/logview.js rather than in the view itself
- * (0.1.28 split the log UI into four pages: 运行日志 / 日志设置 / 插件日志 /
- * 内核日志), and that is the only reason this test reads that file.
+ * (the log UI is one page with three sub-tabs: 日志设置 / 插件日志 / 内核日志),
+ * and that is the only reason this test reads that file.
  */
 
 'use strict';
@@ -51,8 +46,8 @@ try {
 	/* fs / _ / run_dir are only referenced by readCoreShift and readSourceLog,
 	   which this test never calls; stubs keep the slice evaluable. */
 	api = new Function('fs', '_', 'run_dir', block + `
-		return { splitRecords, mergeRecords, filterByView, isEventRecord,
-		         isWarnRecord, isErrorRecord, normalizeLevel, normalizeView,
+		return { splitRecords, mergeRecords,
+		         isWarnRecord, isErrorRecord, normalizeLevel,
 		         LEVEL_ORDER, shiftTs };`)({ read_direct: () => Promise.resolve('') }, (s) => s,
 		'/var/run/homeproxy');
 }
@@ -61,8 +56,8 @@ catch (e) {
 	process.exit(1);
 }
 
-const { splitRecords, mergeRecords, filterByView, isEventRecord, isWarnRecord,
-	isErrorRecord, normalizeLevel, normalizeView, LEVEL_ORDER, shiftTs } = api;
+const { splitRecords, mergeRecords, isWarnRecord, isErrorRecord,
+	normalizeLevel, LEVEL_ORDER, shiftTs } = api;
 
 let failed = 0;
 let passed = 0;
@@ -87,9 +82,9 @@ function check(desc, got, want) {
    shell logger writes plain lines, and the last ERROR carries an untimestamped
    "Caused by:" continuation.
 
-   The plugin-written half is the one that used to be unfilterable: banner
-   lines (==== … ====), a progress line, a warning and two errors — none of
-   them carries a level token. */
+   The plugin-written half carries no level token at all: banner lines
+   (==== … ====), a progress line, a warning and two errors — severity for
+   those is judged by content (警告/错误/失败 keywords). */
 const SAMPLE = [
 	'+0000 2026-10-23 15:35:11 TRACE [111 0.00s] inbound/tun[tun-in]: packet routed',
 	'+0000 2026-10-23 15:35:11 DEBUG [111 0.00s] router: match[3] => dns',
@@ -124,39 +119,31 @@ function label(rec) {
 	return ((rec.level == null) ? 'shell' : rec.level) + '|' + body;
 }
 
-function visible(view) {
-	return filterByView(merged(), view).map(label);
-}
+/* 严重性判定只服务上色与 [级别] 标记（0.1.28 末版已无过滤器），断言改成：
+   谁是 warn、谁是 error、统计行两者都不是；续行跟着首行一条记录。 */
+const all = merged();
+const warnSet = all.filter(isWarnRecord).map(label);
+const errSet = all.filter(isErrorRecord).map(label);
 
-/* "All" hides nothing — including the plugin lines that carry no level token. */
-check('all shows every record', visible('all').length, 15);
-
-/* Events: our banners plus the result lines. The progress line and the plain
-   severities are NOT events — they are detail, and that detail is exactly
-   what used to drown the page. */
-check('events view keeps banners and result lines only', visible('event'), [
-	'shell|==== 服务启动：命令=reload，触发=LuCI 保存并应用（luci-reload）====',
-	'shell|==== 规则集预下载开始：来源=「LuCI 保存并应用」，共 21 条，预算 600s ====',
-	'shell|==== 规则集预下载结束：来源=「LuCI 保存并应用」，共 21 条，新下载 21，已缓存 0，失败 0 ====',
-	'shell|自动启动：服务已启动（rc=0）。'
-]);
-
-check('the progress line is not an event',
-	visible('event').some((l) => l.indexOf('下载进度') >= 0), false);
-
-/* Warnings: WARN and above for sing-box, plus 警告 for the plugin. Errors are
-   included (a severity ladder), but plain INFO/DEBUG/TRACE are not. */
-check('warnings view keeps warn and above (both dialects)', visible('warn'), [
+/* WARN and above, both dialects: sing-box token + 中文关键字。INFO/DEBUG/TRACE
+   与普通进度行都不算。 */
+/* ⚠️ warn 集合**不含**中文「错误/失败」行：isWarnRecord 只认 warn 及以上
+   的 token 与「警告」关键字（error 级的 token 自然在，但插件错误行没有
+   token、也不含「警告」二字）——这正是 recordSeverity() 先判 error 的原因：
+   中文错误行由 isErrorRecord 接住，不会被漏成「无色」，也不会被错染成
+   琥珀。warn 集合因此是「token 达到 warn」∪「文本含警告」。 */
+check('warn set is warn-and-above tokens plus 中文警告', warnSet, [
 	'warn|[112 0.20s] outbound/proxy[hk]: dns: lookup failed',
 	'error|[113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
 	'error|[114 5.00s] connection: listen packet connection: EOF',
 	'fatal|[115 0.00s] service: unrecoverable',
-	'shell|警告：本机没有可用的时区数据',
-	'shell|错误：生成客户端配置失败（原因 error: bad json）',
-	'shell|下载失败 geosite-xxx：404。'
+	'shell|警告：本机没有可用的时区数据'
 ]);
+check('the Chinese 错误/失败 rows land in the error set, not warn',
+	warnSet.indexOf('shell|错误：生成客户端配置失败（原因 error: bad json）') < 0
+	&& errSet.indexOf('shell|错误：生成客户端配置失败（原因 error: bad json）') >= 0, true);
 
-check('errors view keeps errors and above only', visible('error'), [
+check('error set is errors and above only', errSet, [
 	'error|[113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
 	'error|[114 5.00s] connection: listen packet connection: EOF',
 	'fatal|[115 0.00s] service: unrecoverable',
@@ -165,8 +152,7 @@ check('errors view keeps errors and above only', visible('error'), [
 ]);
 
 /* The plugin writes 错误/失败 rather than an English token; without the text
-   fallback the error view would be empty of plugin errors — the whole reason
-   the old level dropdown looked broken. */
+   fallback plugin errors would never be coloured. */
 check('a plugin error with no level token is still an error',
 	isErrorRecord({ level: null, lines: [ '2026-10-23 23:18:33 错误：生成客户端配置失败。' ] }), true);
 check('a plugin warning with no level token is still a warning',
@@ -174,37 +160,27 @@ check('a plugin warning with no level token is still a warning',
 check('an ordinary info line is neither',
 	isErrorRecord({ level: null, lines: [ '规则集下载进度 45%' ] }) ||
 	isWarnRecord({ level: null, lines: [ '规则集下载进度 45%' ] }), false);
+check('the 失败 0 summary line is not an error (statistics, not failure)',
+	isErrorRecord({ level: null, lines: [ '==== 规则集预下载结束：共 21 条，新下载 21，已缓存 0，失败 0 ====' ] }), false);
+check('but 失败 with a real subject is (失败 geosite-xxx)',
+	isErrorRecord({ level: null, lines: [ '下载失败 geosite-xxx：404。' ] }), true);
 
-/* Continuation lines belong to their record: the kept ERROR keeps its
-   "Caused by:", and nothing from a dropped record is left behind. */
-const all = merged();
-const errRec = filterByView(all, 'error')
+/* Continuation lines stay with their record: the ERROR that owns a
+   "Caused by:" is judged as one record. */
+const errRec = all
 	.find((rec) => rec.level === 'error' && rec.lines[0].indexOf('dial tcp') >= 0);
 
-check('kept record keeps its Caused by:', errRec ? errRec.lines.length : 0, 2);
+check('a record keeps its Caused by:', errRec ? errRec.lines.length : 0, 2);
 check('continuation text preserved', errRec ? errRec.lines[1].trim() : '', 'Caused by: read tcp 10.0.0.2:443: connection reset by peer');
-
-const leftover = filterByView(all, 'error')
-	.some((rec) => rec.lines.some((l) => l.indexOf('router: match[3]') >= 0));
-
-check('dropped records leave no continuation behind', leftover, false);
+check('the record with the continuation is judged as a whole',
+	errRec ? isErrorRecord(errRec) : null, true);
 
 /* 0.1.28 删掉了「内核日志时间戳原为 UTC…」这条说明行，于是 logview 里不再
    有任何「不是日志行」的记录：注释掉的那两条 note 断言也随之删除。日志框
    里出现过的一切都得是日志行，这条约定现在靠「无 note 分支」本身保证。 */
 
-/* The four view values are exactly what normalizeView lets through, and
-   anything else (a hand-edited uci value) falls back to "all" — never to a
-   filter the user cannot see in the dropdown. */
-check('normalizeView keeps the four offered values',
-	['all', 'event', 'warn', 'error'].map(normalizeView),
-	['all', 'event', 'warn', 'error']);
-
-check('normalizeView falls back to all for anything else',
-	[normalizeView('info'), normalizeView(''), normalizeView(undefined), normalizeView('EVENT')],
-	['all', 'all', 'all', 'all']);
-
-/* The core verbosity dropdown is a separate control with its own clamp. */
+/* The core verbosity dropdown keeps its own clamp (it is the only dropdown
+   left on the log page). */
 check('normalizeLevel keeps the four offered values',
 	['debug', 'info', 'warn', 'error'].map(normalizeLevel),
 	['debug', 'info', 'warn', 'error']);

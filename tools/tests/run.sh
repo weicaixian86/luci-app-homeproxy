@@ -568,18 +568,13 @@ else
 	bad "every panel keeps polling after its tab is left (wasted reads on tmpfs)"
 fi
 
-# 插件日志带「显示：」过滤（全部 / 事件 / 警告 / 错误），但它只动前端；
-# 内核日志**一个过滤器都不能有** —— 它存在的意义就是「原样看全部」，
-# 一旦开始过滤，「文件里有、界面上没有」就又出现了。
+# 两个日志面板都**不许有任何过滤器**（0.1.28 末版：插件日志的「显示：」下拉
+# 也删了）。一旦哪个面板开始过滤，「文件里有、界面上没有」就又出现了。
 PLUGIN_FN="$(sed -n '/^function renderPluginPanel/,/^}/p' "$LOG_JS")"
 CORE_FN="$(sed -n '/^function renderCorePanel/,/^}/p' "$LOG_JS")"
-case "$CORE_FN" in
-	*filter:*|*log_view*) bad "the core panel filters by view or level (rows would disappear)" ;;
-	*) ok "the core panel passes no filter: every level is shown" ;;
-esac
-case "$PLUGIN_FN" in
-	*filterByView*) ok "插件日志 filters by view (all/events/warnings/errors)" ;;
-	*) bad "插件日志 lost the 显示 filter (it moved here from the removed runtime panel)" ;;
+case "$PLUGIN_FN$CORE_FN" in
+	*filter:*|*log_view*|*hp_log_view*) bad "a log panel filters by view or level (rows would disappear)" ;;
+	*) ok "both log panels pass no filter: every level is shown" ;;
 esac
 
 # 用户要求：插件日志 / 内核日志 框底下那行「每 N 秒刷新。· 先点击日志区域…」
@@ -591,16 +586,14 @@ else
 	bad "the refresh/Ctrl+A hint still shows under the plugin or core log"
 fi
 
-# 两个下拉各跟各的一屏：「显示：」→ 插件日志（只改前端过滤），
-# 「内核日志级别：」→ 内核日志（会改配置并重启内核）。放回同一屏就又变成
-# 「一眼看不出哪个控件会重启内核」了。
-if printf '%s' "$PLUGIN_FN" | grep -q "_('Show:')" \
-   && printf '%s' "$CORE_FN" | grep -q "_('Core log level:')" \
+# 唯一剩下的下拉是「内核日志级别：」，它必须在内核日志那一屏（会改配置并
+# 重启内核）。插件日志顶栏一个 select 都不许有。
+if printf '%s' "$CORE_FN" | grep -q "_('Core log level:')" \
    && ! printf '%s' "$CORE_FN" | grep -q "_('Show:')" \
-   && ! printf '%s' "$PLUGIN_FN" | grep -q "_('Core log level:')"; then
-	ok "显示 sits on 插件日志 and 内核日志级别 on 内核日志"
+   && ! printf '%s' "$PLUGIN_FN" | grep -qE "_\('Core log level:'\)|<select|E\('select'" ; then
+	ok "内核日志级别 sits on 内核日志; the plugin panel has no dropdown at all"
 else
-	bad "the two dropdowns are back on one shared screen (or on the wrong panel)"
+	bad "a dropdown is on the wrong panel (or the plugin panel grew one)"
 fi
 
 # 顶栏的孩子必须是**一维**数组：LuCI 的 E() 不会摊平嵌在 children 里的数组，
@@ -1557,18 +1550,18 @@ else
 	ok "the device_time rpcd method is gone with its only consumer (no dead code)"
 fi
 
-# ── 日志页：「看什么」必须和「内核写多少」分开（0.1.27） ──────────────────
-# 旧版只有一个「日志级别」下拉，装的是 sing-box 的四个级别；而插件自己的日志
-# （主日志、三份下载日志）行里根本没有级别 token —— 过滤对它们完全无效，选
-# 「错误」时满屏仍是下载进度和规则集明细。现在两个控件各管一件事。
-vc="$(sed -n '/const view_choices = {/,/};/p' "$LOGJS" \
-	| sed -n 's/^[[:space:]]*\([a-z]*\)[[:space:]]*:.*/\1/p' | sort | tr '\n' ' ')"
-if grep -q 'filterByView' "$LOGJS" && grep -q 'normalizeView' "$LOGJS" \
-   && [ "$vc" = "all error event warn " ] \
-   && ! grep -q 'filterByLevel' "$LOGJS"; then
-	ok "the log page filters by view (all/events/warnings/errors), not by core severity"
+# ── 日志页：不再有任何「显示过滤器」（0.1.28 末版） ─────────────────────────
+# 旧版有一个「日志级别」下拉（装 sing-box 四级），后来改成「显示：」（全部/
+# 事件/警告/错误）。0.1.28 末版两个都删了：插件日志与内核日志一样「原样看
+# 全部」，唯一剩下的下拉是内核日志屏那个「内核日志级别：」（它改的是内核
+# 写多少，不是这里显示多少）。filterByView / normalizeView / isEventRecord
+# 随下拉一起从源码删掉。
+if ! grep -qE 'filterByView|normalizeView|isEventRecord|EVENT_LINE_RE|VIEW_KEYS' "$LOGJS" \
+   && ! grep -qE 'filterByView|normalizeView|isEventRecord|EVENT_LINE_RE|VIEW_KEYS' "$LOGVIEW" \
+   && ! grep -q "log_view" "$LOGJS"; then
+	ok "no display filter is left anywhere (both log panels show everything)"
 else
-	bad "the log page still filters with the sing-box severity ladder only"
+	bad "a display filter survived the 0.1.28 末版 cleanup"
 fi
 
 # 内核级别的显示名必须是纯中文，界面上不出现 debug/info/warn/error 这些英文。
@@ -1598,13 +1591,14 @@ else
 	bad "a log top-bar control is pushed to the right (should follow 'auto refresh')"
 fi
 
-if grep -q "_('Show:')" "$LOGJS" && grep -q "_('Core log level:')" "$LOGJS"; then
-	ok "display filter and core verbosity are two separate controls"
+if ! grep -q "_('Show:')" "$LOGJS" && grep -q "_('Core log level:')" "$LOGJS"; then
+	ok "core verbosity is the only dropdown left; 显示 is gone"
 else
-	bad "one dropdown still mixes \"what to show\" with \"what the core writes\""
+	bad "the removed 显示 filter is still referenced (or the level dropdown vanished)"
 fi
 
-# 插件日志没有级别 token，只认 token 会让「警告/错误」视图里一条插件告警都没有。
+# 插件日志没有级别 token，只认 token 会让插件告警永远染不上色（0.1.28 末版起
+# 这套判定只用于上色与 [级别] 标记）。
 if grep -q '错误\[:：\]|失败(?!' "$LOGVIEW"; then
 	ok "warnings/errors also match the Chinese severity words the scripts actually write"
 else

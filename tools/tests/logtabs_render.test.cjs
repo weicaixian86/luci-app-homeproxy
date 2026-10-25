@@ -9,7 +9,9 @@
  *   - 只有当前显示的面板在轮询（切走的必须 stop，否则每点一次多一个定时器，
  *     六个日志文件每轮被读两遍）；
  *   - 面板节点是**移出 DOM 再挂回来**的，切回去不能变成空白；
- *   - 日志设置的单位下拉必须是 KB / MB，数字框上下限恒为 1–999。
+ *   - 日志设置的单位下拉必须是 KB / MB，数字框上下限恒为 1–999；
+ *   - 两个日志屏都**没有任何过滤器**（0.1.28 末版连「显示：」也删了）：
+ *     切过去必须一行不少。
  *
  * 打印 SKIP 并退出 0 当 jsdom 不可用（run.sh 会把 SKIP 转成 skip 行）。
  */
@@ -37,6 +39,7 @@ const LOGVIEW_PATH = path.join(RES, 'homeproxy', 'logview.js');
 const SAMPLE = [
 	'2026-10-25 09:58:02 [DAEMON] ==== 服务启动：命令=start，触发=系统启动 ====',
 	'2026-10-25 09:58:07 DEBUG 这条不该被级别过滤掉',
+	'2026-10-25 09:58:08 错误：这条也不该被隐藏',
 	'2026-10-25 09:58:09 已更新 geosite-cn（431 KB）'
 ].join('\n');
 
@@ -340,8 +343,10 @@ function clickTab(label) {
 	check('插件日志 is highlighted on open',
 		tabs[1].className === 'hp-log-tab-active', String(tabs[1].className));
 	check('the plugin panel is mounted on open', !!document.querySelector('#hp_log_plugin'));
-	check('the plugin panel carries the 显示 dropdown',
-		!!document.querySelector('#hp_log_view'));
+	/* 0.1.28 末版：插件日志也不过滤——「显示：」下拉删掉，顶栏只剩
+	   自动刷新 / 清空 / 复制。 */
+	check('the plugin panel has no 显示 dropdown any more',
+		!document.querySelector('#hp_log_view'));
 	check('only the visible panel registered a poll',
 		w.polls.length === 1 && w.polls[0].key === 'log-plugin-refresh',
 		JSON.stringify(w.polls));
@@ -373,32 +378,23 @@ function clickTab(label) {
 		plugin_panel && !plugin_panel.classList.contains('cbi-section') &&
 		plugin_panel.querySelectorAll('.cbi-section').length === 0,
 		plugin_panel ? plugin_panel.className : 'no container');
-	check('the 显示 dropdown lives in that same top bar',
-		!!(plugin_panel && plugin_panel.querySelector('.hp-log-topbar #hp_log_view')));
+	check('the plugin top bar holds only auto-refresh and the buttons',
+		!!(plugin_panel && !plugin_panel.querySelector('.hp-log-topbar select')
+			&& plugin_panel.querySelectorAll('.hp-log-topbar button').length === 2),
+		plugin_panel ? String(plugin_panel.querySelectorAll('.hp-log-topbar button').length) : 'no container');
 
-	/* ── 「显示：」下拉只改前端过滤 ──────────────────────────────────────
-	   它搬到插件日志这一屏之后仍然只过滤、不重启内核（后者由 run.sh 的
-	   「只 commit 不 apply」断言守着）。切到「错误」后 DEBUG 行必须消失。 */
-	const view_sel = document.querySelector('#hp_log_view');
+	/* ── 插件日志没有任何过滤器（0.1.28 末版） ──────────────────────────
+	   「文件里有、界面上没有」最常见的原因就是某个过滤器停在上次选的值。
+	   「显示：」删除后这一屏没有 select、没有 filter，DEBUG 与错误行都得在。 */
+	const plugin_text = document.querySelector('#hp_log_plugin').textContent;
 
-	check('the 显示 dropdown offers all/event/warn/error',
-		view_sel && Array.from(view_sel.options).map((o) => o.value).join('|') === 'all|event|warn|error',
-		view_sel ? Array.from(view_sel.options).map((o) => o.value).join('|') : 'no select');
-
-	view_sel.value = 'error';
-	view_sel.dispatchEvent(new window.Event('change', { bubbles: true }));
-	await delay();
-
-	check('picking 错误 drops the DEBUG line',
-		document.querySelector('#hp_log_plugin').textContent.indexOf('这条不该被级别过滤掉') < 0,
-		JSON.stringify(document.querySelector('#hp_log_plugin').textContent.slice(0, 80)));
-
-	view_sel.value = 'all';
-	view_sel.dispatchEvent(new window.Event('change', { bubbles: true }));
-	await delay();
-
-	check('back to 全部 brings the DEBUG line back',
-		document.querySelector('#hp_log_plugin').textContent.indexOf('这条不该被级别过滤掉') >= 0);
+	check('a DEBUG line survives on the plugin panel (no filter)',
+		plugin_text.indexOf('这条不该被级别过滤掉') >= 0,
+		JSON.stringify(plugin_text.slice(0, 80)));
+	check('an error line survives on the plugin panel too',
+		plugin_text.indexOf('错误：这条也不该被隐藏') >= 0);
+	check('no dropdown is left in the plugin top bar',
+		!document.querySelector('#hp_log_view'));
 
 	/* ── 日志设置 ─────────────────────────────────────────────────────── */
 	clickTab('日志设置');

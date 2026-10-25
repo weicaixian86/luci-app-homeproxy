@@ -339,40 +339,15 @@ function mergeRecords(results) {
 	return all;
 }
 
-/* ── 显示视图：想看什么 ────────────────────────────────────────────────────
-   sing-box 的四个级别只对内核日志有效：插件自己的日志（主日志、三份下载
-   日志）**行里根本没有级别 token**，按级别过滤对它们完全无效，于是选
-   「错误」时屏幕上照样是满屏下载进度和规则集明细 —— 这就是「日志级别显示
-   非常乱」的根因。
-   现在把两件事彻底分开：
-     · 显示视图（全部 / 事件 / 警告 / 错误）：纯前端过滤，不写服务配置、
-       不重启内核，选择记在 `config.log_view`；
-     · 内核输出级别（debug / info / warn / error）：仍是 sing-box 的
-       verbosity，写 `config.log_level` + `server.log_level`，需保存并应用。
-   插件日志没有级别 token，所以「警告 / 错误」除了看 token 还要按中文关键字
-   判定，否则这两个视图里会一条插件告警都筛不出来。
-   「内核日志」屏不带任何过滤：它存在的意义就是「原样看全部」。「显示：」
-   只接在插件日志那一屏（o.filter），而且只改前端显示、不写服务配置。 */
-const VIEW_KEYS = { all: 0, event: 1, warn: 2, error: 3 };
-
-function normalizeView(v) {
-	return (v === 'event' || v === 'warn' || v === 'error' || v === 'all') ? v : 'all';
-}
-
-/* 事件：0.1.27 起所有事件都写成统一横幅（==== 服务启动/停止/重载 ====、
-   ==== 规则集预下载开始/结束 ====、==== 订阅更新开始 ====、==== 规则集定时
-   更新开始/结束 ====、==== 脚本启动 ====）。少数结果行不是横幅但同样属于
-   事件（内核已启动、服务已停止、自动启动…），用一组显式动词兜住。
-   `让路`/`跳过下载` 也算事件：它们是「这次没做」的结论，不是告警。 */
-const EVENT_LINE_RE = /====|已启动|已停止|已退出|已更新|已下载|已清除|已注册|已完成|下载成功|更新结束|自动启动|让路|跳过下载|预下载完成/;
-
-function isEventRecord(rec) {
-	return rec.lines.some((l) => EVENT_LINE_RE.test(l));
-}
-
+/* ── 严重性判定：一条记录算警告还是错误 ─────────────────────────────────────
+   0.1.28 末版起**只用于上色和 [级别] 标记，不再用于过滤**：两个日志屏都是
+   「原样看全部」（用户明确要求插件日志也不过滤，原「显示：」下拉已删除），
+   但警告行琥珀、错误行红仍靠这两位判定。
+   插件日志行里没有级别 token，所以除了 token 还要按中文关键字判，否则插件
+   的告警永远不会被染色。 */
 function isWarnRecord(rec) {
-	/* 分级语义：warn 视图包含 warn 及更严重的。level 为 null（插件日志）时
-	   LEVEL_ORDER[...] 是 undefined，比较为 false，落到下面的文本判定。 */
+	/* warn 及更严重都算。level 为 null（插件日志）时 LEVEL_ORDER[...] 是
+	   undefined，比较为 false，落到下面的文本判定。 */
 	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.warn)
 		return true;
 
@@ -384,7 +359,7 @@ function isErrorRecord(rec) {
 		return true;
 
 	/* 插件日志用中文写严重性：「错误：…」「下载失败 …」。只认英文 token 的话，
-	   选「错误」视图会一条插件错误都看不到。
+	   插件错误永远染不上红色。
 	   ⚠️ `失败(?!\s*\d)` 这个负向前瞻是必须的：结束横幅里那句
 	   「…已缓存 0，失败 0」是**统计**，不是错误；写成 `失败` 会把每一次成功
 	   的预下载都标成错误，「错误」视图反而被成功记录淹没。
@@ -397,22 +372,9 @@ function isErrorRecord(rec) {
 		|| rec.lines.some((l) => /Failed\b/.test(l));
 }
 
-function filterByView(merged, view) {
-	if (view === 'event')
-		return merged.filter(isEventRecord);
-	if (view === 'warn')
-		return merged.filter((rec) => isWarnRecord(rec) || isErrorRecord(rec));
-	if (view === 'error')
-		return merged.filter(isErrorRecord);
-
-	return merged;   /* all — and any unknown key falls back to showing everything */
-}
-
-/* 一条记录该画成什么颜色。**只用于上色，不参与过滤**：留不留这一条仍由
-   filterByView 决定。两处共用 isWarnRecord / isErrorRecord，所以口径天然
-   一致 —— 在「错误」视图里看到的那几条，切回「全部」时也一定是红的。
-   顺序不能反：isWarnRecord 对 error 级也返回 true（warn 是「warn 及以上」），
-   先判 error 才不会把报错画成琥珀色。 */
+/* 一条记录该画成什么颜色。**只用于上色与 [级别] 标记，不参与过滤**（0.1.28
+   末版起没有任何显示过滤器了）。顺序不能反：isWarnRecord 对 error 级也返回
+   true（warn 是「warn 及以上」），先判 error 才不会把报错画成琥珀色。 */
 function recordSeverity(rec) {
 	if (isErrorRecord(rec))
 		return 'error';
@@ -425,8 +387,8 @@ function recordSeverity(rec) {
 
 /* 一条记录前面那个方括号级别标记。
    内核行带真 token（INFO / WARN / ERROR …）就直接用它；插件自己的日志行里
-   没有 token，按**与过滤、上色同一套**判定推出来（先 error 再 warn，其余
-   info）—— 于是不会出现「这行是红的，标记却写着 [INFO]」。
+   没有 token，按**与上色同一套**判定推出来（先 error 再 warn，其余 info）
+   —— 于是不会出现「这行是红的，标记却写着 [INFO]」。
    方括号补到 7 个字符再空一格，是为了让 [INFO] 和 [ERROR] 后面的正文从同
    一列开始：等宽字体下差一个字符看着就像排版坏了。 */
 function recordTag(rec) {
@@ -955,7 +917,6 @@ const HP_CLASS = (typeof baseclass !== 'undefined' && baseclass
 	&& typeof baseclass.extend === 'function') ? baseclass : L.Class;
 
 return HP_CLASS.extend({
-	VIEW_KEYS: VIEW_KEYS,
 	DEFAULT_SETTINGS: DEFAULT_SETTINGS,
 	REFRESH_MIN: REFRESH_MIN,
 	REFRESH_MAX: REFRESH_MAX,
@@ -965,7 +926,6 @@ return HP_CLASS.extend({
 	SIZE_MAX: SIZE_MAX,
 	sizeRange: sizeRange,
 
-	normalizeView: normalizeView,
 	normalizeLevel: normalizeLevel,
 	normalizeSettings: normalizeSettings,
 	normalizeUnit: normalizeUnit,
@@ -976,8 +936,6 @@ return HP_CLASS.extend({
 
 	splitRecords: splitRecords,
 	mergeRecords: mergeRecords,
-	filterByView: filterByView,
-	isEventRecord: isEventRecord,
 	isWarnRecord: isWarnRecord,
 	isErrorRecord: isErrorRecord,
 	recordSeverity: recordSeverity,
