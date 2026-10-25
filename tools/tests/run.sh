@@ -1811,6 +1811,23 @@ else
 	bad "subscription triggers are not all named in the log"
 fi
 
+# ── 订阅更新：成功才允许碰服务（0.2.2 用户定稿） ────────────────────────────
+# 「更新成功应该会重载服务，更新不成功不应该影响当前服务」。旧版两处违反：
+#   · 下载前就 stop（所谓绕过自身代理），失败再 start 回来——失败也断流一次；
+#   · [FATAL ERROR] 兜底无条件 stop+start——更新崩了还把正在跑的代理重启一遍。
+# 现在服务必须全程活着：main() 里只许成功路径末尾那一处 stop+start；下载前
+# 的 stop 与失败路径里的 start/stop 全部不允许出现。
+SUB_STOP_HITS=$(grep -c "init_action('homeproxy', 'stop')" "$SUB")
+SUB_START_HITS=$(grep -c "init_action('homeproxy', 'start')" "$SUB")
+if [ "$SUB_STOP_HITS" = 1 ] && [ "$SUB_START_HITS" = 1 ] \
+   && ! grep -q "log('Stopping service...')" "$SUB" \
+   && ! grep -q "log('Starting service...')" "$SUB" \
+   && sed -n '/^\tif (need_restart)/,/^\t}/p' "$SUB" | grep -q "init_action"; then
+	ok "subscription update touches the service only on success (stop+start once)"
+else
+	bad "a failed subscription update can stop or restart the running service ($SUB_STOP_HITS stop / $SUB_START_HITS start)"
+fi
+
 # 规则集的定时更新以前只有 fetch_rulesets.sh 的几行输出，没有自己的首尾横幅，
 # 「到底有没有按点跑」只能靠文件 mtime 猜。
 RSCRON="$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"

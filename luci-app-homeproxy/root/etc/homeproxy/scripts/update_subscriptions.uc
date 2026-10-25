@@ -1439,11 +1439,11 @@ function main() {
 	                (scheduled ? '定时任务（cron，update_crond.sh）' : (via_proxy === '1' ? '手动（经代理）' : '手动（终端/SSH）')));
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
-	if (via_proxy !== '1' && !provider_update_id) {
-		log('Stopping service...');
-		init_action('homeproxy', 'stop');
-	}
-
+	/* 全程**不停服务**（用户 0.2.2 定稿）：下载、解析、写 uci 全部成功才在
+	 * main() 末尾 stop+start 一次让新节点生效；任何一步失败都在不动服务的
+	 * 前提下退出。旧版在下载前就 `init_action('homeproxy','stop')`（所谓
+	 * 「绕过自身代理」），失败再 start 回来——更新不成功也会把当前服务断
+	 * 一次流，面板上就是「点了更新、代理闪断一下、节点却没变」。 */
 	for (let url in subscription_urls) {
 		url = replace(url, /#.*$/, '');
 		const groupHash = md5(url);
@@ -1586,11 +1586,8 @@ function main() {
 	if (isEmpty(node_result)) {
 		log('Failed to update subscriptions: no valid node found.');
 
-		if (via_proxy !== '1' && !provider_update_id) {
-			log('Starting service...');
-			init_action('homeproxy', 'start');
-		}
-
+		/* 服务从未被停过（见 main() 开头的注释），失败时什么都不用恢复。
+		 * 旧版这里要 start 回来，是因为它先前把服务停了。 */
 		return false;
 	}
 
@@ -1637,7 +1634,9 @@ function main() {
 		});
 	uci.commit(uciconfig);
 
-	let need_restart = (via_proxy !== '1') || !!provider_update_id;
+	/* 成功才重启：到这里 uci 已 commit，stop+start 让新节点进内核。服务在
+	 * 整个更新过程中一直活着——只有这一处会碰它，且只在成功路径上。 */
+	let need_restart = true;
 	if (!isEmpty(main_node)) {
 		const first_server = uci.get_first(uciconfig, ucinode);
 		if (first_server) {
@@ -1715,8 +1714,9 @@ if (!isEmpty(subscription_urls))
 		log(sprintf('%s: %s', e.type, e.message));
 		log(e.stacktrace[0].context);
 
-		log('Restarting service...');
-		init_action('homeproxy', 'stop');
-		init_action('homeproxy', 'start');
+		/* 异常 ≠ 成功：不重启服务（用户 0.2.2 定稿——更新不成功不得影响
+		 * 当前服务）。uci 可能改了一半，但没 commit 的改动不会生效；
+		 * 已 commit 的部分（节点增删）会在下次成功更新或手动重载时收敛。
+		 * 旧版无条件 stop+start：更新崩了还把正在跑的代理断一次流。 */
 		exit(1);
 	}
