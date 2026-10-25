@@ -335,6 +335,16 @@ else
 	ok "no bare IANA-name fallback (marker always matches the core's clock)"
 fi
 
+# /etc/localtime 是 → /tmp/localtime 的符号链接时，jail 里的 /tmp 是另一份
+# tmpfs：只挂链接本身等于挂了一条断链，Go 打不开就静默回 UTC，而标记仍写
+# local。链接目标必须一起挂进去。
+if grep -q 'readlink -f /etc/localtime' "$INITD" \
+   && [ "$(grep -c 'LOCALTIME_TARGET' "$INITD")" -ge 3 ]; then
+	ok "the /etc/localtime symlink target is mounted into the jail too"
+else
+	bad "jail mounts only the /etc/localtime symlink (its target is invisible => UTC)"
+fi
+
 LOG_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
 # 0.1.28 把读文件 / 切记录 / 合并 / 渲染搬进了共用模块：运行日志、插件日志、
 # 内核日志三个面板各传一份来源清单，解析和渲染只有这一份实现。
@@ -344,6 +354,23 @@ if grep -q 'core_tz' "$LOGVIEW" && grep -q 'shiftTs' "$LOGVIEW" \
 	ok "log view puts the core's stamps on the local clock"
 else
 	bad "log view would keep two clocks (core_tz marker not consumed)"
+fi
+
+# 标记文件与六个日志都靠 fs.read_direct 读，而它走 /cgi-bin/cgi-download ——
+# 和 ubus 的 file.read **同一套 ACL**。名单里漏一个就是 403，前端
+# `.catch(() => 0)` 会把它当成「老版本没有标记」：偏移 0 → 内核日志停在 UTC，
+# 比其它五个源整整差 8 小时，界面上却一句提示都没有（而且测试里的 fs 是桩，
+# 永远读得到，只有 ACL 这一层是桩测不到的）。core_tz 就是这么漏的。
+ACL_JSON="$PKG/root/usr/share/rpcd/acl.d/luci-app-homeproxy.json"
+acl_missing=""
+for acl_f in $(sed -n "s/.*{ file: '\([^']*\)'.*/\1/p" "$LOG_JS"); do
+	grep -q "\"/var/run/homeproxy/$acl_f.log\"" "$ACL_JSON" || acl_missing="$acl_missing $acl_f.log"
+done
+grep -q '"/var/run/homeproxy/core_tz"' "$ACL_JSON" || acl_missing="$acl_missing core_tz"
+if [ -z "$acl_missing" ]; then
+	ok "ACL grants read on every file the log view opens (six logs + core_tz)"
+else
+	bad "ACL does not grant read on:$acl_missing (403 → blank box / core clock 8h off)"
 fi
 
 # ------------------------------------------------ unified log view (levels)

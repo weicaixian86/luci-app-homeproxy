@@ -203,6 +203,7 @@ tz_is_tzif() {
 tz_setup_core() {
 	local zn posix off offsign offabs offfmt
 	CORE_TZ=""
+	LOCALTIME_TARGET=""
 	mkdir -p "$RUN_DIR" 2>/dev/null
 	zn="$(uci -q get system.@system[0].zonename 2>/dev/null)"
 	posix="$(cat /etc/TZ 2>/dev/null)"
@@ -213,6 +214,11 @@ tz_setup_core() {
 		CORE_TZ=":/usr/share/zoneinfo/$zn"
 	elif tz_is_tzif "/etc/localtime"; then
 		CORE_TZ=":/etc/localtime"
+		# /etc/localtime 在 OpenWrt 上通常是 → /tmp/localtime 的符号链接，而
+		# ujail 里的 /tmp 是另一份 tmpfs：只把链接本身挂进去，Go 打开时目标
+		# 不存在，又静默回退 UTC —— 标记却写着 local，日志页不再换算，内核
+		# 日志白白早 8 小时。把解析出来的真实文件记下来，交给 jail 一起挂。
+		LOCALTIME_TARGET="$(readlink -f /etc/localtime 2>/dev/null)"
 	else
 		# 2) no tzdata: synthesize a fixed-offset zone from the offset in
 		#    effect right now. Wrong across a DST switch, right the rest of
@@ -1106,6 +1112,9 @@ start_service() {
 			case "$CORE_TZ" in
 				:/usr/share/zoneinfo/*) procd_add_jail_mount "/usr/share/zoneinfo" ;;
 				:*"$RUN_DIR"*) procd_add_jail_mount "$RUN_DIR/core.zone" ;;
+				# /etc/localtime 是符号链接时，链接本身挂进去也打不开它指向的
+				# 文件（jail 的 /tmp 是另一份 tmpfs）——目标要单独挂。
+				:/etc/localtime) [ -n "$LOCALTIME_TARGET" ] && procd_add_jail_mount "$LOCALTIME_TARGET" ;;
 			esac
 			procd_set_param capabilities "/etc/capabilities/homeproxy.json"
 			procd_set_param no_new_privs 1
@@ -1166,6 +1175,9 @@ start_service() {
 			case "$CORE_TZ" in
 				:/usr/share/zoneinfo/*) procd_add_jail_mount "/usr/share/zoneinfo" ;;
 				:*"$RUN_DIR"*) procd_add_jail_mount "$RUN_DIR/core.zone" ;;
+				# /etc/localtime 是符号链接时，链接本身挂进去也打不开它指向的
+				# 文件（jail 的 /tmp 是另一份 tmpfs）——目标要单独挂。
+				:/etc/localtime) [ -n "$LOCALTIME_TARGET" ] && procd_add_jail_mount "$LOCALTIME_TARGET" ;;
 			esac
 			procd_set_param capabilities "/etc/capabilities/homeproxy.json"
 			procd_set_param no_new_privs 1

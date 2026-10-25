@@ -9,7 +9,8 @@
 				"/var/run/homeproxy/sing-box-c.log": [ "read" ],
 				"/var/run/homeproxy/sing-box-s.log": [ "read" ],
 				"/var/run/homeproxy/core_download.log": [ "read" ],
-				"/var/run/homeproxy/panel_download.log": [ "read" ]
+				"/var/run/homeproxy/panel_download.log": [ "read" ],
+				"/var/run/homeproxy/core_tz": [ "read" ]
 			},
 			"ubus": {
 				"rc": [ "*" ],
