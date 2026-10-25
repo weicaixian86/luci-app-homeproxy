@@ -272,17 +272,17 @@ const LOG_CONF = `${HP_DIR}/log.conf`;
 const LOG_DEFAULTS = { refresh: 5, size: 1, unit: 'MB' };
 
 /* 单位换算表：与前端 logview.js 的 UNIT_BYTES、clean_log.sh 的 case 分支
-   是同一份口径，加减档位要三处一起改。 */
-const LOG_UNITS = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+   是同一份口径，加减档位要三处一起改。GB 档 0.1.28 已按用户要求移除——日志
+   在 /var/run 内存盘上，1 KB – 999 MB 足够，GiB 档只会引出「只能填 1」的
+   解释。旧 log.conf 里若还写着 unit=GB，一律按 MB 读（见 logUnit）。 */
+const LOG_UNITS = { KB: 1024, MB: 1024 * 1024 };
 
 const LOG_LIMITS = {
 	refresh_min: 2, refresh_max: 120,
-	/* 下界 64 KiB（再小日志一行都留不下）、上界 1 GiB（/var/run 是内存盘）。
-	   上下界都是**每个日志文件各自**的口径：clean_log.sh 逐文件比较、逐文件
-	   轮转，六个文件都涨满才会占到 6 倍，不是六份合计。
-	   单位不同时数字框的范围也不同，见 logSizeRange()。 */
-	min_bytes: 64 * 1024,
-	max_bytes: 1024 * 1024 * 1024
+	/* 数字一律 1–999，所以上限是 1 KB – 999 MB。这是**每个日志文件各自**的
+	   口径：clean_log.sh 逐文件比较、逐文件轮转，六个文件都涨满才会占到 6 倍，
+	   不是六份合计。 */
+	size_min: 1, size_max: 999
 };
 
 function parseDigits(v) {
@@ -313,24 +313,17 @@ function logUnit(v) {
 	if (s === 'KB' || s === 'kb')
 		return 'KB';
 
-	if (s === 'GB' || s === 'gb')
-		return 'GB';
-
+	/* MB 与旧版遗留的 GB 都落回 MB（GB 档已移除）。 */
 	return 'MB';
 }
 
-/* 当前单位下允许填的数字范围：换算成字节后必须落在
-   [min_bytes, max_bytes] 里。KB 的下限是 64，MB 是 1，GB 的上限是 1。 */
-function logSizeRange(unit) {
-	const mult = LOG_UNITS[unit] ?? LOG_UNITS.MB,
-	      lo = (unit === 'KB') ? int(LOG_LIMITS.min_bytes / mult) : 1,
-	      hi = int(LOG_LIMITS.max_bytes / mult);
-
-	return { min: lo, max: (hi < lo) ? lo : hi };
+/* 数字框允许填的范围：KB 与 MB 都是 1–999，与单位无关。 */
+function logSizeRange() {
+	return { min: LOG_LIMITS.size_min, max: LOG_LIMITS.size_max };
 }
 
-function clampSize(v, unit) {
-	const r = logSizeRange(unit);
+function clampSize(v) {
+	const r = logSizeRange();
 
 	return clampDigits(v, r.min, r.max, r.min);
 }
@@ -373,14 +366,11 @@ function readLogSettings() {
 		}
 	}
 
-	/* 先定单位再夹数字：同一串数字在 KB 与 GB 下合法范围完全不同。 */
+	/* 先定单位再夹数字（数字范围与单位无关，但 GB 旧值要先归到 MB）。 */
 	out.unit = logUnit(unitRaw);
-	out.size = clampSize(sizeRaw, out.unit);
+	out.size = clampSize(sizeRaw);
 
-	const bytes = out.size * (LOG_UNITS[out.unit] ?? LOG_UNITS.MB);
-
-	out.bytes = (bytes < LOG_LIMITS.min_bytes) ? LOG_LIMITS.min_bytes
-		: ((bytes > LOG_LIMITS.max_bytes) ? LOG_LIMITS.max_bytes : bytes);
+	out.bytes = out.size * (LOG_UNITS[out.unit] ?? LOG_UNITS.MB);
 
 	return out;
 }
@@ -1800,7 +1790,7 @@ const methods = {
 			const cfg = {
 				refresh: clampDigits(req.args?.refresh, LOG_LIMITS.refresh_min,
 					LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh),
-				size: clampSize(req.args?.size, unit),
+				size: clampSize(req.args?.size),
 				unit: unit
 			};
 

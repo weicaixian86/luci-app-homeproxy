@@ -3397,8 +3397,8 @@ msgid "The refresh interval only decides how often these log pages re-read their
 msgstr "刷新时间只决定这几个日志页面多久重新读一次文件。它和服务配置分开存放，改它不会重启内核。"
 
 #: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log.js:400
-msgid "The size limit is capped at 1 GB because the log directory lives on a RAM disk."
-msgstr "大小上限最多 1 GB：日志目录在内存盘上。"
+msgid "The size limit applies to each log file separately: 1-999 KB or 1-999 MB. The log directory lives on a RAM disk."
+msgstr "大小上限是每个日志文件各自的上限，可填 1–999 KB 或 1–999 MB：日志目录在内存盘上。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2920
 msgid "The response code."

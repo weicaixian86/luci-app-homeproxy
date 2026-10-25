@@ -549,25 +549,29 @@ const CASES = [
 }
 ];
 
-/* --- 10. the unit table (KB / MB / GB) ------------------------------------ */
-/* 0.1.28: the size limit offers KB / MB / GB, and the number field's range is
-   derived from the same table that computes the byte budget. A wrong table is
-   invisible in the UI — "1 GB" would quietly rotate at 1 MiB — so check the
+/* --- 10. the unit table (KB / MB) ---------------------------------------- */
+/* 0.1.28: the size limit offers KB / MB only (the GB tier was removed at the
+   user's request) and the number field takes 1-999 for both. A wrong table is
+   invisible in the UI — "1 MB" would quietly rotate at 1 KiB — so check the
    arithmetic straight instead of trusting the labels. */
 const units = boot({ read: () => Promise.resolve('') }).module;
 
-check('a lowercase unit is normalised to GB', units.normalizeUnit('gb') === 'GB');
-check('1 GB is 1073741824 bytes',
-	units.settingsBytes({ size: 1, unit: 'GB' }) === 1073741824,
-	String(units.settingsBytes({ size: 1, unit: 'GB' })));
-check('the GB field stops at 1 (the 1 GiB ceiling)',
-	units.sizeRange('GB').max === 1, JSON.stringify(units.sizeRange('GB')));
-check('the KB field starts at 64 (the 64 KiB floor)',
-	units.sizeRange('KB').min === 64, JSON.stringify(units.sizeRange('KB')));
-check('2048 MB is clamped to the 1024 MB ceiling',
-	units.normalizeSettings({ size: 2048, unit: 'MB' }).size === 1024);
-check('a zero budget still lands on 64 KiB',
-	units.settingsBytes({ size: 0, unit: 'MB' }) === 65536);
+check('KB and MB are the only units',
+	units.UNIT_KEYS.join(',') === 'KB,MB', units.UNIT_KEYS.join(','));
+check('a legacy "gb" value falls back to MB',
+	units.normalizeUnit('gb') === 'MB', units.normalizeUnit('gb'));
+check('1 MB is 1048576 bytes',
+	units.settingsBytes({ size: 1, unit: 'MB' }) === 1048576,
+	String(units.settingsBytes({ size: 1, unit: 'MB' })));
+check('the number field is 1-999, the same for KB and MB',
+	units.sizeRange().min === 1 && units.sizeRange().max === 999,
+	JSON.stringify(units.sizeRange()));
+check('999 MB is the largest budget the UI can produce',
+	units.settingsBytes({ size: 999, unit: 'MB' }) === 999 * 1048576);
+check('2048 MB is clamped to 999',
+	units.normalizeSettings({ size: 2048, unit: 'MB' }).size === 999);
+check('a zero size lands on 1 (the floor is the number, not a byte count)',
+	units.normalizeSettings({ size: 0, unit: 'KB' }).size === 1);
 
 /* One case at a time: each boot() rebinds window/document for the module. */
 let chain = Promise.resolve();

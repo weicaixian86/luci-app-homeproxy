@@ -455,7 +455,7 @@ fi
 # ── 日志页：四个选项卡 + 日志设置（0.1.28）──────────────────────────────────
 # 需求：页面本身是「运行日志」，页面里再挂三个二级选项卡（日志设置 /
 #   插件日志 / 内核日志），排成一行灰色按钮，点中的那个高亮（参考用户给的结构图）；
-#   日志设置能改刷新时间与日志文件大小上限（值 + 单位 KB / MB / GB）；
+#   日志设置能改刷新时间与日志文件大小上限（数字 1–999 + 单位 KB / MB）；
 #   显示不再限制条数，改为限制文件大小；
 #   插件日志 / 内核日志不分级别、全部显示。
 section "log tabs + log settings (0.1.28)"
@@ -584,14 +584,18 @@ else
 	bad "rpcd has no log_settings_save / writes log.conf in place"
 fi
 
-# 单位 KB / MB / GB 三处必须同时认识：前端下拉、rpcd 的换算表、轮转脚本的
-# case 分支。少一处就是「界面选 1 GB、实际按 1 MiB 轮转」。
-if grep -q "UNIT_BYTES" "$LOGVIEW" && grep -q "GB:" "$LOGVIEW" \
-   && grep -q "LOG_UNITS" "$RPCD" && grep -q "GB:" "$RPCD" \
-   && grep -q 'GB|gb' "$CL_LOG" && grep -q 'logSizeRange' "$RPCD"; then
-	ok "KB / MB / GB understood by the UI, rpcd and clean_log.sh"
+# 单位只有 KB / MB 两档（GB 已按用户要求移除），三处必须同时认识：前端下拉、
+# rpcd 的换算表、轮转脚本的 case 分支。少一处就是「界面选 1 MB、实际按 1 KiB 轮转」。
+# 同时断言 GB 已经彻底消失，没人能把它偷偷加回来。
+if grep -q "UNIT_BYTES" "$LOGVIEW" && grep -q "KB:" "$LOGVIEW" && grep -q "MB:" "$LOGVIEW" \
+   && ! grep -q "GB:" "$LOGVIEW" \
+   && grep -q "LOG_UNITS" "$RPCD" && grep -q "KB:" "$RPCD" \
+   && ! grep -q "LOG_UNITS.GB" "$RPCD" \
+   && grep -q 'KB|kb' "$CL_LOG" && ! grep -q 'GB|gb' "$CL_LOG" \
+   && grep -q 'logSizeRange' "$RPCD" && grep -q 'size_max: 999' "$RPCD"; then
+	ok "only KB / MB remain (GB is gone from the UI, rpcd and clean_log.sh)"
 else
-	bad "a GB unit is not handled everywhere (UI says 1 GB, rotation uses 1 MiB)"
+	bad "the unit list drifted: GB is still present somewhere, or KB/MB is missing"
 fi
 
 if grep -q 'LOG_CONF' "$CL_LOG" && grep -q 'resolve_limit' "$CL_LOG" \
@@ -602,15 +606,15 @@ else
 fi
 
 # 功能性验证：把三个函数切出来，按真实的 log.conf 计算阈值。这一项防的是
-# 「写的是 1 MB、实际按 64 KiB 轮转」这种只在设备上才看得见的偏差。
+# 「写的是 1 MB、实际按 1 KB 轮转」这种只在设备上才看得见的偏差。
 CL_FN="$WORK/cleanlog.fn.sh"
 sed -n '/^log_conf_get()/,/^}/p;/^resolve_limit()/,/^}/p' "$CL_LOG" > "$CL_FN"
 cat > "$WORK/cleanlog.probe.sh" <<'PROBE'
 NAME=homeproxy
 RUN_DIR=/var/run/homeproxy
 LOG_CONF="$1"
-MIN_BYTES=$((64 * 1024))
-MAX_BYTES=$((1024 * 1024 * 1024))
+MIN_SIZE=1
+MAX_SIZE=999
 uci() { return 1; }
 . "$CL_FN"
 resolve_limit
@@ -634,21 +638,27 @@ unit=KB')" in
 	*) bad "the KB unit is ignored (threshold would be 512 MiB)" ;;
 esac
 
-case "$(cl_probe gb 'size=1
-unit=GB')" in
-	1073741824) ok "log.conf size=1 unit=GB means 1 GiB" ;;
-	*) bad "the GB unit is ignored (1 GB would silently become 1 MiB)" ;;
+case "$(cl_probe kbmax 'size=1200
+unit=KB')" in
+	1022976) ok "anything past 999 KB is clamped to the 999 ceiling (1200 -> 999 KiB)" ;;
+	*) bad "size=1200 unit=KB is not clamped to 999 (the field allows 1-999)" ;;
 esac
 
-case "$(cl_probe gbmax 'size=8
+case "$(cl_probe mbmax 'size=2048
+unit=MB')" in
+	1047527424) ok "anything past 999 MB is clamped to 999 MiB" ;;
+	*) bad "size=2048 unit=MB is not clamped (a tmpfs log would eat the RAM)" ;;
+esac
+
+case "$(cl_probe legacy_gb 'size=2
 unit=GB')" in
-	1073741824) ok "anything past 1 GB is clamped to the 1 GiB ceiling" ;;
-	*) bad "size=8 unit=GB is not clamped (a tmpfs log would eat the RAM)" ;;
+	2097152) ok "a legacy unit=GB in log.conf is read as MB (2 -> 2 MiB)" ;;
+	*) bad "a legacy GB value is still treated as GiB (GB was removed from the UI)" ;;
 esac
 
 case "$(cl_probe zero 'size=0
 unit=MB')" in
-	65536) ok "a zero size is clamped to the 64 KiB floor" ;;
+	1048576) ok "a zero size is clamped to 1 MB (the number floor is 1)" ;;
 	*) bad "size=0 would leave the log with no room at all" ;;
 esac
 

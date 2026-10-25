@@ -326,8 +326,8 @@ function clickTab(label) {
 
 	const unit = document.querySelector('.hp-logset-row select');
 
-	check('the unit dropdown offers KB / MB / GB',
-		unit && Array.from(unit.options).map((o) => o.value).join('|') === 'KB|MB|GB',
+	check('the unit dropdown offers KB / MB only (GB was removed)',
+		unit && Array.from(unit.options).map((o) => o.value).join('|') === 'KB|MB',
 		unit ? Array.from(unit.options).map((o) => o.value).join('|') : 'no select');
 
 	await delay();
@@ -341,17 +341,18 @@ function clickTab(label) {
 		!!size_in && !!unit && size_in.parentNode === unit.parentNode,
 		size_in && unit ? (size_in.parentNode === unit.parentNode ? 'same row' : 'different rows') : 'missing control');
 
-	check('the size field max is the MB ceiling (1024)',
-		size_in && size_in.getAttribute('max') === '1024',
-		size_in ? String(size_in.getAttribute('max')) : 'no input');
+	check('the size field takes 1-999 (min 1, max 999)',
+		size_in && size_in.getAttribute('min') === '1' && size_in.getAttribute('max') === '999',
+		size_in ? (size_in.getAttribute('min') + '-' + size_in.getAttribute('max')) : 'no input');
 
-	unit.value = 'GB';
+	/* 1 MB = 1024 KB，超过 999 的上界 → 夹到 999；同时上下限不随单位变。 */
+	unit.value = 'KB';
 	unit.dispatchEvent(new window.Event('change', { bubbles: true }));
 
-	check('switching to GB clamps the number into the GB range',
-		size_in.value === '1', size_in.value);
-	check('switching to GB moves the field max to 1 (1 GiB ceiling)',
-		size_in.getAttribute('max') === '1', String(size_in.getAttribute('max')));
+	check('switching to KB converts 1 MB and clamps to 999',
+		size_in.value === '999', size_in.value);
+	check('the field max stays 999 after a unit switch',
+		size_in.getAttribute('max') === '999', String(size_in.getAttribute('max')));
 
 	/* ── 插件日志 ─────────────────────────────────────────────────────── */
 	clickTab('插件日志');

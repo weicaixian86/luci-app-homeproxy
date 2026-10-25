@@ -41,17 +41,17 @@ const CORE_TZ_FILE = RUN_DIR + '/core_tz';
 const DEFAULT_SETTINGS = { refresh: 5, size: 1, unit: 'MB' };
 const REFRESH_MIN = 2;
 const REFRESH_MAX = 120;
-/* 单位只有 KB / MB / GB 三档（与设计稿的下拉一致）。这张表是前端的唯一
-   口径，rpcd 与 clean_log.sh 里各有一份等价的换算，改档位要三处一起改。 */
-const UNIT_BYTES = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
-const UNIT_KEYS = [ 'KB', 'MB', 'GB' ];
-/* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。
-   上界 1 GiB：/var/run 是内存盘。这个数字是**每个日志文件各自**的上限，
-   不是六个文件合计——clean_log.sh 的 rotate_log 对每个文件单独比大小、
-   单独轮转，六个都涨满才会占到 6 倍。所以「GB」这一档实际只能填 1；数字框
-   的上限是按单位算出来的（见 sizeRange），不是写死的 1024。 */
-const MIN_BYTES = 64 * 1024;
-const MAX_BYTES = 1024 * 1024 * 1024;
+/* 单位只有 KB / MB 两档（0.1.28 按用户要求去掉 GB：一个放在 /var/run 内存盘
+   上的日志不需要 GiB 级阈值，那个档位只会引出「GB 只能填 1」这种解释）。
+   这张表是前端的唯一口径，rpcd 与 clean_log.sh 里各有一份等价的换算，改档位
+   要三处一起改。 */
+const UNIT_BYTES = { KB: 1024, MB: 1024 * 1024 };
+const UNIT_KEYS = [ 'KB', 'MB' ];
+/* 数字一律 1–999，所以能设 1 KB – 999 MB。这是**每个日志文件各自**的阈值：
+   clean_log.sh 的 rotate_log 对每个文件单独比大小、单独轮转，六个都涨满才会
+   占到 6 倍，不是六份合计。 */
+const SIZE_MIN = 1;
+const SIZE_MAX = 999;
 
 const callLogClean = rpc.declare({
 	object: 'luci.homeproxy',
@@ -98,47 +98,32 @@ function normalizeUnit(u) {
 	return (UNIT_KEYS.indexOf(s) >= 0) ? s : DEFAULT_SETTINGS.unit;
 }
 
-/* 当前单位下数字框能填的范围：换算成字节后必须落在 [64 KiB, 1 GiB] 里。
-   KB 的下限是 64（= 64 KiB），MB 是 1，GB 的上限是 1（= 1 GiB）。 */
-function sizeRange(unit) {
-	const u = normalizeUnit(unit),
-	      hi = Math.floor(MAX_BYTES / UNIT_BYTES[u]),
-	      lo = (u === 'KB') ? Math.ceil(MIN_BYTES / UNIT_BYTES[u]) : 1;
-
-	return { min: lo, max: (hi < lo) ? lo : hi };
+/* 数字框能填的范围：KB 与 MB 都是 1–999（单位不再影响范围）。 */
+function sizeRange() {
+	return { min: SIZE_MIN, max: SIZE_MAX };
 }
 
 /* Accepts whatever the backend (or a hand-edited log.conf) hands over and
    returns values the UI can render without further checks. */
 function normalizeSettings(raw) {
 	const s = raw || {};
-	const unit = normalizeUnit(s.unit);
-	const r = sizeRange(unit);
 
 	return {
 		refresh: clampInt(s.refresh, REFRESH_MIN, REFRESH_MAX, DEFAULT_SETTINGS.refresh),
-		size:    clampInt(s.size, r.min, r.max, r.min),
-		unit:    unit
+		size:    clampInt(s.size, SIZE_MIN, SIZE_MAX, DEFAULT_SETTINGS.size),
+		unit:    normalizeUnit(s.unit)
 	};
 }
 
 function settingsBytes(s) {
-	const bytes = s.size * UNIT_BYTES[normalizeUnit(s.unit)];
+	const size = clampInt(s.size, SIZE_MIN, SIZE_MAX, DEFAULT_SETTINGS.size);
 
-	if (bytes < MIN_BYTES)
-		return MIN_BYTES;
-
-	if (bytes > MAX_BYTES)
-		return MAX_BYTES;
-
-	return bytes;
+	return size * UNIT_BYTES[normalizeUnit(s.unit)];
 }
 
-/* Human form of the byte budget, used by the settings page. */
+/* Human form of the byte budget, used by the settings page. 最大只到 999 MB，
+   所以没有 GB 分支（单位档位里也没有 GB 了）。 */
 function formatBytes(bytes) {
-	if (bytes >= UNIT_BYTES.GB)
-		return _('%s GB').format(Math.round(bytes / UNIT_BYTES.GB * 100) / 100);
-
 	if (bytes >= UNIT_BYTES.MB)
 		return _('%s MB').format(Math.round(bytes / UNIT_BYTES.MB * 100) / 100);
 
@@ -930,8 +915,8 @@ return {
 	REFRESH_MAX: REFRESH_MAX,
 	UNIT_KEYS: UNIT_KEYS,
 	UNIT_BYTES: UNIT_BYTES,
-	MIN_BYTES: MIN_BYTES,
-	MAX_BYTES: MAX_BYTES,
+	SIZE_MIN: SIZE_MIN,
+	SIZE_MAX: SIZE_MAX,
 	sizeRange: sizeRange,
 
 	normalizeView: normalizeView,

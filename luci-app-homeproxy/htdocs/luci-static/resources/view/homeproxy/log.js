@@ -255,16 +255,16 @@ function renderSettingsPanel(ctx, onSaved) {
 		'value': String(settings.size)
 	});
 
-	/* 单位下拉：KB / MB / GB，顺序与设计稿一致。 */
+	/* 单位下拉：KB / MB 两档（GB 档 0.1.28 按用户要求移除了）。 */
 	const unit_sel = E('select', {
 		'class': 'cbi-input-select',
 		'change': ui.createHandlerFn(ctx, (ev) => {
-			/* 换单位时保持字节数不变：1024 MB 换成 GB 就是 1，1 MB 换成 KB
-			   就是 1024；被该单位的上下限夹住时按边界取值。不这么做的话，
+			/* 换单位时保持字节数不变：1 MB 换成 KB 就是 1024，被 1–999 的
+			   上界夹住时就取 999；1 KB 换成 MB 会落到 0 → 夹到 1。不这么做的话，
 			   「切一下单位，上限悄悄变成 1 KB」太容易发生了。 */
 			const bytes = logview.settingsBytes(settings);
 			const unit = logview.normalizeUnit(ev.target.value);
-			const r = logview.sizeRange(unit);
+			const r = logview.sizeRange();
 
 			let n = Math.round(bytes / logview.UNIT_BYTES[unit]);
 
@@ -279,10 +279,9 @@ function renderSettingsPanel(ctx, onSaved) {
 	/* 生效值回显：让人一眼看到「1 MB」到底是多少字节、有没有被夹住。 */
 	const effective = E('div', { 'class': 'hp-logset-hint' });
 
-	/* 数字框的上下限跟着单位走：KB 最少 64，MB 最少 1，GB 最多 1
-	   （1 GiB 是每个日志文件各自的上限，不是六个文件合计）。 */
+	/* 数字框的上下限固定是 1–999（KB 与 MB 都一样），不随单位变。 */
 	function applyRange() {
-		const r = logview.sizeRange(unit_sel.value);
+		const r = logview.sizeRange();
 
 		size_in.setAttribute('min', String(r.min));
 		size_in.setAttribute('max', String(r.max));
@@ -403,9 +402,9 @@ function renderSettingsPanel(ctx, onSaved) {
 					_('When a log file reaches the size limit it is copied to .1 (one generation) and then emptied, so the oldest lines are the ones that go. The log pages no longer cut the display at a fixed number of lines: whatever is in the file is shown.'),
 					'日志文件达到上限时先另存为 .1（保留一代）再清空，被丢弃的是最早的行。日志页面不再按固定条数截断显示：文件里有多少行就显示多少行。'),
 				E('br'),
-				logview.zh('The size limit is capped at 1 GB because the log directory lives on a RAM disk.',
-					_('The size limit is capped at 1 GB because the log directory lives on a RAM disk.'),
-					'大小上限最多 1 GB：日志目录在内存盘上。')
+				logview.zh('The size limit applies to each log file separately: 1-999 KB or 1-999 MB. The log directory lives on a RAM disk.',
+					_('The size limit applies to each log file separately: 1-999 KB or 1-999 MB. The log directory lives on a RAM disk.'),
+					'大小上限是每个日志文件各自的上限，可填 1–999 KB 或 1–999 MB：日志目录在内存盘上。')
 			])
 		]),
 		E('div', { 'class': 'hp-logset-buttons' }, [ save_btn, reset_btn ])
