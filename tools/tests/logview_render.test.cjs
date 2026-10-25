@@ -204,9 +204,9 @@ function boot(opts) {
 
 	/* The module body ends with `return { … }`, so it has to be evaluated
 	   inside its own function scope before its exports can be reached. */
-	const fn = new Function(...Object.keys(stubs),
-		'return (function(){\n' + src + '\n})().renderPage;');
-	const renderPage = fn.apply(null, Object.values(stubs));
+	const mod = new Function(...Object.keys(stubs),
+		'return (function(){\n' + src + '\n})();').apply(null, Object.values(stubs));
+	const renderPage = mod.renderPage;
 
 	const host = document.createElement('div');
 	host.id = 'host';
@@ -233,7 +233,8 @@ function boot(opts) {
 			return Promise.resolve().then(() => pollFn());
 		},
 		box: () => document.querySelector('#log_textarea'),
-		interval: () => pollInterval
+		interval: () => pollInterval,
+		module: mod
 	};
 }
 
@@ -436,9 +437,28 @@ const CASES = [
 }
 ];
 
+/* --- 8. the unit table (KB / MB / GB) ------------------------------------- */
+/* 0.1.28: the size limit offers KB / MB / GB, and the number field's range is
+   derived from the same table that computes the byte budget. A wrong table is
+   invisible in the UI — "1 GB" would quietly rotate at 1 MiB — so check the
+   arithmetic straight instead of trusting the labels. */
+const units = boot({ read: () => Promise.resolve('') }).module;
+
+check('a lowercase unit is normalised to GB', units.normalizeUnit('gb') === 'GB');
+check('1 GB is 1073741824 bytes',
+	units.settingsBytes({ size: 1, unit: 'GB' }) === 1073741824,
+	String(units.settingsBytes({ size: 1, unit: 'GB' })));
+check('the GB field stops at 1 (the 1 GiB ceiling)',
+	units.sizeRange('GB').max === 1, JSON.stringify(units.sizeRange('GB')));
+check('the KB field starts at 64 (the 64 KiB floor)',
+	units.sizeRange('KB').min === 64, JSON.stringify(units.sizeRange('KB')));
+check('2048 MB is clamped to the 1024 MB ceiling',
+	units.normalizeSettings({ size: 2048, unit: 'MB' }).size === 1024);
+check('a zero budget still lands on 64 KiB',
+	units.settingsBytes({ size: 0, unit: 'MB' }) === 65536);
+
 /* One case at a time: each boot() rebinds window/document for the module. */
 let chain = Promise.resolve();
-
 CASES.forEach((c) => {
 	chain = chain.then(() => run(c.name, c.opts, c.assertions));
 });

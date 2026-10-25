@@ -9,7 +9,8 @@
 # 最关键的上下文常常在 3 分钟内就被冲掉，而且没有任何历史可回看。
 # 现在改为：
 #   - 上限来自「日志设置」页面写的 /etc/homeproxy/log.conf
-#     （refresh / size / unit 三个 key；size + unit 就是这里的阈值）。
+#     （refresh / size / unit 三个 key；size + unit 就是这里的阈值，
+#      unit 只认 KB / MB / GB 三档，和界面下拉一致）。
 #     没有这个文件时回落到旧版隐藏项 uci homeproxy.config.log_max_kb，
 #     再没有就是 1 MiB。
 #   - 六个日志文件共用同一个上限。以前下载类日志单独用 256 KiB，界面上
@@ -66,6 +67,7 @@ resolve_limit() {
 		*)
 			case "$unit" in
 				KB|kb) log_max_bytes=$((size * 1024)) ;;
+				GB|gb) log_max_bytes=$((size * 1024 * 1024 * 1024)) ;;
 				*)     log_max_bytes=$((size * 1024 * 1024)) ;;
 			esac
 			;;

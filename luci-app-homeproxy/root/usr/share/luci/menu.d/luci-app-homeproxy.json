@@ -49,29 +49,5 @@
 			"type": "view",
 			"path": "homeproxy/log"
 		}
-	},
-	"admin/services/homeproxy/log_settings": {
-		"title": "Log Settings",
-		"order": 36,
-		"action": {
-			"type": "view",
-			"path": "homeproxy/log_settings"
-		}
-	},
-	"admin/services/homeproxy/log_plugin": {
-		"title": "Plugin Log",
-		"order": 37,
-		"action": {
-			"type": "view",
-			"path": "homeproxy/log_plugin"
-		}
-	},
-	"admin/services/homeproxy/log_core": {
-		"title": "Core Log",
-		"order": 38,
-		"action": {
-			"type": "view",
-			"path": "homeproxy/log_core"
-		}
 	}
 }

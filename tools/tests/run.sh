@@ -337,10 +337,10 @@ fi
 
 LOG_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
 # 0.1.28 把读文件 / 切记录 / 合并 / 渲染搬进了共用模块：运行日志、插件日志、
-# 内核日志三个页面各传一份来源清单，解析和渲染只有这一份实现。
+# 内核日志三个面板各传一份来源清单，解析和渲染只有这一份实现。
 LOGVIEW="$PKG/htdocs/luci-static/resources/homeproxy/logview.js"
 if grep -q 'core_tz' "$LOGVIEW" && grep -q 'shiftTs' "$LOGVIEW" \
-   && grep -q 'core: true' "$LOG_JS" && grep -q 'core: true' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js"; then
+   && grep -q 'core: true' "$LOG_JS"; then
 	ok "log view puts the core's stamps on the local clock"
 else
 	bad "log view would keep two clocks (core_tz marker not consumed)"
@@ -353,7 +353,7 @@ fi
 # and a rebuild of the scroller must not throw the reader back to line 1.
 section "unified log view (levels + refresh)"
 
-lv="$(sed -n '/const log_level_choices = {/,/};/p' "$LOG_JS" \
+lv="$(sed -n '/const level_choices = {/,/};/p' "$LOG_JS" \
 	| sed -n 's/^[[:space:]]*\([a-z]*\)[[:space:]]*:.*/\1/p' | sort | tr '\n' ' ')"
 if [ "$lv" = "debug error info warn " ]; then
 	ok "level choices are exactly debug/info/warn/error"
@@ -452,48 +452,64 @@ else
 	bad "download logs never rotate (old downloads linger in /var/run)"
 fi
 
-# ── 日志设置 + 三个新页面（0.1.28）──────────────────────────────────────────
-# 需求：运行日志下面再加「日志设置 / 插件日志 / 内核日志」三个选项卡；
-#   日志设置能改刷新时间与日志文件大小上限（值 + 单位，见设计稿）；
+# ── 日志页：四个选项卡 + 日志设置（0.1.28）──────────────────────────────────
+# 需求：运行日志 / 日志设置 / 插件日志 / 内核日志 是**同一页里的四个选项卡**，
+#   另外三个排在运行日志下面（不是侧栏里四个平级菜单项）；
+#   日志设置能改刷新时间与日志文件大小上限（值 + 单位 KB / MB / GB）；
 #   显示不再限制条数，改为限制文件大小；
 #   插件日志 / 内核日志不分级别、全部显示。
-section "log settings + plugin/core log pages (0.1.28)"
+section "log tabs + log settings (0.1.28)"
 
 RPCD="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
 MENU="$PKG/root/usr/share/luci/menu.d/luci-app-homeproxy.json"
-for pair in "log_settings:Log Settings" "log_plugin:Plugin Log" "log_core:Core Log"; do
-	id="${pair%%:*}"; title="${pair##*:}"
-	if grep -q "\"admin/services/homeproxy/$id\"" "$MENU" \
-	   && grep -qF "\"title\": \"$title\"" "$MENU"; then
-		ok "menu item $id ($title) exists"
-	else
-		bad "menu item $id is missing (a tab would not be rendered)"
-	fi
-done
 
-for v in log_plugin log_core; do
-	if grep -q "'require homeproxy.logview as logview'" "$PKG/htdocs/luci-static/resources/view/homeproxy/$v.js"; then
-		ok "$v reuses the shared logview module (no second parser)"
-	else
-		bad "$v duplicates the parsing/rendering code"
-	fi
-done
-
-# 这两个页面存在的意义就是「原样看全部」：一旦它们开始按视图/级别过滤，
-# 「文件里有、界面上没有」就会重新出现。
-if ! grep -q 'filter:' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_plugin.js" \
-   && ! grep -q 'filter:' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js" \
-   && ! grep -q 'log_view' "$PKG/htdocs/luci-static/resources/view/homeproxy/log_core.js"; then
-	ok "plugin/core pages pass no filter: every level is shown"
+# 侧栏里只剩「运行日志」一项：LuCI 的菜单只有两级，挂第三级侧栏根本不渲染，
+# 所以三个选项卡画在页面里。0.1.28 初版做成了三个平级菜单项，用户看到的正是
+# 这个问题（三个选项卡跟运行日志并排，而不是在它下面）。
+if ! grep -q 'homeproxy/log_settings\|homeproxy/log_plugin\|homeproxy/log_core' "$MENU"; then
+	ok "sidebar has one log entry: the other three are tabs, not menu items"
 else
-	bad "a plugin/core page filters by view or level (rows would disappear)"
+	bad "the three tabs are separate menu entries (they must live under 运行日志)"
 fi
+
+for f in log_settings log_plugin log_core; do
+	if [ -e "$PKG/htdocs/luci-static/resources/view/homeproxy/$f.js" ]; then
+		bad "view $f.js still exists (the four tabs live in log.js)"
+	fi
+done
+ok "the three old log views are gone (one page, four panels)"
+
+tabs="$(sed -n '/^const TABS = \[/,/^\];/p' "$LOG_JS" \
+	| sed -n "s/.*id: '\([a-z]*\)'.*/\1/p" | tr '\n' ' ')"
+if [ "$tabs" = "runtime settings plugin core " ]; then
+	ok "tab order is 运行日志 → 日志设置 → 插件日志 → 内核日志"
+else
+	bad "tab order is '$tabs' (the three new tabs must sit under 运行日志)"
+fi
+
+# 三个日志面板都是 lazy：只有当前显示的那个轮询。否则每点过一个选项卡就多
+# 一个定时器，六个日志文件每轮被读四遍 —— /var/run 是内存盘。
+if [ "$(grep -c 'lazy: true' "$LOG_JS")" = 3 ] \
+   && grep -q 'typeof prev.page.stop' "$LOG_JS"; then
+	ok "only the visible tab polls (hidden panels are stopped)"
+else
+	bad "every panel keeps polling after its tab is left (wasted reads on tmpfs)"
+fi
+
+# 这两个面板存在的意义就是「原样看全部」：一旦它们开始按视图/级别过滤，
+# 「文件里有、界面上没有」就会重新出现。
+PLUGIN_FN="$(sed -n '/^function renderPluginPanel/,/^}/p' "$LOG_JS")"
+CORE_FN="$(sed -n '/^function renderCorePanel/,/^}/p' "$LOG_JS")"
+case "$PLUGIN_FN$CORE_FN" in
+	*filter:*|*log_view*) bad "a plugin/core panel filters by view or level (rows would disappear)" ;;
+	*) ok "plugin/core panels pass no filter: every level is shown" ;;
+esac
 
 # 设置必须写在 /etc/homeproxy/log.conf，不能进 uci：uci commit 会改
 # /etc/config/homeproxy 的 mtime → procd 的 config.change → reload_service，
-# 也就是「为了改个刷新间隔把隧道重启一次」。
-LOGSET="$PKG/htdocs/luci-static/resources/view/homeproxy/log_settings.js"
-if ! grep -q 'uci\.' "$LOGSET" && grep -q 'logview.saveSettings' "$LOGSET"; then
+# 也就是「为了改个刷新间隔把隧道重启一次」。所以只切出设置面板来检。
+printf '%s\n' "$(sed -n '/^function renderSettingsPanel/,/^}/p' "$LOG_JS")" > "$WORK/logset.fn.js"
+if ! grep -q 'uci\.' "$WORK/logset.fn.js" && grep -q 'logview.saveSettings' "$WORK/logset.fn.js"; then
 	ok "log settings never touch uci (a commit would restart the core)"
 else
 	bad "log settings go through uci: saving them reloads (stop+start) the service"
@@ -504,6 +520,16 @@ if grep -q 'log_settings_save' "$RPCD" && grep -q '/log.conf' "$RPCD" \
 	ok "rpcd writes log.conf atomically (no half-written file at the 180s boundary)"
 else
 	bad "rpcd has no log_settings_save / writes log.conf in place"
+fi
+
+# 单位 KB / MB / GB 三处必须同时认识：前端下拉、rpcd 的换算表、轮转脚本的
+# case 分支。少一处就是「界面选 1 GB、实际按 1 MiB 轮转」。
+if grep -q "UNIT_BYTES" "$LOGVIEW" && grep -q "GB:" "$LOGVIEW" \
+   && grep -q "LOG_UNITS" "$RPCD" && grep -q "GB:" "$RPCD" \
+   && grep -q 'GB|gb' "$CL_LOG" && grep -q 'logSizeRange' "$RPCD"; then
+	ok "KB / MB / GB understood by the UI, rpcd and clean_log.sh"
+else
+	bad "a GB unit is not handled everywhere (UI says 1 GB, rotation uses 1 MiB)"
 fi
 
 if grep -q 'LOG_CONF' "$CL_LOG" && grep -q 'resolve_limit' "$CL_LOG" \
@@ -546,6 +572,18 @@ unit=KB')" in
 	*) bad "the KB unit is ignored (threshold would be 512 MiB)" ;;
 esac
 
+case "$(cl_probe gb 'size=1
+unit=GB')" in
+	1073741824) ok "log.conf size=1 unit=GB means 1 GiB" ;;
+	*) bad "the GB unit is ignored (1 GB would silently become 1 MiB)" ;;
+esac
+
+case "$(cl_probe gbmax 'size=8
+unit=GB')" in
+	1073741824) ok "anything past 1 GB is clamped to the 1 GiB ceiling" ;;
+	*) bad "size=8 unit=GB is not clamped (a tmpfs log would eat the RAM)" ;;
+esac
+
 case "$(cl_probe zero 'size=0
 unit=MB')" in
 	65536) ok "a zero size is clamped to the 64 KiB floor" ;;
@@ -557,6 +595,7 @@ case "$(CL_FN="$CL_FN" sh "$WORK/cleanlog.probe.sh" "$WORK/cleanlog.conf" 2>/dev
 	1048576) ok "an install without log.conf falls back to 1 MiB" ;;
 	*) bad "no log.conf and no uci value does not fall back to 1 MiB" ;;
 esac
+
 
 # ----------------------------------------------------------------- catalog
 section "gettext catalog"
@@ -961,12 +1000,27 @@ case $? in
 		;;
 esac
 
+# 四个选项卡是同一页里的东西：切走要停轮询、切回来不能变成空白。0.1.28 初版
+# 把它们做成了三个独立菜单项（跟运行日志平级），这里真跑一遍 log.js 的
+# renderTabs()，只有运行期才能验证「节点复用 / 轮询开关」这两件事。
+section "Log tabs (jsdom)"
+"$NODE" "$ROOT/tools/tests/logtabs_render.test.cjs" > "$WORK/logtabs.out" 2>&1
+case $? in
+	0)  ok "logtabs_render.test.cjs"; sed 's/^/       /' "$WORK/logtabs.out" | tail -3 ;;
+	*)  if grep -q '^SKIP' "$WORK/logtabs.out"; then
+			skip "jsdom unavailable (npm install jsdom)"
+		else
+			bad "logtabs_render.test.cjs"; sed 's/^/       /' "$WORK/logtabs.out" | tail -30
+		fi
+		;;
+esac
+
 # ------------------------------------------- CI 环境本身能否真跑这两个 DOM 测试
-# 两个 jsdom 测试都有「装不上就 SKIP、退出码 0」的自我保护，这本来是防止 npm
+# 三个 jsdom 测试都有「装不上就 SKIP、退出码 0」的自我保护，这本来是防止 npm
 # 抽风把 Lint 变红；但也意味着 **CI 上可能一次都没跑过而面板全绿**。jsdom >= 27
 # 依赖 undici 7，undici 7 用到 node 22.15+ 才有的 zlib zstd 接口 —— Node 20 上
 # require('jsdom') 直接抛 "Cannot read properties of undefined (reading 'bind')"，
-# 于是两个 DOM 测试静默跳过（0.1.24 那个 `shift` 掉出作用域的 bug 正是靠它们才
+# 于是 DOM 测试静默跳过（0.1.24 那个 `shift` 掉出作用域的 bug 正是靠它们才
 # 抓到的）。反过来，jsdom 不钉版本时 npm 会自动升到新版，某个版本的 DOM 行为
 # 差异又能把 Lint 变红（jsdom 26 的 InvalidCharacterError 就是这么来的）。
 # 所以这两件事必须写死并被断言守住。

@@ -8,9 +8,10 @@
  * 一个可滚动的框，外加顶栏（自动刷新 / 清空 / 复制）与轮询注册。
  *
  * 0.1.28 之前这一整套都写在 view/homeproxy/log.js 里，只有一个「运行日志」
- * 页面。现在拆成四个页面（运行日志 / 日志设置 / 插件日志 / 内核日志），
- * 于是解析与渲染必须只有一份：两份拷贝意味着以后改一次解析规则要记得改
- * 两处，而忘掉的那一处不会有任何报错 —— 它只会安静地显示错的东西。
+ * 页面。现在页面里有四个选项卡（运行日志 / 日志设置 / 插件日志 / 内核日志），
+ * 三种日志视图各传一份来源清单，于是解析与渲染必须只有一份：两份拷贝意味
+ * 着以后改一次解析规则要记得改两处，而忘掉的那一处不会有任何报错 —— 它只
+ * 会安静地显示错的东西。
  */
 
 'use strict';
@@ -40,10 +41,16 @@ const CORE_TZ_FILE = RUN_DIR + '/core_tz';
 const DEFAULT_SETTINGS = { refresh: 5, size: 1, unit: 'MB' };
 const REFRESH_MIN = 2;
 const REFRESH_MAX = 120;
-const SIZE_MIN = 1;
-const SIZE_MAX = 1024;
-/* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。 */
+/* 单位只有 KB / MB / GB 三档（与设计稿的下拉一致）。这张表是前端的唯一
+   口径，rpcd 与 clean_log.sh 里各有一份等价的换算，改档位要三处一起改。 */
+const UNIT_BYTES = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+const UNIT_KEYS = [ 'KB', 'MB', 'GB' ];
+/* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。
+   上界 1 GiB：/var/run 是内存盘，六个日志文件共用一个阈值，填得更大只会
+   把内存吃光。所以「GB」这一档实际只能填 1——数字框的上限是按单位算出来的
+   （见 sizeRange），不是写死的 1024。 */
 const MIN_BYTES = 64 * 1024;
+const MAX_BYTES = 1024 * 1024 * 1024;
 
 const callLogClean = rpc.declare({
 	object: 'luci.homeproxy',
@@ -85,34 +92,57 @@ function zh(en, translated, fallback) {
 }
 
 function normalizeUnit(u) {
-	return (String(u || '').toUpperCase() === 'KB') ? 'KB' : 'MB';
+	const s = String(u || '').toUpperCase();
+
+	return (UNIT_KEYS.indexOf(s) >= 0) ? s : DEFAULT_SETTINGS.unit;
+}
+
+/* 当前单位下数字框能填的范围：换算成字节后必须落在 [64 KiB, 1 GiB] 里。
+   KB 的下限是 64（= 64 KiB），MB 是 1，GB 的上限是 1（= 1 GiB）。 */
+function sizeRange(unit) {
+	const u = normalizeUnit(unit),
+	      hi = Math.floor(MAX_BYTES / UNIT_BYTES[u]),
+	      lo = (u === 'KB') ? Math.ceil(MIN_BYTES / UNIT_BYTES[u]) : 1;
+
+	return { min: lo, max: (hi < lo) ? lo : hi };
 }
 
 /* Accepts whatever the backend (or a hand-edited log.conf) hands over and
    returns values the UI can render without further checks. */
 function normalizeSettings(raw) {
 	const s = raw || {};
+	const unit = normalizeUnit(s.unit);
+	const r = sizeRange(unit);
 
 	return {
 		refresh: clampInt(s.refresh, REFRESH_MIN, REFRESH_MAX, DEFAULT_SETTINGS.refresh),
-		size:    clampInt(s.size, SIZE_MIN, SIZE_MAX, DEFAULT_SETTINGS.size),
-		unit:    normalizeUnit(s.unit)
+		size:    clampInt(s.size, r.min, r.max, r.min),
+		unit:    unit
 	};
 }
 
 function settingsBytes(s) {
-	const bytes = s.size * ((s.unit === 'KB') ? 1024 : 1024 * 1024);
+	const bytes = s.size * UNIT_BYTES[normalizeUnit(s.unit)];
 
-	return (bytes < MIN_BYTES) ? MIN_BYTES : bytes;
+	if (bytes < MIN_BYTES)
+		return MIN_BYTES;
+
+	if (bytes > MAX_BYTES)
+		return MAX_BYTES;
+
+	return bytes;
 }
 
 /* Human form of the byte budget, used by the settings page. */
 function formatBytes(bytes) {
-	if (bytes >= 1024 * 1024)
-		return _('%s MB').format(Math.round(bytes / (1024 * 1024) * 100) / 100);
+	if (bytes >= UNIT_BYTES.GB)
+		return _('%s GB').format(Math.round(bytes / UNIT_BYTES.GB * 100) / 100);
 
-	if (bytes >= 1024)
-		return _('%s KB').format(Math.round(bytes / 1024));
+	if (bytes >= UNIT_BYTES.MB)
+		return _('%s MB').format(Math.round(bytes / UNIT_BYTES.MB * 100) / 100);
+
+	if (bytes >= UNIT_BYTES.KB)
+		return _('%s KB').format(Math.round(bytes / UNIT_BYTES.KB));
 
 	return _('%s bytes').format(bytes);
 }
@@ -535,17 +565,19 @@ function copyLogText(node) {
 }
 
 /**
- * Build one log page.
+ * Build one log panel (one tab of the log page).
  *
  * @param {object} ctx              LuCI view context (for ui.createHandlerFn)
  * @param {object} o
- * @param {string} o.key            stable poll key, one per page
- * @param {Array}  o.sources        [{ file, core? }] — what this page shows
+ * @param {string} o.key            stable poll key, one per panel
+ * @param {Array}  o.sources        [{ file, core? }] — what this panel shows
  * @param {Array}  [o.head]         extra controls rendered before 自动刷新
  * @param {function} [o.filter]     (merged) => merged, re-applied on every tick
  * @param {string} [o.empty]        text for the "nothing to show" state
  * @param {string} [o.box_id]       element id of the box (default log_textarea)
- * @returns {Array} nodes ready to be returned from render()
+ * @param {boolean} [o.lazy]        do not poll until start() is called
+ * @returns {object} { nodes, refresh, start, stop, box } — the caller must
+ *                   mount `nodes` and call start() when the panel is shown
  */
 function renderPage(ctx, o) {
 	const sources = o.sources || [];
@@ -734,24 +766,66 @@ function renderPage(ctx, o) {
 	/* 刷新间隔来自「日志设置」。它是异步读出来的，而 render() 必须同步返回，
 	   所以先用 LuCI 的默认间隔注册轮询，读到设置后再按真实值注册一次 ——
 	   hp.pollAdd 会先摘掉同名回调，不会叠成一堆。o.interval 指定时就完全
-	   按传进来的值走（测试与将来的调用方要能固定节奏）。 */
+	   按传进来的值走（测试与将来的调用方要能固定节奏）。
+
+	   轮询本身由 start()/stop() 控制：0.1.29 起四个日志页是同页选项卡，
+	   只有当前显示的那一个可以轮询。否则每访问过一个选项卡就多一个定时器，
+	   六个日志文件要读四遍 —— 而 /var/run 是内存盘，这些读全是白花的。 */
 	let every = null;
+	let polling = false;
+	let interval = 0;
 
-	function registerPoll(seconds) {
-		hp.pollAdd(o.key || 'log-refresh', refresh, seconds);
-
+	function paintEvery() {
 		if (every) {
 			dom.content(every, [
-				_('Refresh every %s seconds.').format(seconds),
+				_('Refresh every %s seconds.').format(interval),
 				' · ',
 				_('Click the log first, then Ctrl+A selects it all.')
 			]);
 		}
 	}
 
+	function registerPoll(seconds) {
+		interval = seconds;
+
+		if (polling)
+			hp.pollAdd(o.key || 'log-refresh', refresh, seconds);
+
+		paintEvery();
+	}
+
+	function start() {
+		if (polling)
+			return null;
+
+		polling = true;
+		hp.pollAdd(o.key || 'log-refresh', refresh, interval);
+		paintEvery();
+
+		/* 首次显示立刻读一次：LuCI 的第一次 tick 可能还在等一个间隔，
+		   那样切过去只能看到「正在收集数据…」的转圈。 */
+		return refresh(true);
+	}
+
+	function stop() {
+		if (!polling)
+			return false;
+
+		polling = false;
+
+		return hp.pollRemove(o.key || 'log-refresh');
+	}
+
+	/* 日志设置里改了刷新间隔：已经建好的面板就地换节奏，不必等下次打开。 */
+	function retune(seconds) {
+		registerPoll(clampInt(seconds, 1, 3600, interval));
+	}
+
 	const wanted = (typeof o.interval === 'number')
 		? clampInt(o.interval, 1, 3600, DEFAULT_SETTINGS.refresh) : null;
 	const initial = wanted || clampInt(L.env.pollinterval, 1, 3600, DEFAULT_SETTINGS.refresh);
+
+	interval = initial;
 
 	every = E('small', {}, [
 		_('Refresh every %s seconds.').format(initial),
@@ -759,7 +833,9 @@ function renderPage(ctx, o) {
 		_('Click the log first, then Ctrl+A selects it all.')
 	]);
 
-	registerPoll(initial);
+	/* o.lazy：调用方自己决定什么时候开始轮询（选项卡切过来时）。 */
+	if (o.lazy !== true)
+		start();
 
 	if (wanted === null) {
 		L.resolveDefault(callLogSettings(), null).then((raw) => {
@@ -792,6 +868,10 @@ function renderPage(ctx, o) {
 		],
 		/* 下拉过滤器的 change 处理器要用它立刻重画：换成下一次轮询要等 5 秒。 */
 		refresh: refresh,
+		/* 选项卡切换时由调用方开关轮询（o.lazy 为 true 时必须自己调 start）。 */
+		start: start,
+		stop: stop,
+		retune: retune,
 		box: box
 	};
 }
@@ -801,8 +881,11 @@ return {
 	DEFAULT_SETTINGS: DEFAULT_SETTINGS,
 	REFRESH_MIN: REFRESH_MIN,
 	REFRESH_MAX: REFRESH_MAX,
-	SIZE_MIN: SIZE_MIN,
-	SIZE_MAX: SIZE_MAX,
+	UNIT_KEYS: UNIT_KEYS,
+	UNIT_BYTES: UNIT_BYTES,
+	MIN_BYTES: MIN_BYTES,
+	MAX_BYTES: MAX_BYTES,
+	sizeRange: sizeRange,
 
 	normalizeView: normalizeView,
 	normalizeLevel: normalizeLevel,

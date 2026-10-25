@@ -271,11 +271,16 @@ const LOG_CONF = `${HP_DIR}/log.conf`;
 
 const LOG_DEFAULTS = { refresh: 5, size: 1, unit: 'MB' };
 
+/* 单位换算表：与前端 logview.js 的 UNIT_BYTES、clean_log.sh 的 case 分支
+   是同一份口径，加减档位要三处一起改。 */
+const LOG_UNITS = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+
 const LOG_LIMITS = {
 	refresh_min: 2, refresh_max: 120,
-	size_min: 1, size_max: 1024,
-	/* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。 */
-	min_bytes: 64 * 1024
+	/* 下界 64 KiB（再小日志一行都留不下）、上界 1 GiB（/var/run 是内存盘）。
+	   单位不同时数字框的范围也不同，见 logSizeRange()。 */
+	min_bytes: 64 * 1024,
+	max_bytes: 1024 * 1024 * 1024
 };
 
 function parseDigits(v) {
@@ -300,6 +305,34 @@ function clampDigits(v, lo, hi, dflt) {
 	return (n < lo) ? lo : ((n > hi) ? hi : n);
 }
 
+function logUnit(v) {
+	const s = trim(sprintf('%s', v ?? ''));
+
+	if (s === 'KB' || s === 'kb')
+		return 'KB';
+
+	if (s === 'GB' || s === 'gb')
+		return 'GB';
+
+	return 'MB';
+}
+
+/* 当前单位下允许填的数字范围：换算成字节后必须落在
+   [min_bytes, max_bytes] 里。KB 的下限是 64，MB 是 1，GB 的上限是 1。 */
+function logSizeRange(unit) {
+	const mult = LOG_UNITS[unit] ?? LOG_UNITS.MB,
+	      lo = (unit === 'KB') ? int(LOG_LIMITS.min_bytes / mult) : 1,
+	      hi = int(LOG_LIMITS.max_bytes / mult);
+
+	return { min: lo, max: (hi < lo) ? lo : hi };
+}
+
+function clampSize(v, unit) {
+	const r = logSizeRange(unit);
+
+	return clampDigits(v, r.min, r.max, r.min);
+}
+
 function readLogSettings() {
 	const out = {
 		refresh: LOG_DEFAULTS.refresh,
@@ -315,32 +348,37 @@ function readLogSettings() {
 		raw = null;
 	}
 
-	if (!length(raw || ''))
-		return out;
+	let sizeRaw = null, unitRaw = null;
 
-	for (let line in split(raw, '\n')) {
-		line = trim(line);
+	if (length(raw || '')) {
+		for (let line in split(raw, '\n')) {
+			line = trim(line);
 
-		const eq = index(line, '=');
+			const eq = index(line, '=');
 
-		if (eq <= 0)
-			continue;
+			if (eq <= 0)
+				continue;
 
-		const k = trim(substr(line, 0, eq)),
-		      v = trim(substr(line, eq + 1));
+			const k = trim(substr(line, 0, eq)),
+			      v = trim(substr(line, eq + 1));
 
-		if (k === 'refresh')
-			out.refresh = clampDigits(v, LOG_LIMITS.refresh_min, LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh);
-		else if (k === 'size')
-			out.size = clampDigits(v, LOG_LIMITS.size_min, LOG_LIMITS.size_max, LOG_DEFAULTS.size);
-		else if (k === 'unit')
-			out.unit = (v === 'KB') ? 'KB' : 'MB';
+			if (k === 'refresh')
+				out.refresh = clampDigits(v, LOG_LIMITS.refresh_min, LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh);
+			else if (k === 'size')
+				sizeRaw = v;
+			else if (k === 'unit')
+				unitRaw = v;
+		}
 	}
 
-	out.bytes = out.size * ((out.unit === 'KB') ? 1024 : 1024 * 1024);
+	/* 先定单位再夹数字：同一串数字在 KB 与 GB 下合法范围完全不同。 */
+	out.unit = logUnit(unitRaw);
+	out.size = clampSize(sizeRaw, out.unit);
 
-	if (out.bytes < LOG_LIMITS.min_bytes)
-		out.bytes = LOG_LIMITS.min_bytes;
+	const bytes = out.size * (LOG_UNITS[out.unit] ?? LOG_UNITS.MB);
+
+	out.bytes = (bytes < LOG_LIMITS.min_bytes) ? LOG_LIMITS.min_bytes
+		: ((bytes > LOG_LIMITS.max_bytes) ? LOG_LIMITS.max_bytes : bytes);
 
 	return out;
 }
@@ -1756,12 +1794,12 @@ const methods = {
 	log_settings_save: {
 		args: { refresh: 'string', size: 'string', unit: 'string' },
 		call: function(req) {
+			const unit = logUnit(req.args?.unit);
 			const cfg = {
 				refresh: clampDigits(req.args?.refresh, LOG_LIMITS.refresh_min,
 					LOG_LIMITS.refresh_max, LOG_DEFAULTS.refresh),
-				size: clampDigits(req.args?.size, LOG_LIMITS.size_min,
-					LOG_LIMITS.size_max, LOG_DEFAULTS.size),
-				unit: (trim(sprintf('%s', req.args?.unit || '')) === 'KB') ? 'KB' : 'MB'
+				size: clampSize(req.args?.size, unit),
+				unit: unit
 			};
 
 			const body = sprintf('refresh=%d\nsize=%d\nunit=%s\n', cfg.refresh, cfg.size, cfg.unit);
