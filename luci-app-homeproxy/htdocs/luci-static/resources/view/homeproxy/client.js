@@ -280,6 +280,16 @@ function ensurePanelInstalled() {
    于是「用户在 SSH 里删掉了 /etc/homeproxy/ruleset、界面上什么都没改，
    想靠点保存并应用把规则集补回来」这个最常见场景，两条腿全都不动。
    光靠事件监听做不到「点了就一定补」，所以下面还有一个定时兜底。 */
+/* 「保存并应用」之后的两件事，且**与配置有没有变更无关**（用户 0.2.2 定稿）：
+     ① 重载服务（stop + start）——start_service 里会重新检查内核 / 面板 /
+        规则集，这三件事都挂在启动流程上；
+     ② 直接触发一次规则集同步（不等服务重载成功）。
+   为什么要「无条件」：LuCI 的 apply 只看它自己页面里的表单。用户在 SSH /
+   编辑器里改了 /etc/config/homeproxy（比如新增一个 ruleset 段）时，页面
+   表单与磁盘已经一致 → rpcd 的 apply_rollback 发现「没有任何待提交的变更」
+   直接回 204 → LuCI **既不派发 uci-applied、也不触发 /sbin/luci-reload**，
+   服务完全不动。0.2.2 现场：用户手工加了 3 条规则集，点「保存并应用」后
+   插件日志里一行规则集下载都没有、核心仍显示「未在进行」——就是这条路。 */
 let rulesetSyncPending = false;
 let rulesetSyncDrop = null;
 let rulesetSyncNet = null;
@@ -296,14 +306,20 @@ function fireRulesetSync() {
 		return null;
 	}).catch((e) => {
 		/* 请求被拒绝不能静默：升级后 rpcd 未重启时 ubus 回
-		   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。
-		   同时退回 init 脚本那条路：reload = stop + start，
-		   start_service() 里同样会同步规则集。 */
+		   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。 */
 		ui.addNotification(null, E('p', {},
 			_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
-
-		return L.resolveDefault(callRCInit('homeproxy', 'reload'), null);
+		return null;
 	});
+}
+
+/* 无条件重载服务。放在规则集同步之后发起：reload = stop + start，而
+   start_service 自己也会 sync_rulesets()；两条路都撞上时后到的那个会被
+   mkdir 锁挡住并 exit 75「让路」，不会重复下载。
+   刻意**不 await**：reload 要 stop+start（几秒），让它自己跑完即可，
+   页面该 reload 就 reload。 */
+function fireServiceReload() {
+	return L.resolveDefault(callRCInit('homeproxy', 'reload'), null).catch(() => null);
 }
 
 function armRulesetSync() {
@@ -327,20 +343,25 @@ function armRulesetSync() {
 		}
 	};
 
+	/* 两条路都做同样三件事，且**先同步规则集、后重载服务**：
+	   · 先同步：下载可能几十秒，先让它跑起来（--detach 立刻返回）；
+	   · 后 reload：start_service 会重新检查内核 / 面板 / 规则集，
+	     并把新配置真正生效。 */
 	const run = () => {
 		clear();
-		fireRulesetSync();
+
+		return Promise.resolve(fireRulesetSync()).then(fireServiceReload);
 	};
 
 	const onApplied = () => run();
 
 	document.addEventListener('uci-applied', onApplied);
 
-	/* 兜底：等 12 秒（默认 apply_rollback 是 10 秒，confirm 最坏也就
-	   拖这么久）事件还没来就自己同步一次。覆盖两种「事件永远不来」的
-	   情形：① 没有待应用的变更（rpcd 回 204，见上方注释）；② 点了
-	   「保存」而不是「保存并应用」。同步是幂等的：本地已有有效副本的段
-	   会被跳过，重复跑不会重复下载。 */
+	/* 兜底：12 秒内事件还没来就自己做一遍。覆盖两种「事件永远不来」的情形：
+	   ① 没有待应用的变更（rpcd 回 204，用户手工改配置文件后最常见）；
+	   ② 点了「保存」而不是「保存并应用」。
+	   两件事都是幂等的：规则集本地已有有效副本的段会被跳过；服务重载由
+	   init.d 的重载守卫判定「配置没变且刚启动过」，重复触发会被跳过。 */
 	rulesetSyncNet = setTimeout(run, 12000);
 
 	/* 到期自清理，免得监听器一直挂在 document 上。 */

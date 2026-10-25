@@ -117,6 +117,18 @@ function panelLog(msg) {
 	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/panel_download.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
 }
 
+/* 规则集同步的「我收到了这个请求」审计行。
+   ⚠️ 必须同时写 **ruleset_download.log**（日志页能看到的那个文件），不能
+   只用 logger：现场（0.2.2）用户点「保存并应用」后插件日志里一行规则集
+   都没有，而唯一的审计行只进了 syslog，于是「rpcd 没被调用」「调用了但
+   脚本没起来」「脚本起来了但被 --check 判定为无需下载」三种情况在界面上
+   完全一样 —— 一个都查不出来。写进 ruleset_download.log 后：只有这一行
+   没有后续 = 脚本没起来；连这一行都没有 = rpcd 没收到请求。 */
+function rulesetLog(msg) {
+	const line = sprintf('%s', msg);
+	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/ruleset_download.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
+}
+
 /* external_ui 是用户自由输入的路径，随后会被 `rm -rf` / `mv` 直接操作
    （preparePanelBackup / restorePanelBackup / clash_api_install_panel）。
    一旦填成 `/`、`/etc`、`/usr`，安装或更新面板就会搬走/删除系统目录。
@@ -1953,7 +1965,11 @@ const methods = {
 			   服务真跑起来才成立。 */
 			const rc = system(`/bin/sh ${shellquote(script)} --detach --source ${shellquote('LuCI 保存并应用')} --autostart`);
 
-			system(`logger -t homeproxy ruleset_sync: LuCI 保存并应用触发，已后台启动规则集下载（rc=${rc}）`);
+			/* 审计行写进 ruleset_download.log（日志页可见），不再只进
+			   syslog —— 见 rulesetLog 的注释：现场就是靠这一行才分得清
+			   「rpcd 没被调用」和「脚本没起来」。 */
+			rulesetLog(sprintf('==== 规则集同步请求（LuCI 保存并应用）：%s',
+				rc === 0 ? '已后台启动下载，明细见上方' : sprintf('后台启动失败（rc=%d）', rc)));
 
 			return { result: rc === 0, rc: rc };
 		}

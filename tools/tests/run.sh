@@ -1310,10 +1310,40 @@ else
 	ok "rpcd ruleset_sync drops --quiet (every step reaches logread)"
 fi
 
-if grep -q 'logger -t homeproxy ruleset_sync' "$RPCD"; then
-	ok "rpcd ruleset_sync leaves a syslog audit line with its rc"
+# 审计行两处都要写：syslog（logread / 系统级排查）+ ruleset_download.log
+# （日志页读的就是它）。0.2.2 把原来裸的 `logger -t homeproxy ruleset_sync`
+# 换成了 rulesetLog()，所以这里判据也跟着改为「rulesetLog 的实现里同时有
+# logger 与 ruleset_download.log」——只判其中一处会让另一种退化溜过去。
+if sed -n '/function rulesetLog/,/^}/p' "$RPCD" | grep -q 'logger -t homeproxy' \
+   && sed -n '/function rulesetLog/,/^}/p' "$RPCD" | grep -q 'ruleset_download.log'; then
+	ok "rpcd ruleset audit line reaches both syslog and ruleset_download.log"
 else
-	bad "rpcd ruleset_sync is invisible in logread (no audit line)"
+	bad "rpcd ruleset audit line is half-blind (needs logread AND ruleset_download.log)"
+fi
+
+# 0.2.2 现场：用户手工在 /etc/config/homeproxy 里加了 3 条规则集，点「保存
+# 并应用」后插件日志一行规则集都没有、核心仍「未在进行」。原因有两层：
+#   ① 审计行只进 syslog（logger），日志页读的 ruleset_download.log 里没有，
+#      于是「rpcd 没被调用」与「脚本没起来」在界面上完全一样；
+#   ② LuCI 的 apply 只看它自己页面里的表单：手工改配置文件时页面与磁盘一致
+#      → rpcd 回 204 → 不派发 uci-applied、不触发 luci-reload，服务根本不重载。
+# 现在的口径（用户定稿）：不管配置有没有变更，「保存并应用」都必须
+# 重载服务 + 重新检查内核/面板/规则集。
+if grep -q 'function rulesetLog' "$RPCD" \
+   && grep -q 'ruleset_download.log.*rulesetLog\|rulesetLog(' "$RPCD" \
+   && sed -n '/function rulesetLog/,/^}/p' "$RPCD" | grep -q 'ruleset_download.log'; then
+	ok "rpcd ruleset audit line lands in ruleset_download.log (log page sees it)"
+else
+	bad "the ruleset audit line only goes to syslog: the log page stays empty"
+fi
+
+# 「保存并应用」必须无条件 reload：兜底定时器里要能看到 callRCInit reload。
+if grep -q 'function fireServiceReload' "$CJS" \
+   && sed -n '/function fireServiceReload/,/^}/p' "$CJS" | grep -q "callRCInit('homeproxy', 'reload')" \
+   && sed -n '/const run = () => {/,/};/p' "$CJS" | grep -q 'fireServiceReload'; then
+	ok "save&apply reloads the service even when the config did not change"
+else
+	bad "save&apply only syncs rule-sets: a hand-edited config never takes effect"
 fi
 
 if grep -q '"/var/run/homeproxy/ruleset_download.log"' "$ACL"; then
