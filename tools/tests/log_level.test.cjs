@@ -1,8 +1,8 @@
 /*
  * Filtering of the log view — exercised for real.
  *
- * logview.js is a plain module (`return { ... }`), so it cannot simply be
- * require'd here (LuCI's require is not available in bare node), but its pure
+ * logview.js is a LuCI module (`return baseclass.extend({ ... })`), so it cannot
+ * simply be require'd here (LuCI's require is not available in bare node), but its pure
  * part is sliced out and evaluated: the regexes, LEVEL_ORDER, normalizeLevel,
  * normalizeView, shiftTs, splitRecords, mergeRecords and the view filters.
  * Nothing below touches the DOM, rpc or fs, so the slice runs in a bare node

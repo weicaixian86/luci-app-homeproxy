@@ -95,6 +95,23 @@ if (typeof String.format !== 'function') {
 	};
 }
 
+/* Stand-in for LuCI's baseclass: L.require() only accepts a Class — it checks
+   Class.isSubclass() and then runs `new _class()` — so the module has to be
+   built with baseclass.extend(). This mirror keeps that contract in the test:
+   a module that reverts to `return { … }` would slip through a plain-object
+   stub here and only fail on a real device with
+   `TypeError: "<name>" factory yields invalid constructor`. */
+const baseclass = {
+	extend: function (props) {
+		return function Class() { Object.assign(this, props); };
+	}
+};
+
+/* L.require() resolves to the instance, never to the class itself. */
+function instantiate(v) {
+	return (typeof v === 'function') ? new v() : v;
+}
+
 /**
  * Boot one isolated copy of the module.
  *
@@ -196,6 +213,7 @@ function boot(opts) {
 			installCloseButtonText: () => {},
 			pollAdd: (key, fn, interval) => { pollFn = fn; pollInterval = interval; return true; }
 		},
+		baseclass: baseclass,
 		E: E,
 		_: (s) => s,
 		L: {
@@ -206,10 +224,10 @@ function boot(opts) {
 		}
 	};
 
-	/* The module body ends with `return { … }`, so it has to be evaluated
+	/* The module body ends with a bare `return`, so it has to be evaluated
 	   inside its own function scope before its exports can be reached. */
-	const mod = new Function(...Object.keys(stubs),
-		'return (function(){\n' + src + '\n})();').apply(null, Object.values(stubs));
+	const mod = instantiate(new Function(...Object.keys(stubs),
+		'return (function(){\n' + src + '\n})();').apply(null, Object.values(stubs)));
 	const renderPage = mod.renderPage;
 
 	const host = document.createElement('div');

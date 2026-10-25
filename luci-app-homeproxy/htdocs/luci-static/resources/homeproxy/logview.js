@@ -15,6 +15,7 @@
  */
 
 'use strict';
+'require baseclass';
 'require dom';
 'require fs';
 'require rpc';
@@ -908,7 +909,15 @@ function renderPage(ctx, o) {
 	};
 }
 
-return {
+/* LuCI 的 require() 只接受**类**：它用 Class.isSubclass() 校验工厂的返回值，
+   即必须是 baseclass.extend() 出来的构造器（prototype 继承 baseclass），然后
+   new 出一个实例交给调用方。以前这里 `return { … }` 返回普通对象，在旧版
+   LuCI 上能跑，在新版上直接报
+   `TypeError: "homeproxy.logview" factory yields invalid constructor`
+   —— 日志页整页打不开。
+   本模块只是函数集合、内部不用 this，所以做成类不影响任何调用方式：
+   require('homeproxy.logview') 拿到的仍是「有这些方法的对象」。 */
+return baseclass.extend({
 	VIEW_KEYS: VIEW_KEYS,
 	DEFAULT_SETTINGS: DEFAULT_SETTINGS,
 	REFRESH_MIN: REFRESH_MIN,
@@ -941,4 +950,4 @@ return {
 	saveSettings: callLogSettingsSave,
 
 	renderPage: renderPage
-};
+});

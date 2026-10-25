@@ -80,14 +80,30 @@ function stripModule(src) {
 		.replace(/^'require [^']*';\n/gm, '');
 }
 
-/* A LuCI module ends with a bare `return { … }`, so it has to be evaluated
+/* Stand-in for LuCI's baseclass: L.require() only accepts a Class (it checks
+   Class.isSubclass() and then runs `new _class()`), so modules must be built
+   with baseclass.extend(). Mirroring both steps here means a module that goes
+   back to `return { … }` fails in this test instead of on a real device with
+   `TypeError: "<name>" factory yields invalid constructor`. */
+const baseclass = {
+	extend: function (props) {
+		return function Class() { Object.assign(this, props); };
+	}
+};
+
+/* L.require() resolves to the instance, never to the class itself. */
+function instantiate(v) {
+	return (typeof v === 'function') ? new v() : v;
+}
+
+/* A LuCI module ends with a bare `return`, so it has to be evaluated
    inside its own function scope before its exports can be reached. */
 function evalModule(file, stubs) {
 	const src = stripModule(fs.readFileSync(file, 'utf8'));
 	const names = Object.keys(stubs);
 	const fn = new Function(...names, 'return (function(){\n' + src + '\n})();');
 
-	return fn.apply(null, names.map((n) => stubs[n]));
+	return instantiate(fn.apply(null, names.map((n) => stubs[n])));
 }
 
 /* LuCI's E(): the second argument is children whenever it is not a plain
@@ -229,6 +245,7 @@ function boot() {
 	};
 
 	const logview = evalModule(LOGVIEW_PATH, {
+		baseclass: baseclass,
 		dom: domStub,
 		fs: {
 			read_direct: (p) => Promise.resolve(
