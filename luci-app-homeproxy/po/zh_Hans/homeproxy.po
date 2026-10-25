@@ -17,6 +17,18 @@ msgstr "%s（直连）"
 msgid "%s (via outbound: %s)"
 msgstr "%s（出站：%s）"
 
+#: htdocs/luci-static/resources/homeproxy/logview.js:131
+msgid "%s KB"
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy/logview.js:128
+msgid "%s MB"
+msgstr ""
+
+#: htdocs/luci-static/resources/homeproxy/logview.js:133
+msgid "%s bytes"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1954
 msgid "%s link(s) could not be parsed and were skipped."
 msgstr "有 %s 条链接无法解析，已跳过。"
@@ -151,7 +163,7 @@ msgstr "阿里 公共DNS (DoH)"
 msgid "Aliyun Connection"
 msgstr "阿里连接"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:478
+#: htdocs/luci-static/resources/view/homeproxy/log.js:139
 msgid "All"
 msgstr "全部"
 
@@ -273,7 +285,7 @@ msgstr "认证载荷"
 msgid "Authentication type"
 msgstr "认证类型"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:754
+#: htdocs/luci-static/resources/homeproxy/logview.js:893
 msgid "Auto refresh"
 msgstr "自动刷新"
 
@@ -456,11 +468,12 @@ msgstr "Cisco 公共DNS (DoH)"
 msgid "Clash API unavailable."
 msgstr "Clash API 不可用"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:773
+#: htdocs/luci-static/resources/homeproxy/logview.js:775
 msgid "Clean log"
 msgstr "清空日志"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:794
+#: htdocs/luci-static/resources/homeproxy/logview.js:806
+#: htdocs/luci-static/resources/homeproxy/logview.js:861
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr "先点击日志区域，再按 Ctrl+A 即可全选。"
 
@@ -501,8 +514,8 @@ msgstr "CloudFlare"
 msgid "CloudFlare Public DNS (DoH)"
 msgstr "CloudFlare 公共DNS (DoH)"
 
+#: htdocs/luci-static/resources/homeproxy/logview.js:645
 #: htdocs/luci-static/resources/view/homeproxy/client.js:820
-#: htdocs/luci-static/resources/view/homeproxy/log.js:561
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
@@ -520,11 +533,11 @@ msgstr "拥塞控制算法"
 msgid "Connection check"
 msgstr "连接检查"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:784
+#: htdocs/luci-static/resources/homeproxy/logview.js:786
 msgid "Copy log"
 msgstr "复制日志"
 
-#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:40
+#: htdocs/luci-static/resources/view/homeproxy/log.js:473
 msgid "Core Log"
 msgstr "内核日志"
 
@@ -536,7 +549,7 @@ msgstr "核心状态"
 msgid "Core Version"
 msgstr "核心版本"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:749
+#: htdocs/luci-static/resources/view/homeproxy/log.js:223
 msgid "Core log level:"
 msgstr "内核日志级别："
 
@@ -557,7 +570,7 @@ msgstr "当前架构 reF1nd 暂未支持。"
 msgid "Current node / Latency"
 msgstr "当前节点 / 延迟"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:47
+#: htdocs/luci-static/resources/view/homeproxy/log.js:293
 msgid "Currently in effect: %s per log file."
 msgstr "当前生效：每个日志文件 %s。"
 
@@ -630,7 +643,7 @@ msgid ""
 "protection is required."
 msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:514
+#: htdocs/luci-static/resources/view/homeproxy/log.js:175
 msgid "Debug"
 msgstr "调试"
 
@@ -1067,16 +1080,16 @@ msgstr "启用 SUoT 协议，需要服务端支持。与多路复用冲突。"
 msgid "Encrypt method"
 msgstr "加密方式"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:517
+#: htdocs/luci-static/resources/view/homeproxy/log.js:178
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
 msgstr "错误"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:481
+#: htdocs/luci-static/resources/view/homeproxy/log.js:142
 msgid "Errors"
 msgstr "错误"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:479
+#: htdocs/luci-static/resources/view/homeproxy/log.js:140
 msgid "Events"
 msgstr "事件"
 
@@ -1208,15 +1221,15 @@ msgstr "失败"
 msgid "Failed to generate %s, error: %s."
 msgstr "生成 %s 失败，错误：%s。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:715
+#: htdocs/luci-static/resources/homeproxy/logview.js:742
 msgid "Failed to load the log: %s"
 msgstr "日志加载失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:290
+#: htdocs/luci-static/resources/homeproxy/logview.js:299
 msgid "Failed to read %s: %s"
 msgstr "读取 %s 失败：%s"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:166
+#: htdocs/luci-static/resources/view/homeproxy/log.js:354
 msgid "Failed to save the log settings: %s"
 msgstr "日志设置保存失败：%s"
 
@@ -1639,7 +1652,7 @@ msgid ""
 "seconds."
 msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:515
+#: htdocs/luci-static/resources/view/homeproxy/log.js:176
 msgid "Info"
 msgstr "信息"
 
@@ -1820,7 +1833,7 @@ msgstr "监听接口"
 msgid "Listen port"
 msgstr "监听端口"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:559
+#: htdocs/luci-static/resources/homeproxy/logview.js:643
 msgid "Loading"
 msgstr "加载中"
 
@@ -1832,33 +1845,30 @@ msgstr "本地"
 msgid "Local address"
 msgstr "本地地址"
 
-#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:54
+#: htdocs/luci-static/resources/view/homeproxy/log.js:471
 msgid "Log Settings"
 msgstr "日志设置"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:781
+#: htdocs/luci-static/resources/homeproxy/logview.js:783
 msgid "Log copied to clipboard."
 msgstr "日志已复制到剪贴板。"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:417
+#: htdocs/luci-static/resources/homeproxy/logview.js:486
+#: htdocs/luci-static/resources/homeproxy/logview.js:628
 msgid "Log is empty."
 msgstr "日志为空。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:40
+#: htdocs/luci-static/resources/view/homeproxy/log.js:379
 msgid "Log refresh interval"
 msgstr "日志刷新时间"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:161
+#: htdocs/luci-static/resources/view/homeproxy/log.js:344
 msgid "Log settings saved."
 msgstr "日志设置已保存。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:53
+#: htdocs/luci-static/resources/view/homeproxy/log.js:391
 msgid "Log size limit"
 msgstr "日志大小上限"
-
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:64
-msgid "Log size limit unit"
-msgstr "日志大小上限单位"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1585
 msgid "MTU"
@@ -2250,7 +2260,7 @@ msgstr "未下载"
 msgid "Not installed"
 msgstr "未安装"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:781
+#: htdocs/luci-static/resources/homeproxy/logview.js:783
 msgid "Nothing to copy."
 msgstr "没有可复制的内容。"
 
@@ -2413,7 +2423,7 @@ msgstr "置顶"
 msgid "Plugin"
 msgstr "插件"
 
-#: luci-app-homeproxy/root/usr/share/luci/menu.d/luci-app-homeproxy.json:47
+#: htdocs/luci-static/resources/view/homeproxy/log.js:472
 msgid "Plugin Log"
 msgstr "插件日志"
 
@@ -2662,7 +2672,8 @@ msgstr "Redirect TCP + TProxy UDP"
 msgid "Redirect TCP + Tun UDP"
 msgstr "Redirect TCP + Tun UDP"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:792
+#: htdocs/luci-static/resources/homeproxy/logview.js:804
+#: htdocs/luci-static/resources/homeproxy/logview.js:859
 msgid "Refresh every %s seconds."
 msgstr "每 %s 秒刷新。"
 
@@ -2716,7 +2727,7 @@ msgstr "解析策略"
 msgid "Resources management"
 msgstr "资源管理"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:196
+#: htdocs/luci-static/resources/view/homeproxy/log.js:373
 msgid "Restore defaults"
 msgstr "恢复默认"
 
@@ -2836,6 +2847,7 @@ msgstr "运行中"
 msgid "Running: %s"
 msgstr "运行中：%s"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:470
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:46
 msgid "Runtime Log"
 msgstr "运行日志"
@@ -2872,6 +2884,7 @@ msgstr "保持与主节点一致"
 msgid "Sat"
 msgstr "六"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:365
 #: htdocs/luci-static/resources/view/homeproxy/status.js:280
 #: htdocs/luci-static/resources/view/homeproxy/status.js:286
 msgid "Save"
@@ -2947,7 +2960,7 @@ msgstr "ShadowTLS 版本"
 msgid "Shadowsocks"
 msgstr "Shadowsocks"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:745
+#: htdocs/luci-static/resources/view/homeproxy/log.js:219
 msgid "Show:"
 msgstr "显示："
 
@@ -3308,7 +3321,7 @@ msgid ""
 msgstr ""
 "用于 ACME TLS-ALPN 质询的备用端口； 系统必须将 443 转发到此端口以使质询成功。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_core.js:32
+#: htdocs/luci-static/resources/view/homeproxy/log.js:457
 msgid "The core has not written anything yet."
 msgstr "内核还没有任何输出。"
 
@@ -3384,7 +3397,7 @@ msgstr "PEM 格式的 ECH 配置路径。如果为空，将尝试从 DNS 加载�
 msgid "The path to the server certificate, in PEM format."
 msgstr "服务端证书路径，需要 PEM 格式。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_plugin.js:31
+#: htdocs/luci-static/resources/view/homeproxy/log.js:433
 msgid "The plugin has not written anything yet."
 msgstr "插件还没有写过任何日志。"
 
@@ -3392,13 +3405,14 @@ msgstr "插件还没有写过任何日志。"
 msgid "The port must be unique."
 msgstr "必须是唯一端口。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:200
-msgid "The refresh interval only decides how often these log pages re-read their files. It is stored separately from the service configuration, so changing it never restarts the core."
-msgstr "刷新时间只决定这几个日志页面多久重新读一次文件。它和服务配置分开存放，改它不会重启内核。"
-
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log.js:400
-msgid "The size limit applies to each log file separately: 1-999 KB or 1-999 MB. The log directory lives on a RAM disk."
-msgstr "大小上限是每个日志文件各自的上限，可填 1–999 KB 或 1–999 MB：日志目录在内存盘上。"
+#: htdocs/luci-static/resources/view/homeproxy/log.js:398
+msgid ""
+"The refresh interval only decides how often these log pages re-read their "
+"files. It is stored separately from the service configuration, so changing "
+"it never restarts the core."
+msgstr ""
+"刷新时间只决定这几个日志页面多久重新读一次文件。它和服务配置分开存放，改它不"
+"会重启内核。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2920
 msgid "The response code."
@@ -3411,6 +3425,14 @@ msgstr "服务端私钥，需要 PEM 格式。"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:765
 msgid "The server public key, in PEM format."
 msgstr "服务端公钥，需要 PEM 格式。"
+
+#: htdocs/luci-static/resources/view/homeproxy/log.js:406
+msgid ""
+"The size limit applies to each log file separately: 1-999 KB or 1-999 MB. "
+"The log directory lives on a RAM disk."
+msgstr ""
+"大小上限是每个日志文件各自的上限，可填 1–999 KB 或 1–999 MB：日志目录在内存盘"
+"上。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1706
 msgid ""
@@ -3444,6 +3466,10 @@ msgstr ""
 msgid "The unzip command is unavailable."
 msgstr "unzip 命令不可用。"
 
+#: htdocs/luci-static/resources/view/homeproxy/log.js:297
+msgid "There are six log files in total."
+msgstr "一共 6 个日志文件。"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1699
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2053
 msgid ""
@@ -3459,10 +3485,6 @@ msgid ""
 msgstr ""
 "这是 TUIC 的 UDP over TCP 协议移植， 旨在提供 TUIC 不提供的基于 QUIC 流的 "
 "UDP 中继模式。"
-
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:50
-msgid "There are six log files in total."
-msgstr "一共 6 个日志文件。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1376
 msgid "This node dials out directly."
@@ -3791,7 +3813,7 @@ msgstr "VLESS"
 msgid "VMess"
 msgstr "VMess"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:530
+#: htdocs/luci-static/resources/view/homeproxy/log.js:191
 msgid ""
 "Verbosity of the sing-box core. Changing it saves and applies the config, "
 "which restarts the core."
@@ -3806,11 +3828,11 @@ msgstr "WAN DNS（从接口获取）"
 msgid "WAN IP Policy"
 msgstr "WAN IP 策略"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:516
+#: htdocs/luci-static/resources/view/homeproxy/log.js:177
 msgid "Warn"
 msgstr "警告"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:480
+#: htdocs/luci-static/resources/view/homeproxy/log.js:141
 msgid "Warnings"
 msgstr "警告"
 
@@ -3823,13 +3845,19 @@ msgstr "WebSocket"
 msgid "Wed"
 msgstr "三"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:490
+#: htdocs/luci-static/resources/view/homeproxy/log.js:151
 msgid "What to show. Purely a display filter: nothing is restarted."
 msgstr "选择要看什么。这只是显示过滤，不会重启任何服务。"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:204
-msgid "When a log file reaches the size limit it is copied to .1 (one generation) and then emptied, so the oldest lines are the ones that go. The log pages no longer cut the display at a fixed number of lines: whatever is in the file is shown."
-msgstr "日志文件达到上限时先另存为 .1（保留一代）再清空，被丢弃的是最早的行。日志页面不再按固定条数截断显示：文件里有多少行就显示多少行。"
+#: htdocs/luci-static/resources/view/homeproxy/log.js:402
+msgid ""
+"When a log file reaches the size limit it is copied to .1 (one generation) "
+"and then emptied, so the oldest lines are the ones that go. The log pages no "
+"longer cut the display at a fixed number of lines: whatever is in the file "
+"is shown."
+msgstr ""
+"日志文件达到上限时先另存为 .1（保留一代）再清空，被丢弃的是最早的行。日志页面"
+"不再按固定条数截断显示：文件里有多少行就显示多少行。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1785
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2037
@@ -3928,8 +3956,9 @@ msgstr "gRPC 服务名称"
 msgid "gVisor"
 msgstr "gVisor"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:167
-msgid "if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
+#: htdocs/luci-static/resources/view/homeproxy/log.js:357
+msgid ""
+"if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
 msgstr "如果是刚升级完，请先重启 rpcd（/etc/init.d/rpcd restart）"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:336
@@ -3986,7 +4015,7 @@ msgstr "quic-go / uquic chrome"
 msgid "reF1nd sing-box core"
 msgstr "reF1nd sing-box 内核"
 
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/log_settings.js:41
+#: htdocs/luci-static/resources/view/homeproxy/log.js:383
 msgid "seconds"
 msgstr "秒"
 
@@ -4093,10 +4122,6 @@ msgstr "有效标签"
 msgid "valid uuid"
 msgstr "有效 uuid"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:450
-msgid "… (only the last %s lines are shown)"
-msgstr "…（仅显示最近 %s 行）"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:89
 msgid "订阅名称"
 msgstr "订阅名称"
@@ -4120,6 +4145,12 @@ msgstr "订阅地址"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:208
 msgid "订阅地址不能重复"
 msgstr "订阅地址不能重复"
+
+#~ msgid "Log size limit unit"
+#~ msgstr "日志大小上限单位"
+
+#~ msgid "… (only the last %s lines are shown)"
+#~ msgstr "…（仅显示最近 %s 行）"
 
 #~ msgid "Could not verify the service state after applying: %s"
 #~ msgstr "应用配置后无法确认服务状态：%s"
