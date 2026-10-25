@@ -256,28 +256,27 @@ function splitRecords(text, shift) {
 			const lm = LEVEL_TOKEN_RE.exec(tail);
 			const levelTok = lm ? lm[1].toLowerCase() : null;
 
-			/* sing-box prefixes every line with a UTC offset ("+0000 ") from
-			   Go's -0700 layout. TS_RE tolerates it for sorting, but the raw
-			   prefix is noise in the rendered text, so strip it here. */
-			let body = line.replace(/^\s*[+-]\d{4}\s+/, '');
+			/* 正文 = 时间戳之后的部分，并掐掉 sing-box 那个**裸的**级别
+			   token（`INFO router: …` → `router: …`）。级别不靠正文里的英文
+			   单词表示，统一由渲染时补上的 `时间戳 [INFO] 正文` 前缀承担：
+			   插件自己的四份日志（主日志 / 三份下载日志）行里根本没有级别
+			   token，只有把级别做成前缀，内核日志与插件日志的格式才对得齐。
+			   "+0000 " 这个 Go 的时区前缀在 m[0] 里，跟着一起丢掉了。
+			   时间戳也不再拼进正文：UTC 换算只改 rec.ts 一处（以前还要回头
+			   在正文里 replace 一遍，漏一处就出现「排序本地时间、显示 UTC」）。 */
+			const rest = tail.slice(lm ? lm[0].length : 0).replace(/^[ \t]+/, '');
 			let ts = m[1] + ' ' + m[2];
 
-			/* Core stamped in UTC: move both the sort key AND the rendered
-			   text. Shifting only the key would leave a row reading 15:17
-			   sitting between 23:1x rows. */
 			if (shift) {
 				const moved = shiftTs(ts, shift);
-				if (moved !== ts) {
-					body = body.replace(m[1], moved.slice(0, m[1].length))
-					           .replace(m[2], moved.slice(m[1].length + 1));
+				if (moved !== ts)
 					ts = moved;
-				}
 			}
 
 			cur = {
 				ts:    ts,
 				level: levelTok,           /* null = non-sing-box, always shown */
-				lines: [ body ]
+				lines: [ rest ]
 			};
 		}
 		else if (cur) {
@@ -420,7 +419,12 @@ function isErrorRecord(rec) {
 	   「…已缓存 0，失败 0」是**统计**，不是错误；写成 `失败` 会把每一次成功
 	   的预下载都标成错误，「错误」视图反而被成功记录淹没。
 	   「错误」要求紧跟冒号，避免把「HTML 错误页」这类描述性文字算进来。 */
-	return rec.lines.some((l) => /错误[:：]|失败(?!\s*\d)|\bERROR\b|\bFATAL\b|\bPANIC\b/i.test(l));
+	/* `Failed\b`（大写开头）只为读失败的提示行：`Failed to read x.log: …`
+	   在 .lmo 没加载时是英文原文，用中文关键字判不到，会被标成 [INFO]。
+	   不能加 /i —— 小写的 "failed" 常出现在正文描述里（sing-box 那行
+	   "dns: lookup failed" 本身就带 WARN token，不需要靠文本兜）。 */
+	return rec.lines.some((l) => /错误[:：]|失败(?!\s*\d)|\bERROR\b|\bFATAL\b|\bPANIC\b/i.test(l))
+		|| rec.lines.some((l) => /Failed\b/.test(l));
 }
 
 function filterByView(merged, view) {
@@ -452,6 +456,37 @@ function recordSeverity(rec) {
 	return null;
 }
 
+/* 一条记录前面那个方括号级别标记。
+   内核行带真 token（INFO / WARN / ERROR …）就直接用它；插件自己的日志行里
+   没有 token，按**与过滤、上色同一套**判定推出来（先 error 再 warn，其余
+   info）—— 于是不会出现「这行是红的，标记却写着 [INFO]」。
+   方括号补到 7 个字符再空一格，是为了让 [INFO] 和 [ERROR] 后面的正文从同
+   一列开始：等宽字体下差一个字符看着就像排版坏了。 */
+function recordTag(rec) {
+	if (rec.level && LEVEL_ORDER[rec.level] !== undefined)
+		return rec.level === 'warning' ? 'WARN' : rec.level.toUpperCase();
+
+	const sev = recordSeverity(rec);
+
+	return (sev === 'error') ? 'ERROR' : (sev === 'warn' ? 'WARN' : 'INFO');
+}
+
+/* `[INFO]  ` / `[ERROR] ` —— 带补齐的级别标记（含尾随空格）。 */
+function tagPrefix(rec) {
+	const t = '[' + recordTag(rec) + ']';
+
+	return ((t.length < 7) ? t + ' ' : t) + ' ';
+}
+
+/* 记录的首行：`YYYY-mm-dd HH:MM:SS [INFO] 正文`。时间戳与级别标记都在渲染
+   时拼，正文里只留内容 —— 这样六份来源（含手写的、老版本留下的、没有级别
+   token 的）在界面上是同一个格式。*/
+function firstLineOf(rec) {
+	const body = (rec.lines[0] === '') ? ' ' : rec.lines[0];
+
+	return (rec.ts ? rec.ts + ' ' : '') + tagPrefix(rec) + body;
+}
+
 /* Render merged records into the single scrollable box as plain log text.
    The first line of each record is flush; continuation lines are indented.
 
@@ -471,7 +506,15 @@ function renderLogBox(merged, emptyText) {
 		const sev = recordSeverity(rec);
 
 		for (let j = 0; j < rec.lines.length; j++)
-			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j], note: (rec.note === true), sev: sev });
+			flat.push({
+				si:    rec.si,
+				first: (j === 0),
+				/* 说明行（如内核 UTC→本地 换算）不是日志，别给它套时间戳和
+				   级别；续行属于上一条记录，只缩进、不重复前缀。 */
+				text:  (j === 0 && !rec.note) ? firstLineOf(rec) : rec.lines[j],
+				note:  (rec.note === true),
+				sev:   sev
+			});
 	}
 
 	if (flat.length === 0) {

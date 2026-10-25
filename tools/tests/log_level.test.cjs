@@ -114,7 +114,10 @@ function merged() {
 }
 
 /* Short label per record: "<level>|" for sing-box lines (level token present),
-   "shell|" for plugin lines, followed by the message body. */
+   "shell|" for plugin lines, followed by the message body.
+   0.1.28 起正文里**没有**时间戳，也没有那个裸的级别 token —— 两样都在渲染
+   时由 logview 统一补成 `<时间戳> [INFO] 正文`。所以这里的 label 只用
+   rec.level 判级别，body 就是纯内容（上面那句 replace 现在是无害的兜底）。 */
 function label(rec) {
 	const body = rec.lines[0].replace(/^\s*(?:[+-]\d{4}\s+)?\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}\s*/, '');
 
@@ -144,19 +147,19 @@ check('the progress line is not an event',
 /* Warnings: WARN and above for sing-box, plus 警告 for the plugin. Errors are
    included (a severity ladder), but plain INFO/DEBUG/TRACE are not. */
 check('warnings view keeps warn and above (both dialects)', visible('warn'), [
-	'warn|WARN [112 0.20s] outbound/proxy[hk]: dns: lookup failed',
-	'error|ERROR [113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
-	'error|ERROR [114 5.00s] connection: listen packet connection: EOF',
-	'fatal|FATAL [115 0.00s] service: unrecoverable',
+	'warn|[112 0.20s] outbound/proxy[hk]: dns: lookup failed',
+	'error|[113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
+	'error|[114 5.00s] connection: listen packet connection: EOF',
+	'fatal|[115 0.00s] service: unrecoverable',
 	'shell|警告：本机没有可用的时区数据',
 	'shell|错误：生成客户端配置失败（原因 error: bad json）',
 	'shell|下载失败 geosite-xxx：404。'
 ]);
 
 check('errors view keeps errors and above only', visible('error'), [
-	'error|ERROR [113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
-	'error|ERROR [114 5.00s] connection: listen packet connection: EOF',
-	'fatal|FATAL [115 0.00s] service: unrecoverable',
+	'error|[113 2.40s] outbound/urltest[hk-auto]: dial tcp: connection reset',
+	'error|[114 5.00s] connection: listen packet connection: EOF',
+	'fatal|[115 0.00s] service: unrecoverable',
 	'shell|错误：生成客户端配置失败（原因 error: bad json）',
 	'shell|下载失败 geosite-xxx：404。'
 ]);

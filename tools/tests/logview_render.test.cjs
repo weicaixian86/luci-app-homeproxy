@@ -321,6 +321,12 @@ const CASES = [
 		check('a read failure is shown instead of being swallowed',
 			/Failed to read sing-box-s\.log/.test(box.textContent),
 			JSON.stringify(box.textContent.slice(0, 80)));
+		/* 这条提示行没有时间戳（它不是日志），但有级别标记，而且必须是
+		   [ERROR]：它的英文原文不含「失败」，只靠中文关键字判会退化成
+		   [INFO]，所以 isErrorRecord 额外认了句首大写的 `Failed\b`。 */
+		check('a read failure is tagged [ERROR] (no timestamp — it is not a log line)',
+			/^\[ERROR\] Failed to read sing-box-s\.log/m.test(box.textContent),
+			JSON.stringify(box.textContent.slice(0, 80)));
 	}
 },
 
@@ -472,10 +478,67 @@ const CASES = [
 		check('the "失败 1" summary line is not coloured as an error',
 			Array.prototype.every.call(err, (n) => n.textContent.indexOf('规则集更新结束') < 0));
 	}
+},
+
+/* --- 9. 每行都要有时间戳 + 方括号级别标记 -------------------------------- */
+/* 用户 0.1.28：插件日志与内核日志里的内容「都必须要有日志时间戳，还有
+   [INFO] / [ERROR] 这样的标记」。内核原本写裸的 `INFO router: …`，插件
+   自己的四份日志（主日志、三份下载日志）连 token 都没有 —— 于是同一个日志
+   框里三种排版。现在两样都由渲染统一补：`时间戳 [级别] 正文`。
+   要害是「标记与颜色/过滤同源」：红的行必须写着 [ERROR]，`失败 1` 这种
+   统计行必须写着 [INFO]；内核那个裸 token 被掐掉了，绝不能出现两遍。 */
+{
+	name: 'log page: every row carries a stamp and a level tag',
+	opts: {
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'local\n'
+			: [ '2026-10-24 09:54:05 INFO router: started',
+			    '+0800 2026-10-24 09:54:06 WARN outbound/proxy: dial timeout after 5s',
+			    '2026-10-24 09:54:07 错误：读取配置失败',
+			    '    Caused by: ioctl SIOCSIFFLAGS',
+			    '2026-10-24 09:54:08 ==== 规则集更新结束：成功 1，跳过 0，失败 1 ====',
+			    '2026-10-24 09:54:09 [DAEMON] 服务已停止：命令=stop' ].join('\n')),
+		sources: [ { file: 'homeproxy' } ]
+	},
+	assertions: (box) => {
+		const rows = Array.prototype.slice.call(box.querySelectorAll('.hp-log-line'));
+		const heads = rows.filter((n) => n.className.indexOf('hp-log-cont') < 0);
+		const STAMP = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[[A-Z]+\] +\S/;
+
+		check('every record starts with "<ts> [LEVEL] "',
+			heads.length === 5 && heads.every((n) => STAMP.test(n.textContent)),
+			JSON.stringify(heads.map((n) => n.textContent.slice(0, 26))));
+
+		check('a kernel INFO line shows the token exactly once',
+			heads[0].textContent === '2026-10-24 09:54:05 [INFO]  router: started',
+			JSON.stringify(heads[0].textContent));
+
+		check('a kernel WARN line keeps the +0800 prefix out of the text',
+			heads[1].textContent === '2026-10-24 09:54:06 [WARN]  outbound/proxy: dial timeout after 5s',
+			JSON.stringify(heads[1].textContent));
+
+		check('a plugin line with no token is tagged from its content',
+			heads[2].textContent === '2026-10-24 09:54:07 [ERROR] 错误：读取配置失败',
+			JSON.stringify(heads[2].textContent));
+
+		check('the "失败 1" summary is tagged [INFO], not [ERROR]',
+			heads[3].textContent.indexOf('[INFO]  ==== 规则集更新结束') > 0 &&
+			heads[3].textContent.indexOf('[ERROR]') < 0,
+			JSON.stringify(heads[3].textContent));
+
+		check('the [DAEMON] marker the main log writes is preserved',
+			heads[4].textContent.indexOf('[INFO]  [DAEMON] 服务已停止') > 0,
+			JSON.stringify(heads[4].textContent));
+
+		check('a continuation line gets the indent only (no fake stamp)',
+			rows.length === 6 &&
+			rows[3].className.indexOf('hp-log-cont') >= 0 &&
+			rows[3].textContent.trim() === 'Caused by: ioctl SIOCSIFFLAGS',
+			JSON.stringify(rows.length + ' rows'));
+	}
 }
 ];
 
-/* --- 9. the unit table (KB / MB / GB) ------------------------------------- */
+/* --- 10. the unit table (KB / MB / GB) ------------------------------------ */
 /* 0.1.28: the size limit offers KB / MB / GB, and the number field's range is
    derived from the same table that computes the byte budget. A wrong table is
    invisible in the UI — "1 GB" would quietly rotate at 1 MiB — so check the

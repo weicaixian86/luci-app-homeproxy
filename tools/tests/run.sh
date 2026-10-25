@@ -533,6 +533,21 @@ else
 	bad "warning/error rows have no colour class"
 fi
 
+# 用户 0.1.28：插件日志 / 内核日志里的**每一行**都要有时间戳，还要有
+# [INFO] / [ERROR] 这样的标记。内核原本写裸的 `INFO router: …`，插件那四份
+# 日志连 token 都没有 —— 所以两者都在渲染时补：`时间戳 [级别] 正文`。
+# 三条一起检，缺一条就会退化成「有的行有标记、有的行没有」：
+#   ① 首行由 firstLineOf() 统一拼（时间戳 + 级别 + 正文）；
+#   ② 级别标记与颜色/过滤同源（recordTag 走 recordSeverity，不另写一套正则）；
+#   ③ 正文里那个裸 token 与 "+0000 " 前缀必须被掐掉，否则 `INFO [INFO] …`。
+if grep -q 'function firstLineOf' "$LOGVIEW" && grep -q 'firstLineOf(rec)' "$LOGVIEW" \
+   && grep -q 'function recordTag' "$LOGVIEW" && grep -qF 'tail.slice(lm ? lm[0].length : 0)' "$LOGVIEW" \
+   && ! grep -q 'body = line.replace' "$LOGVIEW"; then
+	ok "every row gets a timestamp and a bracketed level tag (one source of truth)"
+else
+	bad "log rows do not carry a uniform '<ts> [LEVEL] ' prefix"
+fi
+
 # 刷新间隔 2–120 秒：注册轮询、设置页夹取、rpcd 夹取必须是同一个范围，
 # 否则「界面填 300」会在下一层被悄悄改成别的值。
 if grep -q 'refresh_min: 2, refresh_max: 120' "$RPCD" \
