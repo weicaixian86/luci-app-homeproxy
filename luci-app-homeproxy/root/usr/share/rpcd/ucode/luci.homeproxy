@@ -278,6 +278,8 @@ const LOG_UNITS = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
 const LOG_LIMITS = {
 	refresh_min: 2, refresh_max: 120,
 	/* 下界 64 KiB（再小日志一行都留不下）、上界 1 GiB（/var/run 是内存盘）。
+	   上下界都是**每个日志文件各自**的口径：clean_log.sh 逐文件比较、逐文件
+	   轮转，六个文件都涨满才会占到 6 倍，不是六份合计。
 	   单位不同时数字框的范围也不同，见 logSizeRange()。 */
 	min_bytes: 64 * 1024,
 	max_bytes: 1024 * 1024 * 1024

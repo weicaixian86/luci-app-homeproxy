@@ -46,9 +46,10 @@ const REFRESH_MAX = 120;
 const UNIT_BYTES = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
 const UNIT_KEYS = [ 'KB', 'MB', 'GB' ];
 /* 下界 64 KiB：把上限设成 0 或几 KB 会让日志一行都留不下。
-   上界 1 GiB：/var/run 是内存盘，六个日志文件共用一个阈值，填得更大只会
-   把内存吃光。所以「GB」这一档实际只能填 1——数字框的上限是按单位算出来的
-   （见 sizeRange），不是写死的 1024。 */
+   上界 1 GiB：/var/run 是内存盘。这个数字是**每个日志文件各自**的上限，
+   不是六个文件合计——clean_log.sh 的 rotate_log 对每个文件单独比大小、
+   单独轮转，六个都涨满才会占到 6 倍。所以「GB」这一档实际只能填 1；数字框
+   的上限是按单位算出来的（见 sizeRange），不是写死的 1024。 */
 const MIN_BYTES = 64 * 1024;
 const MAX_BYTES = 1024 * 1024 * 1024;
 

@@ -279,7 +279,8 @@ function renderSettingsPanel(ctx, onSaved) {
 	/* 生效值回显：让人一眼看到「1 MB」到底是多少字节、有没有被夹住。 */
 	const effective = E('div', { 'class': 'hp-logset-hint' });
 
-	/* 数字框的上下限跟着单位走：KB 最少 64，MB 最少 1，GB 最多 1（上限 1 GiB）。 */
+	/* 数字框的上下限跟着单位走：KB 最少 64，MB 最少 1，GB 最多 1
+	   （1 GiB 是每个日志文件各自的上限，不是六个文件合计）。 */
 	function applyRange() {
 		const r = logview.sizeRange(unit_sel.value);
 
