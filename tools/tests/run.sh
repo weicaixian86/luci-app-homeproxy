@@ -1507,6 +1507,57 @@ else
 	bad "the event line cannot be placed in time when the clock is wrong"
 fi
 
+# ── 重载风暴防护 ────────────────────────────────────────────────────────────
+# 现场（iStoreOS x86）：面板在「未运行 / 运行中」之间每 3~5 秒跳一次，主日志
+# 连着几分钟不间断地「服务重载 → 停止 → 启动」。这些 reload 一次都不是用户点
+# 的 —— 是 service_triggers() 注册的 procd 触发器在反复调用（config.change /
+# WAN 口 up），而每次 reload 里的 fw4 reload 与 dnsmasq restart 又会把触发器
+# 点着，自己踩自己。判定只能靠「这次重载有没有带来新配置」。
+if sed -n '/^start_service()/,/^}/p' "$INIT" | grep -q 'last-start'; then
+	ok "start stamps when it finished, so a later reload can tell it is redundant"
+else
+	bad "no start stamp: every trigger-driven reload looks legitimate"
+fi
+
+if sed -n '/^reload_service()/,/^}/p' "$INIT" | grep -q '跳过重复重载' \
+   && grep -q 'stat -c %Y "/etc/config/$CONF"' "$INIT" \
+   && grep -q '\.reload-skips' "$INIT"; then
+	ok "reload skips a repeat that carries no config change (storm guard)"
+else
+	bad "reload storms are unguarded: stop/start can loop forever"
+fi
+
+# 界面按钮 / SSH 手敲必须永远执行，否则用户点「重载服务」会被自己的防护吞掉。
+if sed -n '/^reload_service()/,/^}/p' "$INIT" | grep -q 'force=1'; then
+	ok "a user-requested reload is never suppressed by the storm guard"
+else
+	bad "the storm guard can swallow a manual reload"
+fi
+
+# 重入标记必须写时刻而不是空文件：空标记读不出数字，会被判成「刚重载过」，
+# 把服务永久锁死在「点了重载也不动」。
+if grep -q 'date +%s >"$RUN_DIR/.reloading"' "$INIT"; then
+	ok "the reload marker carries a timestamp, so it cannot lock the service"
+else
+	bad "the reload marker is empty: a leftover file would skip every later reload"
+fi
+
+# procd 既负责开机拉起，也负责按触发器调 reload。以前两种都写「系统启动」，
+# 一个每 4 秒重载一次的循环在日志里看起来就像「设备在反复重启」。
+if sed -n '/^hp_caller()/,/^}/p' "$INIT" | grep -q 'uptime_seconds' \
+   && grep -q 'procd 触发器' "$INIT"; then
+	ok "a procd-triggered reload is named as such, not reported as a boot"
+else
+	bad "procd trigger reloads are still reported as 系统启动（procd/开机自启）"
+fi
+
+# 接口触发器带上区分参数，日志才说得出「是 WAN 口 up 还是配置变更」。
+if grep -q 'reload wan-up' "$INIT"; then
+	ok "the WAN trigger marks the reload, so the log names the trigger"
+else
+	bad "interface and config triggers are indistinguishable in the log"
+fi
+
 # NTP 在服务跑起来之后才同步上时，日志里会出现一道时间断崖；不解释一句就会被
 # 当成「混进了旧日志」。
 if grep -q '系统时钟在运行中被校正' "$INIT"; then

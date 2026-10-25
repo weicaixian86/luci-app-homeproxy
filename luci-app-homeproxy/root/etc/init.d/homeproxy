@@ -294,7 +294,7 @@ log() {
 # 一模一样）。这里靠父进程命令行来认定触发者：/etc/rc.common 是被 source
 # 的，所以 $PPID 就是真正发起这次调用的那个进程。
 hp_caller() {
-	local cmd=""
+	local cmd="" up=""
 	if [ -r "/proc/$PPID/cmdline" ]; then
 		cmd="$(tr '\0' ' ' < "/proc/$PPID/cmdline" 2>/dev/null)"
 	fi
@@ -308,7 +308,19 @@ hp_caller() {
 		*update_subscriptions*) printf '%s' "订阅更新脚本（stop/start）" ;;
 		*update_rulesets*|*fetch_rulesets*) printf '%s' "规则集脚本自动拉起" ;;
 		*update_core*) printf '%s' "内核更新脚本" ;;
-		*procd*|*"/sbin/init"*|*rcS*) printf '%s' "系统启动（procd/开机自启）" ;;
+		*procd*|*"/sbin/init"*|*rcS*)
+			# procd 两种身份都会调到这里：开机时按 rcS 拉起服务，运行期则按
+			# service_triggers() 注册的触发器（config.change / WAN 口 up）
+			# 直接执行 reload。以前一律写「系统启动（procd/开机自启）」，
+			# 于是一个每 4 秒重载一次的循环在日志里看起来像「设备在反复
+			# 重启」，方向完全带偏。用开机时长切分：开机 5 分钟内只可能是
+			# 启动，之后只能来自触发器。
+			up="$(uptime_seconds)"
+			if [ -n "$up" ] && [ "$up" -gt 300 ]; then
+				printf '%s' "procd 触发器（配置变更或 WAN 口事件）"
+			else
+				printf '%s' "系统启动（procd/开机自启）"
+			fi ;;
 		'') printf '%s' "未知（读不到父进程命令行）" ;;
 		*) printf '%s' "未识别（${cmd}）" ;;
 	esac
@@ -1205,6 +1217,12 @@ start_service() {
 
 	log "内核已启动：sing-box $(sing-box version -n)，已注册实例：${inst:-无}。"
 
+	# 记下「本次启动完成」的时刻（epoch 秒）。reload_service 靠它判断后面来的
+	# 重载到底有没有带新配置：配置 mtime 不新于这个时刻，就说明是 procd 触发器
+	# 的重复事件。用 epoch 而不是格式化时间，免得再踩时区那条链的坑。
+	date +%s >"$RUN_DIR/last-start" 2>/dev/null
+	rm -f "$RUN_DIR/.reload-skips" 2>/dev/null
+
 	# Auto-install the dashboard panel after the core is up, the same way the
 	# kernel is fetched at start. Run detached so service start is not blocked
 	# while the core boots and the clash API becomes reachable.
@@ -1292,14 +1310,101 @@ service_stopped() {
 reload_service() {
 	# 重载是「保存并应用」和「WAN 口变化」共用的入口，触发者不同排查方向
 	# 完全不同，所以这里要和 stop/start 一样把来源记下来。
-	hp_event "服务重载" "${1:-}"
-	log "正在重新加载服务（reload = stop + start）..."
+	#
+	# ── 为什么必须先挡一层「重载风暴」 ──────────────────────────────────
+	# 现场（iStoreOS x86，0.1.27）：面板在「未运行 / 运行中」之间每 3~5 秒跳
+	# 一次，主日志连着几分钟不间断地
+	#   ==== 服务重载 ==== → 正在重新加载 → 服务停止 → 服务启动 → ……
+	# 这些 reload 一次都不是用户点的：是 service_triggers() 注册的 procd 触
+	# 发器在反复调用（config.change / WAN 口 up），而每次 reload 里的
+	# `fw4 reload` 与 `/etc/init.d/dnsmasq restart` 又可能把触发器再点着一
+	# 次 —— 自己踩自己，永远停不下来。
+	# 判定只认一件事：**这次重载有没有带来新配置**。
+	#   · /etc/config/homeproxy 的 mtime 比上次启动完成时刻新 → 「保存并应
+	#     用」，必须执行；
+	#   · 配置没变、且距上次启动不到 30 秒 → 重复事件，跳过并留痕；
+	#   · 用户在界面点按钮、SSH 里敲命令 → 永远执行，不受这条限制。
+	local now last_start cfg_mtime skips caller force rel_age reason
+	caller="$(hp_caller)"
+
+	# 「这道重载是谁要的」。procd 的两个触发器里只有接口触发器能带参数
+	# （见 service_triggers），其余靠父进程命令行区分。
+	case "${1:-}" in
+		wan-up) reason="WAN 口 up 触发器（procd interface.*.up）" ;;
+		*)
+			case "$caller" in
+				*luci-reload*) reason="保存并应用（LuCI 提交配置）" ;;
+				*rpcd*|*uhttpd*) reason="界面按钮（用户手动）" ;;
+				*SSH*|*"service/rc"*) reason="终端手动执行" ;;
+				*procd*) reason="procd 触发器（配置变更）" ;;
+				*) reason="未识别（$caller）" ;;
+			esac ;;
+	esac
+
+	case "$caller" in
+		*rpcd*|*uhttpd*|*SSH*|*"service/rc"*) force=1 ;;
+		*) force=0 ;;
+	esac
+
+	# 重入保护：上一次 reload 还没走完时又来了一个触发器。标记里存的是开始时
+	# 刻（epoch），超过 300 秒就当陈旧（进程被 kill / 断电）；标记读不出数字
+	# 也必须当陈旧——否则一个空文件会让「上一次还在进行中」永远成立，把服务
+	# 彻底锁死成「点了重载也不动」。
+	if [ -f "$RUN_DIR/.reloading" ]; then
+		rel_age=-1
+		now="$(date +%s 2>/dev/null)"
+		case "$now" in ''|*[!0-9]*) now=0 ;; esac
+		last_start="$(cat "$RUN_DIR/.reloading" 2>/dev/null)"
+		case "$last_start" in ''|*[!0-9]*) last_start=0 ;; esac
+		if [ "$now" -gt 0 ] && [ "$last_start" -gt 0 ]; then
+			rel_age=$((now - last_start))
+		fi
+		if [ "$rel_age" -ge 0 ] && [ "$rel_age" -le 300 ]; then
+			log "服务重载：上一次重载还在进行中（已 ${rel_age} 秒），本次跳过（原因=${reason}）。"
+			return 0
+		fi
+		rm -f "$RUN_DIR/.reloading" 2>/dev/null
+	fi
+
+	now="$(date +%s 2>/dev/null)"
+	case "$now" in ''|*[!0-9]*) now=0 ;; esac
+	last_start="$(cat "$RUN_DIR/last-start" 2>/dev/null)"
+	case "$last_start" in ''|*[!0-9]*) last_start=0 ;; esac
+	# BusyBox 的 stat 支持 -c %Y；读不到就当 0，此时不做风暴判定
+	#（宁可多重启一次，也不能把「保存并应用」吞掉）。
+	cfg_mtime="$(stat -c %Y "/etc/config/$CONF" 2>/dev/null)"
+	case "$cfg_mtime" in ''|*[!0-9]*) cfg_mtime=0 ;; esac
+
+	if [ "$force" = "0" ] && [ "$now" -gt 0 ] && [ "$last_start" -gt 0 ] \
+	   && [ "$cfg_mtime" -gt 0 ] && [ "$cfg_mtime" -le "$last_start" ] \
+	   && [ $((now - last_start)) -le 30 ]; then
+		skips="$(cat "$RUN_DIR/.reload-skips" 2>/dev/null)"
+		case "$skips" in ''|*[!0-9]*) skips=0 ;; esac
+		skips=$((skips + 1))
+		echo "$skips" >"$RUN_DIR/.reload-skips" 2>/dev/null
+		# 只记前 3 次与之后每 20 次：风暴真在持续，也不能让「跳过」本身把
+		# 主日志刷满，否则真正的错误会被埋在重复行里。
+		if [ "$skips" -le 3 ] || [ $((skips % 20)) -eq 0 ]; then
+			log "服务重载：跳过重复重载（第 ${skips} 次）：距上次启动 $((now - last_start)) 秒、/etc/config/$CONF 未改动，重载不会带来任何变化（原因=${reason}）。确实需要重启时请点界面「重载服务」，或在 SSH 执行 /etc/init.d/$CONF reload。"
+		fi
+		return 0
+	fi
+
+	rm -f "$RUN_DIR/.reload-skips" 2>/dev/null
+	hp_event "服务重载" ""
+	log "正在重新加载服务（reload = stop + start），原因=${reason}..."
+	date +%s >"$RUN_DIR/.reloading" 2>/dev/null
 
 	stop
 	start
+
+	rm -f "$RUN_DIR/.reloading" 2>/dev/null
 }
 
 service_triggers() {
 	procd_add_reload_trigger "$CONF"
-	procd_add_interface_trigger "interface.*.up" wan /etc/init.d/$CONF reload
+	# 带一个区分参数 wan-up：procd 调 reload 时不带任何参数，而「保存并应用」
+	# 与用户点按钮也不会带，光看事件行分不出是接口事件还是配置变更。参数只
+	# 用于写日志，不影响行为。
+	procd_add_interface_trigger "interface.*.up" wan /etc/init.d/$CONF reload wan-up
 }
