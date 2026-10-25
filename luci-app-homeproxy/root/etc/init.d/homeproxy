@@ -1333,9 +1333,14 @@ reload_service() {
 	# 次 —— 自己踩自己，永远停不下来。
 	# 判定只认一件事：**这次重载有没有带来新配置**。
 	#   · /etc/config/homeproxy 的 mtime 比上次启动完成时刻新 → 「保存并应
-	#     用」，必须执行；
-	#   · 配置没变、且距上次启动不到 30 秒 → 重复事件，跳过并留痕；
+	#     用」（或 SSH 里 uci commit），必须执行；
+	#   · 配置没变 → 重复事件，**不论距上次启动多久**一律跳过并留痕；
 	#   · 用户在界面点按钮、SSH 里敲命令 → 永远执行，不受这条限制。
+	# ⚠️ 不设时间窗口（0.2.1 前是「≤30 秒才跳过」）：现场实测过一场
+	#   3500+ 次/分钟的事件风暴，30 秒窗口一过就放行一次真重载，面板于是
+	#   每 30~40 秒「未运行/运行中」循环一次、永远停不下来。窗口去掉后，
+	#   只要配置没变，风暴再多也一次都不放行；而带新配置的重载不靠时间
+	#   判定（mtime 一定比 last-start 新），不会误伤。
 	local now last_start cfg_mtime skips caller force rel_age reason
 	caller="$(hp_caller)"
 
@@ -1388,15 +1393,15 @@ reload_service() {
 	case "$cfg_mtime" in ''|*[!0-9]*) cfg_mtime=0 ;; esac
 
 	if [ "$force" = "0" ] && [ "$now" -gt 0 ] && [ "$last_start" -gt 0 ] \
-	   && [ "$cfg_mtime" -gt 0 ] && [ "$cfg_mtime" -le "$last_start" ] \
-	   && [ $((now - last_start)) -le 30 ]; then
+	   && [ "$cfg_mtime" -gt 0 ] && [ "$cfg_mtime" -le "$last_start" ]; then
 		skips="$(cat "$RUN_DIR/.reload-skips" 2>/dev/null)"
 		case "$skips" in ''|*[!0-9]*) skips=0 ;; esac
 		skips=$((skips + 1))
 		echo "$skips" >"$RUN_DIR/.reload-skips" 2>/dev/null
-		# 只记前 3 次与之后每 20 次：风暴真在持续，也不能让「跳过」本身把
-		# 主日志刷满，否则真正的错误会被埋在重复行里。
-		if [ "$skips" -le 3 ] || [ $((skips % 20)) -eq 0 ]; then
+		# 只记前 3 次与之后每 200 次：现场实测过 3500+ 次/分钟的事件风暴
+		#（约 50 次/秒），每 20 次记一行时一分钟就能写 175 行，真错误会被
+		# 埋掉；200 次一行在风暴里约每 4 秒一行，足够确认「还在跳」，又不刷屏。
+		if [ "$skips" -le 3 ] || [ $((skips % 200)) -eq 0 ]; then
 			log "服务重载：跳过重复重载（第 ${skips} 次）：距上次启动 $((now - last_start)) 秒、/etc/config/$CONF 未改动，重载不会带来任何变化（原因=${reason}）。确实需要重启时请点界面「重载服务」，或在 SSH 执行 /etc/init.d/$CONF reload。"
 		fi
 		return 0

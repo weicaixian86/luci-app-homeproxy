@@ -1918,6 +1918,20 @@ else
 	bad "reload storms are unguarded: stop/start can loop forever"
 fi
 
+# 0.2.1 现场（3500+ 次/分钟的事件风暴）：旧守卫带「距上次启动 ≤30 秒才跳过」
+# 的时间窗，窗口一过就放行一次真重载，面板于是每 30~40 秒「未运行/运行中」
+# 循环一次、永不收敛。无配置变更的触发器重载必须**不限时**地跳过——带新配置
+# 的重载靠 mtime > last-start 判定，不靠时间，所以去掉窗口不会误伤保存并应用。
+# 判据只看跳过条件那一小段（`if [ "$force" = "0" ] … then`）：里面不许再出现
+# 30 秒窗或 now-last_start 比较。别用宽泛的 grep——重入保护的 300 秒陈旧判定
+# 和日志文案里的「距上次启动 X 秒」都会误中。
+SKIP_COND="$(sed -n '/^reload_service()/,/^}/p' "$INIT" | sed -n '/if \[ "\$force" = "0" \]/,/then/p')"
+case "$SKIP_COND" in
+	*"-le 30"*|*"now - last_start"*)
+		bad "the storm guard has a time window: a long storm still leaks real reloads" ;;
+	*)	ok "a no-change reload is skipped no matter how long ago the start was" ;;
+esac
+
 # 界面按钮 / SSH 手敲必须永远执行，否则用户点「重载服务」会被自己的防护吞掉。
 if sed -n '/^reload_service()/,/^}/p' "$INIT" | grep -q 'force=1'; then
 	ok "a user-requested reload is never suppressed by the storm guard"
