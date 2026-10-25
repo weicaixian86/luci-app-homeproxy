@@ -63,6 +63,14 @@ const CORE_SOURCES = [
 let failures = 0;
 let checks = 0;
 
+/* LuCI 的 E() 不会摊平嵌在 children 里的数组：不是节点就一律
+   `createTextNode(child)`，于是 Array.toString() 把每个元素都变成
+   `[object HTMLDivElement]` —— 0.1.28 现场就在日志顶栏右侧冒出了
+   `[object HTMLDivElement],[object HTMLDivElement]`（o.head 恰好是两个 div）。
+   这里的 E 桩照旧摊平（免得影响别的断言），但把「children 里嵌了数组」记下
+   来，交给下面的断言判红。 */
+let nestedArrays = [];
+
 function check(desc, cond, detail) {
 	checks++;
 
@@ -136,6 +144,8 @@ function instantiate(v) {
  * @returns {{ tick: function(): Promise<void>, box: function(): Element }}
  */
 function boot(opts) {
+	nestedArrays = [];
+
 	const src = fs.readFileSync(LOGVIEW_JS, 'utf8')
 		.replace(/^'use strict';\n/, '')
 		.replace(/^'require [^']*';\n/gm, '');
@@ -186,15 +196,19 @@ function boot(opts) {
 					el.setAttribute(k, String(attrs[k]));
 			}
 
-		if (children !== null && children !== undefined) {
-			if (Array.isArray(children))
-				children.forEach((c) => append(el, c));
-			else
-				append(el, children);
-		}
-
-		return el;
+	if (children !== null && children !== undefined) {
+		if (Array.isArray(children))
+			children.forEach((c) => {
+				if (Array.isArray(c))
+					nestedArrays.push(c.length);
+				append(el, c);
+			});
+		else
+			append(el, children);
 	}
+
+	return el;
+}
 
 	function append(parent, c) {
 		if (c === null || c === undefined)
@@ -257,6 +271,10 @@ function boot(opts) {
 	const page = renderPage({}, {
 		key: 'log-refresh',
 		sources: opts.sources || PLUGIN_SOURCES,
+		/* 顶栏两个额外控件（真机上是「显示：」/「内核日志级别：」的两个 div）。
+		   传进来才能验到「o.head 被嵌进 children 变成 [object HTMLDivElement]」
+		   这个坑——不传的话 o.head 是空数组，永远绿。 */
+		head: opts.head || [ E('div', {}), E('div', {}) ],
 		filter: opts.filter,
 		empty: opts.empty,
 		interval: 5
@@ -283,6 +301,11 @@ function run(name, opts, assertions) {
 	console.log(name);
 
 	const view = boot(opts);
+
+	/* LuCI 的 E() 把嵌在 children 里的数组当文本塞进去（见文件头注释），
+	   界面上就是一串 `[object HTMLDivElement],[object HTMLDivElement]`。 */
+	check('no array is nested inside E() children (LuCI would stringify it)',
+		nestedArrays.length === 0, JSON.stringify(nestedArrays));
 
 	check('the box starts as a loading placeholder',
 		view.initial().indexOf('Collecting data') >= 0, JSON.stringify(view.initial()));

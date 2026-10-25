@@ -404,12 +404,14 @@ else
 	bad "level choices are '$lv' (sing-box accepts debug/info/warn/error)"
 fi
 
-if [ "$(grep -c "key: 'log-refresh'" "$LOG_JS")" = 1 ] \
+# 两个日志面板（插件日志 / 内核日志）各注册自己的轮询，间隔都来自日志设置。
+# 间隔写死在前端就等于「设置页改了没反应」。
+if [ "$(grep -c "key: 'log-" "$LOG_JS")" = 2 ] \
    && grep -q 'callSettings' "$LOGVIEW" \
-   && ! grep -qE "pollAdd\('log-refresh', refresh, *[0-9]" "$LOG_JS"; then
-	ok "one poll registration per page, interval comes from 日志设置"
+   && ! grep -qE "pollAdd\('log-[a-z-]*', refresh, *[0-9]" "$LOG_JS"; then
+	ok "each log panel registers one poll, interval comes from 日志设置"
 else
-	bad "log refresh interval is hardcoded (or poll registered twice)"
+	bad "log refresh interval is hardcoded (or a panel registers twice)"
 fi
 
 if grep -q "uci.set('homeproxy', 'config', 'log_level'" "$LOG_JS" \
@@ -417,6 +419,19 @@ if grep -q "uci.set('homeproxy', 'config', 'log_level'" "$LOG_JS" \
 	ok "level change commits to both client and server sections"
 else
 	bad "level change misses a section (client or server keeps old verbosity)"
+fi
+
+# 「内核日志级别：」要 save + apply，就得拿到 form.Map。LuCI 调 `o.render()`
+# 时**不保证**把 map 带在参数里（jsdom 里 ctx 干脆是 undefined），而面板自己
+# 也拿不到 view 实例 —— 只写 `ctx.map.save()` 会在真改级别时抛
+# `Cannot read properties of undefined (reading 'save')`。所以由 renderTabs
+# 从 `L.bind(renderTabs, this)` 绑进来的 view 上取，再显式传给面板。
+if grep -q 'const map = (ctx && ctx.map) ? ctx.map : (this && this.map)' "$LOG_JS" \
+   && grep -q 'build(ctx, retune, map)' "$LOG_JS" \
+   && grep -q 'function renderCorePanel(ctx, onSaved, map)' "$LOG_JS"; then
+	ok "the core level switch can reach form.Map (renderTabs passes it down)"
+else
+	bad "the core level switch relies on ctx.map alone (undefined => save throws)"
 fi
 
 if grep -q 'function scrollState' "$LOGVIEW" && grep -q 'restoreScroll(scroll)' "$LOGVIEW"; then
@@ -461,8 +476,8 @@ fi
 # call rejects with 'illegal type' and L.resolveDefault() hides it — the
 # button looks fine while one file is never cleared. Keep the two lists equal.
 UCODE="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
-log_srcs="$(sed -n '/const log_sources = \[/,/\];/p' "$LOG_JS" \
-	| sed -n "s/.*{ file: '\(.*\)'.*/\1/p" | sort | tr '\n' ' ')"
+log_srcs="$(sed -n "s/^[[:space:]]*{ file: '\([^']*\)'.*/\1/p" "$LOG_JS" \
+	| sort | tr '\n' ' ')"
 clean_wl="$(sed -n "/log_clean: {/,/return { result: true }/p" "$UCODE" \
 	| sed -n "s/.*in \[\(.*\)\].*/\1/p" | tr -d "'" | tr ',' '\n' \
 	| sed 's/^[[:space:]]*//; s/[[:space:]]*$//' | grep -v '^$' | sort | tr '\n' ' ')"
@@ -524,47 +539,80 @@ ok "the three old log views are gone (one page, three sub-tabs)"
 
 tabs="$(sed -n '/^const TABS = \[/,/^\];/p' "$LOG_JS" \
 	| sed -n "s/.*id: '\([a-z]*\)'.*/\1/p" | tr '\n' ' ')"
-if [ "$tabs" = "runtime settings plugin core " ]; then
-	ok "panel order is 运行日志 → 日志设置 → 插件日志 → 内核日志"
+if [ "$tabs" = "settings plugin core " ]; then
+	ok "panel order is 日志设置 → 插件日志 → 内核日志"
 else
-	bad "panel order is '$tabs' (the three new tabs must sit under 运行日志)"
+	bad "panel order is '$tabs' (0.1.28 末版：三个二级选项卡，没有 runtime 面板)"
 fi
 
-# 三个二级选项卡只画非 base 的三个：运行日志是页面本身（LuCI 顶部那个页签），
-# 再出现在这一排里就成了同一名字出现两次。判据用「TABS.forEach 出现次数」：
-# 只有 SUB_TABS.forEach 那一处，直接 grep 'TABS.forEach' 会连 SUB_TABS 一起命中。
-if grep -q 'base: true' "$LOG_JS" && grep -q 'SUB_TABS.forEach' "$LOG_JS" \
-   && [ "$(grep -c 'TABS\.forEach' "$LOG_JS")" = 1 ]; then
-	ok "the strip holds the three sub-tabs only (运行日志 is the page itself)"
+# 这一排就是这一页的全部内容：页面本身（顶部那个「运行日志」页签）**没有**
+# 自己的面板。0.1.28 末版把「六个文件合并 + 两个下拉」那一屏去掉了 —— 它和
+# 下面三屏重复，而把默认面板改成插件日志之后它就没有任何入口了。
+# 判据：不能有 base: true / SUB_TABS（那是「运行日志 = 页面本身」的旧写法），
+# 而且要显式声明 DEFAULT_TAB 并默认激活它。
+if ! grep -q 'base: true' "$LOG_JS" && ! grep -q 'SUB_TABS' "$LOG_JS" \
+   && [ "$(grep -c 'TABS\.forEach' "$LOG_JS")" = 1 ] \
+   && grep -q "DEFAULT_TAB = 'plugin'" "$LOG_JS" \
+   && grep -q 'activate(DEFAULT_TAB)' "$LOG_JS"; then
+	ok "the strip holds the three sub-tabs and opens on 插件日志"
 else
-	bad "运行日志 is drawn a second time in the sub-tab strip"
+	bad "the log page does not open on 插件日志 (or 运行日志 still has its own panel)"
 fi
 
-# 三个日志面板都是 lazy：只有当前显示的那个轮询。否则每点过一个选项卡就多
-# 一个定时器，六个日志文件每轮被读四遍 —— /var/run 是内存盘。
-if [ "$(grep -c 'lazy: true' "$LOG_JS")" = 3 ] \
+# 两个日志面板都是 lazy：只有当前显示的那个轮询。否则每点过一个选项卡就多
+# 一个定时器，六个日志文件每轮被读两遍 —— /var/run 是内存盘。
+if [ "$(grep -c 'lazy: true' "$LOG_JS")" = 2 ] \
    && grep -q 'typeof prev.page.stop' "$LOG_JS"; then
 	ok "only the visible tab polls (hidden panels are stopped)"
 else
 	bad "every panel keeps polling after its tab is left (wasted reads on tmpfs)"
 fi
 
-# 这两个面板存在的意义就是「原样看全部」：一旦它们开始按视图/级别过滤，
-# 「文件里有、界面上没有」就会重新出现。
+# 插件日志带「显示：」过滤（全部 / 事件 / 警告 / 错误），但它只动前端；
+# 内核日志**一个过滤器都不能有** —— 它存在的意义就是「原样看全部」，
+# 一旦开始过滤，「文件里有、界面上没有」就又出现了。
 PLUGIN_FN="$(sed -n '/^function renderPluginPanel/,/^}/p' "$LOG_JS")"
 CORE_FN="$(sed -n '/^function renderCorePanel/,/^}/p' "$LOG_JS")"
-case "$PLUGIN_FN$CORE_FN" in
-	*filter:*|*log_view*) bad "a plugin/core panel filters by view or level (rows would disappear)" ;;
-	*) ok "plugin/core panels pass no filter: every level is shown" ;;
+case "$CORE_FN" in
+	*filter:*|*log_view*) bad "the core panel filters by view or level (rows would disappear)" ;;
+	*) ok "the core panel passes no filter: every level is shown" ;;
+esac
+case "$PLUGIN_FN" in
+	*filterByView*) ok "插件日志 filters by view (all/events/warnings/errors)" ;;
+	*) bad "插件日志 lost the 显示 filter (it moved here from the removed runtime panel)" ;;
 esac
 
 # 用户要求：插件日志 / 内核日志 框底下那行「每 N 秒刷新。· 先点击日志区域…」
 # 不要。两个面板都得显式传 hint: false；运行日志页不传（保持有提示）。
 if [ "$(printf '%s' "$PLUGIN_FN$CORE_FN" | grep -c 'hint: false')" = 2 ] \
    && grep -q "o.hint === false" "$LOGVIEW"; then
-	ok "plugin/core panels drop the refresh hint line (runtime keeps it)"
+	ok "plugin/core panels drop the refresh hint line"
 else
 	bad "the refresh/Ctrl+A hint still shows under the plugin or core log"
+fi
+
+# 两个下拉各跟各的一屏：「显示：」→ 插件日志（只改前端过滤），
+# 「内核日志级别：」→ 内核日志（会改配置并重启内核）。放回同一屏就又变成
+# 「一眼看不出哪个控件会重启内核」了。
+if printf '%s' "$PLUGIN_FN" | grep -q "_('Show:')" \
+   && printf '%s' "$CORE_FN" | grep -q "_('Core log level:')" \
+   && ! printf '%s' "$CORE_FN" | grep -q "_('Show:')" \
+   && ! printf '%s' "$PLUGIN_FN" | grep -q "_('Core log level:')"; then
+	ok "显示 sits on 插件日志 and 内核日志级别 on 内核日志"
+else
+	bad "the two dropdowns are back on one shared screen (or on the wrong panel)"
+fi
+
+# 顶栏的孩子必须是**一维**数组：LuCI 的 E() 不会摊平嵌在 children 里的数组，
+# 不是节点就一律 createTextNode(child) —— Array.toString() 把每个元素都变成
+# `[object HTMLDivElement]`，界面上就多出一串
+# `[object HTMLDivElement],[object HTMLDivElement]`（0.1.28 现场：o.head 是
+# 两个 div）。判据：head 必须先 concat 成一维，且不能再原样嵌进 children。
+if grep -q 'const topbar = \[\].concat(o.head || \[\])' "$LOGVIEW" \
+   && ! grep -q '(o.head || \[\]),' "$LOGVIEW"; then
+	ok "the log top bar gets a flat child list (a nested array becomes [object …])"
+else
+	bad "o.head is nested inside E() children: LuCI prints [object HTMLDivElement]"
 fi
 
 # 用户 0.1.28：警告 / 错误行要上色。判定与过滤器共用 isWarnRecord /

@@ -882,19 +882,25 @@ function renderPage(ctx, o) {
 	if (every)
 		body.push(E('div', { 'style': 'text-align:right' }, every));
 
+	/* 顶栏的孩子必须是**一维**数组。LuCI 的 E() 不会摊平嵌在 children 里的
+	   数组——不是节点就一律 `createTextNode(child)`，于是 Array.toString()
+	   把每个元素都变成 `[object HTMLDivElement]`，界面上就多出
+	   `[object HTMLDivElement],[object HTMLDivElement]` 这一串（0.1.28 现场
+	   抓到：o.head 恰好是两个 div）。所以先 concat 成一维再交给 E()。 */
+	const topbar = [].concat(o.head || []);
+
+	topbar.push(E('label', { 'style': 'display:flex; align-items:center;' }, [
+		auto_cb,
+		_('Auto refresh')
+	]));
+	topbar.push(buttons);
+
 	return {
 		nodes: [
 			E('style', [ css ]),
 			E('div', { 'class': 'cbi-map' }, [
 				E('div', { 'class': 'cbi-section hp-log-topbar' }, [
-					E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, [
-						(o.head || []),
-						E('label', { 'style': 'display:flex; align-items:center;' }, [
-							auto_cb,
-							_('Auto refresh')
-						]),
-						buttons
-					])
+					E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, topbar)
 				]),
 				E('div', { 'class': 'cbi-section' }, body)
 			])

@@ -1,13 +1,15 @@
 /*
- * 日志页的四个选项卡，真跑一遍。
+ * 日志页的三个二级选项卡，真跑一遍。
  *
  * 0.1.28 之前四个日志页是四个独立视图（各自 view.extend），在 jsdom 里没法
- * 一起跑；现在它们是一个页面里的四个面板，由 log.js 的 renderTabs() 按需
- * 构建、切换、开关轮询。这段逻辑只有真跑才能验证：
+ * 一起跑；现在它们是一个页面里的三个面板（日志设置 / 插件日志 / 内核日志），
+ * 由 log.js 的 renderTabs() 按需构建、切换、开关轮询。这段逻辑只有真跑才能
+ * 验证：
+ *   - 打开页面默认显示**插件日志**并且它要高亮（0.1.28 末版需求）；
  *   - 只有当前显示的面板在轮询（切走的必须 stop，否则每点一次多一个定时器，
- *     六个日志文件每轮被读四遍）；
+ *     六个日志文件每轮被读两遍）；
  *   - 面板节点是**移出 DOM 再挂回来**的，切回去不能变成空白；
- *   - 日志设置的单位下拉必须是 KB / MB / GB，数字框的上下限跟着单位走。
+ *   - 日志设置的单位下拉必须是 KB / MB，数字框上下限恒为 1–999。
  *
  * 打印 SKIP 并退出 0 当 jsdom 不可用（run.sh 会把 SKIP 转成 skip 行）。
  */
@@ -179,10 +181,19 @@ function append(parent, c) {
 /* form.Map is only used as a carrier here: the view puts one DummyValue in a
    NamedSection and renders the tabbed page from its render(). The stub mirrors
    just that contract (section → option → render). */
+/* 改「内核日志级别：」时会走 `map.save(null, true)` + `ui.changes.apply(true)`
+   —— 那是唯一会重启内核的控件，必须真的跑到。`save` 被调用的次数记在这里。 */
+let mapSaved = 0;
+
 function makeForm() {
 	function MapStub() {
 		this.sections = [];
 	}
+
+	MapStub.prototype.save = function () {
+		mapSaved++;
+		return Promise.resolve();
+	};
 
 	MapStub.prototype.section = function (type, name) {
 		const s = { type: type, name: name, anonymous: false, opts: [], render: null };
@@ -316,41 +327,71 @@ function clickTab(label) {
 
 	const tabs = Array.from(document.querySelectorAll('.hp-log-tabs > li'));
 
-	/* 结构（用户 0.1.28 给的参考图）：页面本身是「运行日志」，三个二级
-	   选项卡排在它下面。运行日志不能再出现在这一排里——它就是上面那个
-	   页签，重复一次会让人以为有两个运行日志。 */
+	/* 结构（用户 0.1.28 末版确认）：页面本身是「运行日志」，三个二级选项卡
+	   排在它下面。运行日志不能再出现在这一排里——它就是上面那个页签。 */
 	check('the sub-tab strip holds three tabs', tabs.length === 3, String(tabs.length));
 	check('strip labels are 日志设置 / 插件日志 / 内核日志',
 		tabs.map((t) => t.textContent).join('|') === '日志设置|插件日志|内核日志',
 		tabs.map((t) => t.textContent).join('|'));
 	check('运行日志 is the page itself, not a sub-tab',
 		tabs.filter((t) => t.textContent === '运行日志').length === 0);
-	check('no sub-tab is highlighted while the log itself is shown',
-		tabs.filter((t) => t.className === 'hp-log-tab-active').length === 0);
-	check('the runtime panel is mounted', !!document.querySelector('#hp_log_runtime'));
+	/* 打开这一页默认看插件日志，且它必须高亮 —— 页面本身没有面板，
+	   一个都不高亮的话根本看不出当前是哪一屏。 */
+	check('插件日志 is highlighted on open',
+		tabs[1].className === 'hp-log-tab-active', String(tabs[1].className));
+	check('the plugin panel is mounted on open', !!document.querySelector('#hp_log_plugin'));
+	check('the plugin panel carries the 显示 dropdown',
+		!!document.querySelector('#hp_log_view'));
 	check('only the visible panel registered a poll',
-		w.polls.length === 1 && w.polls[0].key === 'log-refresh',
+		w.polls.length === 1 && w.polls[0].key === 'log-plugin-refresh',
 		JSON.stringify(w.polls));
 
 	await delay();
 
-	check('the runtime panel shows log lines',
-		(document.querySelector('#hp_log_runtime') || {}).textContent.indexOf('服务启动') >= 0,
-		JSON.stringify(((document.querySelector('#hp_log_runtime') || {}).textContent || '').slice(0, 60)));
+	const plugin_box = document.querySelector('#hp_log_plugin');
 
-	/* 记下运行日志的节点：切走之后它应该只是被摘下来（内容还在），
-	   而不是被销毁重建 —— 重建会丢掉滚动位置与已读内容。 */
-	const runtime_box = document.querySelector('#hp_log_runtime');
+	check('the plugin panel shows log lines',
+		plugin_box && plugin_box.textContent.indexOf('服务启动') >= 0,
+		JSON.stringify((plugin_box ? plugin_box.textContent : '').slice(0, 60)));
+	/* 用户 0.1.28：这一屏底下那行「每 N 秒刷新。· 先点击日志区域…」要去掉。
+	   去掉的是显示，轮询照旧。 */
+	check('the plugin panel has no refresh hint under the box',
+		plugin_box && plugin_box.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
+		plugin_box ? JSON.stringify(plugin_box.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
+
+	/* ── 「显示：」下拉只改前端过滤 ──────────────────────────────────────
+	   它搬到插件日志这一屏之后仍然只过滤、不重启内核（后者由 run.sh 的
+	   「只 commit 不 apply」断言守着）。切到「错误」后 DEBUG 行必须消失。 */
+	const view_sel = document.querySelector('#hp_log_view');
+
+	check('the 显示 dropdown offers all/event/warn/error',
+		view_sel && Array.from(view_sel.options).map((o) => o.value).join('|') === 'all|event|warn|error',
+		view_sel ? Array.from(view_sel.options).map((o) => o.value).join('|') : 'no select');
+
+	view_sel.value = 'error';
+	view_sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+	await delay();
+
+	check('picking 错误 drops the DEBUG line',
+		document.querySelector('#hp_log_plugin').textContent.indexOf('这条不该被级别过滤掉') < 0,
+		JSON.stringify(document.querySelector('#hp_log_plugin').textContent.slice(0, 80)));
+
+	view_sel.value = 'all';
+	view_sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+	await delay();
+
+	check('back to 全部 brings the DEBUG line back',
+		document.querySelector('#hp_log_plugin').textContent.indexOf('这条不该被级别过滤掉') >= 0);
 
 	/* ── 日志设置 ─────────────────────────────────────────────────────── */
 	clickTab('日志设置');
 
 	check('clicking a sub-tab highlights it',
 		tabs[0].className === 'hp-log-tab-active', String(tabs[0].className));
-	check('leaving the runtime panel stops its poll',
-		w.stopped.indexOf('log-refresh') >= 0, JSON.stringify(w.stopped));
-	check('the runtime panel is unmounted (one panel at a time)',
-		!document.querySelector('#hp_log_runtime'));
+	check('leaving the plugin panel stops its poll',
+		w.stopped.indexOf('log-plugin-refresh') >= 0, JSON.stringify(w.stopped));
+	check('the plugin panel is unmounted (one panel at a time)',
+		!document.querySelector('#hp_log_plugin'));
 	check('the settings panel has two rows (size + unit share one)',
 		document.querySelectorAll('.hp-logset-row').length === 2,
 		String(document.querySelectorAll('.hp-logset-row').length));
@@ -389,22 +430,6 @@ function clickTab(label) {
 	check('the field max stays 999 after a unit switch',
 		size_in.getAttribute('max') === '999', String(size_in.getAttribute('max')));
 
-	/* ── 插件日志 ─────────────────────────────────────────────────────── */
-	clickTab('插件日志');
-	await delay();
-
-	const plugin = document.querySelector('#hp_log_plugin');
-
-	check('the plugin panel is mounted', !!plugin);
-	check('a DEBUG line survives (plugin panel has no level filter)',
-		plugin && plugin.textContent.indexOf('这条不该被级别过滤掉') >= 0,
-		plugin ? JSON.stringify(plugin.textContent.slice(0, 80)) : 'no panel');
-	/* 用户 0.1.28：这两个页签底下那行「每 N 秒刷新。· 先点击日志区域…」
-	   要去掉 —— 那里只需要原样看全部。去掉的是显示，轮询照旧。 */
-	check('the plugin panel has no refresh hint under the box',
-		plugin && plugin.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
-		plugin ? JSON.stringify(plugin.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
-
 	/* ── 内核日志 ─────────────────────────────────────────────────────── */
 	clickTab('内核日志');
 	await delay();
@@ -412,12 +437,30 @@ function clickTab(label) {
 	const core = document.querySelector('#hp_log_core');
 
 	check('the core panel is mounted', !!core);
+	/* 「内核日志级别：」下拉搬到这一屏了（它管的就是 sing-box 写多少）。 */
+	check('the core panel carries the 内核日志级别 dropdown',
+		!!document.querySelector('#hp_unified_log_level'));
 	check('the core panel has no refresh hint either',
 		core && core.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
 		core ? JSON.stringify(core.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
+	/* 这一屏不做任何过滤：顶栏那个下拉是「内核写多少」，不是「这里显示多少」。 */
+	check('a DEBUG line survives in the core panel (no display filter here)',
+		core && core.textContent.indexOf('这条不该被级别过滤掉') >= 0,
+		core ? JSON.stringify(core.textContent.slice(0, 80)) : 'no panel');
 	check('the core panel keeps its own empty/normal output',
 		core && core.textContent.indexOf('服务启动') >= 0,
 		core ? JSON.stringify(core.textContent.slice(0, 60)) : 'no panel');
+
+	/* 「内核日志级别：」是唯一会保存并应用（重启内核）的控件：它必须真的拿到
+	   map 并 save —— 只认 `ctx.map` 一条路时，LuCI 没把 map 带在参数里就会抛
+	   `Cannot read property 'save' of undefined`，而且只在真改级别时才抛。 */
+	const level_sel = document.querySelector('#hp_unified_log_level');
+
+	level_sel.value = 'debug';
+	level_sel.dispatchEvent(new window.Event('change', { bubbles: true }));
+	await delay();
+
+	check('changing the core level really saves and applies', mapSaved === 1, String(mapSaved));
 
 	/* ── 切回插件日志：面板是「摘下来再挂回去」，不是重建 ────────────────
 	   上面在插件页拿到的节点必须还是同一个；否则滚动位置、已读到的内容
@@ -427,17 +470,14 @@ function clickTab(label) {
 	await delay();
 
 	check('the plugin panel is re-attached, not rebuilt',
-		document.querySelector('#hp_log_plugin') === plugin);
+		document.querySelector('#hp_log_plugin') === plugin_box);
 	check('it polls again after being shown',
 		w.polls.filter((p) => p.key === 'log-plugin-refresh').length === 2,
 		JSON.stringify(w.polls));
 
-	/* 运行日志页保留那一行提示：它是唯一提示「刷新节奏」和「Ctrl+A 只选
-	   这里」的地方。这里没有运行日志的选项卡可点（它是上面那个页签），
-	   所以只验它被摘下时内容还在、没有被重建。 */
-	check('the runtime panel was detached, not destroyed',
-		runtime_box && !document.contains(runtime_box) &&
-		runtime_box.textContent.indexOf('服务启动') >= 0);
+	/* 从内核日志切走后，插件面板应当是唯一挂着的那个。 */
+	check('only one panel is mounted at a time',
+		!document.querySelector('#hp_log_core'));
 }
 )().then(() => {
 	console.log(failures ? ('\nFAILED: ' + failures + ' of ' + checks + ' checks') :

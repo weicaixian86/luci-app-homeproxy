@@ -24,13 +24,18 @@
  * 运行日志不重复出现在这一排：它已经是顶上那个页签了，回到它的方式就是点
  * 顶部「运行日志」。
  *
- * 三个日志面板共用 logview.renderPage()，各自只传一份来源清单（运行日志
- * 六个文件 + 两个下拉，插件日志四个文件、内核日志两个文件，后两者不做任何
- * 过滤）。日志设置是独立的一组控件，写 /etc/homeproxy/log.conf —— 不进 uci
+ * 两个日志面板共用 logview.renderPage()，各自只传一份来源清单：插件日志是
+ * 插件自己写的四个文件 + 顶栏一个「显示：」下拉（纯前端过滤），内核日志是
+ * sing-box 的两个实例 + 顶栏一个「内核日志级别：」下拉（这个会改配置并重启
+ * 内核）。日志设置是独立的一组控件，写 /etc/homeproxy/log.conf —— 不进 uci
  * 的理由见 logview.js 顶部：uci commit 会把隧道重启一次。
  *
- * 面板按需构建：第一次点某个选项卡才建它，切走时把它的轮询停掉。否则四个
- * 面板会同时轮询，六个日志文件每 5 秒被读四遍 —— /var/run 是内存盘，这些
+ * 页面本身（顶部那个「运行日志」）没有自己的面板，默认显示「插件日志」。
+ * 0.1.28 末版之前有一屏「六个文件合并 + 上面那两个下拉」，它跟下面三屏重复，
+ * 而它作为「页面本身」在改了默认面板之后就没有任何入口了，所以整个去掉。
+ *
+ * 面板按需构建：第一次点某个选项卡才建它，切走时把它的轮询停掉。否则每个
+ * 面板都会同时轮询，六个日志文件每 5 秒被读两遍 —— /var/run 是内存盘，这些
  * 读全是白花的。
  */
 
@@ -106,19 +111,10 @@ const css = `
 }
 `;
 
-/* ── 面板一：运行日志 ───────────────────────────────────────────────────────
-   全部六个文件合并成一条时间线，外加两个下拉：显示视图（纯前端过滤）与
-   内核输出级别（真的改配置并重启内核）。 */
-const log_sources = [
-	{ file: 'homeproxy' },
-	{ file: 'ruleset_download' },
-	{ file: 'sing-box-c', core: true },
-	{ file: 'core_download' },
-	{ file: 'panel_download' },
-	{ file: 'sing-box-s', core: true }
-];
-
-/* 插件自己写的那四个文件。 */
+/* ── 插件日志：插件自己写的那四个文件 ───────────────────────────────────────
+   这一屏是点开「运行日志」时默认显示的那一屏。顶栏那个「显示：」下拉
+   （全部 / 事件 / 警告 / 错误）只改前端过滤，不重启任何东西 —— 换它不该
+   让隧道断一次。 */
 const plugin_sources = [
 	{ file: 'homeproxy' },
 	{ file: 'ruleset_download' },
@@ -126,114 +122,15 @@ const plugin_sources = [
 	{ file: 'panel_download' }
 ];
 
-/* sing-box 自己的输出（客户端 + 服务端两个实例）。 */
+/* ── 内核日志：sing-box 自己的输出（客户端 + 服务端两个实例） ───────────────
+   顶栏那个「内核日志级别：」下拉真的会改配置并重启内核，所以它单独一个控件、
+   并且只放在内核日志这一屏 —— 它管的就是 sing-box 写多少。 */
 const core_sources = [
 	{ file: 'sing-box-c', core: true },
 	{ file: 'sing-box-s', core: true }
 ];
 
-/* ── 控件一：显示视图（看什么） ──────────────────────────────────────────────
-   与「内核输出级别」是两件事：这里只改前端过滤，不重启任何东西。 */
-function renderRuntimePanel(ctx) {
-	const view_choices = {
-		all:   logview.zh('All',      _('All'),      '全部'),
-		event: logview.zh('Events',   _('Events'),   '事件'),
-		warn:  logview.zh('Warnings', _('Warnings'), '警告'),
-		error: logview.zh('Errors',   _('Errors'),   '错误')
-	};
-
-	let view = logview.normalizeView(uci.get('homeproxy', 'config', 'log_view'));
-
-	const view_sel = E('select', {
-		'id': 'hp_log_view',
-		'class': 'cbi-input-select',
-		'style': 'margin-left: 4px; width: 8em;',
-		'title': _('What to show. Purely a display filter: nothing is restarted.'),
-		'change': ui.createHandlerFn(ctx, (ev) => {
-			view = logview.normalizeView(ev.target.value);
-			/* 只 commit 不 apply：改的是「看什么」，不该为此重启内核。
-			   （uci.save() = 写回 /etc/config；apply 才会触发 reload。） */
-			uci.set('homeproxy', 'config', 'log_view', view);
-			uci.save();
-			/* 立刻重画，不等下一个轮询。 */
-			return page.refresh(true);
-		})
-	});
-
-	Object.keys(view_choices).forEach((v) => {
-		view_sel.appendChild(E('option', {
-			'value': v,
-			'selected': (v === view) ? '' : null
-		}, [ view_choices[v] ]));
-	});
-
-	/* ── 控件二：内核输出级别（sing-box 写多少） ────────────────────────────
-	   这个真的会改配置并重启内核，所以单独放一个下拉、并写清后果。
-	   显示名一律纯中文——界面上不出现 debug/info/warn/error 这些英文，
-	   配置里存的原值是什么对操作者没有意义。 */
-	const level_choices = {
-		debug: logview.zh('Debug', _('Debug'), '调试'),
-		info:  logview.zh('Info',  _('Info'),  '信息'),
-		warn:  logview.zh('Warn',  _('Warn'),  '警告'),
-		error: logview.zh('Error', _('Error'), '错误')
-	};
-
-	let selected = logview.normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
-
-	/* Unified log level switcher: writes both the client (config) and the
-	   server (section) so a single control tunes sing-box verbosity.
-	   Unlike the view selector above this one changes what the CORE writes,
-	   so it has to be saved AND applied (which restarts sing-box). */
-	const level_sel = E('select', {
-		'id': 'hp_unified_log_level',
-		'class': 'cbi-input-select',
-		'style': 'margin-left: 4px; width: 8em;',
-		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
-		'change': ui.createHandlerFn(ctx, (ev) => {
-			const v = ev.target.value;
-			selected = v;
-			uci.set('homeproxy', 'config', 'log_level', v);
-			uci.set('homeproxy', 'server', 'log_level', v);
-			/* save+apply restarts sing-box (kernel picks up the new level). */
-			page.refresh(true);
-			return ctx.map.save(null, true).then(() => {
-				ui.changes.apply(true);
-			});
-		})
-	});
-
-	Object.keys(level_choices).forEach((v) => {
-		level_sel.appendChild(E('option', {
-			'value': v,
-			'selected': (v === selected) ? '' : null
-		}, [ level_choices[v] ]));
-	});
-
-	const page = logview.renderPage(ctx, {
-		key: 'log-refresh',
-		box_id: 'hp_log_runtime',
-		lazy: true,
-		sources: log_sources,
-		head: [
-			E('div', { 'style': 'display:flex; align-items:center;' }, [
-				_('Show:'),
-				view_sel
-			]),
-			E('div', { 'style': 'display:flex; align-items:center;' }, [
-				_('Core log level:'),
-				level_sel
-			])
-		],
-		/* 闭包读的是外面的 view，所以下拉一变、下一次 refresh 就换了过滤。 */
-		filter: (merged) => logview.filterByView(merged, view)
-	});
-
-	/* nodes 保持成**数组**，不要再包一层 E()：E(array) 返回的是
-	   DocumentFragment，挂上去一次就被搬空了，切回来会变成空白。 */
-	return { page: page, nodes: page.nodes };
-}
-
-/* ── 面板二：日志设置 ───────────────────────────────────────────────────────
+/* ── 面板一：日志设置 ───────────────────────────────────────────────────────
    两个数字 + 一个单位。刷新间隔只决定这几个日志页多久重读一次文件；大小
    上限是 clean_log.sh 的轮转阈值。两者都写 log.conf，谁都不重启。 */
 function renderSettingsPanel(ctx, onSaved) {
@@ -413,19 +310,57 @@ function renderSettingsPanel(ctx, onSaved) {
 	return { page: null, nodes: nodes };
 }
 
-/* ── 面板三：插件日志 ───────────────────────────────────────────────────────
-   只有插件自己写的那四个文件，**一个过滤器都没有**。
-   这个页面存在的意义就是「原样看全部」：运行日志页有两个下拉，排查时最怕
-   的就是「明明有这行，界面上却看不到」——而问题常常只是某个过滤器还停在
-   上次选的值。这里不做任何过滤，也不读 uci 里的 log_view。 */
+/* ── 面板二：插件日志（打开「运行日志」时默认显示的这一屏） ─────────────────
+   插件自己写的四个文件 + 顶栏一个「显示：」下拉（全部 / 事件 / 警告 / 错误）。
+   与「内核日志级别：」是两件事：这里只改前端过滤，不重启任何东西。 */
 function renderPluginPanel(ctx) {
+	const view_choices = {
+		all:   logview.zh('All',      _('All'),      '全部'),
+		event: logview.zh('Events',   _('Events'),   '事件'),
+		warn:  logview.zh('Warnings', _('Warnings'), '警告'),
+		error: logview.zh('Errors',   _('Errors'),   '错误')
+	};
+
+	let view = logview.normalizeView(uci.get('homeproxy', 'config', 'log_view'));
+
+	const view_sel = E('select', {
+		'id': 'hp_log_view',
+		'class': 'cbi-input-select',
+		'style': 'margin-left: 4px; width: 8em;',
+		'title': _('What to show. Purely a display filter: nothing is restarted.'),
+		'change': ui.createHandlerFn(ctx, (ev) => {
+			view = logview.normalizeView(ev.target.value);
+			/* 只 commit 不 apply：改的是「看什么」，不该为此重启内核。
+			   （uci.save() = 写回 /etc/config；apply 才会触发 reload。） */
+			uci.set('homeproxy', 'config', 'log_view', view);
+			uci.save();
+			/* 立刻重画，不等下一个轮询。 */
+			return page.refresh(true);
+		})
+	});
+
+	Object.keys(view_choices).forEach((v) => {
+		view_sel.appendChild(E('option', {
+			'value': v,
+			'selected': (v === view) ? '' : null
+		}, [ view_choices[v] ]));
+	});
+
 	const page = logview.renderPage(ctx, {
 		key: 'log-plugin-refresh',
 		box_id: 'hp_log_plugin',
 		lazy: true,
 		sources: plugin_sources,
-		/* 这个页签只有一个用途：把这四个文件原样摊开。框底那行「每 N 秒刷新。
-		   · 先点击日志区域…」在这里没有信息量，去掉（轮询照旧）。 */
+		head: [
+			E('div', { 'style': 'display:flex; align-items:center;' }, [
+				_('Show:'),
+				view_sel
+			])
+		],
+		/* 闭包读的是外面的 view，所以下拉一变、下一次 refresh 就换了过滤。 */
+		filter: (merged) => logview.filterByView(merged, view),
+		/* 框底那行「每 N 秒刷新。· 先点击日志区域…」在这里没有信息量，去掉
+		   （轮询照旧）。 */
 		hint: false,
 		/* 空状态也走 zh() 兜底：.lmo 没装好时 _() 会原样返回英文 msgid，
 		   整个面板就这一行是英文。 */
@@ -438,18 +373,76 @@ function renderPluginPanel(ctx) {
 	return { page: page, nodes: page.nodes };
 }
 
-/* ── 面板四：内核日志 ───────────────────────────────────────────────────────
-   只有 sing-box 自己的输出，**不分级别**，debug/trace 也照样显示。
+/* ── 面板三：内核日志 ───────────────────────────────────────────────────────
+   只有 sing-box 自己的输出（两个实例），**不分级别**，debug/trace 也照样显示
+   —— 顶栏那个下拉改的是「内核写多少」，不是「这里显示多少」。
    与插件日志分开的理由：内核的行带级别 token、时间戳可能来自 UTC（本机没有
    tzdata 时，logview 按 core_tz 标记换算成本地时间，界面上不再加说明文字），
-   混在插件日志里既看不清 outbound/xxx 之类的明细，也容易被「显示视图」的
-   下拉一过滤就整片消失。 */
-function renderCorePanel(ctx) {
+   混在插件日志里既看不清 outbound/xxx 之类的明细，也容易被「显示：」一过滤
+   就整片消失。 */
+function renderCorePanel(ctx, onSaved, map) {
+	/* 显示名一律纯中文——界面上不出现 debug/info/warn/error 这些英文，
+	   配置里存的原值是什么对操作者没有意义。 */
+	const level_choices = {
+		debug: logview.zh('Debug', _('Debug'), '调试'),
+		info:  logview.zh('Info',  _('Info'),  '信息'),
+		warn:  logview.zh('Warn',  _('Warn'),  '警告'),
+		error: logview.zh('Error', _('Error'), '错误')
+	};
+
+	let selected = logview.normalizeLevel(uci.get('homeproxy', 'config', 'log_level'));
+
+	/* 这个控件真的会改配置并重启内核，所以单独放一个下拉、并写清后果。
+	   Unified log level switcher: writes both the client (config) and the
+	   server (section) so a single control tunes sing-box verbosity — unlike
+	   插件日志那个「显示：」，它改的是内核写多少，所以必须 save + apply。 */
+	const level_sel = E('select', {
+		'id': 'hp_unified_log_level',
+		'class': 'cbi-input-select',
+		'style': 'margin-left: 4px; width: 8em;',
+		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
+		'change': ui.createHandlerFn(ctx, (ev) => {
+			const v = ev.target.value;
+			selected = v;
+			uci.set('homeproxy', 'config', 'log_level', v);
+			uci.set('homeproxy', 'server', 'log_level', v);
+			/* save+apply restarts sing-box (kernel picks up the new level). */
+			page.refresh(true);
+
+			/* map 由 renderTabs 显式传下来（见那里）：LuCI 调 `o.render()`
+			   时不保证把 form.Map 带在参数里，而面板自己拿不到 view 实例 ——
+			   只认 ctx.map 一条路的话这里会抛
+			   `Cannot read properties of undefined (reading 'save')`，
+			   而且只在真的改级别时才抛（jsdom 测试就是这么抓到的）。 */
+			const m = map || (ctx && ctx.map) || null;
+
+			if (!m)
+				throw new Error('form.Map is unreachable: cannot save the log level');
+
+			return m.save(null, true).then(() => {
+				ui.changes.apply(true);
+			});
+		})
+	});
+
+	Object.keys(level_choices).forEach((v) => {
+		level_sel.appendChild(E('option', {
+			'value': v,
+			'selected': (v === selected) ? '' : null
+		}, [ level_choices[v] ]));
+	});
+
 	const page = logview.renderPage(ctx, {
 		key: 'log-core-refresh',
 		box_id: 'hp_log_core',
 		lazy: true,
 		sources: core_sources,
+		head: [
+			E('div', { 'style': 'display:flex; align-items:center;' }, [
+				_('Core log level:'),
+				level_sel
+			])
+		],
 		/* 与插件日志同理：框底那行刷新提示不要。内核的行仍然显示全部，
 		   UTC→本地 的换算在解析层做，不额外插说明行。 */
 		hint: false,
@@ -463,25 +456,34 @@ function renderCorePanel(ctx) {
 }
 
 /* ── 选项卡外壳 ────────────────────────────────────────────────────────────
-   runtime 带 base: true —— 它是页面本身（顶上那个「运行日志」页签），**不进**
-   这排二级选项卡，否则同一个名字会在两级各出现一次。另外三个才是这一排的
-   成员，顺序就是需求给的顺序。 */
+   这一排就是这一页的全部内容：顶部页签「运行日志」= 页面本身，它**没有**自己
+   的面板（以前有一屏「六个文件合并 + 两个下拉」，0.1.28 末版按用户要求去掉了：
+   它和下面三屏重复，而「回到它」除了刷新页面之外没有别的入口）。三个二级
+   选项卡各管一件事，顺序就是需求给的顺序。 */
 const TABS = [
-	{ id: 'runtime',  base: true, title: () => logview.zh('Runtime Log', _('Runtime Log'), '运行日志'), build: renderRuntimePanel },
-	{ id: 'settings', title: () => logview.zh('Log Settings', _('Log Settings'), '日志设置'),      build: renderSettingsPanel },
-	{ id: 'plugin',   title: () => logview.zh('Plugin Log', _('Plugin Log'), '插件日志'),          build: renderPluginPanel },
-	{ id: 'core',     title: () => logview.zh('Core Log', _('Core Log'), '内核日志'),              build: renderCorePanel }
+	{ id: 'settings', title: () => logview.zh('Log Settings', _('Log Settings'), '日志设置'), build: renderSettingsPanel },
+	{ id: 'plugin',   title: () => logview.zh('Plugin Log', _('Plugin Log'), '插件日志'),     build: renderPluginPanel },
+	{ id: 'core',     title: () => logview.zh('Core Log', _('Core Log'), '内核日志'),         build: renderCorePanel }
 ];
 
-const BASE_TAB = TABS.filter((t) => t.base)[0];
-const SUB_TABS = TABS.filter((t) => !t.base);
+/* 点开「运行日志」先看插件日志：它是最常被打开的一屏（排查时先要知道插件
+   自己干了什么），日志设置是一组表单、内核日志只在调 sing-box 时才看。 */
+const DEFAULT_TAB = 'plugin';
 
 function renderTabs(ctx) {
 	const bar = E('ul', { 'class': 'hp-log-tabs' });
 	const host = E('div', { 'class': 'hp-log-panels' });
 	const built = {};
 
-	/* null = 正在看运行日志本身：这时候三个二级选项卡都不高亮。 */
+	/* 「内核日志级别：」要保存并应用，得拿到 form.Map。LuCI 调 `o.render()`
+	   时**不保证**把它带在参数里（jsdom 里 ctx 干脆是 undefined），而面板自己
+	   也拿不到 view 实例——所以在这里取、再显式传下去。两条路：ctx 上有就用
+	   ctx 的，否则用 `L.bind(renderTabs, this)` 绑进来的那个 view 实例
+	   （render() 里刚给它赋过 `this.map`）。 */
+	const map = (ctx && ctx.map) ? ctx.map : (this && this.map) ? this.map : null;
+
+	/* 一进来就有一个选项卡是高亮的（默认「插件日志」），所以 active 不再是
+	   null —— 页面本身没有面板可显示，留空会是一整片空白。 */
 	let active = null;
 
 	function markTab(id) {
@@ -530,7 +532,7 @@ function renderTabs(ctx) {
 		markTab(id);
 
 		if (!built[id])
-			built[id] = TABS.filter((t) => t.id === id)[0].build(ctx, retune);
+			built[id] = TABS.filter((t) => t.id === id)[0].build(ctx, retune, map);
 
 		mount(built[id].nodes);
 
@@ -542,9 +544,9 @@ function renderTabs(ctx) {
 		return null;
 	}
 
-	/* 三个二级选项卡。运行日志不在这里：它是页面本身，回到它点顶部那个
-	   「运行日志」页签（LuCI 会重新渲染这一页，正好回到默认面板）。 */
-	SUB_TABS.forEach((t) => {
+	/* 三个二级选项卡就是这一页的全部；「运行日志」是顶部那个页签（页面本身），
+	   点它会让 LuCI 重新渲染这一页，也就是回到 DEFAULT_TAB。 */
+	TABS.forEach((t) => {
 		bar.appendChild(E('li', { 'data-tab': t.id }, [
 			E('a', {
 				'href': '#',
@@ -556,8 +558,8 @@ function renderTabs(ctx) {
 		]));
 	});
 
-	/* 打开这一页先看运行日志，此时三个选项卡都不高亮。 */
-	activate(BASE_TAB.id);
+	/* 打开这一页先看插件日志，并且它要高亮 —— 否则看不出当前是哪一屏。 */
+	activate(DEFAULT_TAB);
 
 	return E([ E('style', [ css ]), bar, host ]);
 }
