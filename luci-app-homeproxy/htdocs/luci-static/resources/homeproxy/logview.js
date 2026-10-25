@@ -434,6 +434,24 @@ function filterByView(merged, view) {
 	return merged;   /* all — and any unknown key falls back to showing everything */
 }
 
+/* 一条记录该画成什么颜色。**只用于上色，不参与过滤**：留不留这一条仍由
+   filterByView 决定。两处共用 isWarnRecord / isErrorRecord，所以口径天然
+   一致 —— 在「错误」视图里看到的那几条，切回「全部」时也一定是红的。
+   顺序不能反：isWarnRecord 对 error 级也返回 true（warn 是「warn 及以上」），
+   先判 error 才不会把报错画成琥珀色。 */
+function recordSeverity(rec) {
+	if (rec.note)
+		return null;
+
+	if (isErrorRecord(rec))
+		return 'error';
+
+	if (isWarnRecord(rec))
+		return 'warn';
+
+	return null;
+}
+
 /* Render merged records into the single scrollable box as plain log text.
    The first line of each record is flush; continuation lines are indented.
 
@@ -448,8 +466,12 @@ function renderLogBox(merged, emptyText) {
 
 	for (let i = 0; i < merged.length; i++) {
 		const rec = merged[i];
+		/* 配色按**记录**算一次，续行（sing-box 的 "Caused by:"）跟着上色，
+		   否则一条 ERROR 只有第一行是红的、堆栈仍是黑的，读起来像两件事。 */
+		const sev = recordSeverity(rec);
+
 		for (let j = 0; j < rec.lines.length; j++)
-			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j], note: (rec.note === true) });
+			flat.push({ si: rec.si, first: (j === 0), text: rec.lines[j], note: (rec.note === true), sev: sev });
 	}
 
 	if (flat.length === 0) {
@@ -459,13 +481,22 @@ function renderLogBox(merged, emptyText) {
 
 	for (let i = 0; i < flat.length; i++) {
 		const it = flat[i];
+		let cls = 'hp-log-line';
+
+		if (it.note)
+			cls += ' hp-log-note';
+		else if (!it.first)
+			cls += ' hp-log-cont';
+
+		if (it.sev === 'error')
+			cls += ' hp-log-error';
+		else if (it.sev === 'warn')
+			cls += ' hp-log-warn';
+
 		/* No per-source badge: the box shows plain log text. The record's
 		   first line is flush, its continuation lines (e.g. sing-box
 		   "Caused by:") are indented so the grouping stays readable. */
-		box.appendChild(E('div', {
-			'class': it.note ? 'hp-log-line hp-log-note'
-			                 : (it.first ? 'hp-log-line' : 'hp-log-line hp-log-cont')
-		}, [ it.text === '' ? ' ' : it.text ]));
+		box.appendChild(E('div', { 'class': cls }, [ it.text === '' ? ' ' : it.text ]));
 	}
 
 	return box;
@@ -527,6 +558,17 @@ const css = `
 	color: #b06a00;
 	font-weight: 600;
 	padding: 2px 10px 6px;
+}
+/* 告警 / 错误的配色。只有前景色、不加背景：整片日志一旦有了底色，时间戳
+   的等宽列就对不齐了，而且满屏色块反而看不出哪行更要紧。
+   日志框底是固定的白底（.hp-log-scroll），所以用深一档的琥珀与红，
+   深色主题下也读得清。判定见 recordSeverity()：插件日志行里没有级别
+   token，靠 isWarnRecord / isErrorRecord 的中文关键字兜住。 */
+.hp-log-warn {
+	color: #b26a00;
+}
+.hp-log-error {
+	color: #c62828;
 }
 `;
 
@@ -818,14 +860,15 @@ function renderPage(ctx, o) {
 		return hp.pollRemove(o.key || 'log-refresh');
 	}
 
-	/* 日志设置里改了刷新间隔：已经建好的面板就地换节奏，不必等下次打开。 */
+	/* 日志设置里改了刷新间隔：已经建好的面板就地换节奏，不必等下次打开。
+	   夹的范围就是设置页允许填的 2–120 秒，别再放一个更宽的口子。 */
 	function retune(seconds) {
-		registerPoll(clampInt(seconds, 1, 3600, interval));
+		registerPoll(clampInt(seconds, REFRESH_MIN, REFRESH_MAX, interval));
 	}
 
 	const wanted = (typeof o.interval === 'number')
-		? clampInt(o.interval, 1, 3600, DEFAULT_SETTINGS.refresh) : null;
-	const initial = wanted || clampInt(L.env.pollinterval, 1, 3600, DEFAULT_SETTINGS.refresh);
+		? clampInt(o.interval, REFRESH_MIN, REFRESH_MAX, DEFAULT_SETTINGS.refresh) : null;
+	const initial = wanted || clampInt(L.env.pollinterval, REFRESH_MIN, REFRESH_MAX, DEFAULT_SETTINGS.refresh);
 
 	interval = initial;
 
@@ -912,6 +955,7 @@ return {
 	isEventRecord: isEventRecord,
 	isWarnRecord: isWarnRecord,
 	isErrorRecord: isErrorRecord,
+	recordSeverity: recordSeverity,
 	shiftTs: shiftTs,
 
 	callSettings: callLogSettings,

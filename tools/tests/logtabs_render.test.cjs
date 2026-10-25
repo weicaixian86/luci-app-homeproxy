@@ -316,12 +316,12 @@ function clickTab(label) {
 		w.stopped.indexOf('log-refresh') >= 0, JSON.stringify(w.stopped));
 	check('the runtime panel is unmounted (one panel at a time)',
 		!document.querySelector('#hp_log_runtime'));
-	check('the settings panel has three rows',
-		document.querySelectorAll('.hp-logset-row').length === 3,
+	check('the settings panel has two rows (size + unit share one)',
+		document.querySelectorAll('.hp-logset-row').length === 2,
 		String(document.querySelectorAll('.hp-logset-row').length));
-	check('row labels are 日志刷新时间 / 日志大小上限 / 日志大小上限单位',
+	check('row labels are 日志刷新时间 / 日志大小上限',
 		Array.from(document.querySelectorAll('.hp-logset-label'))
-			.map((n) => n.textContent).join('|') === '日志刷新时间|日志大小上限|日志大小上限单位',
+			.map((n) => n.textContent).join('|') === '日志刷新时间|日志大小上限',
 		Array.from(document.querySelectorAll('.hp-logset-label')).map((n) => n.textContent).join('|'));
 
 	const unit = document.querySelector('.hp-logset-row select');
@@ -333,6 +333,13 @@ function clickTab(label) {
 	await delay();
 
 	const size_in = document.querySelectorAll('.hp-logset-row input[type="number"]')[1];
+
+	/* 用户 0.1.28：「日志大小上限」原来拆成了两行（数字一行、单位一行），
+	   中间还夹着别的行时看不出是一件事。现在同一个 .hp-logset-row 里
+	   既有数字框也有单位下拉。 */
+	check('the size field and the unit dropdown sit in the same row',
+		!!size_in && !!unit && size_in.parentNode === unit.parentNode,
+		size_in && unit ? (size_in.parentNode === unit.parentNode ? 'same row' : 'different rows') : 'missing control');
 
 	check('the size field max is the MB ceiling (1024)',
 		size_in && size_in.getAttribute('max') === '1024',

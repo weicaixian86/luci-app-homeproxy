@@ -383,17 +383,14 @@ function renderSettingsPanel(ctx, onSaved) {
 					E('span', {}, [ logview.zh('seconds', _('seconds'), '秒') ])
 				])
 			]),
+			/* 值 + 单位在**一行**里（用户 0.1.28 明确要求）：单位和数字是同一件
+			   事的两半，拆成「日志大小上限」和「日志大小上限单位」两行后，中间
+			   还夹着别的内容时看不出它们属于同一个设置。 */
 			E('div', { 'class': 'hp-logset-row' }, [
 				E('div', { 'class': 'hp-logset-label' }, [
 					logview.zh('Log size limit', _('Log size limit'), '日志大小上限')
 				]),
-				E('div', { 'class': 'hp-logset-field' }, [ size_in ])
-			]),
-			E('div', { 'class': 'hp-logset-row' }, [
-				E('div', { 'class': 'hp-logset-label' }, [
-					logview.zh('Log size limit unit', _('Log size limit unit'), '日志大小上限单位')
-				]),
-				E('div', { 'class': 'hp-logset-field' }, [ unit_sel ])
+				E('div', { 'class': 'hp-logset-field' }, [ size_in, unit_sel ])
 			]),
 			effective,
 			E('div', { 'class': 'hp-logset-hint' }, [

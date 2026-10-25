@@ -524,6 +524,25 @@ else
 	bad "the refresh/Ctrl+A hint still shows under the plugin or core log"
 fi
 
+# 用户 0.1.28：警告 / 错误行要上色。判定与过滤器共用 isWarnRecord /
+# isErrorRecord，所以「错误视图里看到的那几条」在「全部」里也一定是红的。
+if grep -q 'recordSeverity' "$LOGVIEW" && grep -q 'hp-log-warn' "$LOGVIEW" \
+   && grep -q 'hp-log-error' "$LOGVIEW"; then
+	ok "warning/error rows are coloured (same predicate as the filter)"
+else
+	bad "warning/error rows have no colour class"
+fi
+
+# 刷新间隔 2–120 秒：注册轮询、设置页夹取、rpcd 夹取必须是同一个范围，
+# 否则「界面填 300」会在下一层被悄悄改成别的值。
+if grep -q 'refresh_min: 2, refresh_max: 120' "$RPCD" \
+   && grep -q 'REFRESH_MIN = 2' "$LOGVIEW" && grep -q 'REFRESH_MAX = 120' "$LOGVIEW" \
+   && [ "$(grep -c 'REFRESH_MIN, REFRESH_MAX' "$LOGVIEW")" -ge 2 ]; then
+	ok "the refresh interval is 2–120 s in the UI, the poller and rpcd"
+else
+	bad "the refresh interval range differs between UI, poller and rpcd"
+fi
+
 # 设置必须写在 /etc/homeproxy/log.conf，不能进 uci：uci commit 会改
 # /etc/config/homeproxy 的 mtime → procd 的 config.change → reload_service，
 # 也就是「为了改个刷新间隔把隧道重启一次」。所以只切出设置面板来检。
@@ -532,6 +551,15 @@ if ! grep -q 'uci\.' "$WORK/logset.fn.js" && grep -q 'logview.saveSettings' "$WO
 	ok "log settings never touch uci (a commit would restart the core)"
 else
 	bad "log settings go through uci: saving them reloads (stop+start) the service"
+fi
+
+# 用户 0.1.28：「日志大小上限」被拆成了两行（数字一行、单位一行），中间夹着
+# 别的行时看不出是一件事。现在同一个 .hp-logset-row 里既有数字框也有单位下拉。
+if [ "$(grep -c 'hp-logset-row' "$WORK/logset.fn.js")" = 2 ] \
+   && ! grep -q 'Log size limit unit' "$LOG_JS"; then
+	ok "size limit + unit share one row (no separate unit row)"
+else
+	bad "the size limit is still split over two rows"
 fi
 
 if grep -q 'log_settings_save' "$RPCD" && grep -q '/log.conf' "$RPCD" \

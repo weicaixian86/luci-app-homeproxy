@@ -434,10 +434,48 @@ const CASES = [
 		check('an error row survives too',
 			box.textContent.indexOf('这条也不该被隐藏') >= 0);
 	}
+},
+
+/* --- 8. 警告 / 错误行要有颜色 -------------------------------------------- */
+/* 用户 0.1.28：WARN / ERROR 行原来跟普通行一样是黑的，扫一眼看不出哪行要紧。
+   配色按**记录**算（续行一起上色），判定复用过滤用的 isWarnRecord /
+   isErrorRecord —— 插件日志行里没有级别 token，只能靠中文关键字，所以
+   「失败 1」这种统计行绝对不能被染红（靠 isErrorRecord 里的
+   `失败(?!\s*\d)`）。这两件事一起验，才能证明「红的就是错的」。 */
+{
+	name: 'log page: warnings and errors are coloured',
+	opts: {
+		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'local\n'
+			: [ '2026-10-24 09:54:05 INFO router: started',
+			    '2026-10-24 09:54:06 WARN outbound/proxy: dial timeout after 5s',
+			    '2026-10-24 09:54:07 ERROR router: configure tun interface: operation not permitted',
+			    '    Caused by: ioctl SIOCSIFFLAGS',
+			    '2026-10-24 09:54:08 ==== 规则集更新结束：成功 1，跳过 0，失败 1，耗时 3 秒 ====' ].join('\n')),
+		sources: [ { file: 'homeproxy' } ]
+	},
+	assertions: (box) => {
+		const warn = box.querySelectorAll('.hp-log-warn'),
+		      err = box.querySelectorAll('.hp-log-error');
+
+		check('a WARN row is drawn in amber',
+			warn.length === 1 && warn[0].textContent.indexOf('dial timeout') >= 0,
+			warn.length + ' warn rows');
+		check('an ERROR row is drawn in red',
+			err.length === 2 && err[0].textContent.indexOf('operation not permitted') >= 0,
+			err.length + ' error rows');
+		check('the continuation line of an ERROR is coloured too',
+			err.length === 2 && err[1].textContent.indexOf('Caused by') >= 0,
+			err.length > 1 ? JSON.stringify(err[1].textContent) : 'no continuation');
+		check('an INFO row stays plain',
+			box.querySelectorAll('.hp-log-warn, .hp-log-error').length === 3,
+			box.querySelectorAll('.hp-log-warn, .hp-log-error').length + ' coloured rows');
+		check('the "失败 1" summary line is not coloured as an error',
+			Array.prototype.every.call(err, (n) => n.textContent.indexOf('规则集更新结束') < 0));
+	}
 }
 ];
 
-/* --- 8. the unit table (KB / MB / GB) ------------------------------------- */
+/* --- 9. the unit table (KB / MB / GB) ------------------------------------- */
 /* 0.1.28: the size limit offers KB / MB / GB, and the number field's range is
    derived from the same table that computes the byte budget. A wrong table is
    invisible in the UI — "1 GB" would quietly rotate at 1 MiB — so check the
