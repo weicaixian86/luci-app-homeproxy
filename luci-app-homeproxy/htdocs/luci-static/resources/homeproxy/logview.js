@@ -7,11 +7,11 @@
 /* 日志页的共用部分：读文件 → 切记录 → 合并成一条时间线 → 过滤 → 渲染成
  * 一个可滚动的框，外加顶栏（自动刷新 / 清空 / 复制）与轮询注册。
  *
- * 0.1.28 之前这一整套都写在 view/homeproxy/log.js 里，只有一个「运行日志」
- * 页面。现在页面里有四个选项卡（运行日志 / 日志设置 / 插件日志 / 内核日志），
- * 三种日志视图各传一份来源清单，于是解析与渲染必须只有一份：两份拷贝意味
- * 着以后改一次解析规则要记得改两处，而忘掉的那一处不会有任何报错 —— 它只
- * 会安静地显示错的东西。
+ * 0.1.28 之前这一整套都写在 view/homeproxy/log.js 里，只有一屏把六个文件
+ * 合并起来的「运行日志」。现在页面里有三个二级选项卡（日志设置 / 插件日志 /
+ * 内核日志），两个日志屏各传一份来源清单，于是解析与渲染必须只有一份：两份
+ * 拷贝意味着以后改一次解析规则要记得改两处，而忘掉的那一处不会有任何报错
+ * —— 它只会安静地显示错的东西。
  */
 
 'use strict';
@@ -351,8 +351,8 @@ function mergeRecords(results) {
        verbosity，写 `config.log_level` + `server.log_level`，需保存并应用。
    插件日志没有级别 token，所以「警告 / 错误」除了看 token 还要按中文关键字
    判定，否则这两个视图里会一条插件告警都筛不出来。
-   「插件日志 / 内核日志」两个页面不带任何过滤：那两个页面存在的意义就是
-   「原样看全部」，加过滤器等于把它们变回运行日志。 */
+   「内核日志」屏不带任何过滤：它存在的意义就是「原样看全部」。「显示：」
+   只接在插件日志那一屏（o.filter），而且只改前端显示、不写服务配置。 */
 const VIEW_KEYS = { all: 0, event: 1, warn: 2, error: 3 };
 
 function normalizeView(v) {
@@ -525,8 +525,26 @@ const css = `
 	align-items: center;
 	justify-content: flex-start;
 	flex-wrap: wrap;
-	gap: 8px;
-	padding: 8px 10px;
+	gap: 14px;
+	/* 只在下方留 8px：顶栏与日志框是一件事，中间不该再有一条空白带。 */
+	padding: 0 0 8px;
+}
+/* 顶栏 + 日志框**同一个容器**。以前顶栏单独是一个 cbi-section、框是另一个，
+   两者之间除了 section 的间距，调用方没传 head 时还会留下一条空的带边框
+   横条（0.1.28 现场截图里被红框圈出来的那片空白就是它）。这个 class 顺手
+   把 section 默认的上下外边距也清掉，让选项卡下面直接就是顶栏。 */
+.hp-log-panel {
+	margin: 0;
+	padding: 0;
+	border: none;
+	background: none;
+}
+/* 框底下那行「每 N 秒刷新…」——调用方要的时候才建（o.hint === false 就不建）。 */
+.hp-log-hint {
+	padding: 6px 0 0;
+	text-align: right;
+	color: #888;
+	font-size: 12px;
 }
 /* One merged log box with its own scrollbar: all sources share this
    viewport, so the page no longer grows with the amount of history. */
@@ -853,9 +871,9 @@ function renderPage(ctx, o) {
 	interval = initial;
 
 	/* o.hint === false：框底下那行「每 N 秒刷新。· 先点击日志区域…」不显示。
-	   插件日志与内核日志这两个页签只需要「原样看全部」，这行提示在那里只是
-	   噪音（用户 0.1.28 明确指出要去掉）。轮询本身不受影响，照旧按设置里的
-	   间隔跑；o.hint 缺省为开，运行日志页保持原样。 */
+	   两个日志屏都只需要「原样看全部」，这行提示在那里只是噪音（用户 0.1.28
+	   明确指出要去掉）。轮询本身不受影响，照旧按设置里的间隔跑。0.1.28 末版
+	   合并屏删掉后没有任何一屏传 hint: true，开关留着、默认仍为开。 */
 	every = (o.hint === false) ? null : E('small', {}, [
 		_('Refresh every %s seconds.').format(initial),
 		' · ',
@@ -875,13 +893,6 @@ function renderPage(ctx, o) {
 		});
 	}
 
-	/* 框下面那行提示是可选的（见上面 every 的注释）：关掉时连外面那层
-	   text-align:right 的 div 一起不建，省得留一个空的右对齐块。 */
-	const body = [ box ];
-
-	if (every)
-		body.push(E('div', { 'style': 'text-align:right' }, every));
-
 	/* 顶栏的孩子必须是**一维**数组。LuCI 的 E() 不会摊平嵌在 children 里的
 	   数组——不是节点就一律 `createTextNode(child)`，于是 Array.toString()
 	   把每个元素都变成 `[object HTMLDivElement]`，界面上就多出
@@ -895,15 +906,24 @@ function renderPage(ctx, o) {
 	]));
 	topbar.push(buttons);
 
+	/* 顶栏与日志框装进**同一个**容器，而且顶栏只在真有控件时才建：
+	   - 拆成两个 cbi-section 时，两者之间会多出一层 section 间距；
+	   - 一个空的顶栏 div 就是一条带边框的空白横条（0.1.28 现场红框）。
+	   现在没有控件就连这个 div 都不建，绝不会留空。 */
+	const panel = [];
+
+	if (topbar.length)
+		panel.push(E('div', { 'class': 'hp-log-topbar' }, topbar));
+
+	panel.push(box);
+
+	if (every)
+		panel.push(E('div', { 'class': 'hp-log-hint' }, every));
+
 	return {
 		nodes: [
 			E('style', [ css ]),
-			E('div', { 'class': 'cbi-map' }, [
-				E('div', { 'class': 'cbi-section hp-log-topbar' }, [
-					E('div', { 'style': 'display:flex; align-items:center; flex-wrap:wrap; gap:18px;' }, topbar)
-				]),
-				E('div', { 'class': 'cbi-section' }, body)
-			])
+			E('div', { 'class': 'hp-log-panel' }, panel)
 		],
 		/* 下拉过滤器的 change 处理器要用它立刻重画：换成下一次轮询要等 5 秒。 */
 		refresh: refresh,

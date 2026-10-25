@@ -44,7 +44,7 @@ const css = `
 	display: flex;
 	flex-wrap: wrap;
 	gap: 6px;
-	margin: 0 0 10px;
+	margin: 0 0 8px;
 	padding: 0;
 	list-style: none;
 }
@@ -72,15 +72,21 @@ const css = `
 	box-shadow: inset 0 -2px 0 var(--primary, #4a7dff);
 	color: var(--primary, #4a7dff);
 }
+/* 面板容器本身不再加内边距：选项卡下面直接就是内容（用户 0.1.28 现场：
+   选项卡与第一行之间那片空白完全可以去掉）。 */
 .hp-log-panels {
-	padding-top: 10px;
+	padding-top: 0;
+}
+/* 日志设置那一屏的 section 默认带上下外边距，去掉之后第一行贴着选项卡。 */
+.hp-logset {
+	margin: 0;
 }
 .hp-logset-row {
 	display: flex;
 	align-items: center;
 	flex-wrap: wrap;
 	gap: 8px;
-	padding: 10px 12px;
+	padding: 9px 12px;
 	border-bottom: 1px solid rgba(128,128,128,.18);
 }
 .hp-logset-row:last-child {
@@ -270,7 +276,7 @@ function renderSettingsPanel(ctx, onSaved) {
 	}, [ logview.zh('Restore defaults', _('Restore defaults'), '恢复默认') ]);
 
 	const nodes = [
-		E('div', { 'class': 'cbi-section' }, [
+		E('div', { 'class': 'cbi-section hp-logset' }, [
 			E('div', { 'class': 'hp-logset-row' }, [
 				E('div', { 'class': 'hp-logset-label' }, [
 					logview.zh('Log refresh interval', _('Log refresh interval'), '日志刷新时间')
@@ -326,7 +332,7 @@ function renderPluginPanel(ctx) {
 	const view_sel = E('select', {
 		'id': 'hp_log_view',
 		'class': 'cbi-input-select',
-		'style': 'margin-left: 4px; width: 8em;',
+		'style': 'width: 8em;',
 		'title': _('What to show. Purely a display filter: nothing is restarted.'),
 		'change': ui.createHandlerFn(ctx, (ev) => {
 			view = logview.normalizeView(ev.target.value);
@@ -352,7 +358,7 @@ function renderPluginPanel(ctx) {
 		lazy: true,
 		sources: plugin_sources,
 		head: [
-			E('div', { 'style': 'display:flex; align-items:center;' }, [
+			E('div', { 'style': 'display:flex; align-items:center; gap:4px;' }, [
 				_('Show:'),
 				view_sel
 			])
@@ -399,7 +405,7 @@ function renderCorePanel(ctx, onSaved, map) {
 	const level_sel = E('select', {
 		'id': 'hp_unified_log_level',
 		'class': 'cbi-input-select',
-		'style': 'margin-left: 4px; width: 8em;',
+		'style': 'width: 8em;',
 		'title': _('Verbosity of the sing-box core. Changing it saves and applies the config, which restarts the core.'),
 		'change': ui.createHandlerFn(ctx, (ev) => {
 			const v = ev.target.value;
@@ -438,7 +444,7 @@ function renderCorePanel(ctx, onSaved, map) {
 		lazy: true,
 		sources: core_sources,
 		head: [
-			E('div', { 'style': 'display:flex; align-items:center;' }, [
+			E('div', { 'style': 'display:flex; align-items:center; gap:4px;' }, [
 				_('Core log level:'),
 				level_sel
 			])

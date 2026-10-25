@@ -615,6 +615,19 @@ else
 	bad "o.head is nested inside E() children: LuCI prints [object HTMLDivElement]"
 fi
 
+# 用户 0.1.28 现场（红框）：选项卡与内容之间那片空白。顶栏原来单独是一个
+# cbi-section、日志框是另一个 —— section 自带的外边距/边框叠在中间，没传
+# head 时顶栏还整条空着。现在两者在同一个 .hp-log-panel 里，容器自己不是
+# cbi-section，顶栏只在真有控件时才建。jsdom 那两个测试是同一判据的运行期
+# 版本（负例实测：容器 class 加回 cbi-section → 立刻红）。
+if ! grep -q "class': 'cbi-section" "$LOGVIEW" \
+   && grep -q "E('div', { 'class': 'hp-log-panel' }, panel)" "$LOGVIEW" \
+   && grep -q 'if (topbar.length)' "$LOGVIEW"; then
+	ok "the top bar and the log box share one container (no blank strip)"
+else
+	bad "the log top bar is a separate cbi-section again (a blank strip appears)"
+fi
+
 # 用户 0.1.28：警告 / 错误行要上色。判定与过滤器共用 isWarnRecord /
 # isErrorRecord，所以「错误视图里看到的那几条」在「全部」里也一定是红的。
 if grep -q 'recordSeverity' "$LOGVIEW" && grep -q 'hp-log-warn' "$LOGVIEW" \

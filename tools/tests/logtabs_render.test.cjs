@@ -356,8 +356,25 @@ function clickTab(label) {
 	/* 用户 0.1.28：这一屏底下那行「每 N 秒刷新。· 先点击日志区域…」要去掉。
 	   去掉的是显示，轮询照旧。 */
 	check('the plugin panel has no refresh hint under the box',
-		plugin_box && plugin_box.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
-		plugin_box ? JSON.stringify(plugin_box.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
+		plugin_box && plugin_box.closest('.hp-log-panel').textContent.indexOf('Refresh every') < 0,
+		plugin_box ? JSON.stringify(plugin_box.closest('.hp-log-panel').textContent.slice(-60)) : 'no panel');
+
+	/* 用户 0.1.28 现场（红框）：选项卡下面那片空白，是「顶栏单独一个
+	   cbi-section、没有 head 时整条空着」留下的。现在顶栏与日志框在**同一个**
+	   容器里，容器自己不是 cbi-section（section 自带外边距会再留一条空白），
+	   而且顶栏是容器的第一个孩子 —— 中间不许再插任何东西。 */
+	const plugin_panel = plugin_box ? plugin_box.closest('.hp-log-panel') : null;
+
+	check('the top bar and the log box share one container',
+		plugin_panel && plugin_panel.firstElementChild ===
+			plugin_panel.querySelector('.hp-log-topbar'),
+		plugin_panel ? plugin_panel.className : 'no container');
+	check('no empty cbi-section strip above the log box',
+		plugin_panel && !plugin_panel.classList.contains('cbi-section') &&
+		plugin_panel.querySelectorAll('.cbi-section').length === 0,
+		plugin_panel ? plugin_panel.className : 'no container');
+	check('the 显示 dropdown lives in that same top bar',
+		!!(plugin_panel && plugin_panel.querySelector('.hp-log-topbar #hp_log_view')));
 
 	/* ── 「显示：」下拉只改前端过滤 ──────────────────────────────────────
 	   它搬到插件日志这一屏之后仍然只过滤、不重启内核（后者由 run.sh 的
@@ -441,8 +458,11 @@ function clickTab(label) {
 	check('the core panel carries the 内核日志级别 dropdown',
 		!!document.querySelector('#hp_unified_log_level'));
 	check('the core panel has no refresh hint either',
-		core && core.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
-		core ? JSON.stringify(core.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
+		core && core.closest('.hp-log-panel').textContent.indexOf('Refresh every') < 0,
+		core ? JSON.stringify(core.closest('.hp-log-panel').textContent.slice(-60)) : 'no panel');
+	check('the core top bar keeps its dropdown right above the box',
+		!!(core && core.closest('.hp-log-panel') &&
+			core.closest('.hp-log-panel').querySelector('.hp-log-topbar #hp_unified_log_level')));
 	/* 这一屏不做任何过滤：顶栏那个下拉是「内核写多少」，不是「这里显示多少」。 */
 	check('a DEBUG line survives in the core panel (no display filter here)',
 		core && core.textContent.indexOf('这条不该被级别过滤掉') >= 0,

@@ -313,6 +313,23 @@ function run(name, opts, assertions) {
 	check('the poll interval came from the settings, not a hardcoded 5s',
 		view.interval() === 5, String(view.interval()));
 
+	/* 用户 0.1.28 现场（红框）：选项卡与内容之间那片空白。以前顶栏单独是一个
+	   cbi-section、日志框是另一个，没传 head 时顶栏整条空着；section 自己的
+	   上下外边距再叠一层。现在两者在**同一个** .hp-log-panel 里，容器不是
+	   cbi-section，顶栏是第一个孩子，提示行在最后。 */
+	const panel = view.box().closest('.hp-log-panel');
+
+	check('the top bar and the log box share one container',
+		panel && panel.firstElementChild === panel.querySelector('.hp-log-topbar'),
+		panel ? panel.className : 'no container');
+	check('no cbi-section anywhere in the panel (it would add a blank strip)',
+		panel && !panel.classList.contains('cbi-section') &&
+		panel.querySelectorAll('.cbi-section').length === 0,
+		panel ? panel.className : 'no container');
+	check('the refresh hint sits under the box, not in the top bar',
+		panel && panel.lastElementChild === panel.querySelector('.hp-log-hint'),
+		panel ? String(panel.children.length) : 'no container');
+
 	return view.tick()
 		.then(() => {
 			const box = view.box();
