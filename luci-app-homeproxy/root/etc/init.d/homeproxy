@@ -331,12 +331,19 @@ hp_action() {
 
 # 统一格式的服务事件行，便于日志页按 [DAEMON] 一眼看清时间线。开机时长是
 # 时钟不可信时的唯一参照：万一时间戳是错的，用「开机 N 分 N 秒」也能把它
-# 换算回真实时刻（真实开机时间 = 时间戳 - 开机时长）。
+# 换算回真实时刻（真实开机时间 = 时间戳 - 开机时长）。超过一小时换成小时，
+# 免得跑了几个月的机器写成「开机 4320 分」。
 hp_event() {
-	local booted
+	local booted up
 	booted="$(uptime_seconds)"
 	if [ -n "$booted" ]; then
-		booted="，开机 $((booted / 60)) 分 $((booted % 60)) 秒"
+		if [ "$booted" -lt 60 ]; then
+			booted="，开机 ${booted} 秒"
+		elif [ "$booted" -lt 3600 ]; then
+			booted="，开机 $((booted / 60)) 分 $((booted % 60)) 秒"
+		else
+			booted="，开机 $((booted / 3600)) 小时 $(((booted % 3600) / 60)) 分"
+		fi
 	fi
 	log "==== $1：命令=$(hp_action "${2:-}")，触发=$(hp_caller)${booted} ===="
 }
