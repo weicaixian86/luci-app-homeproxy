@@ -6,7 +6,6 @@
 			"type": "firstchild"
 		},
 		"depends": {
-			"acl": [ "luci-app-homeproxy" ],
 			"uci": { "homeproxy": true }
 		}
 	},

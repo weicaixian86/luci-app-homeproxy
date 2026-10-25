@@ -19,15 +19,15 @@ msgstr "%s（出站：%s）"
 
 #: htdocs/luci-static/resources/homeproxy/logview.js:131
 msgid "%s KB"
-msgstr ""
+msgstr "%s KB"
 
 #: htdocs/luci-static/resources/homeproxy/logview.js:128
 msgid "%s MB"
-msgstr ""
+msgstr "%s MB"
 
 #: htdocs/luci-static/resources/homeproxy/logview.js:133
 msgid "%s bytes"
-msgstr ""
+msgstr "%s 字节"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1954
 msgid "%s link(s) could not be parsed and were skipped."

@@ -64,13 +64,20 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/passwd" 2>/dev/null && ! grep -qs '^sing-box:' /etc/passwd 2>/dev/null; then
 		adduser -S -D -H -G sing-box -s /sbin/nologin sing-box 2>/dev/null || true
 	fi
-	# rpcd 只在启动时扫描 /usr/share/rpcd/ucode/*.uc，不重启就仍是旧方法表：
-	# 本次新增或改动过的 RPC（如 dns_server_test、ruleset_update）会报
-	# "method not found"/"object not found"，界面上表现为「延迟测试全部失败」。
-	# deploy/install.sh 已经这么做，这里补齐包管理器安装（opkg/apk）的路径。
+	# LuCI 的菜单树缓存在 /tmp/luci-modulecache（目录）里，只删
+	# /tmp/luci-indexcache* 文件是不够的：侧栏菜单读的是 modulecache 里的
+	# 解析结果，不刷新它就看不到新装的菜单项——「apk 装完、服务里根本没有
+	# HomeProxy」就是这个原因（deploy/install.sh 一直 rm -rf + 重启 uhttpd，
+	# 所以本地部署从没暴露过）。顺序也有讲究：先清缓存再重启 uhttpd，
+	# 它起来时才会重新扫描 menu.d / acl.d。
+	rm -rf /tmp/luci-indexcache /tmp/luci-indexcache.* /tmp/luci-modulecache 2>/dev/null || true
+	( /etc/init.d/uhttpd restart >/dev/null 2>&1 || service uhttpd restart >/dev/null 2>&1 ) || true
+	# rpcd 只在启动时扫描 /usr/share/rpcd/ucode/*.uc 与 acl.d/*.json，不重启
+	# 就仍是旧方法表与旧 ACL 组：新增的 RPC（如 dns_server_test、ruleset_update）
+	# 会报 "method not found"/"object not found"（界面上是「延迟测试全部失败」），
+	# 而 ACL 组不存在时菜单的 depends.acl 也会失败（菜单同样不显示）。
 	# 用子 shell + || true 兜底：postinst 返回非 0 会导致整包安装失败。
 	( /etc/init.d/rpcd restart >/dev/null 2>&1 || service rpcd restart >/dev/null 2>&1 ) || true
-	rm -f /tmp/luci-indexcache /tmp/luci-indexcache.* 2>/dev/null
 	# ucitrack：「保存并应用」改 /etc/config/homeproxy 后由 LuCI 的
 	# /sbin/luci-reload 调 /etc/init.d/homeproxy reload。procd 的
 	# reload 触发器只对已有实例的服务生效，而本插件没配节点时会早退、

@@ -349,6 +349,18 @@ LOG_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/log.js"
 # 0.1.28 把读文件 / 切记录 / 合并 / 渲染搬进了共用模块：运行日志、插件日志、
 # 内核日志三个面板各传一份来源清单，解析和渲染只有这一份实现。
 LOGVIEW="$PKG/htdocs/luci-static/resources/homeproxy/logview.js"
+# LuCI 的 L.require() 用 Class.isSubclass() 校验工厂的返回值：必须是
+# baseclass.extend() 出来的构造器，普通对象在新版 LuCI 上直接抛
+# `TypeError: "<name>" factory yields invalid constructor`，日志页整页打不开
+# （0.1.28 就是这么挂的）。两个 jsdom 测试的桩也照这套契约实现，但这层是
+# 源码形态的最后一道闸——桩一旦被简化成普通对象，这里会红。
+if grep -q "^'require baseclass';" "$LOGVIEW" \
+   && grep -q '^return baseclass.extend({$' "$LOGVIEW"; then
+	ok "logview.js exports a LuCI class (require() rejects a plain object)"
+else
+	bad "logview.js returns a plain object: newer LuCI refuses it, the log page never opens"
+fi
+
 if grep -q 'core_tz' "$LOGVIEW" && grep -q 'shiftTs' "$LOGVIEW" \
    && grep -q 'core: true' "$LOG_JS"; then
 	ok "log view puts the core's stamps on the local clock"
@@ -1296,6 +1308,30 @@ if grep -q 'ret.rc === 75' "$CJS"; then
 else
 	bad "ruleset sync reports rc=75 (another download in progress) as a failure"
 fi
+
+# 包安装后的菜单刷新：LuCI 的菜单树缓存在 /tmp/luci-modulecache（**目录**）里，
+# 只 `rm -f /tmp/luci-indexcache*` 删不掉它；uhttpd 不重启也不会重扫 menu.d。
+# 少任一步，apk/opkg 装完侧栏里就没有本插件（deploy/install.sh 走的是
+# rm -rf + uhttpd restart，所以这条路径长期没人踩到）。
+# 判据只用**非注释行**：说明文字里也会出现这两个词，按行号比顺序会被注释带偏。
+POSTINST="$(sed -n '/^define Package\/luci-app-homeproxy\/postinst$/,/^endef$/p' "$PKG/Makefile")"
+POST_CMDS="$(printf '%s\n' "$POSTINST" | sed 's/^[[:space:]]*//' | grep -v '^#')"
+POST_RM_LINE="$(printf '%s\n' "$POST_CMDS" | grep -n 'rm -rf /tmp/luci-indexcache' | head -1 | cut -d: -f1)"
+POST_UH_LINE="$(printf '%s\n' "$POST_CMDS" | grep -n 'init.d/uhttpd restart' | head -1 | cut -d: -f1)"
+
+if printf '%s\n' "$POST_CMDS" | grep -q 'rm -rf /tmp/luci-indexcache.*luci-modulecache' \
+   && [ -n "$POST_UH_LINE" ]; then
+	ok "postinst drops /tmp/luci-modulecache and restarts uhttpd"
+else
+	bad "postinst leaves LuCI's menu cache stale: no HomeProxy entry after apk/opkg install"
+fi
+
+if [ -n "$POST_RM_LINE" ] && [ -n "$POST_UH_LINE" ] && [ "$POST_RM_LINE" -lt "$POST_UH_LINE" ]; then
+	ok "postinst clears the cache before restarting uhttpd (rescan on start)"
+else
+	bad "postinst restarts uhttpd before dropping the cache (the old menu tree is re-read)"
+fi
+
 
 # init.d 侧自登记：postinst 被跳过或 ucitrack 被清空时，服务启动一次就能补回。
 # 判据不用「前 N 行」——那几个行数是随着注释增减而漂的（改一次顺序就假红），
