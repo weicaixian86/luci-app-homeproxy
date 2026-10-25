@@ -9,15 +9,15 @@ msgstr ""
 msgid "%s (via outbound: %s)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:131
+#: htdocs/luci-static/resources/homeproxy/logview.js:132
 msgid "%s KB"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:128
+#: htdocs/luci-static/resources/homeproxy/logview.js:129
 msgid "%s MB"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:133
+#: htdocs/luci-static/resources/homeproxy/logview.js:134
 msgid "%s bytes"
 msgstr ""
 
@@ -153,10 +153,6 @@ msgstr ""
 msgid "Aliyun Connection"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:139
-msgid "All"
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1005
 msgid "All ports"
 msgstr ""
@@ -273,7 +269,7 @@ msgstr ""
 msgid "Authentication type"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:893
+#: htdocs/luci-static/resources/homeproxy/logview.js:867
 msgid "Auto refresh"
 msgstr ""
 
@@ -452,12 +448,12 @@ msgstr ""
 msgid "Clash API unavailable."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:775
+#: htdocs/luci-static/resources/homeproxy/logview.js:756
 msgid "Clean log"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:806
-#: htdocs/luci-static/resources/homeproxy/logview.js:861
+#: htdocs/luci-static/resources/homeproxy/logview.js:787
+#: htdocs/luci-static/resources/homeproxy/logview.js:842
 msgid "Click the log first, then Ctrl+A selects it all."
 msgstr ""
 
@@ -475,7 +471,7 @@ msgid ""
 "first hit, and unmatched queries go to the default DNS server."
 msgstr ""
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:14
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:13
 msgid "Client Settings"
 msgstr ""
 
@@ -496,7 +492,7 @@ msgstr ""
 msgid "CloudFlare Public DNS (DoH)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:645
+#: htdocs/luci-static/resources/homeproxy/logview.js:626
 #: htdocs/luci-static/resources/view/homeproxy/client.js:820
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
 msgid "Collecting data..."
@@ -515,11 +511,11 @@ msgstr ""
 msgid "Connection check"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:786
+#: htdocs/luci-static/resources/homeproxy/logview.js:767
 msgid "Copy log"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:473
+#: htdocs/luci-static/resources/view/homeproxy/log.js:432
 msgid "Core Log"
 msgstr ""
 
@@ -531,7 +527,7 @@ msgstr ""
 msgid "Core Version"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:223
+#: htdocs/luci-static/resources/view/homeproxy/log.js:408
 msgid "Core log level:"
 msgstr ""
 
@@ -552,7 +548,7 @@ msgstr ""
 msgid "Current node / Latency"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:293
+#: htdocs/luci-static/resources/view/homeproxy/log.js:194
 msgid "Currently in effect: %s per log file."
 msgstr ""
 
@@ -625,7 +621,7 @@ msgid ""
 "protection is required."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:175
+#: htdocs/luci-static/resources/view/homeproxy/log.js:353
 msgid "Debug"
 msgstr ""
 
@@ -1045,17 +1041,9 @@ msgstr ""
 msgid "Encrypt method"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:178
+#: htdocs/luci-static/resources/view/homeproxy/log.js:356
 #: htdocs/luci-static/resources/view/homeproxy/node.js:708
 msgid "Error"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:142
-msgid "Errors"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:140
-msgid "Events"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1613
@@ -1181,15 +1169,15 @@ msgstr ""
 msgid "Failed to generate %s, error: %s."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:742
+#: htdocs/luci-static/resources/homeproxy/logview.js:723
 msgid "Failed to load the log: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:299
+#: htdocs/luci-static/resources/homeproxy/logview.js:300
 msgid "Failed to read %s: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:354
+#: htdocs/luci-static/resources/view/homeproxy/log.js:255
 msgid "Failed to save the log settings: %s"
 msgstr ""
 
@@ -1603,7 +1591,7 @@ msgid ""
 "seconds."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:176
+#: htdocs/luci-static/resources/view/homeproxy/log.js:354
 msgid "Info"
 msgstr ""
 
@@ -1778,7 +1766,7 @@ msgstr ""
 msgid "Listen port"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:643
+#: htdocs/luci-static/resources/homeproxy/logview.js:624
 msgid "Loading"
 msgstr ""
 
@@ -1790,28 +1778,28 @@ msgstr ""
 msgid "Local address"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:471
+#: htdocs/luci-static/resources/view/homeproxy/log.js:430
 msgid "Log Settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:783
+#: htdocs/luci-static/resources/homeproxy/logview.js:764
 msgid "Log copied to clipboard."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:486
-#: htdocs/luci-static/resources/homeproxy/logview.js:628
+#: htdocs/luci-static/resources/homeproxy/logview.js:449
+#: htdocs/luci-static/resources/homeproxy/logview.js:609
 msgid "Log is empty."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:379
+#: htdocs/luci-static/resources/view/homeproxy/log.js:280
 msgid "Log refresh interval"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:344
+#: htdocs/luci-static/resources/view/homeproxy/log.js:245
 msgid "Log settings saved."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:391
+#: htdocs/luci-static/resources/view/homeproxy/log.js:292
 msgid "Log size limit"
 msgstr ""
 
@@ -2172,7 +2160,7 @@ msgstr ""
 msgid "Node"
 msgstr ""
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:22
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:21
 msgid "Node Settings"
 msgstr ""
 
@@ -2201,7 +2189,7 @@ msgstr ""
 msgid "Not installed"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:783
+#: htdocs/luci-static/resources/homeproxy/logview.js:764
 msgid "Nothing to copy."
 msgstr ""
 
@@ -2361,7 +2349,7 @@ msgstr ""
 msgid "Plugin"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:472
+#: htdocs/luci-static/resources/view/homeproxy/log.js:431
 msgid "Plugin Log"
 msgstr ""
 
@@ -2610,8 +2598,8 @@ msgstr ""
 msgid "Redirect TCP + Tun UDP"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy/logview.js:804
-#: htdocs/luci-static/resources/homeproxy/logview.js:859
+#: htdocs/luci-static/resources/homeproxy/logview.js:785
+#: htdocs/luci-static/resources/homeproxy/logview.js:840
 msgid "Refresh every %s seconds."
 msgstr ""
 
@@ -2665,7 +2653,7 @@ msgstr ""
 msgid "Resources management"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:373
+#: htdocs/luci-static/resources/view/homeproxy/log.js:274
 msgid "Restore defaults"
 msgstr ""
 
@@ -2783,8 +2771,7 @@ msgstr ""
 msgid "Running: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:470
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:46
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:45
 msgid "Runtime Log"
 msgstr ""
 
@@ -2820,7 +2807,7 @@ msgstr ""
 msgid "Sat"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:365
+#: htdocs/luci-static/resources/view/homeproxy/log.js:266
 #: htdocs/luci-static/resources/view/homeproxy/status.js:280
 #: htdocs/luci-static/resources/view/homeproxy/status.js:286
 msgid "Save"
@@ -2856,7 +2843,7 @@ msgstr ""
 msgid "Server"
 msgstr ""
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:30
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:29
 msgid "Server Settings"
 msgstr ""
 
@@ -2870,7 +2857,7 @@ msgstr ""
 msgid "Server settings"
 msgstr ""
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:38
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:37
 msgid "Service Status"
 msgstr ""
 
@@ -2894,10 +2881,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1094
 #: htdocs/luci-static/resources/view/homeproxy/server.js:190
 msgid "Shadowsocks"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:219
-msgid "Show:"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2005
@@ -3241,7 +3224,7 @@ msgid ""
 "forward 443 to this port for challenge to succeed."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:457
+#: htdocs/luci-static/resources/view/homeproxy/log.js:416
 msgid "The core has not written anything yet."
 msgstr ""
 
@@ -3317,7 +3300,7 @@ msgstr ""
 msgid "The path to the server certificate, in PEM format."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:433
+#: htdocs/luci-static/resources/view/homeproxy/log.js:334
 msgid "The plugin has not written anything yet."
 msgstr ""
 
@@ -3325,7 +3308,7 @@ msgstr ""
 msgid "The port must be unique."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:398
+#: htdocs/luci-static/resources/view/homeproxy/log.js:299
 msgid ""
 "The refresh interval only decides how often these log pages re-read their "
 "files. It is stored separately from the service configuration, so changing "
@@ -3344,7 +3327,7 @@ msgstr ""
 msgid "The server public key, in PEM format."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:406
+#: htdocs/luci-static/resources/view/homeproxy/log.js:307
 msgid ""
 "The size limit applies to each log file separately: 1-999 KB or 1-999 MB. "
 "The log directory lives on a RAM disk."
@@ -3380,7 +3363,7 @@ msgstr ""
 msgid "The unzip command is unavailable."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:297
+#: htdocs/luci-static/resources/view/homeproxy/log.js:198
 msgid "There are six log files in total."
 msgstr ""
 
@@ -3718,7 +3701,7 @@ msgstr ""
 msgid "VMess"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:191
+#: htdocs/luci-static/resources/view/homeproxy/log.js:369
 msgid ""
 "Verbosity of the sing-box core. Changing it saves and applies the config, "
 "which restarts the core."
@@ -3733,12 +3716,8 @@ msgstr ""
 msgid "WAN IP Policy"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:177
+#: htdocs/luci-static/resources/view/homeproxy/log.js:355
 msgid "Warn"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:141
-msgid "Warnings"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1435
@@ -3750,11 +3729,7 @@ msgstr ""
 msgid "Wed"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:151
-msgid "What to show. Purely a display filter: nothing is restarted."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/log.js:402
+#: htdocs/luci-static/resources/view/homeproxy/log.js:303
 msgid ""
 "When a log file reaches the size limit it is copied to .1 (one generation) "
 "and then emptied, so the oldest lines are the ones that go. The log pages no "
@@ -3859,7 +3834,7 @@ msgstr ""
 msgid "gVisor"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:357
+#: htdocs/luci-static/resources/view/homeproxy/log.js:258
 msgid ""
 "if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
 msgstr ""
@@ -3918,7 +3893,7 @@ msgstr ""
 msgid "reF1nd sing-box core"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:383
+#: htdocs/luci-static/resources/view/homeproxy/log.js:284
 msgid "seconds"
 msgstr ""
 
