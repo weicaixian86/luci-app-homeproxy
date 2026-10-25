@@ -217,6 +217,43 @@ function get_header_host(headers) {
 	return headers.Host || headers.host || headers['HOST'];
 }
 
+/* sing-box 的 VLESS/VMess 只认三档 UDP 编码：缺省（等同 xudp）、
+   'packetaddr'、'xudp'。机场写法五花八门（xudp / XUDP / packet-encoding /
+   packetEncoding / none / "" / packetaddr），这里统一归一到「表单里那三档」
+   之后再落 UCI，否则界面上会显示一个查不到的下拉值、generate_client 也可能
+   把非法串直接塞进 sing-box 配置里导致 check 失败。
+   返回 null 表示「节点没声明」→ 由调用方用全局默认值兜底。 */
+function normalize_packet_encoding(value) {
+	/* ⚠️ 不能只靠 has_value()：它只挡 null / '' / 'nil'，而**键不存在**时
+	   读到的是 undefined，has_value(undefined) 反而是 true，于是 sprintf
+	   会把它变成字符串 "undefined" 塞进配置里（sing-box 直接 check 失败）。
+	   所以 undefined 必须先单独挡掉。 */
+	if (value === undefined || value === null)
+		return null;
+
+	const raw = trim(sprintf('%s', value));
+	if (raw === '' || raw === 'nil')
+		return null;
+
+	switch (lc(raw)) {
+	case 'xudp':
+		return 'xudp';
+	case 'packetaddr':
+	case 'packet_addr':
+	case 'packet-addr':
+		return 'packetaddr';
+	case 'none':
+	case 'disabled':
+	case '0':
+	case 'false':
+		/* 显式写了「不要编码」：用空串表示，generate_client 会原样写进
+		   packet_encoding —— 空串在 sing-box 里就是 none 档。 */
+		return '';
+	}
+
+	return null;
+}
+
 function apply_transport_opts(config, proxy) {
 	const network = proxy.network;
 	if (!has_value(network) || network === 'tcp')
@@ -301,7 +338,8 @@ function parse_mihomo_proxy(proxy) {
 			uuid: proxy.uuid,
 			vmess_alterid: has_value(proxy.alterId) ? to_string(proxy.alterId) : null,
 			vmess_encrypt: proxy.cipher,
-			packet_encoding: proxy['packet-encoding'],
+			/* 兼容 mihomo 的两种写法，并归一成表单那三档；null = 没声明 */
+			packet_encoding: normalize_packet_encoding(proxy['packet-encoding'] || proxy.packetEncoding),
 			tls: (proxy.tls === true) ? '1' : '0',
 			tls_sni,
 			tls_alpn: normalize_alpn(proxy.alpn),
@@ -368,7 +406,8 @@ function parse_mihomo_proxy(proxy) {
 			port: to_string(proxy.port),
 			uuid: proxy.uuid,
 			vless_flow: proxy.flow,
-			packet_encoding: proxy['packet-encoding'],
+			/* 兼容 mihomo 的两种写法，并归一成表单那三档；null = 没声明 */
+			packet_encoding: normalize_packet_encoding(proxy['packet-encoding'] || proxy.packetEncoding),
 			tls: (proxy.tls === true || proxy['reality-opts']) ? '1' : '0',
 			tls_sni,
 			tls_alpn: normalize_alpn(proxy.alpn),
@@ -1121,7 +1160,14 @@ function parse_uri(uri) {
 				tls_reality_public_key: params.pbk ? urldecode(params.pbk) : null,
 				tls_reality_short_id: params.sid,
 				tls_utls: sing_features.with_utls ? params.fp : null,
-				vless_flow: (params.security in ['tls', 'reality']) ? params.flow : null
+				vless_flow: (params.security in ['tls', 'reality']) ? params.flow : null,
+				/* 节点自己声明的 UDP 编码优先级最高（Xray 分享链接里叫
+				   packetEncoding，v2rayN 等也接受 packet-encoding 别名）。
+				   0.2.2 前完全没读：一律被下面的全局兜底覆盖成 xudp，
+				   于是机场显式写了 packetEncoding=none 的节点被改成 xudp
+				   —— 能连上但 UDP 不通（UDP Blocked），表现为「节点拉下来了
+				   却用不了」。只有真的没声明时才让全局默认值生效。 */
+				packet_encoding: normalize_packet_encoding(params.packetEncoding || params['packet-encoding'])
 			};
 			switch(params.type) {
 			case 'grpc':
@@ -1196,6 +1242,9 @@ function parse_uri(uri) {
 				vmess_alterid: uri.aid,
 				vmess_encrypt: uri.scy || 'auto',
 				vmess_global_padding: '1',
+				/* vmess JSON 里的 UDP 编码（v2rayN 写 packetEncoding）；
+				   没写就用全局默认值，见下面统一兜底那段的注释。 */
+				packet_encoding: normalize_packet_encoding(uri.packetEncoding || uri['packet-encoding']),
 				transport: (uri.net !== 'tcp') ? uri.net : null,
 				tls: (uri.tls === 'tls') ? '1' : '0',
 				tls_sni: uri.sni || uri.host,
@@ -1527,7 +1576,16 @@ function main() {
 			else {
 				if (config.tls === '1' && allow_insecure === '1')
 					config.tls_insecure = '1';
-				if (config.type in ['vless', 'vmess'] && isEmpty(config.packet_encoding))
+				/* ⚠️ 这里**不能**用 isEmpty() 判断「节点有没有声明」：显式
+				   packetEncoding=none 归一化后就是空串 ''，而 isEmpty('') 为
+				   真 → 全局默认值会把用户的 none 覆盖回 xudp，修改白做。
+				   normalize_packet_encoding 用 null 表示「没声明」，用 ''
+				   表示「显式 none」，两者必须分开。
+				   还要挡 undefined：ucode 里成员缺失通常是 null，但模板串遇到
+				   真的 undefined 会退化成字符串 "undefined"，那也会被 isEmpty
+				   放过、最终写进 sing-box 配置里导致 check 失败。 */
+				if (config.type in ['vless', 'vmess']
+				    && (config.packet_encoding === null || config.packet_encoding === undefined))
 					config.packet_encoding = packet_encoding;
 
 				config.grouphash = groupHash;

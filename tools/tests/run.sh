@@ -1741,6 +1741,30 @@ else
 	bad "update_subscriptions.uc logs neither a start nor a finish banner"
 fi
 
+# ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
+# 0.2.2 现场：vless 节点「拉下来了却用不了」（UDP Blocked）。查下来是解析层
+# 的 vless URI 分支**根本没读 packetEncoding**，一律被全局默认值覆盖成 xudp；
+# 机场显式写 packetEncoding=none 的节点于是被改成 xudp —— xray 服务端对
+# xudp / none 的 UDP 行为不同，TCP 能连、UDP 不通。
+# 要求：① 有一套归一函数（表单只认 none / packetaddr / xudp 三档）；
+#       ② 四个协议分支（vless URI / vmess JSON / mihomo vless / mihomo vmess）
+#          都必须用它读节点自己的声明；
+#       ③ 兜底必须区分「没声明」与「显式 none」—— 显式 none 归一后是空串，
+#          用 isEmpty() 判会把它当成没声明再覆盖回 xudp（等于没修）。
+if grep -q 'function normalize_packet_encoding' "$SUB_UC" \
+   && [ "$(grep -c 'normalize_packet_encoding(params.packetEncoding\|normalize_packet_encoding(uri.packetEncoding\|normalize_packet_encoding(proxy\[' "$SUB_UC")" -ge 4 ]; then
+	ok "every parser honours the node's own packetEncoding (vless/vmess × uri/mihomo)"
+else
+	bad "a parser drops packetEncoding: the node falls back to the global xudp (UDP breaks)"
+fi
+
+if grep -q "config.packet_encoding === null" "$SUB_UC" \
+   && ! sed -n '/config.type in \[.vless., .vmess.\]/,/packet_encoding = packet_encoding/p' "$SUB_UC" | grep -q 'isEmpty(config.packet_encoding)'; then
+	ok "the global packet_encoding default cannot overwrite an explicit none"
+else
+	bad "an explicit packetEncoding=none is overwritten by the global default (isEmpty('') is true)"
+fi
+
 INITD="$PKG/root/etc/init.d/homeproxy"
 if grep -q '订阅自动更新已登记' "$INITD" && grep -q '未登记 cron' "$INITD"; then
 	ok "init.d reports whether the subscription cron entry was registered"
