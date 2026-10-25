@@ -2203,5 +2203,15 @@ return view.extend({
 
 			return el;
 		});
+	},
+
+	/* 「保存并应用」→ 提交配置 + 规则集同步 + 无条件重载服务（0.2.2）。
+	   统一由 hp.afterSaveApply() 提供：手工改 /etc/config/homeproxy 时
+	   LuCI 认为「没有待提交的变更」→ 既不派发 uci-applied 也不
+	   luci-reload，服务完全不动（现场：加了规则集点保存并应用，日志零
+	   痕迹）。所以这里**不依赖任何事件**，直接做完那三件事。详见
+	   homeproxy.js 里 afterSaveApply 的大段注释。 */
+	handleSaveApply: function(ev, mode) {
+		return hp.afterSaveApply(this, view.prototype, ev, mode);
 	}
 });

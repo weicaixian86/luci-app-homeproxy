@@ -1337,13 +1337,30 @@ else
 	bad "the ruleset audit line only goes to syslog: the log page stays empty"
 fi
 
-# 「保存并应用」必须无条件 reload：兜底定时器里要能看到 callRCInit reload。
-if grep -q 'function fireServiceReload' "$CJS" \
-   && sed -n '/function fireServiceReload/,/^}/p' "$CJS" | grep -q "callRCInit('homeproxy', 'reload')" \
-   && sed -n '/const run = () => {/,/};/p' "$CJS" | grep -q 'fireServiceReload'; then
-	ok "save&apply reloads the service even when the config did not change"
+# 「保存并应用」必须无条件「提交配置 + 规则集同步 + reload 服务」，而且
+# **每个能点保存并应用的页面都要有**。0.2.2 现场：这三步只写在 client.js，
+# node.js / server.js 完全没有钩子 —— 用户在节点页/服务端页点保存并应用，
+# 照样什么都不发生。现在统一由 hp.afterSaveApply()（homeproxy.js）提供。
+HPJS="$PKG/htdocs/luci-static/resources/homeproxy.js"
+AFTER_SAVE="$(sed -n '/\tafterSaveApply(ctx/,/^\t},/p' "$HPJS")"
+if sed -n '/\tafterSaveApply(ctx/,/^\t},/p' "$HPJS" | grep -q "callRcInit('homeproxy', 'reload')" \
+   && sed -n '/\tafterSaveApply(ctx/,/^\t},/p' "$HPJS" | grep -q 'ruleset_sync'; then
+	ok "hp.afterSaveApply does both steps: ruleset sync + unconditional reload"
 else
-	bad "save&apply only syncs rule-sets: a hand-edited config never takes effect"
+	bad "hp.afterSaveApply misses one of the two steps (sync / reload)"
+fi
+
+# 三个可保存的页面都必须挂上这个钩子，少一个就有一页「点了没反应」。
+missing_views=""
+for v in client node server; do
+	# 各 view 的 `return view.extend({` 都在行首、无缩进；从这里截到文件尾再找钩子。
+	sed -n '/^return view.extend({/,$p' "$PKG/htdocs/luci-static/resources/view/homeproxy/$v.js" \
+		| grep -q 'hp\.afterSaveApply' || missing_views="$missing_views $v.js"
+done
+if [ -z "$missing_views" ]; then
+	ok "client / node / server all route save&apply through hp.afterSaveApply"
+else
+	bad "these views have no save&apply hook:$missing_views (clicking it does nothing)"
 fi
 
 if grep -q '"/var/run/homeproxy/ruleset_download.log"' "$ACL"; then
@@ -1358,7 +1375,7 @@ else
 	bad "log page cannot show the ruleset download log (detached path invisible)"
 fi
 
-if grep -A9 'callRulesetSync().then' "$CJS" | grep -q 'catch((e)'; then
+if printf '%s' "$AFTER_SAVE" | grep -q 'catch((e)'; then
 	ok "frontend surfaces ruleset_sync request failures"
 else
 	bad "frontend swallows ruleset_sync rejections (.catch(() => {}))"
@@ -1381,16 +1398,19 @@ else
 	bad "view has no handleSaveApply override (Save&Apply cannot trigger anything)"
 fi
 
-if grep -q 'view.prototype.handleSaveApply' "$CJS"; then
-	ok "view hook still runs the stock save+apply"
+if grep -q 'hp.afterSaveApply(this, view.prototype' "$CJS"; then
+	ok "view hook delegates to hp.afterSaveApply (stock save+apply still runs)"
 else
 	bad "view hook would skip save+apply (base implementation not called)"
 fi
 
 # apply 成功、页面 reload 之前 LuCI 会派发 uci-applied；这是唯一能保证
 # 「commit 已完成」的时机。轮询 uci.changes() 会与页面 reload 赛跑。
-if grep -q "addEventListener('uci-applied'" "$CJS"; then
-	ok "ruleset sync waits for the uci-applied event"
+# 公共方法里必须先拿到配置提交的结果，再往下同步规则集与 reload：
+# 顺序反了就会读着旧配置去下载。
+if printf '%s' "$AFTER_SAVE" | grep -q 'const saved = base' \
+   && printf '%s' "$AFTER_SAVE" | grep -q 'Promise.resolve(saved)'; then
+	ok "ruleset sync waits for the config commit before it runs"
 else
 	bad "ruleset sync does not wait for apply to finish (reads stale config)"
 fi
@@ -1401,14 +1421,17 @@ fi
 # luci-reload、页面也不刷新。于是「SSH 里删了规则集文件、界面什么都没改、
 # 想靠保存并应用补回来」这个最常见场景两条腿全不动，与 0.1.23 的死代码
 # 表现完全一致。必须有定时兜底。
-if grep -q 'rulesetSyncNet = setTimeout' "$CJS"; then
-	ok "ruleset sync has a timer fallback (no uci-applied when there is nothing to apply)"
+# 0.2.2 定稿：**完全不依赖 uci-applied**。LuCI 在「无待提交变更」时压根不派发
+# 它（手工改配置文件后最常见），现在点保存并应用就直接做完同步 + reload。
+if printf '%s' "$AFTER_SAVE" | grep -q 'ruleset_sync' \
+   && ! printf '%s' "$AFTER_SAVE" | grep -q "addEventListener('uci-applied'"; then
+	ok "save&apply no longer waits for uci-applied (fires unconditionally)"
 else
 	bad "ruleset sync depends on uci-applied alone: LuCI skips it on a no-change apply (HTTP 204)"
 fi
 
 # 75 = 脚本让路（另一个下载在跑）。把它当失败弹红色警告是假警报。
-if grep -q 'ret.rc === 75' "$CJS"; then
+if printf '%s' "$AFTER_SAVE" | grep -q 'ret.rc === 75'; then
 	ok "ruleset sync treats \"already running\" (rc=75) as success"
 else
 	bad "ruleset sync reports rc=75 (another download in progress) as a failure"

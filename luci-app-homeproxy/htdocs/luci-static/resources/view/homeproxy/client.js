@@ -257,117 +257,6 @@ function ensurePanelInstalled() {
 	}).catch(() => {});
 }
 
-/* 「保存并应用」之后补一次规则集同步。
-
-   ⚠️ 0.1.23 现场教训（代价最大的一条）：这段逻辑原来写成
-   `m.handleSaveApply = ...`（m 是 form.Map 实例），外面还套了一层
-   `if (typeof m.handleSaveApply === 'function')`。但 LuCI 的
-   handleSaveApply 定义在 **view** 上（luci.js 的 view 基类），form.Map
-   根本没有这个方法 —— 判断恒为假，整段是死代码，从引入那天起就没执行过。
-   于是「保存并应用」只能靠 procd 的 config.change 触发器重启服务来间接
-   完成同步；而没配节点时 start_service 早退、连 procd 实例都不创建，
-   触发器形同虚设 → 点了完全没有反应，两处日志都空白。
-
-   可靠时机是 uci-applied：LuCI 在 apply 成功、页面 reload 之前派发它
-   （ui.js 的 confirm()），此刻 commit 已完成，脚本读到的必然是刚保存的
-   配置。页面随后会被 reload，所以监听器不需要常驻。
-
-   ⚠️ 但 uci-applied **不是每次保存并应用都有的**（0.1.24 现场）：
-   ui.js 的 apply() 先 POST admin/uci/apply_rollback，rpcd 侧若
-   「没有任何待提交的变更」直接回 204，LuCI 就走
-   `There are no changes to apply` 分支 —— 既不派发 uci-applied，
-   也不会触发 /sbin/luci-reload（没变更就不 reload），页面还不刷新。
-   于是「用户在 SSH 里删掉了 /etc/homeproxy/ruleset、界面上什么都没改，
-   想靠点保存并应用把规则集补回来」这个最常见场景，两条腿全都不动。
-   光靠事件监听做不到「点了就一定补」，所以下面还有一个定时兜底。 */
-/* 「保存并应用」之后的两件事，且**与配置有没有变更无关**（用户 0.2.2 定稿）：
-     ① 重载服务（stop + start）——start_service 里会重新检查内核 / 面板 /
-        规则集，这三件事都挂在启动流程上；
-     ② 直接触发一次规则集同步（不等服务重载成功）。
-   为什么要「无条件」：LuCI 的 apply 只看它自己页面里的表单。用户在 SSH /
-   编辑器里改了 /etc/config/homeproxy（比如新增一个 ruleset 段）时，页面
-   表单与磁盘已经一致 → rpcd 的 apply_rollback 发现「没有任何待提交的变更」
-   直接回 204 → LuCI **既不派发 uci-applied、也不触发 /sbin/luci-reload**，
-   服务完全不动。0.2.2 现场：用户手工加了 3 条规则集，点「保存并应用」后
-   插件日志里一行规则集下载都没有、核心仍显示「未在进行」——就是这条路。 */
-let rulesetSyncPending = false;
-let rulesetSyncDrop = null;
-let rulesetSyncNet = null;
-
-/* 75 = fetch_rulesets.sh 让路（另一个下载任务正在跑）。这不是失败：
-   说明补全已经在进行中，弹红色警告只会让人以为坏了。 */
-function fireRulesetSync() {
-	return callRulesetSync().then((ret) => {
-		if (!ret || ret.result !== false || ret.rc === 75)
-			return null;
-
-		ui.addNotification(null, E('p', {},
-			_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
-		return null;
-	}).catch((e) => {
-		/* 请求被拒绝不能静默：升级后 rpcd 未重启时 ubus 回
-		   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。 */
-		ui.addNotification(null, E('p', {},
-			_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
-		return null;
-	});
-}
-
-/* 无条件重载服务。放在规则集同步之后发起：reload = stop + start，而
-   start_service 自己也会 sync_rulesets()；两条路都撞上时后到的那个会被
-   mkdir 锁挡住并 exit 75「让路」，不会重复下载。
-   刻意**不 await**：reload 要 stop+start（几秒），让它自己跑完即可，
-   页面该 reload 就 reload。 */
-function fireServiceReload() {
-	return L.resolveDefault(callRCInit('homeproxy', 'reload'), null).catch(() => null);
-}
-
-function armRulesetSync() {
-	if (rulesetSyncPending)
-		return;
-
-	rulesetSyncPending = true;
-
-	const clear = () => {
-		rulesetSyncPending = false;
-		document.removeEventListener('uci-applied', onApplied);
-
-		if (rulesetSyncNet) {
-			clearTimeout(rulesetSyncNet);
-			rulesetSyncNet = null;
-		}
-
-		if (rulesetSyncDrop) {
-			clearTimeout(rulesetSyncDrop);
-			rulesetSyncDrop = null;
-		}
-	};
-
-	/* 两条路都做同样三件事，且**先同步规则集、后重载服务**：
-	   · 先同步：下载可能几十秒，先让它跑起来（--detach 立刻返回）；
-	   · 后 reload：start_service 会重新检查内核 / 面板 / 规则集，
-	     并把新配置真正生效。 */
-	const run = () => {
-		clear();
-
-		return Promise.resolve(fireRulesetSync()).then(fireServiceReload);
-	};
-
-	const onApplied = () => run();
-
-	document.addEventListener('uci-applied', onApplied);
-
-	/* 兜底：12 秒内事件还没来就自己做一遍。覆盖两种「事件永远不来」的情形：
-	   ① 没有待应用的变更（rpcd 回 204，用户手工改配置文件后最常见）；
-	   ② 点了「保存」而不是「保存并应用」。
-	   两件事都是幂等的：规则集本地已有有效副本的段会被跳过；服务重载由
-	   init.d 的重载守卫判定「配置没变且刚启动过」，重复触发会被跳过。 */
-	rulesetSyncNet = setTimeout(run, 12000);
-
-	/* 到期自清理，免得监听器一直挂在 document 上。 */
-	rulesetSyncDrop = setTimeout(clear, 150000);
-}
-
 function openDashboard() {
 	let api = getClashApiInfo();
 	let params = new URLSearchParams({
@@ -3739,34 +3628,23 @@ return view.extend({
 		return node;
 	},
 
-	/* 「保存并应用」→ 保存 + 应用，并在 apply 成功后补一次规则集同步。
+	/* 「保存并应用」→ 提交配置 + 规则集同步 + 无条件重载服务。
 
 	   ⚠️ 必须写在 view 上：footer 的按钮绑的是 view.handleSaveApply
 	   （luci.js: `classes.ui.createHandlerFn(this, 'handleSaveApply')`），
 	   而 form.Map 根本没有这个方法。此前把同样的逻辑写在
 	   `m.handleSaveApply = ...` 上，外面还套了 typeof 判断，于是整段
-	   从未执行（详见 armRulesetSync 上方注释）。 */
+	   从未执行（0.1.23 现场教训）。
+
+	   0.2.2 起这三步统一由 hp.afterSaveApply() 提供（三个页面共用一份，
+	   见 homeproxy.js 里的大段注释：手工改配置文件时 LuCI 认为无变更 →
+	   既不派发 uci-applied 也不 luci-reload，服务完全不动）。本页只额外
+	   补「面板后台安装」。 */
 	handleSaveApply: function(ev, mode) {
-		const base = view.prototype.handleSaveApply;
-
-		/* 基类实现（LuCI 各版本一致）：先保存页面里所有 `.cbi-map`，
-		   再 `ui.changes.apply()`。注意它**不 return apply 的 promise**，
-		   所以「commit 何时完成」只能靠 uci-applied 事件判断。
-		   若某个极老版本没有基类方法，这里手动走等价流程，绝不能让
-		   「保存并应用」变成什么都不做。 */
-		const result = (typeof base === 'function')
-			? base.call(this, ev, mode)
-			: Promise.resolve(this.handleSave(ev)).then(() => {
-				ui.changes.apply(mode == '0');
-			});
-
 		/* 面板：后台安装，不阻塞（慢镜像上要 10 分钟）。
 		   rpcd 的 only_if_missing 会在已装时直接 skipped。 */
 		ensurePanelInstalled();
 
-		/* 规则集：等 uci-applied（apply 成功、commit 已完成）。 */
-		armRulesetSync();
-
-		return result;
+		return hp.afterSaveApply(this, view.prototype, ev, mode);
 	}
 });

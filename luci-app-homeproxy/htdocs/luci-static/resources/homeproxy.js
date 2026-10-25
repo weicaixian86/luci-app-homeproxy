@@ -1652,6 +1652,82 @@ return baseclass.extend({
 			document.addEventListener('DOMContentLoaded', observe, { once: true });
 	},
 
+	/* 「保存并应用」之后必须做的两件事，且**与配置有没有变更无关**
+	   （用户 0.2.2 定稿：「不管配置有没有变更，点保存并应用都应该重载服务，
+	   然后脚本检查内核、面板、规则集是否下载才对」）。
+
+	   为什么要「无条件」，而不是等在某个事件里：
+	   LuCI 的 apply 只提交**它自己页面里的表单**。用户在 SSH / 编辑器里直接
+	   编辑 /etc/config/homeproxy（手工新增 ruleset 段、改端口……）时，页面
+	   表单与磁盘早已经一致 → rpcd 的 apply_rollback 发现「没有任何待提交的
+	   变更」直接回 204 → LuCI **既不派发 uci-applied、也不触发
+	   /sbin/luci-reload**，服务完全不动。0.2.2 现场：用户在配置文件里加了
+	   3 条规则集，点「保存并应用」后插件日志里一行规则集下载都没有、核心
+	   仍显示「未在进行」——就是这条路。
+
+	   顺序：先规则集同步、后 reload。
+	   · 先同步：下载可能几十秒，`--detach` 立刻返回，先让它跑起来；
+	   · 后 reload：reload = stop + start，而 start_service 里会重新检查
+	     内核 / 面板 / 规则集（sync_rulesets 就在早退判定之前），新配置
+	     也才真正生效。
+	   两条路撞车时，后到的那个会被 fetch_rulesets.sh 的 mkdir 锁挡住并
+	   exit 75「让路」，不会重复下载 —— 所以这里不必额外去重。
+
+	   `rpcd` 触发的 reload 在 init.d 里是 force=1（界面/终端手动），
+	   永远执行，不会被「配置没变就跳过」的风暴守卫吞掉。
+
+	   调用方式（各 view 的 handleSaveApply 里）：
+	       return hp.afterSaveApply(this, view, ev, mode);
+	   必须是**无条件**调用，绝不能只在 uci-applied 里调。 */
+	afterSaveApply(ctx, viewproto, ev, mode) {
+		const callRulesetSync = rpc.declare({
+			object: 'luci.homeproxy',
+			method: 'ruleset_sync',
+			expect: { '': {} }
+		});
+
+		const callRcInit = rpc.declare({
+			object: 'rc',
+			method: 'init',
+			params: ['name', 'action'],
+			expect: { '': {} }
+		});
+
+		/* 基类实现：先保存页面里所有 .cbi-map，再 ui.changes.apply()。
+		   它不 return apply 的 promise，所以这一步只负责「提交配置」。 */
+		const base = (viewproto && typeof viewproto.handleSaveApply === 'function')
+			? viewproto.handleSaveApply
+			: null;
+
+		const saved = base
+			? base.call(ctx, ev, mode)
+			: Promise.resolve(ctx && ctx.handleSave ? ctx.handleSave(ev) : null)
+				.then(() => ui.changes.apply(mode == '0'));
+
+		/* 75 = 让路（另一个下载任务正在跑），不是失败，不要报警。 */
+		const sync = callRulesetSync().then((ret) => {
+			if (!ret || ret.result !== false || ret.rc === 75)
+				return null;
+			ui.addNotification(null, E('p', {},
+				_('Failed to start rule-set download: %s').format(ret.error || '')), 'warning');
+			return null;
+		}).catch((e) => {
+			/* 请求被拒绝绝不能静默：升级后 rpcd 未重启时 ubus 回
+			   "Method not found"，一吞就变成「点了没反应、哪儿都查不到」。 */
+			ui.addNotification(null, E('p', {},
+				_('Rule-set sync request failed: %s. If the plugin was just upgraded, run "/etc/init.d/rpcd restart" or reboot the router.').format(e)), 'warning');
+			return null;
+		});
+
+		/* 等配置提交完 → 先同步规则集 → 再无条件重载服务。
+		   reload 刻意不 await：stop+start 要几秒，让它自己跑完，
+		   页面该刷新就刷新。 */
+		return Promise.resolve(saved).catch(() => null)
+			.then(sync)
+			.then(() => { L.resolveDefault(callRcInit('homeproxy', 'reload'), null).catch(() => null); })
+			.then(() => saved);
+	},
+
 	uploadCertificate(_option, type, filename, ev) {
 		const callWriteCertificate = rpc.declare({
 			object: 'luci.homeproxy',
