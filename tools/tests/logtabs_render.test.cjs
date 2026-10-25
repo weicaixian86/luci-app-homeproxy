@@ -281,13 +281,17 @@ function clickTab(label) {
 
 	const tabs = Array.from(document.querySelectorAll('.hp-log-tabs > li'));
 
-	check('four tabs are rendered', tabs.length === 4, String(tabs.length));
-	check('tab labels are 运行日志 / 日志设置 / 插件日志 / 内核日志',
-		tabs.map((t) => t.textContent).join('|') === '运行日志|日志设置|插件日志|内核日志',
+	/* 结构（用户 0.1.28 给的参考图）：页面本身是「运行日志」，三个二级
+	   选项卡排在它下面。运行日志不能再出现在这一排里——它就是上面那个
+	   页签，重复一次会让人以为有两个运行日志。 */
+	check('the sub-tab strip holds three tabs', tabs.length === 3, String(tabs.length));
+	check('strip labels are 日志设置 / 插件日志 / 内核日志',
+		tabs.map((t) => t.textContent).join('|') === '日志设置|插件日志|内核日志',
 		tabs.map((t) => t.textContent).join('|'));
-	check('运行日志 is the tab that opens first',
-		tabs[0] && tabs[0].className === 'hp-log-tab-active',
-		tabs[0] ? String(tabs[0].className) : 'no tab');
+	check('运行日志 is the page itself, not a sub-tab',
+		tabs.filter((t) => t.textContent === '运行日志').length === 0);
+	check('no sub-tab is highlighted while the log itself is shown',
+		tabs.filter((t) => t.className === 'hp-log-tab-active').length === 0);
 	check('the runtime panel is mounted', !!document.querySelector('#hp_log_runtime'));
 	check('only the visible panel registered a poll',
 		w.polls.length === 1 && w.polls[0].key === 'log-refresh',
@@ -299,10 +303,16 @@ function clickTab(label) {
 		(document.querySelector('#hp_log_runtime') || {}).textContent.indexOf('服务启动') >= 0,
 		JSON.stringify(((document.querySelector('#hp_log_runtime') || {}).textContent || '').slice(0, 60)));
 
+	/* 记下运行日志的节点：切走之后它应该只是被摘下来（内容还在），
+	   而不是被销毁重建 —— 重建会丢掉滚动位置与已读内容。 */
+	const runtime_box = document.querySelector('#hp_log_runtime');
+
 	/* ── 日志设置 ─────────────────────────────────────────────────────── */
 	clickTab('日志设置');
 
-	check('leaving the runtime tab stops its poll',
+	check('clicking a sub-tab highlights it',
+		tabs[0].className === 'hp-log-tab-active', String(tabs[0].className));
+	check('leaving the runtime panel stops its poll',
 		w.stopped.indexOf('log-refresh') >= 0, JSON.stringify(w.stopped));
 	check('the runtime panel is unmounted (one panel at a time)',
 		!document.querySelector('#hp_log_runtime'));
@@ -346,20 +356,45 @@ function clickTab(label) {
 	check('a DEBUG line survives (plugin panel has no level filter)',
 		plugin && plugin.textContent.indexOf('这条不该被级别过滤掉') >= 0,
 		plugin ? JSON.stringify(plugin.textContent.slice(0, 80)) : 'no panel');
+	/* 用户 0.1.28：这两个页签底下那行「每 N 秒刷新。· 先点击日志区域…」
+	   要去掉 —— 那里只需要原样看全部。去掉的是显示，轮询照旧。 */
+	check('the plugin panel has no refresh hint under the box',
+		plugin && plugin.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
+		plugin ? JSON.stringify(plugin.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
 
-	/* ── 切回运行日志 ─────────────────────────────────────────────────── */
-	clickTab('运行日志');
-
-	check('the runtime panel is mounted again (nodes are re-attached, not rebuilt)',
-		!!document.querySelector('#hp_log_runtime'));
-	check('it polls again after being shown',
-		w.polls.filter((p) => p.key === 'log-refresh').length === 2,
-		JSON.stringify(w.polls));
-
+	/* ── 内核日志 ─────────────────────────────────────────────────────── */
+	clickTab('内核日志');
 	await delay();
 
-	check('and it still shows the log lines',
-		(document.querySelector('#hp_log_runtime') || { textContent: '' }).textContent.indexOf('服务启动') >= 0);
+	const core = document.querySelector('#hp_log_core');
+
+	check('the core panel is mounted', !!core);
+	check('the core panel has no refresh hint either',
+		core && core.closest('.cbi-map').textContent.indexOf('Refresh every') < 0,
+		core ? JSON.stringify(core.closest('.cbi-map').textContent.slice(-60)) : 'no panel');
+	check('the core panel keeps its own empty/normal output',
+		core && core.textContent.indexOf('服务启动') >= 0,
+		core ? JSON.stringify(core.textContent.slice(0, 60)) : 'no panel');
+
+	/* ── 切回插件日志：面板是「摘下来再挂回去」，不是重建 ────────────────
+	   上面在插件页拿到的节点必须还是同一个；否则滚动位置、已读到的内容
+	   全丢（`E([...])` 返回的 DocumentFragment 挂一次就被搬空，正是这个
+	   坑的表现）。 */
+	clickTab('插件日志');
+	await delay();
+
+	check('the plugin panel is re-attached, not rebuilt',
+		document.querySelector('#hp_log_plugin') === plugin);
+	check('it polls again after being shown',
+		w.polls.filter((p) => p.key === 'log-plugin-refresh').length === 2,
+		JSON.stringify(w.polls));
+
+	/* 运行日志页保留那一行提示：它是唯一提示「刷新节奏」和「Ctrl+A 只选
+	   这里」的地方。这里没有运行日志的选项卡可点（它是上面那个页签），
+	   所以只验它被摘下时内容还在、没有被重建。 */
+	check('the runtime panel was detached, not destroyed',
+		runtime_box && !document.contains(runtime_box) &&
+		runtime_box.textContent.indexOf('服务启动') >= 0);
 }
 )().then(() => {
 	console.log(failures ? ('\nFAILED: ' + failures + ' of ' + checks + ' checks') :

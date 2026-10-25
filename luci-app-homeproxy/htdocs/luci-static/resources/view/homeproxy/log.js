@@ -14,13 +14,15 @@
 'require homeproxy as hp';
 'require homeproxy.logview as logview';
 
-/* 日志页：一个菜单项，四个选项卡（运行日志 / 日志设置 / 插件日志 / 内核日志）。
+/* 日志页：页面本身是一级菜单项「运行日志」，页面里再挂三个二级选项卡
+ * （日志设置 / 插件日志 / 内核日志），它们排在运行日志**下面**。
  *
- * 为什么不是四个菜单项：LuCI 的菜单只有两级。挂在
- * admin/services/homeproxy 下面，它们就成了「服务」这一层的兄弟项，跟
- * 运行日志平级 —— 0.1.28 初版正是这样，看起来像四个互不相干的页面；
- * 想再往运行日志底下挂第三级，侧栏根本不渲染。所以四个选项卡由本页自己
- * 画：运行日志在前，另外三个在它下面，顺序就是需求给的顺序。
+ * 为什么不是四个平级菜单项：LuCI 的菜单挂到 admin/services/homeproxy 下面，
+ * 就会在页面顶部那排页签里跟「总览 / 客户端 / 服务端 / 路由设置 / DNS」并排
+ * ——0.1.28 初版正是这样，看起来像四个互不相干的页面；想再往运行日志底下挂
+ * 第三级，侧栏不渲染。所以三个二级选项卡由本页自己画（.hp-log-tabs），
+ * 运行日志不重复出现在这一排：它已经是顶上那个页签了，回到它的方式就是点
+ * 顶部「运行日志」。
  *
  * 三个日志面板共用 logview.renderPage()，各自只传一份来源清单（运行日志
  * 六个文件 + 两个下拉，插件日志四个文件、内核日志两个文件，后两者不做任何
@@ -36,30 +38,34 @@ const css = `
 .hp-log-tabs {
 	display: flex;
 	flex-wrap: wrap;
-	margin: 0 0 4px;
+	gap: 6px;
+	margin: 0 0 10px;
 	padding: 0;
 	list-style: none;
-	border-bottom: 2px solid rgba(128,128,128,.22);
 }
 .hp-log-tabs > li {
 	margin: 0;
 }
 .hp-log-tabs > li > a {
 	display: block;
-	margin-bottom: -2px;
-	padding: 9px 16px;
-	border-bottom: 2px solid transparent;
+	padding: 7px 15px;
+	border: 1px solid rgba(128,128,128,.3);
+	border-radius: 3px;
+	background: rgba(128,128,128,.10);
 	color: inherit;
+	font-size: 13px;
 	font-weight: 600;
-	opacity: .65;
+	line-height: 1.2;
 	text-decoration: none;
 }
 .hp-log-tabs > li > a:hover {
-	opacity: 1;
+	background: rgba(128,128,128,.22);
 }
 .hp-log-tabs > li.hp-log-tab-active > a {
-	opacity: 1;
-	border-bottom-color: var(--primary, #4a7dff);
+	border-color: var(--primary, #4a7dff);
+	background: rgba(74,125,255,.14);
+	box-shadow: inset 0 -2px 0 var(--primary, #4a7dff);
+	color: var(--primary, #4a7dff);
 }
 .hp-log-panels {
 	padding-top: 10px;
@@ -421,6 +427,9 @@ function renderPluginPanel(ctx) {
 		box_id: 'hp_log_plugin',
 		lazy: true,
 		sources: plugin_sources,
+		/* 这个页签只有一个用途：把这四个文件原样摊开。框底那行「每 N 秒刷新。
+		   · 先点击日志区域…」在这里没有信息量，去掉（轮询照旧）。 */
+		hint: false,
 		empty: _('The plugin has not written anything yet.')
 	});
 
@@ -441,6 +450,9 @@ function renderCorePanel(ctx) {
 		box_id: 'hp_log_core',
 		lazy: true,
 		sources: core_sources,
+		/* 与插件日志同理：只保留 UTC→本地 的换算说明（由 logview 按 core_tz
+		   标记自动插到最上面），框底那行刷新提示不要。 */
+		hint: false,
 		empty: _('The core has not written anything yet.')
 	});
 
@@ -449,26 +461,33 @@ function renderCorePanel(ctx) {
 	return { page: page, nodes: page.nodes };
 }
 
-/* ── 选项卡外壳 ──────────────────────────────────────────────────────────── */
+/* ── 选项卡外壳 ────────────────────────────────────────────────────────────
+   runtime 带 base: true —— 它是页面本身（顶上那个「运行日志」页签），**不进**
+   这排二级选项卡，否则同一个名字会在两级各出现一次。另外三个才是这一排的
+   成员，顺序就是需求给的顺序。 */
 const TABS = [
-	{ id: 'runtime',  title: () => logview.zh('Runtime Log', _('Runtime Log'), '运行日志'),   build: renderRuntimePanel },
-	{ id: 'settings', title: () => logview.zh('Log Settings', _('Log Settings'), '日志设置'), build: renderSettingsPanel },
-	{ id: 'plugin',   title: () => logview.zh('Plugin Log', _('Plugin Log'), '插件日志'),     build: renderPluginPanel },
-	{ id: 'core',     title: () => logview.zh('Core Log', _('Core Log'), '内核日志'),         build: renderCorePanel }
+	{ id: 'runtime',  base: true, title: () => logview.zh('Runtime Log', _('Runtime Log'), '运行日志'), build: renderRuntimePanel },
+	{ id: 'settings', title: () => logview.zh('Log Settings', _('Log Settings'), '日志设置'),      build: renderSettingsPanel },
+	{ id: 'plugin',   title: () => logview.zh('Plugin Log', _('Plugin Log'), '插件日志'),          build: renderPluginPanel },
+	{ id: 'core',     title: () => logview.zh('Core Log', _('Core Log'), '内核日志'),              build: renderCorePanel }
 ];
+
+const BASE_TAB = TABS.filter((t) => t.base)[0];
+const SUB_TABS = TABS.filter((t) => !t.base);
 
 function renderTabs(ctx) {
 	const bar = E('ul', { 'class': 'hp-log-tabs' });
 	const host = E('div', { 'class': 'hp-log-panels' });
 	const built = {};
 
+	/* null = 正在看运行日志本身：这时候三个二级选项卡都不高亮。 */
 	let active = null;
 
 	function markTab(id) {
 		for (let i = 0; i < bar.children.length; i++) {
 			const li = bar.children[i];
 
-			li.className = (li.getAttribute('data-tab') === id) ? 'hp-log-tab-active' : '';
+			li.className = (id && li.getAttribute('data-tab') === id) ? 'hp-log-tab-active' : '';
 		}
 	}
 
@@ -522,7 +541,9 @@ function renderTabs(ctx) {
 		return null;
 	}
 
-	TABS.forEach((t) => {
+	/* 三个二级选项卡。运行日志不在这里：它是页面本身，回到它点顶部那个
+	   「运行日志」页签（LuCI 会重新渲染这一页，正好回到默认面板）。 */
+	SUB_TABS.forEach((t) => {
 		bar.appendChild(E('li', { 'data-tab': t.id }, [
 			E('a', {
 				'href': '#',
@@ -534,7 +555,8 @@ function renderTabs(ctx) {
 		]));
 	});
 
-	activate(TABS[0].id);
+	/* 打开这一页先看运行日志，此时三个选项卡都不高亮。 */
+	activate(BASE_TAB.id);
 
 	return E([ E('style', [ css ]), bar, host ]);
 }

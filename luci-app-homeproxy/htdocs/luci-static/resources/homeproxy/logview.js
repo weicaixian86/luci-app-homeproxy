@@ -576,6 +576,8 @@ function copyLogText(node) {
  * @param {string} [o.empty]        text for the "nothing to show" state
  * @param {string} [o.box_id]       element id of the box (default log_textarea)
  * @param {boolean} [o.lazy]        do not poll until start() is called
+ * @param {boolean} [o.hint]        show the "refreshed every Ns / Ctrl+A" line
+ *                                  under the box (default true)
  * @returns {object} { nodes, refresh, start, stop, box } — the caller must
  *                   mount `nodes` and call start() when the panel is shown
  */
@@ -768,7 +770,7 @@ function renderPage(ctx, o) {
 	   hp.pollAdd 会先摘掉同名回调，不会叠成一堆。o.interval 指定时就完全
 	   按传进来的值走（测试与将来的调用方要能固定节奏）。
 
-	   轮询本身由 start()/stop() 控制：0.1.29 起四个日志页是同页选项卡，
+	   轮询本身由 start()/stop() 控制：0.1.28 起四个日志页是同页选项卡，
 	   只有当前显示的那一个可以轮询。否则每访问过一个选项卡就多一个定时器，
 	   六个日志文件要读四遍 —— 而 /var/run 是内存盘，这些读全是白花的。 */
 	let every = null;
@@ -827,7 +829,11 @@ function renderPage(ctx, o) {
 
 	interval = initial;
 
-	every = E('small', {}, [
+	/* o.hint === false：框底下那行「每 N 秒刷新。· 先点击日志区域…」不显示。
+	   插件日志与内核日志这两个页签只需要「原样看全部」，这行提示在那里只是
+	   噪音（用户 0.1.28 明确指出要去掉）。轮询本身不受影响，照旧按设置里的
+	   间隔跑；o.hint 缺省为开，运行日志页保持原样。 */
+	every = (o.hint === false) ? null : E('small', {}, [
 		_('Refresh every %s seconds.').format(initial),
 		' · ',
 		_('Click the log first, then Ctrl+A selects it all.')
@@ -846,6 +852,13 @@ function renderPage(ctx, o) {
 		});
 	}
 
+	/* 框下面那行提示是可选的（见上面 every 的注释）：关掉时连外面那层
+	   text-align:right 的 div 一起不建，省得留一个空的右对齐块。 */
+	const body = [ box ];
+
+	if (every)
+		body.push(E('div', { 'style': 'text-align:right' }, every));
+
 	return {
 		nodes: [
 			E('style', [ css ]),
@@ -860,10 +873,7 @@ function renderPage(ctx, o) {
 						buttons
 					])
 				]),
-				E('div', { 'class': 'cbi-section' }, [
-					box,
-					E('div', { 'style': 'text-align:right' }, every)
-				])
+				E('div', { 'class': 'cbi-section' }, body)
 			])
 		],
 		/* 下拉过滤器的 change 处理器要用它立刻重画：换成下一次轮询要等 5 秒。 */

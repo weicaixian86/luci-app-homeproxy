@@ -453,8 +453,8 @@ else
 fi
 
 # ── 日志页：四个选项卡 + 日志设置（0.1.28）──────────────────────────────────
-# 需求：运行日志 / 日志设置 / 插件日志 / 内核日志 是**同一页里的四个选项卡**，
-#   另外三个排在运行日志下面（不是侧栏里四个平级菜单项）；
+# 需求：页面本身是「运行日志」，页面里再挂三个二级选项卡（日志设置 /
+#   插件日志 / 内核日志），排成一行灰色按钮，点中的那个高亮（参考用户给的结构图）；
 #   日志设置能改刷新时间与日志文件大小上限（值 + 单位 KB / MB / GB）；
 #   显示不再限制条数，改为限制文件大小；
 #   插件日志 / 内核日志不分级别、全部显示。
@@ -463,9 +463,9 @@ section "log tabs + log settings (0.1.28)"
 RPCD="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
 MENU="$PKG/root/usr/share/luci/menu.d/luci-app-homeproxy.json"
 
-# 侧栏里只剩「运行日志」一项：LuCI 的菜单只有两级，挂第三级侧栏根本不渲染，
-# 所以三个选项卡画在页面里。0.1.28 初版做成了三个平级菜单项，用户看到的正是
-# 这个问题（三个选项卡跟运行日志并排，而不是在它下面）。
+# 侧栏/顶部页签里只剩「运行日志」一项：LuCI 的菜单只有两级，挂第三级侧栏
+# 根本不渲染，所以三个二级选项卡画在页面里。0.1.28 初版做成了三个平级菜单项，
+# 用户看到的正是这个问题（三个选项卡跟运行日志并排，而不是在它下面）。
 if ! grep -q 'homeproxy/log_settings\|homeproxy/log_plugin\|homeproxy/log_core' "$MENU"; then
 	ok "sidebar has one log entry: the other three are tabs, not menu items"
 else
@@ -477,14 +477,24 @@ for f in log_settings log_plugin log_core; do
 		bad "view $f.js still exists (the four tabs live in log.js)"
 	fi
 done
-ok "the three old log views are gone (one page, four panels)"
+ok "the three old log views are gone (one page, three sub-tabs)"
 
 tabs="$(sed -n '/^const TABS = \[/,/^\];/p' "$LOG_JS" \
 	| sed -n "s/.*id: '\([a-z]*\)'.*/\1/p" | tr '\n' ' ')"
 if [ "$tabs" = "runtime settings plugin core " ]; then
-	ok "tab order is 运行日志 → 日志设置 → 插件日志 → 内核日志"
+	ok "panel order is 运行日志 → 日志设置 → 插件日志 → 内核日志"
 else
-	bad "tab order is '$tabs' (the three new tabs must sit under 运行日志)"
+	bad "panel order is '$tabs' (the three new tabs must sit under 运行日志)"
+fi
+
+# 三个二级选项卡只画非 base 的三个：运行日志是页面本身（LuCI 顶部那个页签），
+# 再出现在这一排里就成了同一名字出现两次。判据用「TABS.forEach 出现次数」：
+# 只有 SUB_TABS.forEach 那一处，直接 grep 'TABS.forEach' 会连 SUB_TABS 一起命中。
+if grep -q 'base: true' "$LOG_JS" && grep -q 'SUB_TABS.forEach' "$LOG_JS" \
+   && [ "$(grep -c 'TABS\.forEach' "$LOG_JS")" = 1 ]; then
+	ok "the strip holds the three sub-tabs only (运行日志 is the page itself)"
+else
+	bad "运行日志 is drawn a second time in the sub-tab strip"
 fi
 
 # 三个日志面板都是 lazy：只有当前显示的那个轮询。否则每点过一个选项卡就多
@@ -504,6 +514,15 @@ case "$PLUGIN_FN$CORE_FN" in
 	*filter:*|*log_view*) bad "a plugin/core panel filters by view or level (rows would disappear)" ;;
 	*) ok "plugin/core panels pass no filter: every level is shown" ;;
 esac
+
+# 用户要求：插件日志 / 内核日志 框底下那行「每 N 秒刷新。· 先点击日志区域…」
+# 不要。两个面板都得显式传 hint: false；运行日志页不传（保持有提示）。
+if [ "$(printf '%s' "$PLUGIN_FN$CORE_FN" | grep -c 'hint: false')" = 2 ] \
+   && grep -q "o.hint === false" "$LOGVIEW"; then
+	ok "plugin/core panels drop the refresh hint line (runtime keeps it)"
+else
+	bad "the refresh/Ctrl+A hint still shows under the plugin or core log"
+fi
 
 # 设置必须写在 /etc/homeproxy/log.conf，不能进 uci：uci commit 会改
 # /etc/config/homeproxy 的 mtime → procd 的 config.change → reload_service，
