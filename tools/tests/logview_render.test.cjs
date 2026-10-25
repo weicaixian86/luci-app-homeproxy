@@ -101,15 +101,31 @@ if (typeof String.format !== 'function') {
    a module that reverts to `return { … }` would slip through a plain-object
    stub here and only fail on a real device with
    `TypeError: "<name>" factory yields invalid constructor`. */
-const baseclass = {
-	extend: function (props) {
-		return function Class() { Object.assign(this, props); };
-	}
+/* LuCI 的 baseclass 是 **Class 对象本身**（classes.baseclass = Class，不是实例），
+   带 extend / isSubclass 两个静态方法；require() 正是用 isSubclass 校验工厂
+   返回值后 new 出实例的。桩按这个真实形态做，instantiate 也照真机那样先校验
+   再 new —— 模块退回 `return { … }` 时这里直接抛错，不会像以前那样本地绿、
+   真机红。 */
+function ClassStub() {}
+
+ClassStub.prototype = {};
+ClassStub.extend = function (props) {
+	function Ctor() { Object.assign(this, props); }
+	Ctor.prototype = Object.create(ClassStub.prototype);
+	return Ctor;
 };
+ClassStub.isSubclass = function (v) {
+	return (typeof v == 'function' && v.prototype instanceof ClassStub);
+};
+
+const baseclass = ClassStub;
 
 /* L.require() resolves to the instance, never to the class itself. */
 function instantiate(v) {
-	return (typeof v === 'function') ? new v() : v;
+	if (!ClassStub.isSubclass(v))
+		throw new Error('factory yields invalid constructor (LuCI would refuse this)');
+
+	return new v();
 }
 
 /**
@@ -220,7 +236,10 @@ function boot(opts) {
 			resource: () => 'loading.svg',
 			env: { pollinterval: 5 },
 			bind: (f, c) => f.bind(c),
-			resolveDefault: (p, d) => Promise.resolve(p).catch(() => d)
+			resolveDefault: (p, d) => Promise.resolve(p).catch(() => d),
+			/* 真机上 L.Class 是同一个基类的 legacy 别名；模块在 baseclass 没被
+			   注入时（包里的 JS 被压缩过）就靠它兜底。 */
+			Class: ClassStub
 		}
 	};
 

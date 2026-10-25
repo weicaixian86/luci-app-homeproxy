@@ -916,8 +916,19 @@ function renderPage(ctx, o) {
    `TypeError: "homeproxy.logview" factory yields invalid constructor`
    —— 日志页整页打不开。
    本模块只是函数集合、内部不用 this，所以做成类不影响任何调用方式：
-   require('homeproxy.logview') 拿到的仍是「有这些方法的对象」。 */
-return baseclass.extend({
+   require('homeproxy.logview') 拿到的仍是「有这些方法的对象」。
+
+   两条路取同一个基类：优先用注入进来的 baseclass，取不到就用 L.Class。
+   原因是包里的 JS 是**压缩过的单行**（构建时 uglify，不是我们压的），
+   `'require baseclass';` 这种字符串指令在压缩后不一定还在、也就不一定会被
+   注入；而 `L` 是工厂的固定第三个参数、永远存在，L.Class 是同一个基类
+   （LuCI 里 classes.baseclass === Class）。 */
+/* typeof 守卫，不能直接写 `baseclass &&` —— 压缩后万一没被注入，未声明的
+   标识符直接引用会抛 ReferenceError（typeof 则安全）。 */
+const HP_CLASS = (typeof baseclass !== 'undefined' && baseclass
+	&& typeof baseclass.extend === 'function') ? baseclass : L.Class;
+
+return HP_CLASS.extend({
 	VIEW_KEYS: VIEW_KEYS,
 	DEFAULT_SETTINGS: DEFAULT_SETTINGS,
 	REFRESH_MIN: REFRESH_MIN,

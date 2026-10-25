@@ -352,10 +352,14 @@ LOGVIEW="$PKG/htdocs/luci-static/resources/homeproxy/logview.js"
 # LuCI 的 L.require() 用 Class.isSubclass() 校验工厂的返回值：必须是
 # baseclass.extend() 出来的构造器，普通对象在新版 LuCI 上直接抛
 # `TypeError: "<name>" factory yields invalid constructor`，日志页整页打不开
-# （0.1.28 就是这么挂的）。两个 jsdom 测试的桩也照这套契约实现，但这层是
-# 源码形态的最后一道闸——桩一旦被简化成普通对象，这里会红。
-if grep -q "^'require baseclass';" "$LOGVIEW" \
-   && grep -q '^return baseclass.extend({$' "$LOGVIEW"; then
+# （0.1.28 就是这么挂的）。
+# 导出必须走 HP_CLASS（注入的 baseclass，取不到时退回 L.Class）：包里的 JS
+# 是压缩过的单行，`'require baseclass';` 这条字符串指令不一定还留在源码里，
+# 所以不能只认 baseclass 一条路。typeof 守卫也不能省——没被注入时直接引用
+# 未声明的 baseclass 会抛 ReferenceError。
+if grep -q '^return HP_CLASS.extend({$' "$LOGVIEW" \
+   && grep -q "typeof baseclass !== 'undefined'" "$LOGVIEW" \
+   && grep -q 'L.Class' "$LOGVIEW"; then
 	ok "logview.js exports a LuCI class (require() rejects a plain object)"
 else
 	bad "logview.js returns a plain object: newer LuCI refuses it, the log page never opens"

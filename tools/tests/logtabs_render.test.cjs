@@ -85,15 +85,28 @@ function stripModule(src) {
    with baseclass.extend(). Mirroring both steps here means a module that goes
    back to `return { … }` fails in this test instead of on a real device with
    `TypeError: "<name>" factory yields invalid constructor`. */
-const baseclass = {
-	extend: function (props) {
-		return function Class() { Object.assign(this, props); };
-	}
+/* LuCI 的 baseclass 是 **Class 对象本身**（不是实例），带 extend / isSubclass；
+   require() 用 isSubclass 校验工厂返回值后 new 出实例。桩复刻这两步。 */
+function ClassStub() {}
+
+ClassStub.prototype = {};
+ClassStub.extend = function (props) {
+	function Ctor() { Object.assign(this, props); }
+	Ctor.prototype = Object.create(ClassStub.prototype);
+	return Ctor;
 };
+ClassStub.isSubclass = function (v) {
+	return (typeof v == 'function' && v.prototype instanceof ClassStub);
+};
+
+const baseclass = ClassStub;
 
 /* L.require() resolves to the instance, never to the class itself. */
 function instantiate(v) {
-	return (typeof v === 'function') ? new v() : v;
+	if (!ClassStub.isSubclass(v))
+		throw new Error('factory yields invalid constructor (LuCI would refuse this)');
+
+	return new v();
 }
 
 /* A LuCI module ends with a bare `return`, so it has to be evaluated
@@ -231,12 +244,15 @@ function boot() {
 		changes: { apply: () => Promise.resolve() }
 	};
 
-	const LStub = {
-		bind: (f, c) => f.bind(c),
-		resolveDefault: (p, d) => Promise.resolve(p).catch(() => d),
-		resource: () => 'loading.svg',
-		env: { pollinterval: 5 }
-	};
+const LStub = {
+	bind: (f, c) => f.bind(c),
+	resolveDefault: (p, d) => Promise.resolve(p).catch(() => d),
+	resource: () => 'loading.svg',
+	env: { pollinterval: 5 },
+	/* 真机上 L.Class 是同一基类的 legacy 别名；模块在 baseclass 没被注入时
+	   （包里的 JS 被压缩过）就靠它兜底。 */
+	Class: baseclass
+};
 
 	const hpStub = {
 		installCloseButtonText: () => {},
@@ -264,7 +280,9 @@ function boot() {
 		form: makeForm(),
 		uci: { get: () => null, set: () => {}, save: () => {} },
 		ui: uiStub,
-		view: { extend: (o) => o },
+		/* 真机的 view.extend() 返回的也是类（require 会校验），不是属性对象
+		   本身；以前这里返回 o，等于把 log.js 的这份契约放过了。 */
+		view: { extend: (o) => ClassStub.extend(o) },
 		hp: hpStub,
 		logview: logview,
 		E: E,
