@@ -389,6 +389,23 @@ else
 	bad "ACL does not grant read on:$acl_missing (403 → blank box / core clock 8h off)"
 fi
 
+# fs.read_direct 走 /cgi-bin/cgi-download，而 cgi-io 的下载小应用有**两道**
+# 授权：先查会话有没有 scope=cgi-io / object=download / function=read 的授权
+# （缺了回 403 "Download permission denied"），**之后**才轮到上面那份 file
+# 名单（缺路径回的是另一句 "Access to path denied by ACL"）。只配文件路径、
+# 不配 cgi-io:download 时六个日志全部 403——0.1.28 现场正是这句报错；之前
+# 一直没被发现是因为更早的 bug（页面根本打不开）把它盖住了。上游的惯例
+# 是各 app 在自己的 ACL 里声明（luci-mod-status 就带 "cgi-io": [ "exec" ]）。
+if "$PY" - "$ACL_JSON" <<'PYACL' 2>/dev/null; then
+import json, sys
+acl = json.load(open(sys.argv[1], encoding='utf-8'))['luci-app-homeproxy']
+assert acl['read'].get('cgi-io') == ['download'], 'read.cgi-io != [download]'
+PYACL
+	ok "ACL grants cgi-io download (fs.read_direct needs it BEFORE the file list)"
+else
+	bad "ACL lacks cgi-io:download — every read_direct 403s with 'Download permission denied'"
+fi
+
 # ------------------------------------------------ unified log view (levels)
 # All four levels share ONE poll registration, so the 5 s cadence cannot vary
 # by level. Two things around it are easy to break: the level has to reach
