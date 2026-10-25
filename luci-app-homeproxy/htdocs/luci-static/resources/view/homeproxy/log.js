@@ -427,7 +427,10 @@ function renderPluginPanel(ctx) {
 		/* 这个页签只有一个用途：把这四个文件原样摊开。框底那行「每 N 秒刷新。
 		   · 先点击日志区域…」在这里没有信息量，去掉（轮询照旧）。 */
 		hint: false,
-		empty: _('The plugin has not written anything yet.')
+		/* 空状态也走 zh() 兜底：.lmo 没装好时 _() 会原样返回英文 msgid，
+		   整个面板就这一行是英文。 */
+		empty: logview.zh('The plugin has not written anything yet.',
+			_('The plugin has not written anything yet.'), '插件还没有写过任何日志。')
 	});
 
 	/* nodes 保持成**数组**，不要再包一层 E()：E(array) 返回的是
@@ -450,7 +453,8 @@ function renderCorePanel(ctx) {
 		/* 与插件日志同理：框底那行刷新提示不要。内核的行仍然显示全部，
 		   UTC→本地 的换算在解析层做，不额外插说明行。 */
 		hint: false,
-		empty: _('The core has not written anything yet.')
+		empty: logview.zh('The core has not written anything yet.',
+			_('The core has not written anything yet.'), '内核还没有任何输出。')
 	});
 
 	/* nodes 保持成**数组**，不要再包一层 E()：E(array) 返回的是
