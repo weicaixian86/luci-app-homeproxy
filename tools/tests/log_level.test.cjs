@@ -189,14 +189,9 @@ const leftover = filterByView(all, 'error')
 
 check('dropped records leave no continuation behind', leftover, false);
 
-/* Interface notes (the UTC->local explanation) are not log lines: they stay
-   in the events view so the explanation is never filtered away, but they must
-   not show up as warnings or errors. */
-check('a note survives the events view',
-	isEventRecord({ note: true, level: null, lines: [ 'x' ] }), true);
-check('a note is not a warning nor an error',
-	isWarnRecord({ note: true, level: null, lines: [ 'x' ] }) ||
-	isErrorRecord({ note: true, level: null, lines: [ 'x' ] }), false);
+/* 0.1.28 删掉了「内核日志时间戳原为 UTC…」这条说明行，于是 logview 里不再
+   有任何「不是日志行」的记录：注释掉的那两条 note 断言也随之删除。日志框
+   里出现过的一切都得是日志行，这条约定现在靠「无 note 分支」本身保证。 */
 
 /* The four view values are exactly what normalizeView lets through, and
    anything else (a hand-edited uci value) falls back to "all" — never to a

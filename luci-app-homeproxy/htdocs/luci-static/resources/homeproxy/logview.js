@@ -202,13 +202,6 @@ function shiftTs(ts, minutes) {
 	       ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());
 }
 
-/* "+08:00" for a signed minute count (used in the notice text). */
-function fmtOffset(minutes) {
-	const p = (n) => (n < 10 ? '0' : '') + n;
-	const a = Math.abs(minutes);
-	return (minutes < 0 ? '-' : '+') + p(Math.floor(a / 60)) + ':' + p(a % 60);
-}
-
 /* Minutes the core's stamps have to move to land on the local clock; 0 when
    they already are (or when the marker is missing, i.e. an older install). */
 function readCoreShift() {
@@ -387,17 +380,10 @@ function normalizeView(v) {
 const EVENT_LINE_RE = /====|已启动|已停止|已退出|已更新|已下载|已清除|已注册|已完成|下载成功|更新结束|自动启动|让路|跳过下载|预下载完成/;
 
 function isEventRecord(rec) {
-	/* 界面自己的提示（内核 UTC→本地 换算）永远保留，它不是日志行。 */
-	if (rec.note)
-		return true;
-
 	return rec.lines.some((l) => EVENT_LINE_RE.test(l));
 }
 
 function isWarnRecord(rec) {
-	if (rec.note)
-		return false;
-
 	/* 分级语义：warn 视图包含 warn 及更严重的。level 为 null（插件日志）时
 	   LEVEL_ORDER[...] 是 undefined，比较为 false，落到下面的文本判定。 */
 	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.warn)
@@ -407,9 +393,6 @@ function isWarnRecord(rec) {
 }
 
 function isErrorRecord(rec) {
-	if (rec.note)
-		return false;
-
 	if (LEVEL_ORDER[rec.level] >= LEVEL_ORDER.error)
 		return true;
 
@@ -444,9 +427,6 @@ function filterByView(merged, view) {
    顺序不能反：isWarnRecord 对 error 级也返回 true（warn 是「warn 及以上」），
    先判 error 才不会把报错画成琥珀色。 */
 function recordSeverity(rec) {
-	if (rec.note)
-		return null;
-
 	if (isErrorRecord(rec))
 		return 'error';
 
@@ -509,10 +489,9 @@ function renderLogBox(merged, emptyText) {
 			flat.push({
 				si:    rec.si,
 				first: (j === 0),
-				/* 说明行（如内核 UTC→本地 换算）不是日志，别给它套时间戳和
-				   级别；续行属于上一条记录，只缩进、不重复前缀。 */
-				text:  (j === 0 && !rec.note) ? firstLineOf(rec) : rec.lines[j],
-				note:  (rec.note === true),
+				/* 首行拼上时间戳与级别标记；续行属于上一条记录，只缩进、
+				   不重复前缀。 */
+				text:  (j === 0) ? firstLineOf(rec) : rec.lines[j],
 				sev:   sev
 			});
 	}
@@ -526,9 +505,7 @@ function renderLogBox(merged, emptyText) {
 		const it = flat[i];
 		let cls = 'hp-log-line';
 
-		if (it.note)
-			cls += ' hp-log-note';
-		else if (!it.first)
+		if (!it.first)
 			cls += ' hp-log-cont';
 
 		if (it.sev === 'error')
@@ -594,13 +571,6 @@ const css = `
 .hp-log-empty {
 	padding: 16px 12px;
 	color: #888;
-}
-/* One-off notice above the merged log (e.g. core timestamps were UTC and have
-   been converted). Sits inside the box so it scrolls away with the content. */
-.hp-log-note {
-	color: #b06a00;
-	font-weight: 600;
-	padding: 2px 10px 6px;
 }
 /* 告警 / 错误的配色。只有前景色、不加背景：整片日志一旦有了底色，时间戳
    的等宽列就对不齐了，而且满屏色块反而看不出哪行更要紧。
@@ -753,45 +723,25 @@ function renderPage(ctx, o) {
 		const scroll = scrollState();
 
 		return readCoreShift()
-			/* The shift has to travel to the render step below, which is a
-			   separate callback: resolving with only the source reads here
-			   leaves `shift` out of scope there and the whole refresh dies
-			   with a ReferenceError, leaving the spinner on screen forever.
-			   Carry it inside the resolved snapshot instead. */
-			.then((shift) => Promise.all(sources.map((src) => readSourceLog(src, shift)))
-				.then((results) => ({
-					shift: shift,
-					results: results || []
-				})))
-			.then((snap) => {
-				const shift = snap.shift;
-				const results = snap.results;
-				let merged = mergeRecords(results);
+			/* 换算在**解析层**完成（readSourceLog 按 shift 挪内核行的时间戳），
+			   渲染层不需要它——日志框里不放说明行，也就没有「shift 还得跨
+			   回调带过去」这回事。（这个坑踩过：曾经把 shift 漏在另一个回调
+			   的作用域外，整个 refresh 抛 ReferenceError，加载圈永远转。） */
+			.then((shift) => Promise.all(sources.map((src) => readSourceLog(src, shift))))
+			.then((results) => {
+				let merged = mergeRecords(results || []);
 
 				if (filter)
 					merged = filter(merged);
 
-				/* One notice only: the UTC→local explanation, which is there
-				   because the core lines would otherwise disagree with
-				   logread / SSH. Say it out loud only when the stamps were
-				   actually moved and a core line is on screen — a device
-				   marker alone is not something to explain.
-
-				   A second notice used to sit in front of the lines, spelling
-				   out "oldest / newest / device time" plus the rotation rule.
-				   It was removed on request (0.1.26): readers want the log box
-				   to contain log lines, not a paragraph about the log box, and
-				   the span it printed could not be trusted as a clock check
-				   anyway — the device clock it was compared against came out
-				   one UTC offset ahead on the reporter's firmware. Do not
-				   reintroduce it; the file/rotation facts belong in the docs. */
-				const coreLines = results.some((r) => r.src.core === true && r.records.length > 0);
-
-				if (shift && coreLines)
-					merged.unshift({
-						si: 0, ts: '', level: null, note: true,
-						lines: [ _('Kernel log timestamps were in UTC (this device has no time zone data); they are shown converted to local time (%s).').format(fmtOffset(shift)) ]
-					});
+				/* 日志框里只放日志行，不塞说明段落。
+				   曾经有过两条：① 0.1.26 删掉的「最早 / 最新 / 设备时间 +
+				   轮转规则」那段（它打印的时间跨度本身就不可信——比对用的
+				   设备时间在反馈者的固件上偏了一个时区）；② 0.1.28 删掉的
+				   「内核时间戳原为 UTC…已按本地时区换算显示」。两条都别再
+				   加回来：换算仍然照做（`readCoreShift()` + `shiftTs`），只是
+				   不再声明。
+				   文件大小 / 轮转 / 时区这些事实归文档，不归日志框。 */
 
 				dom.content(box, renderLogBox(merged, emptyText));
 				restoreScroll(scroll);

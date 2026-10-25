@@ -13,6 +13,10 @@
  * "ReferenceError: shift is not defined", the box kept its initial
  * "Collecting data..." spinner and the page looked like it never loaded. No
  * amount of `node --check` or string matching can catch that — only running it.
+ * (0.1.28 removed the cross-callback snapshot that bug lived in: the core
+ * offset is consumed while parsing, so the render step never sees `shift`.
+ * The rejection path itself still has to be tested — see the unreadable-file
+ * case below.)
  *
  * Prints SKIP and exits 0 when jsdom is unavailable (the run.sh wrapper turns
  * that into a `skip` line instead of a failure).
@@ -271,8 +275,8 @@ function run(name, opts, assertions) {
 /* The box must contain log lines and nothing else: the "oldest / newest /
    device time" paragraph that used to be prepended was removed on request
    (0.1.26), and a reader who opened this page complained it read like a
-   manual rather than a log. A UTC→local conversion notice is still allowed,
-   but only when the core really logged in UTC — here it does not. */
+   manual rather than a log. 0.1.28 removed the last one (the UTC→local
+   explanation), so nothing may be prepended at all — see case 5. */
 const CASES = [
 {
 	name: 'log page: every source readable',
@@ -283,9 +287,15 @@ const CASES = [
 		check('the merged box shows the log lines',
 			box.querySelectorAll('.hp-log-line').length > 0,
 			box.querySelectorAll('.hp-log-line').length + ' rows');
-		check('no explanatory note is prepended to the lines',
-			box.querySelectorAll('.hp-log-note').length === 0,
-			box.querySelectorAll('.hp-log-note').length + ' notes');
+		/* 日志框里只许有日志行：要么「时间戳 [级别] 正文」，要么是上一条
+		   的缩进续行。说明段落（哪怕只有一行）都会在这里露馅。 */
+		const prose = Array.from(box.querySelectorAll('.hp-log-line')).filter((n) =>
+			!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[[A-Z]+\]/.test(n.textContent) &&
+			!n.classList.contains('hp-log-cont'));
+
+		check('every row is a log line, not a paragraph',
+			prose.length === 0,
+			JSON.stringify(prose.slice(0, 2).map((n) => n.textContent.slice(0, 50))));
 		check('the removed span/device-time sentence is gone',
 			!/oldest .*newest |device time/i.test(box.textContent),
 			JSON.stringify(box.textContent.slice(0, 60)));
@@ -357,28 +367,29 @@ const CASES = [
 	}
 },
 
-/* --- 5. core logged in UTC: the one notice that must survive ------------- */
-/* With the span/device-time paragraph gone, the UTC→local conversion notice is
-   the only thing that may still be prepended. It has to keep working: without
-   it the reader sees core lines eight hours off every other source and has no
-   way to know they were converted on purpose. */
+/* --- 5. core logged in UTC: converted silently, with no notice ---------- */
+/* 0.1.28：用户要求删掉「内核日志时间戳原为 UTC（本机没有时区数据），已按本地
+   时区（+08:00）换算显示。」这条说明行。**换算本身照做**（否则内核那几行会
+   比其它来源早八小时，合并排序也跟着错），只是不再往框里塞一段文字。 */
 {
-	name: 'log page: core logged in UTC',
+	name: 'log page: core logged in UTC (converted, no note)',
 	opts: {
 		read: (p) => Promise.resolve(String(p).indexOf('core_tz') >= 0 ? 'utc 28800\n' : SAMPLE),
 		sources: CORE_SOURCES
 	},
 	assertions: (box) => {
-		check('the UTC→local conversion is still explained',
-			box.querySelectorAll('.hp-log-note').length === 1,
-			box.querySelectorAll('.hp-log-note').length + ' notes');
+		const noStamp = Array.from(box.querySelectorAll('.hp-log-line')).filter((n) =>
+			!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \[[A-Z]+\]/.test(n.textContent) &&
+			!n.classList.contains('hp-log-cont'));
 
-		const note = box.querySelector('.hp-log-note');
-
-		check('the notice names the applied offset',
-			note && note.textContent.indexOf('+08:00') >= 0,
-			note ? JSON.stringify(note.textContent) : 'no note');
-		check('the converted core line is on a local clock',
+		check('no explanatory line is prepended any more',
+			noStamp.length === 0,
+			JSON.stringify(noStamp.map((n) => n.textContent.slice(0, 50))));
+		check('the notice text is gone from the box',
+			box.textContent.indexOf('time zone data') < 0 &&
+			box.textContent.indexOf('converted to local time') < 0,
+			JSON.stringify(box.textContent.slice(0, 90)));
+		check('the converted core line is still on a local clock',
 			box.textContent.indexOf('2026-10-24 17:54:05') >= 0,
 			JSON.stringify(box.textContent.slice(-60)));
 	}

@@ -1712,13 +1712,6 @@ msgstr "反转"
 msgid "Invert match result."
 msgstr "反转匹配结果"
 
-#: htdocs/luci-static/resources/view/homeproxy/log.js:700
-msgid ""
-"Kernel log timestamps were in UTC (this device has no time zone data); they "
-"are shown converted to local time (%s)."
-msgstr ""
-"内核日志时间戳原为 UTC（本机没有时区数据），已按本地时区（%s）换算显示。"
-
 #: htdocs/luci-static/resources/view/homeproxy/server.js:783
 msgid "Key path"
 msgstr "证书路径"

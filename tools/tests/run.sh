@@ -1399,6 +1399,20 @@ else
 	ok "the log box holds log lines only (no oldest/newest/device-time note)"
 fi
 
+# 0.1.28：用户要求删掉「内核日志时间戳原为 UTC（本机没有时区数据），已按本地
+# 时区（+08:00）换算显示。」这条说明行。**换算照做**（core_tz + shiftTs 仍在，
+# 由上面那条断言守住），但不许再把任何说明插进日志框：note 记录、note 分支、
+# .hp-log-note 样式、msgid 原文四样都不该留下——留下任何一样，这段话就会在
+# 某个分支里重新冒出来。
+if ! grep -q 'hp-log-note' "$LOGVIEW" && ! grep -q 'note: true' "$LOGVIEW" \
+   && ! grep -q 'rec\.note' "$LOGVIEW" \
+   && ! grep -q 'Kernel log timestamps were in UTC' "$LOGVIEW" \
+   && ! grep -q 'Kernel log timestamps were in UTC' "$PKG/po/zh_Hans/homeproxy.po"; then
+	ok "the UTC→local note is gone (conversion still happens, silently)"
+else
+	bad "the core log still prepends the UTC→local explanation"
+fi
+
 if grep -q 'device_time' "$RPCD" || grep -q 'device_time' "$LOGVIEW" || grep -q 'device_time' "$LOGJS"; then
 	bad "device_time survives without a caller; delete it instead of leaving dead code"
 else

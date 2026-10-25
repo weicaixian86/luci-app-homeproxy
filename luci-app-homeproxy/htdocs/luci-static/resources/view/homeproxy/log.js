@@ -438,17 +438,17 @@ function renderPluginPanel(ctx) {
 /* ── 面板四：内核日志 ───────────────────────────────────────────────────────
    只有 sing-box 自己的输出，**不分级别**，debug/trace 也照样显示。
    与插件日志分开的理由：内核的行带级别 token、时间戳可能来自 UTC（本机没有
-   tzdata 时），混在插件日志里既看不清 outbound/xxx 之类的明细，也容易被
-   「显示视图」的下拉一过滤就整片消失。UTC→本地 的换算说明由 logview 按
-   core_tz 标记自动补上。 */
+   tzdata 时，logview 按 core_tz 标记换算成本地时间，界面上不再加说明文字），
+   混在插件日志里既看不清 outbound/xxx 之类的明细，也容易被「显示视图」的
+   下拉一过滤就整片消失。 */
 function renderCorePanel(ctx) {
 	const page = logview.renderPage(ctx, {
 		key: 'log-core-refresh',
 		box_id: 'hp_log_core',
 		lazy: true,
 		sources: core_sources,
-		/* 与插件日志同理：只保留 UTC→本地 的换算说明（由 logview 按 core_tz
-		   标记自动插到最上面），框底那行刷新提示不要。 */
+		/* 与插件日志同理：框底那行刷新提示不要。内核的行仍然显示全部，
+		   UTC→本地 的换算在解析层做，不额外插说明行。 */
 		hint: false,
 		empty: _('The core has not written anything yet.')
 	});
