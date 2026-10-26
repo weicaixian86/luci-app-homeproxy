@@ -942,6 +942,17 @@ start_service() {
 		return 1
 	fi
 
+	# 每次启动先把「确实含 node 段」的配置留一份到
+	# /etc/homeproxy/config.uci.bak。**必须排在这一行之后、所有早退判定之前**：
+	#   · custom 模式下一个 default_outbound 都没配时 outbound_node=nil，
+	#     下面会直接 return —— 备份若放在函数末尾，这种配置（节点可能几百个）
+	#     永远不会有备份，装包时 config_guard restore 也就无从还原；
+	#   · 内核校验失败 / 启动失败同样会 return，那是最需要备份的时刻。
+	# 判据只看「配置文件里有没有 config node 段」，与路由模式、内核是否起来
+	# 都无关（见 scripts/config_guard.sh 的三条不变量）。
+	# 用 sh 显式调用而不是直接执行：脚本的可执行位在某些打包链路上会丢。
+	[ -f "$HP_DIR/scripts/config_guard.sh" ] && sh "$HP_DIR/scripts/config_guard.sh" backup
+
 	setup_auto_update_cron
 
 	# 「保存并应用」走 reload_service() = stop + start，同样会执行到这里，
@@ -1235,12 +1246,7 @@ start_service() {
 	date +%s >"$RUN_DIR/last-start" 2>/dev/null
 	rm -f "$RUN_DIR/.reload-skips" 2>/dev/null
 
-	# 每次启动成功都把「确实含 node 段」的配置留一份到
-	# /etc/homeproxy/config.uci.bak。0.2.5 装机时 apk 用包内默认模板覆盖过
-	# /etc/config/homeproxy，90 个节点和 5 条订阅一次丢光；postinst 末尾靠这份
-	# 备份还原（见 scripts/config_guard.sh）。用 sh 显式调用而不是直接执行：
-	# 脚本的可执行位在某些打包链路上会丢，缺了它就等于没有保险。
-	[ -f "$HP_DIR/scripts/config_guard.sh" ] && sh "$HP_DIR/scripts/config_guard.sh" backup
+	# 配置备份已在 start_service 开头完成（必须排在所有早退判定之前，见上）。
 
 	# Auto-install the dashboard panel after the core is up, the same way the
 	# kernel is fetched at start. Run detached so service start is not blocked

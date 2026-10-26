@@ -962,6 +962,18 @@ else
 	bad "config guard is not wired: postinst never restores, or start_service never backs up"
 fi
 
+# 备份必须排在 start_service 的早退判定之前。现场就有这种配置：custom 路由
+# 模式、91 个节点，但 default_outbound 为空 → outbound_node=nil → start_service
+# 直接 return。备份若留在函数末尾，这种配置永远不会有备份，装包时
+# config_guard restore 也无从还原。同理，内核校验失败那一次同样需要备份。
+BAK_LINE=$(grep -n 'config_guard.sh" backup' "$PKG/root/etc/init.d/homeproxy" | head -1 | cut -d: -f1)
+EARLY_LINE=$(grep -n 'local outbound_node' "$PKG/root/etc/init.d/homeproxy" | head -1 | cut -d: -f1)
+if [ -n "$BAK_LINE" ] && [ -n "$EARLY_LINE" ] && [ "$BAK_LINE" -lt "$EARLY_LINE" ]; then
+	ok "the config backup happens before start_service can return early"
+else
+	bad "the config backup sits after the early return: a config with nodes but no outbound would never be backed up"
+fi
+
 # ------------------------------------------------- same_scripts --check contract
 # fetch_rulesets.sh 的 --check 输出是 init.d 依赖的契约（见需求书十.13）。
 # 用 stub uci 跑真实脚本，确认段名扫描、排除原因、统计行都正确。
