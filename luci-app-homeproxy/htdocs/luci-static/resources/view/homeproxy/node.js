@@ -6,7 +6,6 @@
 
 'use strict';
 'require form';
-'require fs';
 'require rpc';
 'require uci';
 'require ui';
@@ -28,6 +27,63 @@ const callRCInit = rpc.declare({
 	params: ['name', 'action'],
 	expect: { '': {} }
 });
+
+const callSubscriptionUpdate = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'subscription_update',
+	expect: { '': {} }
+});
+
+const callSubscriptionProgress = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'subscription_update_progress',
+	expect: { '': {} }
+});
+
+/* 订阅更新在路由器上后台执行，这里轮询结果。
+ *
+ * 以前是一条同步的 fs.exec_direct：脚本依次抓 N 个订阅、成功后 stop+start
+ * 一次内核，现场 5 条约 21 秒（抓取 13 + 重启 8），已经贴着 rpcd/ubus 约
+ * 30 秒的上限。只要有一个机场响应慢一点，请求先超时 —— 界面弹一句错误、
+ * 页面刷新，而脚本其实还在后台跑，于是「点了没反应」和「报错但节点后来变了」
+ * 都出现过。现在与内核更新同一套（见 update_subscriptions_async.sh）。 */
+function pollSubscriptionUpdate(reloadOnFinish) {
+	let ticks = 0;
+
+	hp.pollAdd('subscription-update', () => {
+		/* 兜底：脚本自身每条订阅有 60 秒上限，但界面不能无限轮询 —— 十分钟
+		   还不停手就提示去看日志，而不是一直转圈。 */
+		if (++ticks > 300) {
+			hp.pollRemove('subscription-update');
+			ui.addNotification(null, E('p',
+				_('The subscription update is taking unusually long; check the log for progress.')), 'warning');
+			return null;
+		}
+
+		return L.resolveDefault(callSubscriptionProgress(), {}).then((res) => {
+			if (res.running)
+				return null;
+
+			hp.pollRemove('subscription-update');
+
+			if (res.ok) {
+				ui.addNotification(null, E('p', _('Subscriptions updated.')), 'info');
+
+				/* 只有从本页点下去的更新才刷新页面：如果是打开页面时发现
+				   后台还有一次（例如 cron 起的）在跑，刷新会把用户正在改的
+				   表单冲掉。 */
+				if (reloadOnFinish)
+					return location.reload();
+
+				return null;
+			}
+
+			ui.addNotification(null, E('p',
+				_('Subscription update failed: %s').format(res.log || _('see the log for details'))), 'danger');
+			return null;
+		});
+	}, 2);
+}
 
 function normalizeList(value) {
 	return Array.isArray(value) ? value : (value ? [value] : []);
@@ -2089,17 +2145,31 @@ return view.extend({
 			}
 		}
 		o.onclick = function() {
-			/* 第二个参数是 argv（rpcd file.exec 的 params）：让订阅日志自己
-			   写明这次是界面上的「更新 N 个订阅」按钮触发的，而不是 SSH 里
-			   手动跑脚本 —— 两者以前在日志里都只写「手动」，事后无法区分。 */
-			return fs.exec_direct('/etc/homeproxy/scripts/update_subscriptions.uc',
-				['--source', 'LuCI「更新全部订阅」按钮']).then((res) => {
-				return location.reload();
+			/* 后台启动 + 轮询。--source 由包装脚本传给 ucode，日志里因此仍
+			   能区分「面板按钮」与「cron / 单机场」这两个入口。 */
+			return L.resolveDefault(callSubscriptionUpdate(), {}).then((res) => {
+				if (res.running || res.started) {
+					ui.addNotification(null, E('p',
+						_('Updating subscriptions in the background. You can leave this page.')), 'info');
+					pollSubscriptionUpdate(res.started === true);
+					return null;
+				}
+
+				ui.addNotification(null, E('p',
+					res.log || _('Failed to start the subscription update.')), 'danger');
+				return null;
 			}).catch((err) => {
 				ui.addNotification(null, E('p', _('An error occurred during updating subscriptions: %s').format(err)));
-				return this.map.reset();
+				return null;
 			});
 		}
+
+		/* 后台任务不随页面消失：重开本页时若仍在跑，接着轮询并把结果报出来
+		   （不刷新页面，免得冲掉正在改的表单）。 */
+		L.resolveDefault(callSubscriptionProgress(), {}).then((res) => {
+			if (res.running)
+				pollSubscriptionUpdate(false);
+		}).catch(() => {});
 
 		o = s.taboption('subscription', form.Button, '_remove_subscriptions', _('Remove all nodes from subscriptions'));
 		o.inputstyle = 'reset';

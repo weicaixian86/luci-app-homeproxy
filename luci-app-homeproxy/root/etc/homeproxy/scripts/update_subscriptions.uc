@@ -1533,6 +1533,117 @@ function describe_fetch_failure(response) {
 		response.exitcode, response.size, length(err) ? err : '(empty)');
 }
 
+/* ── 本地代理入口是否真的在监听 ────────────────────────────────────────────
+ *
+ * 回退代理这一跳只能打到 `127.0.0.1:<mixed_port>`，而那个端口是 sing-box
+ * 的 mixed-in（generate_client.uc 无条件创建）。内核没在跑、或者刚重启还没
+ * 起来时，端口上根本没有监听者：curl 立刻 ECONNREFUSED（exit 7），**不耗时**
+ * ——所以这一跳从来不是「卡住」的原因，但日志里会留下
+ * `Direct fetch failed … retrying via …` 紧接着 `Proxy fetch failed …`，
+ * 看起来像「代理也试过了」，实际上连一个 TCP 包都没发出去。排查时这两行
+ * 会把「用户没开内核」伪装成「代理不可用」，所以先探一下再决定要不要写
+ * 那两行。
+ *
+ * 探测读 /proc/net/tcp(6) 里的 LISTEN 项，不起子进程、不发包：
+ *   · 不能用 `curl --connect-timeout 1` —— 那本身就是一次连接尝试，且
+ *     ucode 里同步等它又是一次 fork/exec 开销；
+ *   · 不能用 netstat/ss —— 精简固件不一定有，iStoreOS 上也不保证在 PATH 里。
+ *
+ * ⚠️ match() 走 musl TRE，`\d`/`\s`/`{n,m}` 会整条抛异常，所以下面一律用
+ * split/trim/index 拆字段，不写正则。字段布局（/proc/net/tcp 头一行是标题）：
+ *   0=sl 1=local_address 2=rem_address 3=st …
+ * st 为 `0A` 才是 LISTEN；TIME_WAIT/ESTABLISHED 的残留不能被当成「可用」。
+ * 端口在 local_address 里是**十六进制**（如 5330 → 14D2），所以自己转换，
+ * 不依赖 sprintf 的 `%X`（不同 ucode 版本的格式符支持不一定一致）。 */
+function hex_digit(c) {
+	const up = index('0123456789ABCDEF', c);
+
+	if (up >= 0)
+		return up;
+
+	return index('0123456789abcdef', c);
+}
+
+function hex_int(str) {
+	let n = 0;
+
+	if (!length(str))
+		return -1;
+
+	for (let i = 0; i < length(str); i++) {
+		const d = hex_digit(substr(str, i, 1));
+
+		if (d < 0)
+			return -1;
+
+		n = n * 16 + d;
+	}
+
+	return n;
+}
+
+function local_proxy_listening(proxy) {
+	if (!length(proxy))
+		return false;
+
+	/* proxy 形如 http://127.0.0.1:5330，取最后一段当端口 */
+	const hostport = replace(proxy, /^[a-zA-Z]+:\/\//, ''),
+	      parts = split(hostport, ':');
+	const port = parts[length(parts) - 1];
+
+	if (!length(port) || length(port) > 5)
+		return false;
+
+	for (let i = 0; i < length(port); i++) {
+		const c = substr(port, i, 1);
+
+		if (length(c) !== 1 || index('0123456789', c) < 0)
+			return false;
+	}
+
+	const want = int(port);
+
+	for (let path in [ '/proc/net/tcp', '/proc/net/tcp6' ]) {
+		let raw = '';
+
+		try {
+			raw = readfile(path) || '';
+		} catch (e) {
+			raw = '';
+		}
+
+		if (!length(raw))
+			continue;
+
+		const lines = split(raw, '\n');
+
+		/* 从 1 开始：第 0 行是标题 */
+		for (let i = 1; i < length(lines); i++) {
+			const fields = [];
+
+			for (let f in split(trim(lines[i]), ' '))
+				if (length(f))
+					push(fields, f);
+
+			if (length(fields) < 4)
+				continue;
+
+			if (fields[3] !== '0A')
+				continue;
+
+			const addr = split(fields[1], ':');
+
+			if (length(addr) < 2)
+				continue;
+
+			if (hex_int(addr[1]) === want)
+				return true;
+		}
+	}
+
+	return false;
+}
+
 /* 抓一个订阅：**直连优先**，直连拿不到正文、且开关打开（proxy_url 非空）
    时才用本地代理重试一次。两跳的实际走向都写进日志，失败时两跳的原因都要
    看得见——否则「直连没通」和「代理也没通」在日志上无法区分。
@@ -1552,8 +1663,19 @@ function fetch_subscription(url, ua) {
 	if (!proxy_url)
 		return direct;
 
-	log(sprintf('Direct fetch failed for %s (%s), retrying via %s.',
-		url, describe_fetch_failure(direct), proxy_url));
+	/* 直连失败的原因与「是否真的去重试」分开记：先记原因，再判端口。 */
+	log(sprintf('Direct fetch failed for %s (%s).',
+		url, describe_fetch_failure(direct)));
+
+	/* 端口没有监听者时这一跳必然 ECONNREFUSED，发出去也只是把
+	   「内核没开」写成「代理不可用」。跳过并说明原因。 */
+	if (!local_proxy_listening(proxy_url)) {
+		log(sprintf('Local proxy %s is not listening, proxy retry skipped.', proxy_url));
+
+		return direct;
+	}
+
+	log(sprintf('Retrying %s via %s.', url, proxy_url));
 
 	const proxied = wGETResponse(url, ua, proxy_url);
 

@@ -204,7 +204,12 @@ export function wGETResponse(url, ua, proxy) {
 	if (!ua)
 		ua = 'Wget/1.21 (HomeProxy, like v2rayN)';
 
-	const output = httpFetch(url, ua, 300, proxy);
+	/* --max-time 是**整条请求**（含 TLS 握手与传完正文）的上限，不是建连
+	   超时。原来写 300（5 分钟）：只要某个机场「连上了但数据不动」，单个
+	   订阅就能把整次更新拖住五分钟，面板上表现为一直转圈、最后报错，
+	   而日志里连一行失败都没有（curl 还没退出）。一条订阅的正文通常只有
+	   几十到几百 KB，60 秒足够；真慢到这个程度也该判失败让用户看见。 */
+	const output = httpFetch(url, ua, 60, proxy);
 
 	/* 两个下载器都不存在：返回 exitcode 127 而不是 null，让上层日志能看出
 	   是环境缺依赖，而不是订阅服务器返回了空内容。 */

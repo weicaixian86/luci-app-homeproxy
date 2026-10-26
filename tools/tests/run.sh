@@ -1902,14 +1902,15 @@ fi
 SUB_UC="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
 
 # ── ACL 里声明了 "exec" 的脚本，必须真的可执行 ──────────────────────────────
-# node.js 的「更新 N 个订阅」按钮是 fs.exec_direct('/etc/homeproxy/scripts/
+# 0.2.4–0.2.6 的「更新 N 个订阅」按钮是 fs.exec_direct('/etc/homeproxy/scripts/
 # update_subscriptions.uc', [...]) —— 直接把脚本当可执行文件交给 rpcd。而
 # rpcd 的 file.exec 是 fork + execv：文件没有可执行位时 execv 失败 EACCES，
 # 但 **ubus 调用本身仍然成功**（返回 code 127 + stderr），前端拿到的是
 # resolve 而不是 reject，于是只走 location.reload()，屏幕上一个字都不报。
 # 现场表现就是「点了按钮，转一会儿，页面刷新，节点其实没更新」。
-# update_provider.sh 和 update_crond.sh 都用 `ucode <脚本>` 绕开了这个坑，
-# 所以单机场更新和 cron 都正常，唯独这个按钮从来没工作过。
+# 0.2.7 起按钮改走 rpcd 的 subscription_update（后台脱管，不再 exec 这个
+# 文件），但执行位仍然要保留：update_subscriptions_async.sh 在环境里没有
+# ucode 时会退化成直接执行它。两道保险都不许丢。
 # git 索引里记的 mode 就是打包后的 mode（luci.mk 用 cp -p 保留）。
 ACL_JSON="$PKG/root/usr/share/rpcd/acl.d/luci-app-homeproxy.json"
 if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
@@ -1977,13 +1978,66 @@ else
 	bad "update_via_proxy is still a dead switch, or the proxy hop goes before the direct one"
 fi
 
-if grep -q 'Direct fetch failed for %s (%s), retrying via %s.' "$SUB_UC" \
+if grep -q 'Direct fetch failed for %s (%s).' "$SUB_UC" \
+   && grep -q 'Retrying %s via %s.' "$SUB_UC" \
    && grep -q 'Proxy fetch failed for %s (%s).' "$SUB_UC" \
    && grep -q 'response.via_proxy === true ? proxy_url : null' "$SUB_UC" \
    && grep -q 'Fetch mode: %s.' "$SUB_UC"; then
 	ok "a failed direct fetch falls back to the proxy, and both hops are logged"
 else
 	bad "no proxy fallback when the direct hop fails: the 4 overseas airports can never be updated"
+fi
+
+# 端口没在监听时，回退代理这一跳必然 ECONNREFUSED —— 发出去只是把「内核没开」
+# 写成「代理不可用」，日志上两行长得跟在真试过一样。要求先探再决定：
+# 读 /proc/net/tcp(6) 的 LISTEN 项（不起子进程、不发包），跳过时留一行原因。
+# ⚠️ 同时挡住另一种退化：`--max-time` 必须是整条请求的上限，不是 300 秒。
+if grep -q 'function local_proxy_listening' "$SUB_UC" \
+   && grep -q 'proxy retry skipped' "$SUB_UC" \
+   && grep -q '/proc/net/tcp6' "$SUB_UC" \
+   && grep -q 'fields\[3\] !== .0A.' "$SUB_UC"; then
+	ok "a dead local proxy port is detected and the blind retry is skipped"
+else
+	bad "the proxy retry is fired at a port nobody listens on: 'kernel is off' is logged as 'proxy is broken'"
+fi
+
+if grep -q 'httpFetch(url, ua, 60, proxy)' "$HP_LIB"; then
+	ok "one stalled subscription can no longer hold the whole update for five minutes"
+else
+	bad "the per-request max-time is not 60: a stalled airport can block the update for minutes"
+fi
+
+# 「更新 N 个订阅」必须后台执行。脚本要依次抓 N 个订阅、成功后 stop+start
+# 一次内核：现场 5 条约 21 秒（抓取 13 + 重启 8），已经贴着 rpcd/ubus 约 30 秒
+# 的上限。同步等待的后果是「转很久 → 报一句英文错误 → 页面刷新，而脚本还在
+# 后台跑」。要求：① 有脱管包装脚本且带执行位；② 它用 `ucode <脚本>` 起
+# update_subscriptions.uc 并传 --source；③ 按钮改走 rpcd 的两个方法 +
+# hp.pollAdd 轮询；④ 不再有同步的 exec_direct 调用。
+ASYNC_SH="$PKG/root/etc/homeproxy/scripts/update_subscriptions_async.sh"
+NODE_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/node.js"
+if [ -f "$ASYNC_SH" ] && [ -x "$ASYNC_SH" ] \
+   && grep -q 'LuCI「更新全部订阅」按钮' "$ASYNC_SH" \
+   && grep -q 'ucode "\$UPDATER_UC"' "$ASYNC_SH" \
+   && grep -q 'subscription_update.pid' "$ASYNC_SH"; then
+	ok "the subscription updater is launched detached and records pid/rc"
+else
+	bad "update_subscriptions.uc is still run inline: rpcd's ~30 s ceiling turns a slow airport into a bogus error"
+fi
+
+if grep -q "method: 'subscription_update'" "$NODE_JS" \
+   && grep -q "method: 'subscription_update_progress'" "$NODE_JS" \
+   && grep -q "hp.pollAdd('subscription-update'" "$NODE_JS" \
+   && ! grep -q "exec_direct('/etc/homeproxy/scripts/update_subscriptions.uc'" "$NODE_JS"; then
+	ok "the update button starts the job and polls its progress instead of blocking"
+else
+	bad "the update button still blocks on fs.exec_direct, or no longer polls the background job"
+fi
+
+if grep -q 'subscription_update:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'subscription_update_progress:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
+	ok "rpcd exposes subscription_update / subscription_update_progress"
+else
+	bad "the backend has no subscription_update method: the button's rpc.declare would 404"
 fi
 
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
@@ -2120,7 +2174,9 @@ else
 	bad "update_subscriptions.uc ignores argv: the trigger cannot be told apart"
 fi
 
-if grep -q 'LuCI「更新全部订阅」按钮' "$PKG/htdocs/luci-static/resources/view/homeproxy/node.js"; then
+# 0.2.7 起按钮不再自己 exec 脚本（改成 rpcd 起脱管进程），触发来源的字符串
+# 随之搬进 update_subscriptions_async.sh —— 判据跟着实现走，否则会假红。
+if grep -q 'LuCI「更新全部订阅」按钮' "$PKG/root/etc/homeproxy/scripts/update_subscriptions_async.sh"; then
 	ok "the \"update N subscriptions\" button names itself in the log"
 else
 	bad "the batch subscription update button still logs as a bare 手动"

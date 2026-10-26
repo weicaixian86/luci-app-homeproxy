@@ -268,6 +268,78 @@ function coreUpdateOutput() {
 	}
 }
 
+/* ── 订阅更新（后台执行）────────────────────────────────────────────────────
+   「更新 N 个订阅」原来是一条**同步**的 fs.exec_direct：rpcd 的 file.exec
+   一直等到脚本退出。而脚本要依次抓 N 个订阅（每条 connect 上限 10 秒、整条
+   上限 60 秒），成功后再 stop+start 一次内核 —— 现场 5 条订阅约 21 秒，已经
+   贴着 rpcd/ubus 约 30 秒的上限。只要有一个机场慢一点就超时：前端弹一句
+   英文错误并刷新页面，**而脚本还在路由器上继续跑**，看起来就是「转很久、
+   报错、可节点后来又变了」。
+   现在与内核更新同一套：RPC 只起脱管进程并立刻返回，前端每 2 秒轮询一次
+   subscription_update_progress。
+
+   契约（与 update_subscriptions_async.sh 共享）：
+     $RUN_DIR/subscription_update.pid  运行期间存在
+     $RUN_DIR/subscription_update.rc   退出码，最后写
+     $RUN_DIR/subscription_update.out  ucode 的 stdout/stderr（正常为空） */
+
+function subscriptionUpdateRunning() {
+	let pid = '';
+
+	try {
+		pid = trim(readfile(`${RUN_DIR}/subscription_update.pid`) || '');
+	} catch (e) {
+		return false;
+	}
+
+	/* 只允许纯数字进 shell；进程已消失（被杀、重启）时报「未运行」，
+	   界面才不会对着一个陈旧文件永远等下去。 */
+	if (!length(pid) || !match(pid, /^[0-9]+$/))
+		return false;
+
+	return (system(`kill -0 ${pid} 2>/dev/null`) === 0);
+}
+
+/* 主日志里「本次运行」的末尾几行。
+   直接取整份日志的末 N 行是错的：homeproxy.log 里混着内核与服务启停的几百
+   行，抓取失败时可能一行都轮不到，界面就会显示上一轮的结果。先找到最后一次
+   `订阅更新开始` 横幅，只回显它之后的内容；找不到（日志刚轮转）才退回末尾。 */
+function subscriptionLogTail(count) {
+	let raw = '';
+
+	try {
+		raw = readfile(`${RUN_DIR}/homeproxy.log`) || '';
+	} catch (e) {
+		return '';
+	}
+
+	if (!length(raw))
+		return '';
+
+	const lines = split(raw, '\n');
+	let start = 0;
+
+	for (let i = length(lines) - 1; i >= 0; i--)
+		if (index(lines[i], '订阅更新开始') >= 0) {
+			start = i;
+			break;
+		}
+
+	let tail = '';
+	let n = 0;
+
+	for (let i = length(lines) - 1; i >= start && n < count; i--) {
+		const l = trim(lines[i]);
+
+		if (length(l)) {
+			tail = l + '\n' + tail;
+			n++;
+		}
+	}
+
+	return trim(tail);
+}
+
 /* ── 日志设置 ────────────────────────────────────────────────────────────────
    /etc/homeproxy/log.conf，纯 key=value：
      refresh=5       日志页面多久重读一次文件（秒）
@@ -2414,6 +2486,144 @@ const methods = {
 					result: ok,
 					rc: rc,
 					output: output,
+					log: displayed
+				};
+			}
+		},
+
+		subscription_update: {
+			call: function() {
+				/* 已在跑（同一个订阅更新 / 上一次还没结束）就回报现状，
+				   不要起第二个：两次更新会同时写 uci，并在末尾各 stop+start
+				   一次内核。 */
+				if (subscriptionUpdateRunning())
+					return {
+						started: false,
+						running: true,
+						ok: false,
+						log: subscriptionLogTail(3)
+					};
+
+				system(`mkdir -p ${shellquote(RUN_DIR)}`);
+
+				/* 上一次运行的 rc / out 必须清掉，否则第一次轮询就会把
+				   上一轮的结果当成本次的。 */
+				system(`rm -f ${shellquote(`${RUN_DIR}/subscription_update.rc`)} ` +
+					`${shellquote(`${RUN_DIR}/subscription_update.out`)}`);
+
+				try {
+					writefile(`${RUN_DIR}/subscription_update.started`, `${time()}`);
+				} catch (e) {}
+
+				/* 包装脚本自己再脱管一次（--detach）并立即退出，所以这个
+				   popen 在毫秒级返回。脱管交给脚本做：可用手段随固件不同
+				   （iStoreOS 没有 nohup），在 RPC 里挑会重犯内核更新那个
+				   exit 127 的错。 */
+				let output = '';
+				const fd = popen(`/bin/sh ${HP_DIR}/scripts/update_subscriptions_async.sh --detach 2>&1`);
+
+				if (fd) {
+					for (let line = fd.read('line'); line !== null && length(line); line = fd.read('line'))
+						output += line;
+					fd.close();
+				}
+
+				output = trim(output);
+
+				/* 有输出即表示脱管这一步就失败了（脚本缺失、没执行位、
+				   解释器不在）。此时报 started 只会让界面白等十几秒再给一句
+				   含糊的超时，直接把真实原因抛上去。 */
+				if (length(output))
+					return {
+						started: false,
+						running: false,
+						ok: false,
+						log: output
+					};
+
+				/* 等一瞬间让工作进程写出 pid 文件：成功时几乎立刻返回；
+				   失败时界面立刻拿到明确提示，而不是轮询十几秒后超时。
+				   rc 存在也算启动成功 —— 极快失败（uci 读不出来）时工作
+				   进程可能已经把 pid 删掉、把状态写好了。 */
+				let spawned = false;
+
+				for (let i = 0; i < 3 && !spawned; i++) {
+					if (subscriptionUpdateRunning() || access(`${RUN_DIR}/subscription_update.rc`)) {
+						spawned = true;
+						break;
+					}
+					system('sleep 1');
+				}
+
+				if (!spawned)
+					return {
+						started: false,
+						running: false,
+						ok: false,
+						log: '后台任务启动失败：' + HP_DIR + '/scripts/update_subscriptions_async.sh 未能运行。' +
+							'请在路由器 SSH 执行 `sh ' + HP_DIR + '/scripts/update_subscriptions_async.sh` 查看具体错误' +
+							'（常见原因：文件缺失或没有可执行权限）。'
+					};
+
+				return {
+					started: true,
+					running: true,
+					ok: false,
+					log: '已在后台开始更新订阅（更新成功后会重载一次内核，期间不要重复点击）。'
+				};
+			}
+		},
+
+		subscription_update_progress: {
+			call: function() {
+				const running = subscriptionUpdateRunning();
+				let rc = null;
+				let started_at = 0;
+
+				try {
+					const raw = trim(readfile(`${RUN_DIR}/subscription_update.rc`) || '');
+
+					if (length(raw) && match(raw, /^[0-9]+$/))
+						rc = +raw;
+				} catch (e) {}
+
+				try {
+					const raw = trim(readfile(`${RUN_DIR}/subscription_update.started`) || '');
+
+					if (length(raw) && match(raw, /^[0-9]+$/))
+						started_at = +raw;
+				} catch (e) {}
+
+				/* 脱管是异步的：刚启动的几百毫秒里 pid 文件还不存在。没有
+				   这段宽限期，第一次轮询就会报「已结束」，界面直接显示上次
+				   的结果。 */
+				const starting = (!running && rc === null &&
+					started_at > 0 && (time() - started_at) < 15);
+
+				const done = !running && !starting;
+
+				/* 主日志里没有本次的内容时，退回包装脚本记下的 stdout/stderr：
+				   ucode 根本没跑起来（解释器缺失、脚本语法错）时日志一行都不会
+				   有，只回一个 rc 就等于让界面自己猜。 */
+				let displayed = subscriptionLogTail(6);
+
+				if (!length(displayed)) {
+					try {
+						displayed = trim(readfile(`${RUN_DIR}/subscription_update.out`) || '');
+					} catch (e) {}
+				}
+
+				if (done && rc !== 0 && !length(displayed))
+					displayed = (rc === null)
+						? '后台任务未能启动：请确认 ' + HP_DIR + '/scripts/update_subscriptions_async.sh 存在且可执行。'
+						: '脚本没有产生任何输出：请在路由器 SSH 执行 `ucode ' +
+							HP_DIR + '/scripts/update_subscriptions.uc` 查看具体错误。';
+
+				return {
+					running: running || starting,
+					done: done,
+					ok: done && rc === 0,
+					rc: rc,
 					log: displayed
 				};
 			}

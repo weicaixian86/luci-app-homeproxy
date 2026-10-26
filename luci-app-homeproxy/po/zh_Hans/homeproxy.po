@@ -1238,6 +1238,10 @@ msgstr "日志设置保存失败：%s"
 msgid "Failed to start rule-set download: %s"
 msgstr "启动规则集下载失败：%s"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2152
+msgid "Failed to start the subscription update."
+msgstr "启动订阅更新失败。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3060
 msgid "Failed to update rule set: %s"
 msgstr "规则集更新失败：%s"
@@ -3095,9 +3099,17 @@ msgstr "订阅连接"
 msgid "Subscription nodes"
 msgstr "订阅节点"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:75
+msgid "Subscription update failed: %s"
+msgstr "订阅更新失败：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2029
 msgid "Subscriptions"
 msgstr "订阅"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:70
+msgid "Subscriptions updated."
+msgstr "订阅已更新。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:720
 msgid "Success"
@@ -3430,6 +3442,10 @@ msgstr ""
 "大小上限是每个日志文件各自的上限，可填 1–999 KB 或 1–999 MB：日志目录在内存盘"
 "上。"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:59
+msgid "The subscription update is taking unusually long; check the log for progress."
+msgstr "订阅更新耗时异常，请查看日志了解进度。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1616
 msgid ""
 "The tag of the upstream outbound.<br/>Other dial fields will be ignored when "
@@ -3684,6 +3700,10 @@ msgstr "更新时间(每周)"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2018
 msgid "Update via proxy"
 msgstr "使用代理更新"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2146
+msgid "Updating subscriptions in the background. You can leave this page."
+msgstr "正在后台更新订阅，可以离开本页面。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3050
 msgid "Updating..."
@@ -4002,6 +4022,10 @@ msgstr "reF1nd sing-box 内核"
 #: htdocs/luci-static/resources/view/homeproxy/log.js:284
 msgid "seconds"
 msgstr "秒"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:75
+msgid "see the log for details"
+msgstr "详见日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:291
 msgid "sing-box core management"
