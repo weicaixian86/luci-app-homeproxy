@@ -1900,6 +1900,28 @@ else
 fi
 
 SUB_UC="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+
+# ── ACL 里声明了 "exec" 的脚本，必须真的可执行 ──────────────────────────────
+# node.js 的「更新 N 个订阅」按钮是 fs.exec_direct('/etc/homeproxy/scripts/
+# update_subscriptions.uc', [...]) —— 直接把脚本当可执行文件交给 rpcd。而
+# rpcd 的 file.exec 是 fork + execv：文件没有可执行位时 execv 失败 EACCES，
+# 但 **ubus 调用本身仍然成功**（返回 code 127 + stderr），前端拿到的是
+# resolve 而不是 reject，于是只走 location.reload()，屏幕上一个字都不报。
+# 现场表现就是「点了按钮，转一会儿，页面刷新，节点其实没更新」。
+# update_provider.sh 和 update_crond.sh 都用 `ucode <脚本>` 绕开了这个坑，
+# 所以单机场更新和 cron 都正常，唯独这个按钮从来没工作过。
+# git 索引里记的 mode 就是打包后的 mode（luci.mk 用 cp -p 保留）。
+ACL_JSON="$PKG/root/usr/share/rpcd/acl.d/luci-app-homeproxy.json"
+if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+	SUB_MODE=$(git -C "$ROOT" ls-files -s luci-app-homeproxy/root/etc/homeproxy/scripts/update_subscriptions.uc 2>/dev/null | cut -d' ' -f1)
+	if grep -q 'update_subscriptions\.uc": \[ "exec" \]' "$ACL_JSON" 2>/dev/null \
+	   && [ "$SUB_MODE" = "100755" ]; then
+		ok "the subscription updater carries the exec bit that its ACL entry promises"
+	else
+		bad "the ACL grants exec on update_subscriptions.uc but git records mode ${SUB_MODE:-unknown}: rpcd's execv hits EACCES, the ubus call still succeeds, and the button silently does nothing"
+	fi
+fi
+
 if grep -q '订阅更新开始：来源' "$SUB_UC" && grep -q '订阅更新完成' "$SUB_UC"; then
 	ok "update_subscriptions.uc logs a readable start/finish banner"
 else
