@@ -895,6 +895,73 @@ else
 	skip "no conffiles block found"
 fi
 
+# ---------------------------------------------------------- config guard
+section "config guard (config wiped on upgrade)"
+# 0.2.5 装机实测：apk 用包内默认模板覆盖了 /etc/config/homeproxy（72242 字节、
+# 90 个节点 → 2795 字节、0 个节点），5 条订阅一次丢光。Makefile 的 conffiles
+# 只声明了 /etc/config/homeproxy，apk 侧本应留成 .apk-new，实际没有；根因未定位。
+# 所以加一道与包管理器行为无关的保险，三条要求：
+#   ① start_service 每次成功启动刷新备份（/etc/homeproxy/config.uci.bak）；
+#   ② postinst 末尾：当前配置没有任何 node 段、备份里有 → 还原并留 .apk-new；
+#   ③ **没有节点的配置永远不能覆盖备份**——否则第一次被覆盖时备份也跟着变默认
+#      模板，保险反过来变成帮凶。这一条是整段测试里最要紧的。
+GUARD="$PKG/root/etc/homeproxy/scripts/config_guard.sh"
+if [ -f "$GUARD" ]; then
+	GC="$WORK/guard"; rm -rf "$GC"; mkdir -p "$GC"
+	printf "config homeproxy 'config'\n\toption main_node 'n1'\n\nconfig node 'n1'\n\toption type 'vless'\n" >"$GC/good"
+	printf "config homeproxy 'config'\n\toption main_node 'n1'\n" >"$GC/default"
+	gc() { env HP_CONFIG="$GC/homeproxy" HP_CONFIG_BAK="$GC/config.uci.bak" HP_LOG="$GC/log" sh "$GUARD" "$1"; }
+
+	cp "$GC/good" "$GC/homeproxy"
+	gc backup
+	if [ -f "$GC/config.uci.bak" ] && grep -q "^config node" "$GC/config.uci.bak"; then
+		ok "backup: a config that has node sections is saved"
+	else
+		bad "backup: nothing saved although the config has node sections"
+	fi
+
+	cp "$GC/default" "$GC/homeproxy"
+	gc backup
+	if grep -q "^config node" "$GC/config.uci.bak"; then
+		ok "backup: a config without nodes never overwrites the good backup"
+	else
+		bad "backup: the default template overwrote the good backup (the guard becomes the accomplice)"
+	fi
+
+	gc restore
+	if [ "$(grep -c '^config node' "$GC/homeproxy")" = "1" ] && [ -f "$GC/homeproxy.apk-new" ]; then
+		ok "restore: a wiped config is restored, the wiped copy kept as .apk-new"
+	else
+		bad "restore: the wiped config was not restored from the backup"
+	fi
+
+	gc restore
+	if [ "$(grep -c '^config node' "$GC/homeproxy")" = "1" ]; then
+		ok "restore: running twice is harmless"
+	else
+		bad "restore: a second run damaged the restored config"
+	fi
+
+	# 用 mv 而不是 rm：某些环境把 rm 换成了安全删除的壳，路径判定失败时会静默
+	# 不删，于是「没有备份」这一条变成假通过。
+	mv -f "$GC/config.uci.bak" "$GC/config.uci.bak.off"
+	gc restore
+	if [ "$(grep -c '^config node' "$GC/homeproxy")" = "1" ]; then
+		ok "restore: no backup means no change"
+	else
+		bad "restore: it touched the config although there was no backup"
+	fi
+else
+	bad "scripts/config_guard.sh is missing: an apk upgrade can wipe /etc/config/homeproxy silently"
+fi
+
+if grep -q 'config_guard.sh restore' "$PKG/Makefile" 2>/dev/null \
+   && grep -q 'config_guard.sh" backup' "$PKG/root/etc/init.d/homeproxy" 2>/dev/null; then
+	ok "config guard is wired into postinst (restore) and start_service (backup)"
+else
+	bad "config guard is not wired: postinst never restores, or start_service never backs up"
+fi
+
 # ------------------------------------------------- same_scripts --check contract
 # fetch_rulesets.sh 的 --check 输出是 init.d 依赖的契约（见需求书十.13）。
 # 用 stub uci 跑真实脚本，确认段名扫描、排除原因、统计行都正确。

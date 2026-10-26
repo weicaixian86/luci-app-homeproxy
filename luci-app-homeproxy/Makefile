@@ -58,7 +58,13 @@ define Package/luci-app-homeproxy/postinst
 mkdir -p "$${IPKG_INSTROOT}/usr/share/homeproxy" 2>/dev/null
 echo "$(PKG_VERSION)-$(PKG_RELEASE)" > "$${IPKG_INSTROOT}/usr/share/homeproxy/version" 2>/dev/null
 if [ -z "$${IPKG_INSTROOT}" ]; then
-	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/group" 2>/dev/null && ! grep -qs '^sing-box:' /etc/group 2>/dev/null; then
+	# 0.2.5 实测：apk 用包内默认模板覆盖了 /etc/config/homeproxy（72242 字节、
+	# 90 个节点 → 2795 字节、0 个节点），conffiles 没能兜住（根因未定位）。
+	# 所以装包末尾无条件跑一次还原检查：当前配置没有任何 node 段、而备份里有，
+	# 就还原并把被覆盖的那份留成 .apk-new。备份由 start_service 每次启动时刷新，
+	# 且「没有节点的配置永远不覆盖备份」——否则备份会跟着一起变成默认模板。
+	[ -f /etc/homeproxy/scripts/config_guard.sh ] && sh /etc/homeproxy/scripts/config_guard.sh restore || true
+	if ! grep -qs '^sing-box:' "$${IPKG_INSTROOT}/etc/group" 2>/dev/null && ! grep -qs '^sing-box:' /etc/group 2>/dev/null; then
 		addgroup -S sing-box 2>/dev/null || true
 	fi
 	if ! grep -qs '^sing-box:' "$$IPKG_INSTROOT/etc/passwd" 2>/dev/null && ! grep -qs '^sing-box:' /etc/passwd 2>/dev/null; then
