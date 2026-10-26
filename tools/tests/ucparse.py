@@ -17,15 +17,40 @@ import os
 import re
 import sys
 
-IMPORT_RE = re.compile(r"^\s*import\s+.*from\s+['\"][^'\"]*['\"]\s*;?\s*$")
+IMPORT_RE = re.compile(r"^\s*import\b")
+IMPORT_END_RE = re.compile(r"\bfrom\s+['\"][^'\"]*['\"]\s*;?\s*$")
 
 
 def wrap(src):
+    """Strip constructs Node's script parser would reject.
+
+    ucode writes imports across several lines:
+
+        import {
+            readfile,
+            writefile
+        } from 'fs';
+
+    The old single-line regex only caught `import x from 'y';`, so a
+    multi-line import survived and Node then decided the wrapped file was an
+    ES module — and in module mode it never reported the stray `)` that made
+    0.2.4 fail on the device (`update_subscriptions.uc:1583`). Skipping the
+    whole import block keeps the file parsing as a script, which is what
+    ucode actually is.
+    """
     out = []
+    skipping_import = False
     for line in src.splitlines():
         if line.startswith('#!'):
             continue
+        if skipping_import:
+            if IMPORT_END_RE.search(line):
+                skipping_import = False
+            continue
         if IMPORT_RE.match(line):
+            if IMPORT_END_RE.search(line):
+                continue
+            skipping_import = True
             continue
         if line.strip() in ("'use strict';", '"use strict";'):
             continue

@@ -122,6 +122,22 @@ fi
 
 # -------------------------------------------------------------------- ucode
 section "ucode syntax (approximated)"
+# 括号平衡必须单独查，不能只依赖 node --check：0.2.4 就是从这里漏出去的。
+# `update_subscriptions.uc:1583` 多了一个 `)`（删掉「手动（经代理）」分支时
+# 开括号少了、结尾的 `)` 没跟着删），设备上 ucode 直接
+# `Syntax error: Unexpected token / Expecting ';'`，整个订阅脚本跑不起来。
+# node 之所以没报，是因为文件里的 `import {` 是多行的、ucparse 当时只剥单行
+# import，残留的 import 让 Node 把整份文件当 ESM —— 于是这个语句级错误
+# 从头到尾没被检查。ucbalance.py 用词法级扫描，不看任何解析器的模式。
+if "$PY" "$ROOT/tools/tests/ucbalance.py" \
+	"$PKG/root/etc/homeproxy/scripts/"*.uc \
+	"$PKG/root/usr/share/rpcd/ucode/"* \
+	>"$WORK/ucbal.out" 2>"$WORK/ucbal.err"; then
+	ok "balanced delimiters in every ucode source"
+else
+	bad "unbalanced delimiters  <- $(head -1 "$WORK/ucbal.err")"
+fi
+
 "$PY" "$ROOT/tools/tests/ucparse.py" "$WORK/uc" \
 	"$PKG/root/etc/homeproxy/scripts/homeproxy.uc" \
 	"$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc" \
@@ -1834,10 +1850,10 @@ else
 fi
 
 # 「通过代理更新订阅」必须真的生效，且顺序是**直连优先、失败才走代理**。
-# 0.2.04 之前它是**死开关**：界面上有这一项，但脚本只把 via_proxy 拼进日志
+# 0.2.4 之前它是**死开关**：界面上有这一项，但脚本只把 via_proxy 拼进日志
 # 文案（`手动（经代理）`），全项目没有一处为它设 http_proxy 或传 -x，勾上和
 # 不勾完全一样。而用户现场正是「5 个订阅里 4 个要海外网络」，这条需求一直没
-# 被满足。开发中先做过「先代理、失败回退直连」，0.2.04 首发前把顺序反过来：
+# 被满足。开发中先做过「先代理、失败回退直连」，0.2.4 首发前把顺序反过来：
 # 节点全坏时「先代理」等于每条订阅都先撞一次坏节点，而节点坏掉恰恰是最需要
 # 重新拉订阅的时候（homeproxy_output_redir 会劫持路由器自身出站）——死锁。
 # 要求：① via_proxy=1 时走本地 mixed 入口（infra.mixed_port，现场 5330；

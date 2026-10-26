@@ -38,13 +38,13 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
 	  user_agent = uci.get(uciconfig, ucisubscription, 'user_agent'),
 	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
 
-/* 「通过代理更新订阅」在 0.2.04 之前是**死开关**：界面上有这一项，但脚本里
+/* 「通过代理更新订阅」在 0.2.4 之前是**死开关**：界面上有这一项，但脚本里
  * 只把它拼进日志文案（`手动（经代理）`），全项目从来没有为它设过
  * `http_proxy` 或传 `-x`。于是勾上它和不勾完全一样——而用户现场正是
  * 「5 个订阅里 4 个要海外网络才能拉」，这条需求一直没有被满足。
  *
  * 顺序：**直连优先，直连拿不到正文才用代理重试**（开发中先做过「先代理、
- * 失败回退直连」，0.2.04 首发前订正）。理由是可恢复性：nft 的
+ * 失败回退直连」，0.2.4 首发前订正）。理由是可恢复性：nft 的
  * `homeproxy_output_redir` 会劫持路由器自身出站（firewall_post.ut:372），
  * 节点全坏时「先代理」等于每条订阅都先撞一次坏节点（现场约 5 秒/条），而
  * 节点坏掉恰恰是最需要重新拉订阅的时候——先代理会把这个场景锁死。直连不通
@@ -1580,10 +1580,10 @@ function main() {
 	const scheduled = !isEmpty(readfile(RUN_DIR + '/schedule-run') || ''),
 	      trigger = cli_source ||
 	                (provider_update_id ? '面板单个机场「更新」按钮' :
-	                (scheduled ? '定时任务（cron，update_crond.sh）' : '手动（终端/SSH）')));
+	                (scheduled ? '定时任务（cron，update_crond.sh）' : '手动（终端/SSH）'));
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
-	/* 抓取方式必须在日志开头就能对上：这个开关在 0.2.04 之前是死的，
+	/* 抓取方式必须在日志开头就能对上：这个开关在 0.2.4 之前是死的，
 	   日志里骂「到底走没走代理」根本无从判断。 */
 	log(sprintf('Fetch mode: %s.', proxy_url
 		? sprintf('direct, fallback to proxy %s', proxy_url)
