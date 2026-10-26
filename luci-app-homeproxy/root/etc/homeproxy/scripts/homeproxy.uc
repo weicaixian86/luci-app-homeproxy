@@ -187,12 +187,15 @@ export function wGETResponse(url, ua) {
 	/* 两个下载器都不存在：返回 exitcode 127 而不是 null，让上层日志能看出
 	   是环境缺依赖，而不是订阅服务器返回了空内容。 */
 	if (!output)
-		return { body: null, headers: '', exitcode: 127, truncated: false };
+		return { body: null, headers: '', exitcode: 127, size: 0, truncated: false };
 
 	return {
 		body: trim(output.stdout),
 		headers: output.stderr || '',
 		exitcode: output.exitcode,
+		/* size 是 stdout 的真实字节数（截断前）。上层抓不到正文时要靠它
+		   区分「服务器真的返回了 0 字节」和「连上了但被 curl -f 吞掉了正文」。 */
+		size: output.size,
 		truncated: output.truncated
 	};
 };

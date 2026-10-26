@@ -147,6 +147,76 @@ else
 	done < "$WORK/uc.list"
 fi
 
+# ------------------------------------------------- ucode 方言（JS 惯性的雷）
+# ucode 不是 JS：没有 Math/JSON/Object/Array/String/Number 这些包装对象
+#（用了报 "left side of . operator is not an object"，rpcd 再折叠成
+# Command failed: Unknown error）。这类写法在 JS 里完全合法，ucparse/node
+# --check 一定放行，只能在这里剥掉注释与字符串后整篇扫一遍（注释里允许
+# 出现这些词作警示文字，所以要先剥再扫）。
+#
+# 2026-10-26 真机（iStoreOS）实测四条：
+#   * **`undefined` 不是关键字**，只是一个普通标识符；在 **.uc 模块**（有
+#     import、按闭包编译）里读它直接抛 `access to undeclared variable
+#     undefined`。0.2.03 在 packet_encoding 归一函数里写了
+#     `value === undefined` 与 `config.packet_encoding === undefined`，异常
+#     被 parse_uri 每节点的 try/catch 吞成一行 `Skipping unparsable node
+#     entry`，**vless + vmess 整批消失**（hy2/trojan/anytls 不经过该函数，
+#     毫发无损）。设备日志实证：`Successfully fetched 14 nodes of total 31`
+#     而 vless 计数为 0。
+#     ⚠️ `ucode -e` 探针验不出这条：`-e` 在全局作用域跑，读 `undefined`
+#     不抛（`o.missing === undefined` 返回 true），会给出**假阴性**。当日
+#     就是被这个假阴性误导，把已经正确的修复撤回了一轮。
+#   * `var a = 1` => `Syntax error: Unexpected token`（报错位置指向 `var`
+#     后面那个标识符）—— 这台设备的 ucode 只认 let/const。后果最彻底：
+#     整份文件编译不过、一个节点都更新不了，而静态校验看不出来。
+#   * `lc("AB")` => ab、`uc("ab")` => AB —— 这两个**都存在可用**（原记录
+#     说「lc 不是全局函数」是错的）。仍然一并禁掉：项目里没人需要它们。
+#   * `"xudp" in ["xudp","XUDP"]` => true —— `in` 对数组是**值匹配**，不是
+#     JS 的键匹配，白名单可以放心写（generate_client.uc 的
+#     `routing_mode in [...]` 一直有效）。
+section "ucode dialect (no JS habits, no var)"
+if "$PY" - "$PKG" <<'PYUC' 2>"$WORK/ucdialect.err"; then
+import re, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / 'root'
+BAD = re.compile(r'\b(lc|uc|var|undefined|Math|JSON|Object|Array|String|Number)\b')
+hits = []
+for f in sorted(root.rglob('*.uc')) + sorted((root / 'usr/share/rpcd/ucode').glob('*')):
+    if not f.is_file():
+        continue
+    src = f.read_text(encoding='utf-8', errors='replace')
+    out = []
+    i, n, in_blk, in_line, q = 0, len(src), False, False, None
+    while i < n:
+        c = src[i]
+        nxt = src[i+1] if i + 1 < n else ''
+        if q:
+            if c == '\\': i += 2; continue
+            if c == q: q = None
+            i += 1; continue
+        if in_blk:
+            if c == '*' and nxt == '/': in_blk = False; i += 2; continue
+            i += 1; continue
+        if in_line:
+            if c == '\n': in_line = False; out.append(c)
+            i += 1; continue
+        if c == '/' and nxt == '*': in_blk = True; i += 2; continue
+        if c == '/' and nxt == '/': in_line = True; i += 2; continue
+        if c in ('\'', '"', '`'): q = c; i += 1; continue
+        out.append(c); i += 1
+    code = ''.join(out)
+    for ln, line in enumerate(code.split('\n'), 1):
+        if BAD.search(line):
+            hits.append('%s (code line %s): %s' % (f.name, ln, line.strip()[:70]))
+if hits:
+    print('\n'.join(hits[:10]), file=sys.stderr)
+    sys.exit(1)
+PYUC
+	ok "ucode files contain no JS-only globals (lc/uc/var/undefined/Math/JSON/…)"
+else
+	bad "ucode uses JS habits that throw on device ($(head -1 "$WORK/ucdialect.err" | cut -c1-80))"
+fi
+
 # ------------------------------------------------------- rpcd regex portability
 # rpcd 里的 match()/replace() 走 C 的 regcomp/regexec，不是 JS 引擎。
 # 踩过的坑：/^([0-9]+)(\.([0-9]+))?$/ 直接抛
@@ -1739,6 +1809,28 @@ if grep -q '订阅更新开始：来源' "$SUB_UC" && grep -q '订阅更新完�
 	ok "update_subscriptions.uc logs a readable start/finish banner"
 else
 	bad "update_subscriptions.uc logs neither a start nor a finish banner"
+fi
+
+# 每个订阅必须留下「按协议的解析明细」（Node types from <url>: vless=N ...）。
+# 0.2.03 现场：「某个协议整批拉不到」时，日志只有「拿到 M 行、解析出 N 个」，
+# 谁都看不出是没解析出来还是被过滤了，最后只能一轮一轮装机数 uci 反推。
+if grep -q "Node types from %s" "$SUB_UC" && grep -q 'type_tally' "$SUB_UC"; then
+	ok "update_subscriptions.uc logs a per-protocol parse breakdown for every subscription"
+else
+	bad "no per-protocol parse breakdown: a whole protocol can vanish without a trace"
+fi
+
+# 抓不到正文时必须留下「为什么」（exit code / 字节数 / stderr 首段）。
+# 0.2.03 现场：五个订阅在 25 秒内全部失败，日志里只有五行
+# `Failed to fetch resources from <url>.`，DNS 失败、TLS 失败、服务器 4xx
+# 被 curl -f 吞掉正文、环境里没有下载器（127）四种情况长得一模一样，
+# 只能让用户在设备上手动重敲 curl 才能反推 —— 排查纪律 §8：诊断内建。
+if grep -q 'exit=%d, bytes=%d, stderr=%s' "$SUB_UC" \
+   && grep -q 'response\.exitcode' "$SUB_UC" \
+   && grep -q 'size: output\.size' "$PKG/root/etc/homeproxy/scripts/homeproxy.uc"; then
+	ok "a failed fetch records exit code, byte count and stderr"
+else
+	bad "a failed fetch is still a bare 'Failed to fetch': DNS/TLS/4xx/127 are indistinguishable"
 fi
 
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────

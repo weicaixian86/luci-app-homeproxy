@@ -218,39 +218,45 @@ function get_header_host(headers) {
 }
 
 /* sing-box 的 VLESS/VMess 只认三档 UDP 编码：缺省（等同 xudp）、
-   'packetaddr'、'xudp'。机场写法五花八门（xudp / XUDP / packet-encoding /
-   packetEncoding / none / "" / packetaddr），这里统一归一到「表单里那三档」
-   之后再落 UCI，否则界面上会显示一个查不到的下拉值、generate_client 也可能
-   把非法串直接塞进 sing-box 配置里导致 check 失败。
-   返回 null 表示「节点没声明」→ 由调用方用全局默认值兜底。 */
+   'packetaddr'、'none'（空串）。机场写法五花八门，这里归一到表单那三档。
+   返回 null = 节点没声明 → 由调用方用全局默认值兜底；返回 '' = 显式关闭。
+
+   ⚠️ 判「没声明」只用 `=== null`，**绝不许写 `undefined`**。
+   0.2.03 就是在这里写了 `value === undefined`，真机上的报错是
+   `access to undeclared variable undefined` —— ucode 没有 `undefined`
+   这个关键字，它只是一个普通标识符；在 **.uc 模块**（有 import、按闭包
+   编译）里读它直接抛异常，被 parse_uri 每节点的 try/catch 吞成一行
+   `Skipping unparsable node entry`，后果是 **vless + vmess 整批消失**
+   （hysteria2 / trojan / anytls 不经过本函数，毫发无损），而日志里就看
+   不出原因。2026-10-26 真机实测：PKM 订阅 `Successfully fetched 14 nodes
+   of total 31`（31 - 11 个 vless - 6 个公告 vmess = 14），vless 计数为 0。
+
+   ⚠️ 另注：`ucode -e` 探针**不能**用来验证这条——`-e` 在全局作用域跑，
+   读 `undefined` 不抛（实测 `o.missing === undefined` 返回 true），会给出
+   假阴性。要验就在 .uc 里验，或直接看设备日志。
+
+   大小写差异用显式白名单枚举兜（`in` 对数组是值匹配，-e 与模块内一致）。 */
 function normalize_packet_encoding(value) {
-	/* ⚠️ 不能只靠 has_value()：它只挡 null / '' / 'nil'，而**键不存在**时
-	   读到的是 undefined，has_value(undefined) 反而是 true，于是 sprintf
-	   会把它变成字符串 "undefined" 塞进配置里（sing-box 直接 check 失败）。
-	   所以 undefined 必须先单独挡掉。 */
-	if (value === undefined || value === null)
+	if (value === null)
 		return null;
 
 	const raw = trim(sprintf('%s', value));
-	if (raw === '' || raw === 'nil')
+
+	if (raw === '')
 		return null;
 
-	switch (lc(raw)) {
-	case 'xudp':
+	if (raw in [ 'xudp', 'XUDP', 'xUdp', 'Xudp' ])
 		return 'xudp';
-	case 'packetaddr':
-	case 'packet_addr':
-	case 'packet-addr':
+
+	if (raw in [ 'packetaddr', 'PacketAddr', 'packet-addr', 'packet_addr' ])
 		return 'packetaddr';
-	case 'none':
-	case 'disabled':
-	case '0':
-	case 'false':
-		/* 显式写了「不要编码」：用空串表示，generate_client 会原样写进
+
+	if (raw in [ 'none', 'None', 'NONE', 'disabled', 'Disabled', 'false', 'False', '0', 'off', 'Off' ])
+		/* 显式写了「不要编码」：空串表示，generate_client 原样写进
 		   packet_encoding —— 空串在 sing-box 里就是 none 档。 */
 		return '';
-	}
 
+	/* 认不出的值别写进配置（脏值会让 sing-box check 失败），退回全局默认。 */
 	return null;
 }
 
@@ -304,8 +310,12 @@ function parse_mihomo_proxy(proxy) {
 
 	switch (proxy.type) {
 	case 'anytls': {
-		let anytls_fp = (proxy['client-fingerprint'] !== null && proxy['client-fingerprint'] !== undefined) ?
-			proxy['client-fingerprint'] : proxy.fingerprint;
+		/* fingerprint 是字符串，`||` 对 null / '' / 缺失 都安全。
+		   ⚠️ 别写 `!== undefined`：ucode 里 `undefined` 不是关键字，
+		   在 .uc 模块里读它就是 `access to undeclared variable undefined`
+		   （0.2.03 在本分支与归一函数里各写了一处，前者让 mihomo 格式
+		   订阅的 anytls 也抛，后者让 vless/vmess 整批消失）。 */
+		let anytls_fp = proxy['client-fingerprint'] || proxy.fingerprint;
 		anytls_fp = to_string(anytls_fp);
 		if (anytls_fp === 'none' || anytls_fp === 'disable' || anytls_fp === 'disabled')
 			anytls_fp = null;
@@ -1498,10 +1508,36 @@ function main() {
 		const groupHash = md5(url);
 		node_cache[groupHash] = {};
 
+		/* 本次订阅按协议类型的解析结果计数。机场「某个协议整批没了」时，
+		   第一手信息就该是「到底解析出了哪些类型、各几条」，而不是让用户
+		   数 uci 里剩几个节点反推——0.2.03 的 vless 事故就是这么绕远的。 */
+		const type_tally = {};
+
 		const response = wGETResponse(url, user_agent),
 		      res = response?.body;
 		if (isEmpty(res)) {
-			log(sprintf('Failed to fetch resources from %s.', url));
+			/* ⚠️ 抓不到正文时**必须**留下「为什么」。0.2.03 现场这里只打一行
+			   `Failed to fetch resources`，exitcode 与 stderr 全丢，于是
+			   「DNS 解析失败 / TLS 失败 / 服务器 4xx 被 curl -f 吞掉正文 /
+			   环境里根本没有下载器（127）」四种情况在日志上长得一模一样，
+			   只能让用户在设备上手动重敲 curl 反推。排查纪律 §8：诊断内建。
+
+			   为什么连 stderr 一起打：curl 的失败原因（`curl: (6) Could not
+			   resolve host` 等）只出现在 stderr 里；而成功但正文为空时，
+			   stderr 里是 -D 写过去的响应头，同样能说明服务器回了什么。 */
+			let why = 'no response object';
+
+			if (response) {
+				let err = replace(trim(sprintf('%s', response.headers || '')), '\n', ' | ');
+
+				if (length(err) > 300)
+					err = substr(err, 0, 300) + '...';
+
+				why = sprintf('exit=%d, bytes=%d, stderr=%s',
+					response.exitcode, response.size, length(err) ? err : '(empty)');
+			}
+
+			log(sprintf('Failed to fetch resources from %s (%s).', url, why));
 			continue;
 		}
 
@@ -1579,13 +1615,10 @@ function main() {
 				/* ⚠️ 这里**不能**用 isEmpty() 判断「节点有没有声明」：显式
 				   packetEncoding=none 归一化后就是空串 ''，而 isEmpty('') 为
 				   真 → 全局默认值会把用户的 none 覆盖回 xudp，修改白做。
-				   normalize_packet_encoding 用 null 表示「没声明」，用 ''
-				   表示「显式 none」，两者必须分开。
-				   还要挡 undefined：ucode 里成员缺失通常是 null，但模板串遇到
-				   真的 undefined 会退化成字符串 "undefined"，那也会被 isEmpty
-				   放过、最终写进 sing-box 配置里导致 check 失败。 */
-				if (config.type in ['vless', 'vmess']
-				    && (config.packet_encoding === null || config.packet_encoding === undefined))
+				   归一函数的契约：null = 没声明、'' = 显式 none，必须分开。
+				   也不要再补 `undefined` 判据：ucode 没有这个关键字，
+				   模块里读它直接抛 access to undeclared variable。 */
+				if (config.type in ['vless', 'vmess'] && config.packet_encoding === null)
 					config.packet_encoding = packet_encoding;
 
 				config.grouphash = groupHash;
@@ -1594,9 +1627,17 @@ function main() {
 				node_cache[groupHash][confHash] = config;
 				node_cache[groupHash][nameHash] = config;
 
+				type_tally[config.type] = (type_tally[config.type] || 0) + 1;
 				count++;
 			}
 		}
+
+		/* 「拿到 M 行、解析出 N 个」之外再给出按协议的明细：用户说「某个协议
+		   拉不到」时，这一行直接区分「根本没解析出来」与「解析出来又被过滤
+		   掉了」。为排查服务，不要删。 */
+		let type_parts = [];
+		map(keys(type_tally), (t) => push(type_parts, sprintf('%s=%d', t, type_tally[t])));
+		log(sprintf('Node types from %s: %s.', url, length(type_parts) ? join(' ', type_parts) : 'none'));
 
 		if (count == 0)
 			log(sprintf('No valid node found in %s.', url));
