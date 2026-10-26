@@ -238,6 +238,15 @@ msgstr ""
 msgid "Applied"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
+msgid ""
+"Applies to all three update paths: Update N subscriptions, the per-provider "
+"Update button in the panel, and the cron job. Unchecked: direct only; a "
+"subscription that fails is skipped and keeps its existing nodes. Checked: "
+"direct first (10s connect limit), then one retry through the local proxy "
+"entry if it fails — routed by your rules, otherwise the Default outbound."
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1017
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1027
 msgid "Apply"
@@ -2661,10 +2670,6 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:207
 #: htdocs/luci-static/resources/view/homeproxy/client.js:251
 msgid "Restore panel failed."
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
-msgid "Retry the download through the local proxy when a direct fetch fails."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:889

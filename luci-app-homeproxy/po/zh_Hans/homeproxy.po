@@ -250,6 +250,19 @@ msgstr "追加自签名证书"
 msgid "Applied"
 msgstr "已应用"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
+msgid ""
+"Applies to all three update paths: Update N subscriptions, the per-provider "
+"Update button in the panel, and the cron job. Unchecked: direct only; a "
+"subscription that fails is skipped and keeps its existing nodes. Checked: "
+"direct first (10s connect limit), then one retry through the local proxy "
+"entry if it fails — routed by your rules, otherwise the Default outbound."
+msgstr ""
+"三个更新入口都适用：更新 N 个订阅、面板单机场更新、cron 定时任务。不勾：只走"
+"直连，失败的订阅会被跳过并保留其原有节点。勾上：仍先直连（连接最多等 10 "
+"秒），失败才经本地代理入口重试一次——这一跳按你的路由规则匹配，未命中则走「默"
+"认出站（漏网之鱼）」。"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1017
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1027
 msgid "Apply"
@@ -2724,10 +2737,6 @@ msgstr "恢复默认"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:251
 msgid "Restore panel failed."
 msgstr "恢复面板失败。"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
-msgid "Applies to all three update paths: Update N subscriptions, the per-provider Update button in the panel, and the cron job. Unchecked: direct only; a subscription that fails is skipped and keeps its existing nodes. Checked: direct first (10s connect limit), then one retry through the local proxy entry if it fails — routed by your rules, otherwise the Default outbound."
-msgstr "三个更新入口都适用：更新 N 个订阅、面板单机场更新、cron 定时任务。不勾：只走直连，失败的订阅会被跳过并保留其原有节点。勾上：仍先直连（连接最多等 10 秒），失败才经本地代理入口重试一次——这一跳按你的路由规则匹配，未命中则走「默认出站（漏网之鱼）」。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:889
 msgid "Reuse address"
