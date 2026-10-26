@@ -1818,6 +1818,39 @@ function main() {
 	/* 成功才重启：到这里 uci 已 commit，stop+start 让新节点进内核。服务在
 	 * 整个更新过程中一直活着——只有这一处会碰它，且只在成功路径上。 */
 	let need_restart = true;
+
+	/* 装完插件、或配置刚从备份里恢复回来，`config` 段可能连 main_node
+	 * 这个选项都没有（不是面板上「禁用」的 'nil'，是压根没写）。这种配置
+	 * 内核照样起得来，但生成的 client 配置里没有代理出站，表现就是
+	 * 「节点全拉到了，流量还是直连」。
+	 *
+	 * 注意不能拿 main_node 变量来判：第 90 行 `|| 'nil'` 已经把「未设置」
+	 * 归一成 'nil'，而 isEmpty('nil') 为真 —— 下面那个 if 会整块跳过，
+	 * 自动选节点的逻辑永远跑不到（0.2.5 实测：日志里既没有
+	 * 'Main node is gone' 也没有 'No available node'，直接 Restarting）。
+	 * 所以这里看 uci 里的原始值，只处理「缺失/空」，显式 'nil'（用户在
+	 * 面板上主动禁用）保持不动。 */
+	const declared_main_node = uci.get(uciconfig, ucimain, 'main_node');
+	if (routing_mode !== 'custom' && (declared_main_node === null || declared_main_node === '')) {
+		let auto_first = null;
+
+		uci.foreach(uciconfig, ucinode, (cfg) => {
+			if (auto_first === null)
+				auto_first = cfg['.name'];
+			return null;
+		});
+
+		if (auto_first !== null) {
+			uci.set(uciconfig, ucimain, 'main_node', auto_first);
+			if (uci.get(uciconfig, ucimain, 'main_udp_node') === null)
+				uci.set(uciconfig, ucimain, 'main_udp_node', auto_first);
+			uci.commit(uciconfig);
+			main_node = auto_first;
+
+			log(sprintf('No main node was set, selecting %s.', auto_first));
+		}
+	}
+
 	if (!isEmpty(main_node)) {
 		const first_server = uci.get_first(uciconfig, ucinode);
 		if (first_server) {

@@ -2116,6 +2116,24 @@ else
 	bad "a failed subscription update can stop or restart the running service ($SUB_STOP_HITS stop / $SUB_START_HITS start)"
 fi
 
+# ── 订阅更新：配置里没有 main_node 时自动挑一个（0.2.5 现场实测） ─────────────
+# 从备份恢复配置、或全新安装后手工写配置时，`config` 段里可能连 main_node
+# 这个选项都不存在。第 90 行 `|| 'nil'` 把它归一成 'nil'，而 isEmpty('nil')
+# 为真 —— 整个 if 块被跳过，日志里没有 'Main node is gone' 也没有
+# 'No available node'，直接就是 Restarting service。结果是节点全拉到了、
+# 内核也起来了，但 client 配置里没有代理出站，流量还是直连。
+# 判据必须看 uci 原始值：显式 'nil' 是用户在面板上选的「禁用」，不能替他改。
+SUB_AUTO_LINE=$(grep -n 'No main node was set, selecting' "$SUB" | head -1 | cut -d: -f1)
+SUB_RAW_LINE=$(grep -n 'const declared_main_node' "$SUB" | head -1 | cut -d: -f1)
+SUB_GUARD_LINE=$(grep -n 'if (!isEmpty(main_node))' "$SUB" | head -1 | cut -d: -f1)
+if [ -n "$SUB_AUTO_LINE" ] && [ -n "$SUB_RAW_LINE" ] && [ -n "$SUB_GUARD_LINE" ] \
+   && [ "$SUB_RAW_LINE" -lt "$SUB_AUTO_LINE" ] && [ "$SUB_AUTO_LINE" -lt "$SUB_GUARD_LINE" ] \
+   && grep -q "declared_main_node === null || declared_main_node === ''" "$SUB"; then
+	ok "a config with no main_node gets one picked automatically (raw uci value, not the 'nil' fallback)"
+else
+	bad "main_node is still judged after being folded into 'nil': a fresh install can end up with nodes but no outbound"
+fi
+
 # 规则集的定时更新以前只有 fetch_rulesets.sh 的几行输出，没有自己的首尾横幅，
 # 「到底有没有按点跑」只能靠文件 mtime 猜。
 RSCRON="$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"
