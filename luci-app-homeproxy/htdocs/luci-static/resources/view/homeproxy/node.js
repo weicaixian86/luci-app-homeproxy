@@ -178,6 +178,24 @@ function migrateSubscriptionHash(section_id, value) {
 		if (changed)
 			uci.set('homeproxy', res['.name'], 'subscription_groups', groups.filter((h, i) => groups.indexOf(h) === i));
 	});
+
+	/* userinfo 的存储键同样由哈希派生（`subinfo_` + md5 前 16 位）。只搬分组
+	   不搬它，改完地址这一栏会先空着（面板卡片上「流量/到期」没了），一直
+	   等到下一次更新抓到新数据才回来。旧值存在就顺手挪过去，别让用户以为
+	   订阅坏了。 */
+	for (const [ from, to ] of Object.entries(remap)) {
+		const oldKey = 'subinfo_' + substr(from, 0, 16),
+		      newKey = 'subinfo_' + substr(to, 0, 16),
+		      value = uci.get('homeproxy', 'subscription', oldKey);
+
+		if (!value)
+			continue;
+
+		if (!uci.get('homeproxy', 'subscription', newKey))
+			uci.set('homeproxy', 'subscription', newKey, value);
+
+		uci.unset('homeproxy', 'subscription', oldKey);
+	}
 }
 
 const SubscriptionList = form.Value.extend({

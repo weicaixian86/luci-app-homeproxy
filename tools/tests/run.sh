@@ -2004,8 +2004,22 @@ else
 	bad "a transient DNS failure still fails the whole airport, and the log gives no hint that it was transient"
 fi
 
-# 端口没在监听时，回退代理这一跳必然 ECONNREFUSED —— 发出去只是把「内核没开」
-# 写成「代理不可用」，日志上两行长得跟在真试过一样。要求先探再决定：
+# 一条订阅都没成功时不许重启内核，也不许说 Successfully。
+# 旧行为：`need_restart` 恒为 true，机场全挂 / 家里断网时照样 stop+start 一次
+# —— 用户看到代理无缘无故断流几秒，节点还一个没变；日志末尾仍然写
+# `Successfully updated subscriptions.`，把「一条都没拉到」伪装成成功。
+FAIL_LINE=$(grep -n 'if (succeeded === 0)' "$SUB_UC" | cut -d: -f1)
+RESTART_LINE=$(grep -n "init_action('homeproxy', 'stop')" "$SUB_UC" | cut -d: -f1)
+if [ -n "$FAIL_LINE" ] && [ -n "$RESTART_LINE" ] && [ "$FAIL_LINE" -lt "$RESTART_LINE" ] \
+   && grep -q 'All %d subscriptions failed, keeping the running configuration' "$SUB_UC" \
+   && grep -q 'Updated %s of %s subscriptions, %s failed' "$SUB_UC" \
+   && grep -q 'succeeded++' "$SUB_UC"; then
+	ok "a run where every subscription failed leaves the core alone and says so"
+else
+	bad "an all-failed run still restarts the core and still claims success"
+fi
+
+
 # 读 /proc/net/tcp(6) 的 LISTEN 项（不起子进程、不发包），跳过时留一行原因。
 # ⚠️ 同时挡住另一种退化：`--max-time` 必须是整条请求的上限，不是 300 秒。
 if grep -q 'function local_proxy_listening' "$SUB_UC" \
@@ -2066,7 +2080,8 @@ if grep -q 'function migrateSubscriptionHash' "$NODE_JS" \
    && grep -q 'migrateSubscriptionHash(section_id, value)' "$NODE_JS" \
    && grep -q "uci.sections('homeproxy', 'node'" "$NODE_JS" \
    && grep -q "uci.sections('homeproxy', 'routing_node'" "$NODE_JS" \
-   && grep -q 'hp.calcStringMD5(cleanUrl(oldUrl))' "$NODE_JS"; then
+   && grep -q 'hp.calcStringMD5(cleanUrl(oldUrl))' "$NODE_JS" \
+   && grep -q "'subinfo_' + substr(from, 0, 16)" "$NODE_JS"; then
 	ok "editing a subscription URL rewrites the old group hash on nodes and groups"
 else
 	bad "a changed subscription URL leaves nodes orphaned: the dashboard shows the airport as 0/0 with no error"

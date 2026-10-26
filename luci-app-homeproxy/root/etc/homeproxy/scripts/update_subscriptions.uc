@@ -1749,6 +1749,8 @@ function main() {
 	 * 前提下退出。旧版在下载前就 `init_action('homeproxy','stop')`（所谓
 	 * 「绕过自身代理」），失败再 start 回来——更新不成功也会把当前服务断
 	 * 一次流，面板上就是「点了更新、代理闪断一下、节点却没变」。 */
+	let succeeded = 0, failed = 0;
+
 	for (let url in subscription_urls) {
 		url = replace(url, /#.*$/, '');
 		const groupHash = md5(url);
@@ -1771,6 +1773,7 @@ function main() {
 
 			log(sprintf('Failed to fetch resources from %s (%s).', url,
 				proxy_url ? sprintf('direct and %s both failed: %s', proxy_url, why) : why));
+			failed++;
 			continue;
 		}
 
@@ -1872,8 +1875,10 @@ function main() {
 		map(keys(type_tally), (t) => push(type_parts, sprintf('%s=%d', t, type_tally[t])));
 		log(sprintf('Node types from %s: %s.', url, length(type_parts) ? join(' ', type_parts) : 'none'));
 
-		if (count == 0)
+		if (count == 0) {
 			log(sprintf('No valid node found in %s.', url));
+			failed++;
+		}
 		else {
 			const info_option = subscription_info_option(url),
 			      display_name = subscription_display_name(url);
@@ -1916,6 +1921,7 @@ function main() {
 			uci.set(uciconfig, ucisubscription, info_option, sprintf('%.J', subscription_info));
 
 			log(sprintf('Successfully fetched %s nodes of total %s from %s.', count, length(nodes), url));
+			succeeded++;
 		}
 	}
 
@@ -1924,6 +1930,16 @@ function main() {
 
 		/* 服务从未被停过（见 main() 开头的注释），失败时什么都不用恢复。
 		 * 旧版这里要 start 回来，是因为它先前把服务停了。 */
+		return false;
+	}
+
+	/* 一条都没成功：不动 uci、不动服务。以前这里会照样走到末尾的
+	 * stop+start，等于「机场全挂了 / 断网时，把正在正常跑的内核也重启一次」
+	 * —— 用户看到的是代理无缘无故断流五秒，节点还一个没变。
+	 * 返回 false 让上层给非零退出码：界面据此提示失败，cron 也会在日志里
+	 * 留下 rc≠0，而不是被一句 Successfully 糊过去。 */
+	if (succeeded === 0) {
+		log(sprintf('All %d subscriptions failed, keeping the running configuration (the core is not restarted).', failed));
 		return false;
 	}
 
@@ -2095,8 +2111,20 @@ function main() {
 	}
 
 	log(sprintf('%s nodes added, %s removed.', added, removed));
-	log('Successfully updated subscriptions.');
-	log(sprintf('==== 订阅更新完成：新增 %s 个节点，删除 %s 个，共 %d 个订阅 ====', added, removed, length(subscription_urls)));
+
+	/* 部分失败时不许再说「Successfully」：这句话骗过一次排查——日志写着成功，
+	   用户却少了一整个机场的节点。失败数直接写进结论行和完成横幅。 */
+	if (failed > 0)
+		log(sprintf('Updated %s of %s subscriptions, %s failed (their previous nodes were kept).',
+			succeeded, succeeded + failed, failed));
+	else
+		log('Successfully updated subscriptions.');
+
+	log(sprintf('==== 订阅更新完成：新增 %s 个节点，删除 %s 个，共 %d 个订阅%s ====',
+		added, removed, length(subscription_urls),
+		failed > 0 ? sprintf('，其中 %d 个抓取失败', failed) : ''));
+
+	return true;
 }
 
 if (provider_update_id && isEmpty(subscription_urls)) {
