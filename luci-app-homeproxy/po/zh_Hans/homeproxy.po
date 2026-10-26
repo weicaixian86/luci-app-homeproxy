@@ -3661,8 +3661,8 @@ msgid "Update panel failed."
 msgstr "更新面板失败"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2019
-msgid "Update subscriptions via proxy."
-msgstr "使用代理更新订阅。"
+msgid "Retry the download through the local proxy when a direct fetch fails."
+msgstr "直连拉取失败时，改用本地代理重试。"
 
 #: htdocs/luci-static/resources/homeproxy.js:75
 msgid "Update time (daily)"

@@ -43,14 +43,19 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
  * `http_proxy` 或传 `-x`。于是勾上它和不勾完全一样——而用户现场正是
  * 「5 个订阅里 4 个要海外网络才能拉」，这条需求一直没有被满足。
  *
- * 现在真的走本地 mixed 入口：`infra.mixed_port`（现场 5330），sing-box 的
+ * 顺序：**直连优先，直连拿不到正文才用代理重试**（0.2.04 首发时是反过来的，
+ * 0.2.05 订正）。理由是可恢复性：nft 的 `homeproxy_output_redir` 会劫持
+ * 路由器自身出站（firewall_post.ut:372），节点全坏时「先代理」等于每条订阅
+ * 都先撞一次坏节点（现场约 5 秒/条），而节点坏掉恰恰是最需要重新拉订阅的
+ * 时候——先代理会把这个场景锁死。直连不通（那 4 个海外机场就是这样）再走
+ * 代理，同一个开关把「国内能拉的别绕路」和「海外必须绕路」都覆盖。
+ *
+ * 代理这一跳走本地 mixed 入口：`infra.mixed_port`（现场 5330），sing-box 的
  * `mixed-in` inbound 是**无条件创建**的（generate_client.uc:1112），无认证。
- * 走它的额外好处是绕开两件事：
- *   1. nft 的 `homeproxy_output_redir` 会劫持路由器自身出站（firewall_post.ut:372），
- *      内核在跑但出口不可用时抓订阅会被自己的代理拖死（现场每条约 5 秒）；
- *   2. 域名解析交给 sing-box（只发 CONNECT host:443），不再受 dnsmasq
- *      → 内核 5333 这条链路的当前状态影响。
- * 默认 `update_via_proxy=0` 时 proxy_url 为 null，抓取路径与旧版逐字相同。 */
+ * 走它的额外好处是把域名解析交给 sing-box（只发 CONNECT host:443），不再受
+ * dnsmasq → 内核 5333 这条链路的当前状态影响。
+ * 默认 `update_via_proxy=0` 时 proxy_url 为 null：直连失败即止，抓取路径与
+ * 旧版逐字相同（只是多了一层判空）。 */
 const proxy_url = (via_proxy === '1')
 	? sprintf('http://127.0.0.1:%s', uci.get(uciconfig, 'infra', 'mixed_port') || '5330')
 	: null;
@@ -1503,6 +1508,68 @@ function parse_mihomo_yaml(text) {
 	return length(proxies) ? proxies : null;
 }
 
+/* 把一次抓取失败的原因压成一行：exitcode / 真实字节数 / stderr 摘要。
+
+   ⚠️ 抓不到正文时**必须**留下「为什么」。0.2.03 现场这里只打一行
+   `Failed to fetch resources`，exitcode 与 stderr 全丢，于是
+   「DNS 解析失败 / TLS 失败 / 服务器 4xx 被 curl -f 吞掉正文 /
+   环境里根本没有下载器（127）」四种情况在日志上长得一模一样，
+   只能让用户在设备上手动重敲 curl 反推。排查纪律 §8：诊断内建。
+
+   为什么连 stderr 一起打：curl 的失败原因（`curl: (6) Could not
+   resolve host` 等）只出现在 stderr 里；而成功但正文为空时，
+   stderr 里是 -D 写过去的响应头，同样能说明服务器回了什么。 */
+function describe_fetch_failure(response) {
+	if (!response)
+		return 'no response object';
+
+	let err = replace(trim(sprintf('%s', response.headers || '')), '\n', ' | ');
+
+	if (length(err) > 300)
+		err = substr(err, 0, 300) + '...';
+
+	return sprintf('exit=%d, bytes=%d, stderr=%s',
+		response.exitcode, response.size, length(err) ? err : '(empty)');
+}
+
+/* 抓一个订阅：**直连优先**，直连拿不到正文、且开关打开（proxy_url 非空）
+   时才用本地代理重试一次。两跳的实际走向都写进日志，失败时两跳的原因都要
+   看得见——否则「直连没通」和「代理也没通」在日志上无法区分。
+
+   返回的对象上打 `via_proxy`（true/false），调用方后面补 userinfo 头时
+   沿用同一条路径，不要出现「正文直连拉的、响应头却去问代理」的错位。 */
+function fetch_subscription(url, ua) {
+	const direct = wGETResponse(url, ua);
+
+	if (!isEmpty(direct?.body)) {
+		if (direct)
+			direct.via_proxy = false;
+
+		return direct;
+	}
+
+	if (!proxy_url)
+		return direct;
+
+	log(sprintf('Direct fetch failed for %s (%s), retrying via %s.',
+		url, describe_fetch_failure(direct), proxy_url));
+
+	const proxied = wGETResponse(url, ua, proxy_url);
+
+	if (proxied)
+		proxied.via_proxy = true;
+
+	/* 走代理是异常路径（默认直连），成功也要留一行：否则「这条到底是直连
+	   拉的还是代理拉的」在日志上看不出来，又得回设备重试才知道。 */
+	if (isEmpty(proxied?.body))
+		log(sprintf('Proxy fetch failed for %s (%s).',
+			url, describe_fetch_failure(proxied)));
+	else
+		log(sprintf('Fetched %s via %s.', url, proxy_url));
+
+	return proxied;
+}
+
 function main() {
 	cleanup_subscription_info();
 
@@ -1512,13 +1579,13 @@ function main() {
 	const scheduled = !isEmpty(readfile(RUN_DIR + '/schedule-run') || ''),
 	      trigger = cli_source ||
 	                (provider_update_id ? '面板单个机场「更新」按钮' :
-	                (scheduled ? '定时任务（cron，update_crond.sh）' : (via_proxy === '1' ? '手动（经代理）' : '手动（终端/SSH）')));
+	                (scheduled ? '定时任务（cron，update_crond.sh）' : '手动（终端/SSH）')));
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
 	/* 抓取方式必须在日志开头就能对上：这个开关在 0.2.04 之前是死的，
 	   日志里骂「到底走没走代理」根本无从判断。 */
 	log(sprintf('Fetch mode: %s.', proxy_url
-		? sprintf('proxy %s, fallback to direct', proxy_url)
+		? sprintf('direct, fallback to proxy %s', proxy_url)
 		: 'direct'));
 
 	/* 全程**不停服务**（用户 0.2.2 定稿）：下载、解析、写 uci 全部成功才在
@@ -1536,45 +1603,18 @@ function main() {
 		   数 uci 里剩几个节点反推——0.2.03 的 vless 事故就是这么绕远的。 */
 		const type_tally = {};
 
-		let response = wGETResponse(url, user_agent, proxy_url);
+		let response = fetch_subscription(url, user_agent);
 		let res = response?.body;
 
-		/* 代理这一跳失败时**不能**让整次更新就此结束：退回直连再试一次。
-		   「有 4 个机场要海外」是常态，但总有 1 个国内能拉；而 sing-box
-		   没起、5330 没人监听时代理必然失败（回环立刻回 exit=7，不会拖
-		   时间），这时直连才是唯一有希望的路径。两次都失败才记 Failed，
-		   并且代理与直连的原因都要能看见。 */
-		if (proxy_url && isEmpty(res)) {
-			log(sprintf('Proxy fetch failed for %s, retrying directly.', url));
-
-			response = wGETResponse(url, user_agent);
-			res = response?.body;
-		}
-
 		if (isEmpty(res)) {
-			/* ⚠️ 抓不到正文时**必须**留下「为什么」。0.2.03 现场这里只打一行
-			   `Failed to fetch resources`，exitcode 与 stderr 全丢，于是
-			   「DNS 解析失败 / TLS 失败 / 服务器 4xx 被 curl -f 吞掉正文 /
-			   环境里根本没有下载器（127）」四种情况在日志上长得一模一样，
-			   只能让用户在设备上手动重敲 curl 反推。排查纪律 §8：诊断内建。
+			/* 两跳各自的失败原因已经在 fetch_subscription() 里逐跳记过，这里
+			   只收口成一行总失败。**不要**在这里重打 exit/stderr：那会让人
+			   以为是第三次尝试，而实际上是同一次的两跳。
+			   开关关闭时保持旧版格式 `(<exit/bytes/stderr>)`，不多出前缀。 */
+			const why = describe_fetch_failure(response);
 
-			   为什么连 stderr 一起打：curl 的失败原因（`curl: (6) Could not
-			   resolve host` 等）只出现在 stderr 里；而成功但正文为空时，
-			   stderr 里是 -D 写过去的响应头，同样能说明服务器回了什么。 */
-			let why = 'no response object';
-
-			if (response) {
-				let err = replace(trim(sprintf('%s', response.headers || '')), '\n', ' | ');
-
-				if (length(err) > 300)
-					err = substr(err, 0, 300) + '...';
-
-				why = sprintf('exit=%d, bytes=%d, stderr=%s',
-					response.exitcode, response.size, length(err) ? err : '(empty)');
-			}
-
-			log(sprintf('Failed to fetch resources from %s%s (%s).', url,
-				proxy_url ? sprintf(' via %s', proxy_url) : '', why));
+			log(sprintf('Failed to fetch resources from %s (%s).', url,
+				proxy_url ? sprintf('direct and %s both failed: %s', proxy_url, why) : why));
 			continue;
 		}
 
@@ -1684,8 +1724,12 @@ function main() {
 			const previous_info = previous_subscription_info(info_option);
 			let subscription_info = parse_subscription_userinfo(response.headers);
 
+			/* 补 userinfo 头这一跳要跟正文走同一条路径（response.via_proxy
+			   由 fetch_subscription 标注）：正文是直连拉的、头却去问代理，
+			   拿回来的可能根本是另一台出口看到的东西。 */
 			if (!subscription_info || !('total' in subscription_info) || !('expire' in subscription_info)) {
-				const fallback_headers = wGETHeaders(url, 'clash.meta', proxy_url);
+				const fallback_headers = wGETHeaders(url, 'clash.meta',
+					response.via_proxy === true ? proxy_url : null);
 				const fallback_info = parse_subscription_userinfo(fallback_headers);
 				if (fallback_info) {
 					if (subscription_info)

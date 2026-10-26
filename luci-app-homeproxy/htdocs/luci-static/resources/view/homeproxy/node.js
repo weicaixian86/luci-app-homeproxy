@@ -2016,7 +2016,7 @@ return view.extend({
 		};
 
 		o = s.taboption('subscription', form.Flag, 'update_via_proxy', _('Update via proxy'),
-			_('Update subscriptions via proxy.'));
+			_('Retry the download through the local proxy when a direct fetch fails.'));
 		o.rmempty = false;
 
 		o = s.taboption('subscription', form.ListValue, 'latency_test_mode', _('Latency test mode'),

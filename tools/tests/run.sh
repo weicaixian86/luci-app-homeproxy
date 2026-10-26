@@ -1833,33 +1833,40 @@ else
 	bad "a failed fetch is still a bare 'Failed to fetch': DNS/TLS/4xx/127 are indistinguishable"
 fi
 
-# 「通过代理更新订阅」必须真的生效。0.2.04 之前它是**死开关**：界面上有这一项，
-# 但脚本只把 via_proxy 拼进日志文案（`手动（经代理）`），全项目没有一处为它设
-# http_proxy 或传 -x，勾上和不勾完全一样。而用户现场正是「5 个订阅里 4 个要
-# 海外网络」，这条需求一直没被满足。
+# 「通过代理更新订阅」必须真的生效，且顺序是**直连优先、失败才走代理**。
+# 0.2.04 之前它是**死开关**：界面上有这一项，但脚本只把 via_proxy 拼进日志
+# 文案（`手动（经代理）`），全项目没有一处为它设 http_proxy 或传 -x，勾上和
+# 不勾完全一样。而用户现场正是「5 个订阅里 4 个要海外网络」，这条需求一直没
+# 被满足。0.2.04 修成「先代理、失败回退直连」，0.2.05 起把顺序反过来：
+# 节点全坏时「先代理」等于每条订阅都先撞一次坏节点，而节点坏掉恰恰是最需要
+# 重新拉订阅的时候（homeproxy_output_redir 会劫持路由器自身出站）——死锁。
 # 要求：① via_proxy=1 时走本地 mixed 入口（infra.mixed_port，现场 5330；
 #          mixed-in 在 generate_client.uc 里是无条件创建的，无认证）；
-#       ② 代理这一跳失败要回退直连 —— sing-box 没起时 5330 无人监听，
-#          但国内那个机场本来直连就能拉，不能因为勾了代理就全盘失败；
-#       ③ proxy 为空时 httpFetch 的调用参数必须与旧版逐字相同（默认路径
+#       ② **直连这一跳先发**，它的调用不带 proxy 参数；拿不到正文才用代理
+#           重试（海外机场直连不通就是走这条路）；
+#       ③ 两跳都失败时，失败原因要能分别看见，不能只剩一行 `Failed to fetch`；
+#       ④ 开关关闭（proxy_url 为 null）时抓取路径与旧版逐字相同（默认路径
 #          不许有任何变化，否则连 vless 的验证都会被污染）。
 HP_LIB="$PKG/root/etc/homeproxy/scripts/homeproxy.uc"
+DIRECT_LINE=$(grep -n 'const direct = wGETResponse(url, ua);' "$SUB_UC" | cut -d: -f1)
+PROXY_LINE=$(grep -n 'const proxied = wGETResponse(url, ua, proxy_url);' "$SUB_UC" | cut -d: -f1)
 if grep -q 'function httpFetch(url, ua, timeout, proxy)' "$HP_LIB" \
    && grep -q -e "--proxy', proxy" "$HP_LIB" \
    && grep -q "proxy_url = (via_proxy === '1')" "$SUB_UC" \
    && grep -q "uci.get(uciconfig, 'infra', 'mixed_port')" "$SUB_UC" \
-   && grep -q 'wGETResponse(url, user_agent, proxy_url)' "$SUB_UC"; then
-	ok "update_via_proxy is wired to the local mixed inbound"
+   && [ -n "$DIRECT_LINE" ] && [ -n "$PROXY_LINE" ] && [ "$DIRECT_LINE" -lt "$PROXY_LINE" ]; then
+	ok "update_via_proxy is wired to the local mixed inbound, direct hop first"
 else
-	bad "update_via_proxy is still a dead switch: ticking it does not route through the proxy"
+	bad "update_via_proxy is still a dead switch, or the proxy hop goes before the direct one"
 fi
 
-if grep -q 'Proxy fetch failed for %s, retrying directly.' "$SUB_UC" \
-   && grep -q 'wGETHeaders(url, .clash.meta., proxy_url)' "$SUB_UC" \
+if grep -q 'Direct fetch failed for %s (%s), retrying via %s.' "$SUB_UC" \
+   && grep -q 'Proxy fetch failed for %s (%s).' "$SUB_UC" \
+   && grep -q 'response.via_proxy === true ? proxy_url : null' "$SUB_UC" \
    && grep -q 'Fetch mode: %s.' "$SUB_UC"; then
-	ok "a failed proxy fetch falls back to direct, and the route is logged"
+	ok "a failed direct fetch falls back to the proxy, and both hops are logged"
 else
-	bad "no direct fallback when the proxy hop fails: updating with sing-box down would fail outright"
+	bad "no proxy fallback when the direct hop fails: the 4 overseas airports can never be updated"
 fi
 
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
