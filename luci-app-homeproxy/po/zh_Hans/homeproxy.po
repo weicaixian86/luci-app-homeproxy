@@ -2725,6 +2725,10 @@ msgstr "恢复默认"
 msgid "Restore panel failed."
 msgstr "恢复面板失败。"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
+msgid "Retry the download through the local proxy when a direct fetch fails."
+msgstr "直连拉取失败时，改用本地代理重试。"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:889
 msgid "Reuse address"
 msgstr "复用地址"
@@ -3659,10 +3663,6 @@ msgstr "立即更新"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:201
 msgid "Update panel failed."
 msgstr "更新面板失败"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2019
-msgid "Retry the download through the local proxy when a direct fetch fails."
-msgstr "直连拉取失败时，改用本地代理重试。"
 
 #: htdocs/luci-static/resources/homeproxy.js:75
 msgid "Update time (daily)"
