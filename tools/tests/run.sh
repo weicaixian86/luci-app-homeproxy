@@ -2040,6 +2040,22 @@ else
 	bad "the backend has no subscription_update method: the button's rpc.declare would 404"
 fi
 
+# 改订阅地址必须迁移机场哈希。URL 是分组身份的来源（md5(URL) 写进节点段的
+# grouphash 和每个分组的 subscription_groups），只换地址不换这两处，节点会
+# 照常导入、照常出现在「订阅 (X)」页签里，却永远不进任何 outbound 组 ——
+# 现场表现是 Clash 面板上那个机场显示 0/0「HTTP」，有流量数据、有节点列表，
+# 但一个节点都用不上，且没有任何报错。0.2.7 现场：给 NB 加 ?flag=singbox
+# 后正是这个状态（内核的 provider 里 18 个 tag 全部 resolved=0）。
+if grep -q 'function migrateSubscriptionHash' "$NODE_JS" \
+   && grep -q 'migrateSubscriptionHash(section_id, value)' "$NODE_JS" \
+   && grep -q "uci.sections('homeproxy', 'node'" "$NODE_JS" \
+   && grep -q "uci.sections('homeproxy', 'routing_node'" "$NODE_JS" \
+   && grep -q 'hp.calcStringMD5(cleanUrl(oldUrl))' "$NODE_JS"; then
+	ok "editing a subscription URL rewrites the old group hash on nodes and groups"
+else
+	bad "a changed subscription URL leaves nodes orphaned: the dashboard shows the airport as 0/0 with no error"
+fi
+
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
 # 0.2.2 现场：vless 节点「拉下来了却用不了」（UDP Blocked）。查下来是解析层
 # 的 vless URI 分支**根本没读 packetEncoding**，一律被全局默认值覆盖成 xudp；

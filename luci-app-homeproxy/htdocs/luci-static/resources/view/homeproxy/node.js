@@ -112,6 +112,74 @@ function getSubscriptionInfo(config) {
 	return info;
 }
 
+/* 改一条订阅地址 = 换一个机场哈希（节点段的 grouphash、分组的
+   subscription_groups 里记的都是 md5(URL)）。以前改完地址只换 URL 本身，
+   另外两处仍记着旧哈希，于是节点照常导入、照常出现在「订阅 (X)」页签里，
+   却永远不进任何 outbound 组：Clash 面板上那个机场显示 0/0「HTTP」，
+   点更新有流量数据、点节点又能看见节点，一句报错都没有。
+   这里把旧哈希在新旧两侧一起改写：节点段换 grouphash，分组换勾选值。
+   配对按「订阅名称」做（插入、删除、上下调序都不会错配），名称对不上时
+   才退回按同一行的旧地址比对。 */
+function migrateSubscriptionHash(section_id, value) {
+	const cleanUrl = (url) => String(url || '').replace(/#.*$/, ''),
+	      oldUrls = normalizeList(uci.get('homeproxy', section_id, 'subscription_url')),
+	      oldNames = normalizeList(uci.get('homeproxy', section_id, 'subscription_name')),
+	      newUrls = normalizeList(value?.urls),
+	      newNames = normalizeList(value?.names),
+	      remap = {};
+
+	for (let i = 0; i < newUrls.length; i++) {
+		const name = String(newNames[i] || '').trim();
+		let oldUrl = null;
+
+		if (name) {
+			for (let j = 0; j < oldUrls.length; j++) {
+				if (oldUrls[j] && String(oldNames[j] || '').trim() === name) {
+					oldUrl = oldUrls[j];
+					break;
+				}
+			}
+		}
+
+		if (!oldUrl)
+			oldUrl = oldUrls[i];
+
+		if (!oldUrl || !newUrls[i])
+			continue;
+
+		const from = hp.calcStringMD5(cleanUrl(oldUrl)),
+		      to = hp.calcStringMD5(cleanUrl(newUrls[i]));
+
+		if (from !== to)
+			remap[from] = to;
+	}
+
+	if (!Object.keys(remap).length)
+		return;
+
+	uci.sections('homeproxy', 'node', (res) => {
+		const next = remap[res.grouphash];
+
+		if (next)
+			uci.set('homeproxy', res['.name'], 'grouphash', next);
+	});
+
+	uci.sections('homeproxy', 'routing_node', (res) => {
+		const groups = normalizeList(res.subscription_groups);
+		let changed = false;
+
+		for (let i = 0; i < groups.length; i++) {
+			if (remap[groups[i]]) {
+				groups[i] = remap[groups[i]];
+				changed = true;
+			}
+		}
+
+		if (changed)
+			uci.set('homeproxy', res['.name'], 'subscription_groups', groups.filter((h, i) => groups.indexOf(h) === i));
+	});
+}
+
 const SubscriptionList = form.Value.extend({
 	__name__: 'CBI.HomeProxySubscriptionList',
 
@@ -277,6 +345,8 @@ const SubscriptionList = form.Value.extend({
 	},
 
 	write(section_id, value) {
+		migrateSubscriptionHash(section_id, value);
+
 		if (value?.urls?.length) {
 			uci.set('homeproxy', section_id, 'subscription_url', value.urls);
 			uci.set('homeproxy', section_id, 'subscription_name', value.names);
