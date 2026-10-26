@@ -1966,8 +1966,8 @@ fi
 #       ④ 开关关闭（proxy_url 为 null）时抓取路径与旧版逐字相同（默认路径
 #          不许有任何变化，否则连 vless 的验证都会被污染）。
 HP_LIB="$PKG/root/etc/homeproxy/scripts/homeproxy.uc"
-DIRECT_LINE=$(grep -n 'const direct = wGETResponse(url, ua);' "$SUB_UC" | cut -d: -f1)
-PROXY_LINE=$(grep -n 'const proxied = wGETResponse(url, ua, proxy_url);' "$SUB_UC" | cut -d: -f1)
+DIRECT_LINE=$(grep -n 'const direct = fetch_with_dns_retry(url, ua);' "$SUB_UC" | cut -d: -f1)
+PROXY_LINE=$(grep -n 'const proxied = fetch_with_dns_retry(url, ua, proxy_url);' "$SUB_UC" | cut -d: -f1)
 if grep -q 'function httpFetch(url, ua, timeout, proxy)' "$HP_LIB" \
    && grep -q -e "--proxy', proxy" "$HP_LIB" \
    && grep -q "proxy_url = (via_proxy === '1')" "$SUB_UC" \
@@ -1986,6 +1986,22 @@ if grep -q 'Direct fetch failed for %s (%s).' "$SUB_UC" \
 	ok "a failed direct fetch falls back to the proxy, and both hops are logged"
 else
 	bad "no proxy fallback when the direct hop fails: the 4 overseas airports can never be updated"
+fi
+
+# exit=6（域名解析失败）要重试一次。现场：点完「保存并应用」立刻更新，正好
+# 撞上 stop→start 重启 dnsmasq、缓存清空，两条订阅报 Could not resolve host，
+# 两分钟后的下一轮同样的域名全部正常 —— 说明失败是那一两秒的时序，不是订阅。
+# 要求：① 只在 exitcode === 6 且正文为空时才重试（其它失败照旧走代理回退）；
+#       ② 等 1 秒用 busybox 的 sleep（不是 ucode 的 sleep()，单位没有明确写死）；
+#       ③ 重试成功/失败都要留一行，否则日志里会看到「失败→成功」但没有重试痕迹。
+if grep -q 'function fetch_with_dns_retry' "$SUB_UC" \
+   && grep -q 'response?.exitcode !== 6' "$SUB_UC" \
+   && grep -q "system('sleep 1')" "$SUB_UC" \
+   && grep -q 'Retry after DNS failure succeeded for %s.' "$SUB_UC" \
+   && grep -q 'DNS lookup failed for %s (%s), retrying once in 1s.' "$SUB_UC"; then
+	ok "a DNS hiccup (curl exit 6) is retried once instead of failing the airport"
+else
+	bad "a transient DNS failure still fails the whole airport, and the log gives no hint that it was transient"
 fi
 
 # 端口没在监听时，回退代理这一跳必然 ECONNREFUSED —— 发出去只是把「内核没开」

@@ -1650,8 +1650,41 @@ function local_proxy_listening(proxy) {
 
    返回的对象上打 `via_proxy`（true/false），调用方后面补 userinfo 头时
    沿用同一条路径，不要出现「正文直连拉的、响应头却去问代理」的错位。 */
+/* 抓一次，遇到 exit=6（域名没解析出来）再试一次。
+ *
+ * 现场日志（0.2.6）：点完「保存并应用」立刻点更新，正好撞上 stop→start 把
+ * dnsmasq 重启、缓存清空、上游又抖一下，两条订阅报 `curl: (6) Could not
+ * resolve host`，而两分钟后的下一轮里同样的域名一个不差全通。也就是说失败
+ * 原因跟订阅本身无关，纯粹是那一两秒的时序。
+ *
+ * 代价可控：DNS 失败时 curl 是**立刻**返回的（不等 --connect-timeout，更不
+ * 等 --max-time），所以真解析不了时也就多花 1 秒。用 `system()` 调 busybox
+ * 的 sleep，不用 ucode 的 `sleep()`——后者的单位在文档里没有明确写死是秒还是
+ * 毫秒，靠猜等于给主链路埋一个「等错量级」的坑。 */
+function fetch_with_dns_retry(url, ua, proxy) {
+	let response = wGETResponse(url, ua, proxy);
+
+	if (response?.exitcode !== 6 || !isEmpty(response?.body))
+		return response;
+
+	log(sprintf('DNS lookup failed for %s (%s), retrying once in 1s.',
+		url, describe_fetch_failure(response)));
+
+	system('sleep 1');
+
+	const retried = wGETResponse(url, ua, proxy);
+
+	if (isEmpty(retried?.body))
+		log(sprintf('Retry after DNS failure failed for %s (%s).',
+			url, describe_fetch_failure(retried)));
+	else
+		log(sprintf('Retry after DNS failure succeeded for %s.', url));
+
+	return retried;
+}
+
 function fetch_subscription(url, ua) {
-	const direct = wGETResponse(url, ua);
+	const direct = fetch_with_dns_retry(url, ua);
 
 	if (!isEmpty(direct?.body)) {
 		if (direct)
@@ -1677,7 +1710,7 @@ function fetch_subscription(url, ua) {
 
 	log(sprintf('Retrying %s via %s.', url, proxy_url));
 
-	const proxied = wGETResponse(url, ua, proxy_url);
+	const proxied = fetch_with_dns_retry(url, ua, proxy_url);
 
 	if (proxied)
 		proxied.via_proxy = true;
