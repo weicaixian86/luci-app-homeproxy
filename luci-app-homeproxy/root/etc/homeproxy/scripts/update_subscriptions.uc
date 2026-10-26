@@ -84,7 +84,7 @@ if (provider_update_id)
 	subscription_urls = filter(all_subscription_urls, (url) =>
 		md5(replace(url, /#.*$/, '')) === provider_update_id);
 
-const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainalnd_china';
+const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 let main_node, main_udp_node;
 if (routing_mode !== 'custom') {
 	main_node = uci.get(uciconfig, ucimain, 'main_node') || 'nil';
@@ -1772,6 +1772,15 @@ function main() {
 		return false;
 	}
 
+	/* 更新之前这台机器上有几个节点段。用来区分「全新安装第一次拉订阅」
+	 * 和「老用户主动把主节点设成禁用」——出厂模板把 main_node 显式写成
+	 * 'nil'，跟面板上点「禁用」是同一个值，光看选项本身分不出来。 */
+	let nodes_before = 0;
+	uci.foreach(uciconfig, ucinode, (cfg) => {
+		nodes_before++;
+		return null;
+	});
+
 	let added = 0, removed = 0;
 	uci.foreach(uciconfig, ucinode, (cfg) => {
 		/* Nodes created by the user */
@@ -1828,10 +1837,18 @@ function main() {
 	 * 归一成 'nil'，而 isEmpty('nil') 为真 —— 下面那个 if 会整块跳过，
 	 * 自动选节点的逻辑永远跑不到（0.2.5 实测：日志里既没有
 	 * 'Main node is gone' 也没有 'No available node'，直接 Restarting）。
-	 * 所以这里看 uci 里的原始值，只处理「缺失/空」，显式 'nil'（用户在
-	 * 面板上主动禁用）保持不动。 */
+	 * 所以这里看 uci 里的原始值。
+	 *
+	 * 出厂模板把 main_node 写成显式的 'nil'（client.js 里 ListValue 的
+	 * default 也是 'nil'，用户一保存表单就会被写进去），所以「选项缺失」
+	 * 只覆盖了「从备份恢复的旧配置」这一种情况；全新安装走的是另一条：
+	 * 更新前一个节点都没有时，这个 'nil' 只可能是模板/表单默认值 ——
+	 * 没节点可选，用户不可能真的选过「禁用」。两种情况都要补。 */
 	const declared_main_node = uci.get(uciconfig, ucimain, 'main_node');
-	if (routing_mode !== 'custom' && (declared_main_node === null || declared_main_node === '')) {
+	const main_node_missing = (declared_main_node === null || declared_main_node === '');
+	const main_node_untouched = (declared_main_node === 'nil' && nodes_before === 0);
+
+	if (routing_mode !== 'custom' && (main_node_missing || main_node_untouched)) {
 		let auto_first = null;
 
 		uci.foreach(uciconfig, ucinode, (cfg) => {
@@ -1847,12 +1864,25 @@ function main() {
 			uci.commit(uciconfig);
 			main_node = auto_first;
 
-			log(sprintf('No main node was set, selecting %s.', auto_first));
+			log(main_node_missing
+				? sprintf('No main node was set, selecting %s.', auto_first)
+				: sprintf('First subscription imported, selecting %s as the main node.', auto_first));
 		}
 	}
 
 	if (!isEmpty(main_node)) {
-		const first_server = uci.get_first(uciconfig, ucinode);
+		/* 取第一个 node 段的段名。原先是 `uci.get_first(uciconfig, ucinode)`
+		 * —— 但 ucode 的 get_first 签名是 `get_first(config, section,
+		 * option)`，语义是「取第一个匹配的 section 里某个 option 的
+		 * 值」，只传两个参数取不到段名。这段代码从前一直被上面那个
+		 * isEmpty('nil') 挡着没执行过，所以从来没暴露；现在自动选节点会
+		 * 走到这里，换成 foreach 取第一条。 */
+		let first_server = null;
+		uci.foreach(uciconfig, ucinode, (cfg) => {
+			if (first_server === null)
+				first_server = cfg['.name'];
+			return null;
+		});
 		if (first_server) {
 			let main_urltest_nodes;
 			if (main_node === 'urltest') {
