@@ -144,18 +144,40 @@ function httpFetcher() {
    就是本次调用被重定向的那个 stderr），与 wget -S 的输出通道完全一致，
    上层解析逻辑不必区分下载器。用 /proc 而不是 /dev/stderr：OpenWrt 的
    /dev 由 devtmpfs 生成，不保证有 stderr 这个链接，而 /proc 一定在。 */
-function httpFetch(url, ua, timeout) {
+function httpFetch(url, ua, timeout, proxy) {
 	const fetcher = httpFetcher();
 
 	if (!fetcher)
 		return null;
 
-	if (fetcher.name === 'curl')
-		return executeCommand(fetcher.path, '-fsSL',
-			'--user-agent', ua,
-			'--connect-timeout', '10',
-			'--max-time', sprintf('%d', timeout),
-			'-D', '/proc/self/fd/2', url);
+	/* proxy 非空（形如 http://127.0.0.1:5330）时让请求走本地代理入口。
+	   订阅更新需要外网时用得上：走 mixed 入口后不再依赖 nft 对路由器
+	   自身出站的劫持，也不会被 dnsmasq / 内核 DNS 的当前状态拖住——
+	   curl 只把 CONNECT host:443 交给 sing-box，域名由 sing-box 自己解析。
+	   ⚠️ proxy 为空时必须走下面那段**原样的**调用，不要为了「代码统一」
+	   把参数拼进数组：订阅更新是主链路，默认路径一个字节都不该变。
+	   curl 用 --proxy；wget 只认环境变量，所以套一层 /bin/sh -c 导出。 */
+	if (fetcher.name === 'curl') {
+		if (proxy)
+			return executeCommand(fetcher.path, '-fsSL',
+				'--user-agent', ua,
+				'--proxy', proxy,
+				'--connect-timeout', '10',
+				'--max-time', sprintf('%d', timeout),
+				'-D', '/proc/self/fd/2', url);
+
+			return executeCommand(fetcher.path, '-fsSL',
+				'--user-agent', ua,
+				'--connect-timeout', '10',
+				'--max-time', sprintf('%d', timeout),
+				'-D', '/proc/self/fd/2', url);
+	}
+
+	if (proxy)
+		return executeCommand('/bin/sh', '-c', sprintf(
+			'export http_proxy=%s; export https_proxy=%s; exec %s -O- -S --user-agent %s --timeout=%d %s',
+			shellQuote(proxy), shellQuote(proxy), shellQuote(fetcher.path),
+			shellQuote(ua), timeout, shellQuote(url)));
 
 	return executeCommand(fetcher.path, '-O-', '-S',
 		'--user-agent', ua, sprintf('--timeout=%d', timeout), url);
@@ -175,14 +197,14 @@ export function getTime(epoch) {
 
 };
 
-export function wGETResponse(url, ua) {
+export function wGETResponse(url, ua, proxy) {
 	if (!url || type(url) !== 'string')
 		return null;
 
 	if (!ua)
 		ua = 'Wget/1.21 (HomeProxy, like v2rayN)';
 
-	const output = httpFetch(url, ua, 300);
+	const output = httpFetch(url, ua, 300, proxy);
 
 	/* 两个下载器都不存在：返回 exitcode 127 而不是 null，让上层日志能看出
 	   是环境缺依赖，而不是订阅服务器返回了空内容。 */
@@ -200,11 +222,11 @@ export function wGETResponse(url, ua) {
 	};
 };
 
-export function wGET(url, ua) {
-	return wGETResponse(url, ua)?.body;
+export function wGET(url, ua, proxy) {
+	return wGETResponse(url, ua, proxy)?.body;
 };
 
-export function wGETHeaders(url, ua) {
+export function wGETHeaders(url, ua, proxy) {
 	if (!url || type(url) !== 'string')
 		return null;
 
@@ -217,19 +239,32 @@ export function wGETHeaders(url, ua) {
 		return '';
 
 	/* curl 把响应头写到 stdout（-D -），wget 写到 stderr（-S）；
-	   两者都只回传「头」，正文丢进 /dev/null。 */
+	   两者都只回传「头」，正文丢进 /dev/null。
+	   proxy / sh -c 的写法与 httpFetch 保持一致，见那里的注释。 */
 	if (fetcher.name === 'curl') {
-		const output = executeCommand(fetcher.path, '-fsSL',
-			'--user-agent', ua,
-			'--connect-timeout', '10',
-			'--max-time', '20',
-			'-o', '/dev/null', '-D', '-', url);
+		const output = proxy
+			? executeCommand(fetcher.path, '-fsSL',
+				'--user-agent', ua,
+				'--proxy', proxy,
+				'--connect-timeout', '10',
+				'--max-time', '20',
+				'-o', '/dev/null', '-D', '-', url)
+			: executeCommand(fetcher.path, '-fsSL',
+				'--user-agent', ua,
+				'--connect-timeout', '10',
+				'--max-time', '20',
+				'-o', '/dev/null', '-D', '-', url);
 
 		return output.stdout || '';
 	}
 
-	const output = executeCommand(fetcher.path, '-O', '/dev/null', '-S',
-		'--user-agent', ua, '--timeout=10', url);
+	const output = proxy
+		? executeCommand('/bin/sh', '-c', sprintf(
+			'export http_proxy=%s; export https_proxy=%s; exec %s -O /dev/null -S --user-agent %s --timeout=10 %s',
+			shellQuote(proxy), shellQuote(proxy), shellQuote(fetcher.path),
+			shellQuote(ua), shellQuote(url)))
+		: executeCommand(fetcher.path, '-O', '/dev/null', '-S',
+			'--user-agent', ua, '--timeout=10', url);
 
 	return output.stderr || '';
 };

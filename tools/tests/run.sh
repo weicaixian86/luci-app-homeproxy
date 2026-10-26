@@ -1833,6 +1833,35 @@ else
 	bad "a failed fetch is still a bare 'Failed to fetch': DNS/TLS/4xx/127 are indistinguishable"
 fi
 
+# 「通过代理更新订阅」必须真的生效。0.2.04 之前它是**死开关**：界面上有这一项，
+# 但脚本只把 via_proxy 拼进日志文案（`手动（经代理）`），全项目没有一处为它设
+# http_proxy 或传 -x，勾上和不勾完全一样。而用户现场正是「5 个订阅里 4 个要
+# 海外网络」，这条需求一直没被满足。
+# 要求：① via_proxy=1 时走本地 mixed 入口（infra.mixed_port，现场 5330；
+#          mixed-in 在 generate_client.uc 里是无条件创建的，无认证）；
+#       ② 代理这一跳失败要回退直连 —— sing-box 没起时 5330 无人监听，
+#          但国内那个机场本来直连就能拉，不能因为勾了代理就全盘失败；
+#       ③ proxy 为空时 httpFetch 的调用参数必须与旧版逐字相同（默认路径
+#          不许有任何变化，否则连 vless 的验证都会被污染）。
+HP_LIB="$PKG/root/etc/homeproxy/scripts/homeproxy.uc"
+if grep -q 'function httpFetch(url, ua, timeout, proxy)' "$HP_LIB" \
+   && grep -q -e "--proxy', proxy" "$HP_LIB" \
+   && grep -q "proxy_url = (via_proxy === '1')" "$SUB_UC" \
+   && grep -q "uci.get(uciconfig, 'infra', 'mixed_port')" "$SUB_UC" \
+   && grep -q 'wGETResponse(url, user_agent, proxy_url)' "$SUB_UC"; then
+	ok "update_via_proxy is wired to the local mixed inbound"
+else
+	bad "update_via_proxy is still a dead switch: ticking it does not route through the proxy"
+fi
+
+if grep -q 'Proxy fetch failed for %s, retrying directly.' "$SUB_UC" \
+   && grep -q 'wGETHeaders(url, .clash.meta., proxy_url)' "$SUB_UC" \
+   && grep -q 'Fetch mode: %s.' "$SUB_UC"; then
+	ok "a failed proxy fetch falls back to direct, and the route is logged"
+else
+	bad "no direct fallback when the proxy hop fails: updating with sing-box down would fail outright"
+fi
+
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
 # 0.2.2 现场：vless 节点「拉下来了却用不了」（UDP Blocked）。查下来是解析层
 # 的 vless URI 分支**根本没读 packetEncoding**，一律被全局默认值覆盖成 xudp；

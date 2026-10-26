@@ -38,6 +38,23 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
 	  user_agent = uci.get(uciconfig, ucisubscription, 'user_agent'),
 	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
 
+/* 「通过代理更新订阅」在 0.2.04 之前是**死开关**：界面上有这一项，但脚本里
+ * 只把它拼进日志文案（`手动（经代理）`），全项目从来没有为它设过
+ * `http_proxy` 或传 `-x`。于是勾上它和不勾完全一样——而用户现场正是
+ * 「5 个订阅里 4 个要海外网络才能拉」，这条需求一直没有被满足。
+ *
+ * 现在真的走本地 mixed 入口：`infra.mixed_port`（现场 5330），sing-box 的
+ * `mixed-in` inbound 是**无条件创建**的（generate_client.uc:1112），无认证。
+ * 走它的额外好处是绕开两件事：
+ *   1. nft 的 `homeproxy_output_redir` 会劫持路由器自身出站（firewall_post.ut:372），
+ *      内核在跑但出口不可用时抓订阅会被自己的代理拖死（现场每条约 5 秒）；
+ *   2. 域名解析交给 sing-box（只发 CONNECT host:443），不再受 dnsmasq
+ *      → 内核 5333 这条链路的当前状态影响。
+ * 默认 `update_via_proxy=0` 时 proxy_url 为 null，抓取路径与旧版逐字相同。 */
+const proxy_url = (via_proxy === '1')
+	? sprintf('http://127.0.0.1:%s', uci.get(uciconfig, 'infra', 'mixed_port') || '5330')
+	: null;
+
 const provider_update_id = trim(readfile(RUN_DIR + '/provider-update-id') || '');
 
 /* 触发来源：命令行 `--source` 优先（调用方最清楚自己是谁），其次才沿用标记
@@ -1498,6 +1515,12 @@ function main() {
 	                (scheduled ? '定时任务（cron，update_crond.sh）' : (via_proxy === '1' ? '手动（经代理）' : '手动（终端/SSH）')));
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
+	/* 抓取方式必须在日志开头就能对上：这个开关在 0.2.04 之前是死的，
+	   日志里骂「到底走没走代理」根本无从判断。 */
+	log(sprintf('Fetch mode: %s.', proxy_url
+		? sprintf('proxy %s, fallback to direct', proxy_url)
+		: 'direct'));
+
 	/* 全程**不停服务**（用户 0.2.2 定稿）：下载、解析、写 uci 全部成功才在
 	 * main() 末尾 stop+start 一次让新节点生效；任何一步失败都在不动服务的
 	 * 前提下退出。旧版在下载前就 `init_action('homeproxy','stop')`（所谓
@@ -1513,8 +1536,21 @@ function main() {
 		   数 uci 里剩几个节点反推——0.2.03 的 vless 事故就是这么绕远的。 */
 		const type_tally = {};
 
-		const response = wGETResponse(url, user_agent),
-		      res = response?.body;
+		let response = wGETResponse(url, user_agent, proxy_url);
+		let res = response?.body;
+
+		/* 代理这一跳失败时**不能**让整次更新就此结束：退回直连再试一次。
+		   「有 4 个机场要海外」是常态，但总有 1 个国内能拉；而 sing-box
+		   没起、5330 没人监听时代理必然失败（回环立刻回 exit=7，不会拖
+		   时间），这时直连才是唯一有希望的路径。两次都失败才记 Failed，
+		   并且代理与直连的原因都要能看见。 */
+		if (proxy_url && isEmpty(res)) {
+			log(sprintf('Proxy fetch failed for %s, retrying directly.', url));
+
+			response = wGETResponse(url, user_agent);
+			res = response?.body;
+		}
+
 		if (isEmpty(res)) {
 			/* ⚠️ 抓不到正文时**必须**留下「为什么」。0.2.03 现场这里只打一行
 			   `Failed to fetch resources`，exitcode 与 stderr 全丢，于是
@@ -1537,7 +1573,8 @@ function main() {
 					response.exitcode, response.size, length(err) ? err : '(empty)');
 			}
 
-			log(sprintf('Failed to fetch resources from %s (%s).', url, why));
+			log(sprintf('Failed to fetch resources from %s%s (%s).', url,
+				proxy_url ? sprintf(' via %s', proxy_url) : '', why));
 			continue;
 		}
 
@@ -1648,7 +1685,7 @@ function main() {
 			let subscription_info = parse_subscription_userinfo(response.headers);
 
 			if (!subscription_info || !('total' in subscription_info) || !('expire' in subscription_info)) {
-				const fallback_headers = wGETHeaders(url, 'clash.meta');
+				const fallback_headers = wGETHeaders(url, 'clash.meta', proxy_url);
 				const fallback_info = parse_subscription_userinfo(fallback_headers);
 				if (fallback_info) {
 					if (subscription_info)
