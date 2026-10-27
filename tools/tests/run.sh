@@ -1944,16 +1944,44 @@ else
 fi
 
 if grep -q 'time\.After(providerHealthCheckBudget)' "$PATCH" \
-   && grep -q 'providerHealthCheckTimeout     = 3 \* time\.Second' "$PATCH"; then
-	ok "provider health check is bounded (3s per node, 10s per batch)"
+   && grep -q 'providerHealthCheckTimeout     = 6 \* time\.Second' "$PATCH" \
+   && grep -q 'providerHealthCheckBudget      = 12 \* time\.Second' "$PATCH"; then
+	ok "provider health check is bounded (6s per node, 12s per batch)"
 else
 	bad "provider health check has no batch budget: one dead node can hold the whole reply"
 fi
 
-if grep -q '10\*time\.Second' "$PATCH"; then
-	bad "provider health check still waits 10s per node"
+# 单节点 3 秒是 0.2.10 之前的取值，实测不够：hysteria2 的 QUIC + TLS 冷启动要
+# 4 秒以上（SNY 巴西-03 一次 4.26 s），被砍掉的节点在面板上就是「没有延迟」，
+# 用户看到的「整批 0 结果」有一半是它造成的。
+if grep -q 'providerHealthCheckTimeout     = 3 \* time\.Second' "$PATCH"; then
+	bad "provider health check still gives each node only 3s (slow hysteria2 nodes time out)"
 else
-	ok "provider health check no longer waits 10s per node"
+	ok "provider health check gives each node more than 3s"
+fi
+
+# 探测地址必须跟 client.js 的 urltest_url 默认值一致，并且尊重 Clash 原生的
+# ?url= 参数。补丁里曾硬编码 gstatic：用户把 urltest_url 改成 google 之后，
+# 按钮测速仍然走 gstatic，两边口径对不上，看起来就像改动没生效。
+if grep -q 'testURL := "https://www\.google\.com/generate_204"' "$PATCH" \
+   && grep -q 'r\.URL\.Query()\.Get("url")' "$PATCH"; then
+	ok "provider health check defaults to google's generate_204 and honours ?url="
+else
+	bad "provider health check ignores the configured probe URL"
+fi
+
+if grep -q 'www\.gstatic\.com/generate_204' "$PATCH"; then
+	bad "provider health check still probes gstatic while urltest_url defaults to google"
+else
+	ok "provider health check no longer hardcodes the gstatic probe"
+fi
+
+# 补丁是手写的 unified diff：往 + 区加了行却忘了改 hunk 头，git apply 会报
+# "corrupt patch"，本地看不出任何问题，等 CI 编译才炸。
+if "$PY" "$ROOT/tools/tests/patch_hunks.py" "$ROOT"/tools/sing-box-patches/*.patch >"$WORK/hunks.out" 2>&1; then
+	ok "patch hunk headers match their contents ($(tail -1 "$WORK/hunks.out"))"
+else
+	bad "$(grep -m1 FAIL "$WORK/hunks.out" || tail -1 "$WORK/hunks.out")"
 fi
 
 # 定时更新（cron → update_crond.sh → update_subscriptions.uc）必须在主日志里

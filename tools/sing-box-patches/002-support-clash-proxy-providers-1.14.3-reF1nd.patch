@@ -34,7 +34,7 @@ index e2c7713..e719e73 100644
  			r.Get("/healthcheck", getProxyDelay(server))
  		})
  	})
-@@ -31,56 +35,160 @@ func proxyProviderRouter(server *Server) http.Handler {
+@@ -31,56 +35,170 @@ func proxyProviderRouter(server *Server) http.Handler {
  
  func getProviders(server *Server) func(w http.ResponseWriter, r *http.Request) {
  	return func(w http.ResponseWriter, r *http.Request) {
@@ -152,11 +152,13 @@ index e2c7713..e719e73 100644
 +// 原来的实现是「按顺序一个一个测、每个最多等 10 秒」：一个机场几十个节点，
 +// 只要有几个连不通，整条请求就超过 15 秒被浏览器掐断 —— 用户看到的就是
 +// 「按钮转圈、然后报错、节点延迟一片空白」，和没做一模一样。
-+// 现在改成 8 路并发、单节点 3 秒、整批 10 秒封顶，测完立刻回 204。
++// 现在改成 8 路并发、单节点 6 秒、整批 12 秒封顶（都给 zashboard 的 15 秒
++// 留出余量）。单节点 3 秒是不够的：hysteria2 的 QUIC 握手 + TLS 冷启动实测
++// 要 4 秒以上（巴西-03 一次 4.26 s），被 3 秒砍掉的节点在面板上就是「没有延迟」。
 +const (
 +	providerHealthCheckConcurrency = 8
-+	providerHealthCheckTimeout     = 3 * time.Second
-+	providerHealthCheckBudget      = 10 * time.Second
++	providerHealthCheckTimeout     = 6 * time.Second
++	providerHealthCheckBudget      = 12 * time.Second
 +)
 +
 +func healthCheckProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
@@ -171,6 +173,15 @@ index e2c7713..e719e73 100644
 +			proxies = append(proxies, proxy)
 +		}
 +
++		// 探测地址：Clash 原生 API 支持 ?url=，zashboard 的「测速」按钮不带参数。
++		// 不带时用 google 的 generate_204，和 client.js 里 urltest_url 的默认值
++		// 保持一致 —— 之前这里硬编码 gstatic，用户把 urltest_url 改成 google 之后
++		// 按钮测速仍然走 gstatic，两边口径对不上，还会让人以为改动没生效。
++		testURL := "https://www.google.com/generate_204"
++		if queryURL := r.URL.Query().Get("url"); queryURL != "" {
++			testURL = queryURL
++		}
++
 +		done := make(chan struct{})
 +		go func() {
 +			defer close(done)
@@ -182,7 +193,7 @@ index e2c7713..e719e73 100644
 +					defer wg.Done()
 +					semaphore <- struct{}{}
 +					defer func() { <-semaphore }()
-+					testProxyDelay(server, proxy)
++					testProxyDelay(server, proxy, testURL)
 +				}(proxy)
 +			}
 +			wg.Wait()
@@ -196,8 +207,7 @@ index e2c7713..e719e73 100644
 +	}
 +}
 +
-+func testProxyDelay(server *Server, proxy adapter.Outbound) {
-+	const testURL = "https://www.gstatic.com/generate_204"
++func testProxyDelay(server *Server, proxy adapter.Outbound, testURL string) {
 +	ctx, cancel := context.WithTimeout(urltest.ContextWithUnifiedDelay(server.ctx, urltest.UnifiedDelayFromContext(server.ctx)), providerHealthCheckTimeout)
 +	defer cancel()
 +	delay, err := urltest.URLTest(ctx, testURL, proxy)
