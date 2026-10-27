@@ -120,7 +120,21 @@ function getSubscriptionInfo(config) {
    这里把旧哈希在新旧两侧一起改写：节点段换 grouphash，分组换勾选值。
    配对按「订阅名称」做（插入、删除、上下调序都不会错配），名称对不上时
    才退回按同一行的旧地址比对。 */
+/* 迁移只是「顺手把旧哈希改成新哈希」的便利功能，**任何**异常都不许阻塞保存：
+   write() 里抛出去会让 LuCI 的表单保存直接失败，界面停在一个永远转圈的按钮
+   上，而且一个字都不报 —— 0.2.9 就是被 `substr(from, 0, 16)` 这行坑的（那是
+   ucode 的全局函数，浏览器里没有）。所以整段包在 try 里，出错只记 console，
+   保存照常进行。 */
 function migrateSubscriptionHash(section_id, value) {
+	try {
+		migrateSubscriptionHashUnsafe(section_id, value);
+	}
+	catch (e) {
+		console.warn('homeproxy: subscription hash migration skipped:', e);
+	}
+}
+
+function migrateSubscriptionHashUnsafe(section_id, value) {
 	const cleanUrl = (url) => String(url || '').replace(/#.*$/, ''),
 	      oldUrls = normalizeList(uci.get('homeproxy', section_id, 'subscription_url')),
 	      oldNames = normalizeList(uci.get('homeproxy', section_id, 'subscription_name')),
@@ -182,17 +196,23 @@ function migrateSubscriptionHash(section_id, value) {
 	/* userinfo 的存储键同样由哈希派生（`subinfo_` + md5 前 16 位）。只搬分组
 	   不搬它，改完地址这一栏会先空着（面板卡片上「流量/到期」没了），一直
 	   等到下一次更新抓到新数据才回来。旧值存在就顺手挪过去，别让用户以为
-	   订阅坏了。 */
+	   订阅坏了。
+	   ⚠️ 取子串必须用 String 的方法（slice）。这里没有全局的 substr()：
+	   那是 ucode 的内置函数，浏览器里只有 String.prototype.substr，写成
+	   `substr(from, 0, 16)` 会抛 ReferenceError —— 而它在 write() 里，等于
+	   「一改订阅地址，保存就静默失败、按钮一直转圈」。 */
 	for (const [ from, to ] of Object.entries(remap)) {
-		const oldKey = 'subinfo_' + substr(from, 0, 16),
-		      newKey = 'subinfo_' + substr(to, 0, 16),
-		      value = uci.get('homeproxy', 'subscription', oldKey);
+		const oldKey = 'subinfo_' + from.slice(0, 16),
+		      newKey = 'subinfo_' + to.slice(0, 16),
+		      oldValue = uci.get('homeproxy', 'subscription', oldKey);
 
-		if (!value)
+		/* 前 16 位撞车（或同一地址被重复配对）时两个键是同一个：
+		   这时既不用搬也不用删，否则会把仅有的数据删掉。 */
+		if (!oldValue || oldKey === newKey)
 			continue;
 
 		if (!uci.get('homeproxy', 'subscription', newKey))
-			uci.set('homeproxy', 'subscription', newKey, value);
+			uci.set('homeproxy', 'subscription', newKey, oldValue);
 
 		uci.unset('homeproxy', 'subscription', oldKey);
 	}

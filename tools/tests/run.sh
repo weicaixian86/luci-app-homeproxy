@@ -2081,10 +2081,36 @@ if grep -q 'function migrateSubscriptionHash' "$NODE_JS" \
    && grep -q "uci.sections('homeproxy', 'node'" "$NODE_JS" \
    && grep -q "uci.sections('homeproxy', 'routing_node'" "$NODE_JS" \
    && grep -q 'hp.calcStringMD5(cleanUrl(oldUrl))' "$NODE_JS" \
-   && grep -q "'subinfo_' + substr(from, 0, 16)" "$NODE_JS"; then
+   && grep -q "'subinfo_' + from.slice(0, 16)" "$NODE_JS" \
+   && grep -q 'function migrateSubscriptionHashUnsafe' "$NODE_JS" \
+   && grep -q 'subscription hash migration skipped' "$NODE_JS"; then
 	ok "editing a subscription URL rewrites the old group hash on nodes and groups"
 else
 	bad "a changed subscription URL leaves nodes orphaned: the dashboard shows the airport as 0/0 with no error"
+fi
+
+# 前端 JS 里不许出现 ucode 的全局函数。0.2.9 现场：改订阅地址后点「保存当前
+# 设置」一直转圈、配置根本没写进去 —— 因为 SubscriptionList.write() 里的迁移
+# 代码写了 `'subinfo_' + substr(from, 0, 16)`。`substr()` 是 ucode 的内置函数，
+# 浏览器里只有 String.prototype.substr，于是抛 ReferenceError：保存中断，
+# 界面没有任何提示。node --check 抓不到（语法完全合法），只有真的点一下才会
+# 暴露。这里挡住表达式位置上的同类调用（`+ substr(` / `= sprintf(` …）。
+if ! grep -qE "[+][[:space:]]*(substr|sprintf|strlen|trim)[[:space:]]*\(" "$NODE_JS"; then
+	ok "the subscription form does not call ucode builtins from browser JS"
+else
+	bad "browser JS calls a ucode-only builtin (substr/sprintf/…): saving the form will throw and hang"
+fi
+
+# 上面两条只证明「写成什么样」，证明不了「跑起来对不对」。这个用例把函数真
+# 执行一遍：改地址后节点段换 grouphash、分组换勾选、userinfo 键跟着搬；同名
+# 同地址重存不写任何东西；内部抛异常也不能把保存带崩。
+section "Subscription hash migration (frontend)"
+"$NODE" "$ROOT/tools/tests/js_migrate_hash.js" "$NODE_JS" > "$WORK/migrate.out" 2>&1
+if [ $? -eq 0 ]; then
+	ok "js_migrate_hash.js"
+else
+	bad "js_migrate_hash.js"
+	sed 's/^/       /' "$WORK/migrate.out" | tail -12
 fi
 
 # ── UDP 编码（packet_encoding）：节点自己的声明优先于全局默认值 ──────────────
