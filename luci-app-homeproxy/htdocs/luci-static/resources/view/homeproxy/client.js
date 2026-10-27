@@ -1771,8 +1771,13 @@ return view.extend({
 
 		so = ss.option(form.Value, 'urltest_url', _('Test URL'),
 			_('The URL to test.'));
-		so.placeholder = 'https://www.gstatic.com/generate_204';
-		so.default = 'https://www.gstatic.com/generate_204';
+		/* 默认探测地址用 google.com 的 generate_204，不用 gstatic：
+		   `www.gstatic.com` 在本项目的 china_list（直连域名表）里，且实测有个别
+		   机场节点能通 google.com/generate_204 却对 gstatic 失败/超时 —— 用它给
+		   urltest 打分会把可用节点判成不可用。sing-box 自己的 urltest 默认值
+		   也是这一条，两边口径因此一致。 */
+		so.placeholder = 'https://www.google.com/generate_204';
+		so.default = 'https://www.google.com/generate_204';
 		so.validate = function(section_id, value) {
 			if (section_id && value) {
 				try {

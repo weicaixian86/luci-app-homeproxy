@@ -309,6 +309,37 @@ else
 	bad "curl lookup misses /usr/sbin/curl (iStoreOS)"
 fi
 
+# ------------------------------------------- urltest probe URL default
+# urltest 的探测地址决定「哪些节点算可用」。旧默认是
+# https://www.gstatic.com/generate_204，而 www.gstatic.com 恰好在本项目的
+# china_list（直连域名表）里，且实测有节点能通 google.com/generate_204 却
+# 对 gstatic 失败/超时 —— 这些节点在面板上就一直显示「不通」，用户以为
+# 节点坏了（0.2.9 现场）。默认改成 google 的 generate_204，并让生成器在
+# 段里没有 urltest_url 时也显式写这一条，避免内核默认值与 UI 默认值分岔。
+section "urltest probe URL default"
+
+CLIENT_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"
+GEN_UC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+
+if grep -q "so.default = 'https://www.google.com/generate_204'" "$CLIENT_JS" \
+   && grep -q "so.placeholder = 'https://www.google.com/generate_204'" "$CLIENT_JS"; then
+	ok "the Test URL field defaults to www.google.com/generate_204"
+else
+	bad "the Test URL field still defaults to gstatic: nodes that fail it look dead in the panel"
+fi
+
+if grep -q "length(cfg.urltest_url ?? '') ? cfg.urltest_url : 'https://www.google.com/generate_204'" "$GEN_UC"; then
+	ok "generate_client falls back to the same URL when a group has no urltest_url"
+else
+	bad "a group without urltest_url silently inherits the core default, so the two defaults can drift apart"
+fi
+
+if grep -q 'https://www.gstatic.com/generate_204' "$CLIENT_JS" "$GEN_UC"; then
+	bad "gstatic is back as the urltest URL (it is in china_list and misjudges nodes)"
+else
+	ok "no gstatic URL left in the urltest defaults"
+fi
+
 # ------------------------------------------ dns test ICMP fallback contract
 # 端口探测失败后会回退 ICMP。这时必须把「为什么失败」一起带回前端：
 # 只回 { result:true, kind:'ping' } 的话，界面就是一个绿色毫秒数 +

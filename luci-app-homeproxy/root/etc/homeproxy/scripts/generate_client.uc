@@ -1329,7 +1329,13 @@ if (!isEmpty(main_node)) {
 				   局域网 DNS 全灭，连订阅都拉不回来（死锁，0.2.9 现场）。
 				   空分组 = 直连。 */
 				outbounds: length(urltest_tags) ? urltest_tags : [ 'direct-out' ],
-				url: cfg.urltest_url,
+				/* 没配 urltest_url（老配置/手工建的段）时显式写成 google 的
+				   generate_204，而不是留 null 让内核用自己的默认值：两边默认值
+				   一旦分岔，同一个组的打分口径就变了，日志里还看不出来。
+				   ⚠️ 别改回 `www.gstatic.com` —— 它在本项目 china_list（直连域名）
+				   里，且实测有节点通 google 却对 gstatic 失败/超时，会把可用节点
+				   判成不可用（0.2.9 现场）。 */
+				url: length(cfg.urltest_url ?? '') ? cfg.urltest_url : 'https://www.google.com/generate_204',
 				interval: strToTime(cfg.urltest_interval),
 				tolerance: strToInt(cfg.urltest_tolerance),
 				idle_timeout: strToTime(cfg.urltest_idle_timeout),
