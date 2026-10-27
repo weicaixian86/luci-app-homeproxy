@@ -340,6 +340,18 @@ else
 	ok "no gstatic URL left in the urltest defaults"
 fi
 
+# 改默认值只对「新建的段」生效 —— 老配置升级后仍是 gstatic/180，等于修复
+# 根本没送到用户手上。迁移脚本必须在安装/升级时把**仍然是旧默认值**的段搬过来，
+# 而用户自己填过的地址/间隔一律不动（按值匹配，不按段名猜）。
+MIG_UC="$PKG/root/etc/homeproxy/scripts/migrate_config.uc"
+if grep -q "old_urltest_url = 'https://www.gstatic.com/generate_204'" "$MIG_UC" \
+   && grep -q "cfg.urltest_interval === '180'" "$MIG_UC" \
+   && grep -q "uci.get(uciconfig, ucimain, 'main_urltest_interval')\|main_urltest_interval', 'main_udp_urltest_interval'" "$MIG_UC"; then
+	ok "upgrade migrates the old gstatic/180 defaults, and only those"
+else
+	bad "existing configs keep the gstatic URL and 180 s interval after upgrade"
+fi
+
 # 探测间隔 180 → 300 秒：面板一次测速就对 48 个节点做完整 TLS+HTTP，7 个分组
 # 每 180 秒再各来一轮（92 个成员），两批叠在一起会互相挤占、把延迟抬上去。
 # 三处 interval 都要是 300：主出站 TCP / 主出站 UDP / 每个路由分组。

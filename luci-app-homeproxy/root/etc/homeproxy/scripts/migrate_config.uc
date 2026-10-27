@@ -453,5 +453,29 @@ uci.foreach(uciconfig, uciserver, (cfg) => {
 		uci.delete(uciconfig, cfg['.name'], 'domain_strategy');
 });
 
+/* 0.2.10：urltest 的默认探测地址从 gstatic 改成 google。
+   `www.gstatic.com` 同时出现在 china_list（直连表）与 gfw_list（代理表），
+   而且实测有节点能过 google 的 generate_204、却对 gstatic 失败/超时 —— 用它
+   打分会让可用节点在面板上一直显示「不通」（需求书 46 条）。
+   只替换「还留着旧默认值」的段，用户显式设过的地址一律不动。 */
+const old_urltest_url = 'https://www.gstatic.com/generate_204',
+      new_urltest_url = 'https://www.google.com/generate_204';
+
+uci.foreach(uciconfig, uciroutingnode, (cfg) => {
+	if (cfg.urltest_url === old_urltest_url)
+		uci.set(uciconfig, cfg['.name'], 'urltest_url', new_urltest_url);
+
+	/* 探测间隔同理：旧默认 180 秒 → 300 秒。面板一次整批测速就有几十个
+	   并发请求，180 秒一轮的分组探测和它叠在一起会互相挤占（需求书 47 条）。
+	   同样只动「还是旧默认」的段，用户自己调过的保留。 */
+	if (cfg.urltest_interval === '180')
+		uci.set(uciconfig, cfg['.name'], 'urltest_interval', '300');
+});
+
+for (let k in [ 'main_urltest_interval', 'main_udp_urltest_interval' ]) {
+	if (uci.get(uciconfig, ucimain, k) === '180')
+		uci.set(uciconfig, ucimain, k, '300');
+}
+
 if (!isEmpty(uci.changes(uciconfig)))
 	uci.commit(uciconfig);
