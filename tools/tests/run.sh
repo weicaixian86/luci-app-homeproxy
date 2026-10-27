@@ -350,6 +350,37 @@ else
 	bad "a Test interval still defaults to 180 s: probe bursts will overlap the panel's own test"
 fi
 
+# ------------------------------------------------- pinSHA256 证书指纹
+# 链接里的 `pinSHA256` 是**证书**指纹，机场用它正因为自己发的是旧式 CN 证书；
+# Go 1.15+ 直接拒绝这种证书（x509: certificate relies on legacy Common Name
+# field），而 sing-box 只有 `certificate_public_key_sha256`（**公钥**指纹），
+# 两者数值不同、无法映射。不处理 → 这类节点在 homeproxy 上永远连不上
+# （0.2.9 现场：[YU] 香港专线01/02 全部失败，mihomo 验指纹所以正常）。
+section "hy2 pinSHA256 maps to insecure, with a log line"
+
+SUB_UC="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+if grep -q 'function tls_insecure_param' "$SUB_UC" \
+   && grep -q 'params?.pinSHA256' "$SUB_UC" \
+   && [ "$(grep -c 'tls_insecure: tls_insecure_param(params),' "$SUB_UC")" -ge 6 ]; then
+	ok "every URI branch routes tls_insecure through tls_insecure_param()"
+else
+	bad "a URI branch still reads params.insecure directly: pinSHA256 nodes stay unreachable"
+fi
+
+if grep -q 'carry pinSHA256' "$SUB_UC"; then
+	ok "nodes that had to skip certificate verification are named in the log"
+else
+	bad "certificate verification is disabled silently: no way to audit the downgrade"
+fi
+
+# mihomo 的裸 `fingerprint` 是 uTLS 指纹，不能当证书引脚用。
+if grep -q "proxy.fingerprint" "$SUB_UC" \
+   && ! grep -q "!isEmpty(proxy.fingerprint)" "$SUB_UC"; then
+	ok "mihomo fingerprint (uTLS) is not mistaken for a certificate pin"
+else
+	bad "mihomo fingerprint is treated as a certificate pin: normal nodes get marked insecure"
+fi
+
 # ------------------------------------------ dns test ICMP fallback contract
 # 端口探测失败后会回退 ICMP。这时必须把「为什么失败」一起带回前端：
 # 只回 { result:true, kind:'ping' } 的话，界面就是一个绿色毫秒数 +

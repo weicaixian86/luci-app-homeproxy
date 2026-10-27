@@ -198,6 +198,34 @@ function normalize_hysteria_hopping_port(mport) {
 	return length(ports) ? ports : null;
 }
 
+/* 本次订阅里因 pinSHA256 而被迫跳过证书校验的节点数（每个订阅开始前清零）。 */
+let pinned_node_count = 0;
+
+/* 节点链接里的 `pinSHA256` 是**证书指纹**（SHA256 of DER），机场用它正是因为
+   自己发的是旧式 Common Name 证书（没有 SAN）—— 而 Go 1.15 起直接拒绝这种证书：
+   `x509: certificate relies on legacy Common Name field, use SANs instead`。
+   sing-box 只有 `certificate_public_key_sha256`（**公钥**指纹），与证书指纹不是
+   同一个值，无法等价映射（实测：URI 给 5343bfcb…，服务端公钥指纹是
+   L/RgXj8s…/o=，两者不同）。
+
+   后果：不跳过校验，这类节点在 homeproxy 上永远连不上。0.2.9 现场
+   `[YU] 香港专线01|BGP|流媒体`、`香港专线02` 全部超时/报错，同一节点在 mihomo
+   上 0.2–0.3 秒正常 —— 因为 mihomo 会**验证指纹**，而 sing-box 无此能力。
+
+   所以见到 pinSHA256 就按 insecure 处理，并计数写进日志：这是安全上的降级，
+   必须留在日志里，不能悄悄发生。 */
+function tls_insecure_param(params) {
+	if (params?.insecure === '1' || params?.allowInsecure === '1')
+		return '1';
+
+	if (!isEmpty(params?.pinSHA256)) {
+		pinned_node_count++;
+		return '1';
+	}
+
+	return '0';
+}
+
 function normalize_mihomo_ports(ports) {
 	if (!has_value(ports))
 		return null;
@@ -327,6 +355,10 @@ function parse_mihomo_proxy(proxy) {
 	let config;
 	const tls_sni = proxy.servername || proxy.sni;
 	const tls_fingerprint = proxy['client-fingerprint'] || proxy.fingerprint;
+	/* ⚠️ 不要在这里补 `proxy.fingerprint` 当证书引脚：mihomo 的裸 `fingerprint`
+	   在下一行已被当作 **uTLS 指纹**（chrome/firefox/safari）使用，两者同名不同义，
+	   拿它判「证书验不过」会把正常节点也标成 insecure。URI 里的 `pinSHA256`
+	   才确定是证书指纹（见 tls_insecure_param()）。 */
 	const tls_insecure = (proxy['skip-cert-verify'] === true || proxy.insecure === '1' || proxy.allowInsecure === true || proxy.allowInsecure === '1') ? '1'
 		: (proxy['skip-cert-verify'] === false || proxy.insecure === '0' || proxy.allowInsecure === false || proxy.allowInsecure === '0') ? '0'
 		: null;
@@ -954,7 +986,7 @@ function parse_uri(uri) {
 			port: url.port,
 			password: urldecode(url.username),
 			tls: '1',
-			tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+			tls_insecure: tls_insecure_param(params),
 			tls_sni: params.sni,
 			tls_utls: sing_features.with_utls ? anytls_fp : null
 		};
@@ -1001,7 +1033,7 @@ function parse_uri(uri) {
 				hysteria_down_mbps: params.downmbps,
 				hysteria_up_mbps: params.upmbps,
 				tls: '1',
-				tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+				tls_insecure: tls_insecure_param(params),
 				tls_sni: params.peer,
 				tls_alpn: params.alpn
 			};
@@ -1031,7 +1063,7 @@ function parse_uri(uri) {
 				hysteria_obfs_type: params.obfs,
 				hysteria_obfs_password: params['obfs-password'],
 				tls: '1',
-				tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+				tls_insecure: tls_insecure_param(params),
 				tls_sni: params.sni
 			};
 
@@ -1114,7 +1146,7 @@ function parse_uri(uri) {
 				password: urldecode(url.username),
 				transport: (params.type !== 'tcp') ? params.type : null,
 				tls: '1',
-				tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+				tls_insecure: tls_insecure_param(params),
 				tls_sni: params.sni
 			};
 			switch(params.type) {
@@ -1155,7 +1187,7 @@ function parse_uri(uri) {
 				tuic_congestion_control: params.congestion_control,
 				tuic_udp_relay_mode: params.udp_relay_mode,
 				tls: '1',
-				tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+				tls_insecure: tls_insecure_param(params),
 				tls_sni: params.sni,
 				tls_alpn: params.alpn ? split(urldecode(params.alpn), ',') : null,
 			};
@@ -1186,7 +1218,7 @@ function parse_uri(uri) {
 				uuid: url.username,
 				transport: (params.type !== 'tcp') ? params.type : null,
 				tls: (params.security in ['tls', 'xtls', 'reality']) ? '1' : '0',
-				tls_insecure: (params.insecure === '1' || params.allowInsecure === '1') ? '1' : '0',
+				tls_insecure: tls_insecure_param(params),
 				tls_sni: params.sni,
 				tls_alpn: params.alpn ? split(urldecode(params.alpn), ',') : null,
 				tls_reality: (params.security === 'reality') ? '1' : '0',
@@ -1840,6 +1872,7 @@ function main() {
 		}
 
 		let count = 0;
+		pinned_node_count = 0;
 		for (let node in nodes) {
 			let config = null;
 			if (!isEmpty(node)) {
@@ -1895,6 +1928,10 @@ function main() {
 		let type_parts = [];
 		map(keys(type_tally), (t) => push(type_parts, sprintf('%s=%d', t, type_tally[t])));
 		log(sprintf('Node types from %s: %s.', url, length(type_parts) ? join(' ', type_parts) : 'none'));
+
+		/* 安全降级必须留痕：这些节点的证书 sing-box 验不了（旧式 CN），只能不验。 */
+		if (pinned_node_count > 0)
+			log(sprintf('%d node(s) in %s carry pinSHA256: their certificate cannot be checked by sing-box (legacy CN), certificate verification is disabled for them.', pinned_node_count, url));
 
 		if (count == 0) {
 			log(sprintf('No valid node found in %s.', url));
