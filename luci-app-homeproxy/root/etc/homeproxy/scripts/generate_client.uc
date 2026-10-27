@@ -1318,10 +1318,17 @@ if (!isEmpty(main_node)) {
 		if (cfg.node === 'urltest') {
 			const legacy_nodes = (isEmpty(cfg.subscription_groups) && isEmpty(cfg.subscription_nodes) && isEmpty(cfg.selected_nodes)) ? cfg.urltest_nodes : null;
 			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes, cfg.filter_nodes, cfg.filter_keywords);
+			const urltest_tags = map(urltest_list, (k) => get_section_outbound_tag(k));
 			push(config.outbounds, {
 				type: 'urltest',
 				tag: get_section_outbound_tag(cfg['.name']),
-				outbounds: map(urltest_list, (k) => get_section_outbound_tag(k)),
+				/* 成员为空时必须给一个兜底。内核会因为空 urltest 整个起不来：
+				   `FATAL: start outbound: start endpoint/urltest[香港自动]: missing
+				   outbound and provider tags`。而服务没起来时，防火墙的 DNS 劫持
+				   已经装上了 —— 用户点「清除所有订阅节点」后正好是这个状态：
+				   局域网 DNS 全灭，连订阅都拉不回来（死锁，0.2.9 现场）。
+				   空分组 = 直连。 */
+				outbounds: length(urltest_tags) ? urltest_tags : [ 'direct-out' ],
 				url: cfg.urltest_url,
 				interval: strToTime(cfg.urltest_interval),
 				tolerance: strToInt(cfg.urltest_tolerance),
@@ -1334,10 +1341,13 @@ if (!isEmpty(main_node)) {
 			const selector_policy_list = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);
 			const selector_list = [...selector_node_list, ...filter(selector_policy_list, (l) => !~index(selector_node_list, l))];
 			const selector_default = (!isEmpty(cfg.selector_default) && ~index(selector_list, cfg.selector_default)) ? cfg.selector_default : null;
+			const selector_tags = map(selector_list, (k) => get_section_outbound_tag(k));
 			push(config.outbounds, {
 				type: 'selector',
 				tag: get_section_outbound_tag(cfg['.name']),
-				outbounds: map(selector_list, (k) => get_section_outbound_tag(k)),
+				/* 同上：空 selector 一样让内核启动失败（"missing outbound and
+				   provider tags"），兜底成直连。 */
+				outbounds: length(selector_tags) ? selector_tags : [ 'direct-out' ],
 				default: selector_default ? get_section_outbound_tag(selector_default) : null,
 				interrupt_exist_connections: strToBool(cfg.selector_interrupt_exist_connections)
 			});

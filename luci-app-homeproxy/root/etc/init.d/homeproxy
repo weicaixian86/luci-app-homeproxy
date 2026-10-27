@@ -843,7 +843,60 @@ hp_ucitrack_register() {
 	return 0
 }
 
+# 撤销本插件在 fw4 里留下的一切：ip rule/route、nft 链与集合、DNS 劫持。
+# stop_service() 与新增的「内核起来后立刻挂掉」自检都调它 —— 这份清理以前
+# 写死在 stop_service 里，内核崩溃时没人执行，DNS 劫持就留着了，整个局域网
+# 失去 DNS（0.2.9 现场：清空节点后内核 FATAL，连订阅都拉不回来）。
+firewall_teardown() {
+	# Tproxy
+	ip rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
+	ip route del local 0.0.0.0/0 dev lo table "$table_mark" 2>"/dev/null"
+	ip -6 rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
+	ip -6 route del local ::/0 dev lo table "$table_mark" 2>"/dev/null"
+
+	# TUN
+	ip route del default dev "$tun_name" table "$table_mark" 2>"/dev/null"
+	ip rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
+
+	ip -6 route del default dev "$tun_name" table "$table_mark" 2>"/dev/null"
+	ip -6 rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
+
+	# Nftables rules
+	for i in "homeproxy_dstnat_redir" "homeproxy_output_redir" \
+		 "homeproxy_redirect" "homeproxy_redirect_proxy" \
+		 "homeproxy_redirect_proxy_port" "homeproxy_redirect_lanac" \
+		 "homeproxy_mangle_prerouting" "homeproxy_mangle_output" \
+		 "homeproxy_mangle_tproxy" "homeproxy_mangle_tproxy_port" \
+		 "homeproxy_mangle_tproxy_lanac" "homeproxy_mangle_mark" \
+		 "homeproxy_mangle_tun" "homeproxy_mangle_tun_mark"; do
+		nft flush chain inet fw4 "$i"
+		nft delete chain inet fw4 "$i"
+	done 2>"/dev/null"
+	for i in "homeproxy_local_addr_v4" "homeproxy_local_addr_v6" \
+		 "homeproxy_gfw_list_v4" "homeproxy_gfw_list_v6" \
+		 "homeproxy_mainland_addr_v4" "homeproxy_mainland_addr_v6" \
+		 "homeproxy_wan_proxy_addr_v4" "homeproxy_wan_proxy_addr_v6" \
+		 "homeproxy_wan_direct_addr_v4" "homeproxy_wan_direct_addr_v6" \
+		 "homeproxy_routing_port"; do
+		nft flush set inet fw4 "$i"
+		nft delete set inet fw4 "$i"
+	done 2>"/dev/null"
+	echo 2>"/dev/null" > "$RUN_DIR/fw4_forward.nft"
+	echo 2>"/dev/null" > "$RUN_DIR/fw4_input.nft"
+	echo 2>"/dev/null" > "$RUN_DIR/fw4_post.nft"
+	fw4 reload >"/dev/null" 2>&1
+
+	# Remove DNS hijack
+	rm -rf "$DNSMASQ_DIR/../dnsmasq-homeproxy.conf" "$DNSMASQ_DIR"
+	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
+
+}
+
 start_service() {
+	# 上一次停止留的标记必须清掉，否则 core_health_check 会一直以为「正在停止」
+	# 而提前返回，兜底就永远不触发。
+	rm -f "$RUN_DIR/.stopping" 2>"/dev/null"
+
 	init_logs
 
 	# 时钟必须先校正，再写第一行日志：NTP 之前的时钟可能停在几天前（RTC 没
@@ -1252,10 +1305,20 @@ start_service() {
 	# kernel is fetched at start. Run detached so service start is not blocked
 	# while the core boots and the clash API becomes reachable.
 	( ensure_panel ) &
+
+	# 内核没起来就撤劫持，别让局域网失去 DNS（见 scripts/core_guard.sh）。
+	# 必须用 setsid 脱管：init 脚本退出时，`( … ) &` 起的子 shell 会被一起
+	# 杀掉，检查根本活不到 15 秒（0.2.9 实测）。
+	if [ "$outbound_node" != "nil" ] && [ -x "$HP_DIR/scripts/core_guard.sh" ]; then
+		( setsid /bin/sh "$HP_DIR/scripts/core_guard.sh" </dev/null >/dev/null 2>&1 & )
+	fi
 }
 
 stop_service() {
 	hp_event "服务停止" "${1:-}"
+
+	# 让 core_health_check 知道「这次是用户停的」，别把正常停止当成启动失败。
+	touch "$RUN_DIR/.stopping" 2>"/dev/null"
 
 	sed -i "/#${CONF}_autosetup/d" "/etc/crontabs/root" 2>"/dev/null"
 	/etc/init.d/cron restart >"/dev/null" 2>&1
@@ -1269,48 +1332,7 @@ stop_service() {
 	config_get tun_mark "infra" "tun_mark" "102"
 	config_get tun_name "infra" "tun_name" "singtun0"
 
-	# Tproxy
-	ip rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
-	ip route del local 0.0.0.0/0 dev lo table "$table_mark" 2>"/dev/null"
-	ip -6 rule del fwmark "$tproxy_mark" table "$table_mark" 2>"/dev/null"
-	ip -6 route del local ::/0 dev lo table "$table_mark" 2>"/dev/null"
-
-	# TUN
-	ip route del default dev "$tun_name" table "$table_mark" 2>"/dev/null"
-	ip rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
-
-	ip -6 route del default dev "$tun_name" table "$table_mark" 2>"/dev/null"
-	ip -6 rule del fwmark "$tun_mark" table "$table_mark" 2>"/dev/null"
-
-	# Nftables rules
-	for i in "homeproxy_dstnat_redir" "homeproxy_output_redir" \
-		 "homeproxy_redirect" "homeproxy_redirect_proxy" \
-		 "homeproxy_redirect_proxy_port" "homeproxy_redirect_lanac" \
-		 "homeproxy_mangle_prerouting" "homeproxy_mangle_output" \
-		 "homeproxy_mangle_tproxy" "homeproxy_mangle_tproxy_port" \
-		 "homeproxy_mangle_tproxy_lanac" "homeproxy_mangle_mark" \
-		 "homeproxy_mangle_tun" "homeproxy_mangle_tun_mark"; do
-		nft flush chain inet fw4 "$i"
-		nft delete chain inet fw4 "$i"
-	done 2>"/dev/null"
-	for i in "homeproxy_local_addr_v4" "homeproxy_local_addr_v6" \
-		 "homeproxy_gfw_list_v4" "homeproxy_gfw_list_v6" \
-		 "homeproxy_mainland_addr_v4" "homeproxy_mainland_addr_v6" \
-		 "homeproxy_wan_proxy_addr_v4" "homeproxy_wan_proxy_addr_v6" \
-		 "homeproxy_wan_direct_addr_v4" "homeproxy_wan_direct_addr_v6" \
-		 "homeproxy_routing_port"; do
-		nft flush set inet fw4 "$i"
-		nft delete set inet fw4 "$i"
-	done 2>"/dev/null"
-	echo 2>"/dev/null" > "$RUN_DIR/fw4_forward.nft"
-	echo 2>"/dev/null" > "$RUN_DIR/fw4_input.nft"
-	echo 2>"/dev/null" > "$RUN_DIR/fw4_post.nft"
-	fw4 reload >"/dev/null" 2>&1
-
-	# Remove DNS hijack
-	rm -rf "$DNSMASQ_DIR/../dnsmasq-homeproxy.conf" "$DNSMASQ_DIR"
-	/etc/init.d/dnsmasq restart >"/dev/null" 2>&1
-
+	firewall_teardown
 	rm -f "$RUN_DIR/sing-box-c.json" "$RUN_DIR/sing-box-s.json"
 	init_logs
 

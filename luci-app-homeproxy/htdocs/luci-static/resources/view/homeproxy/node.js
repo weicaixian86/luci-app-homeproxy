@@ -64,11 +64,17 @@ function setSubscriptionBusy(busy, ev) {
 		if (button.dataset.idleHtml == null)
 			button.dataset.idleHtml = button.innerHTML;
 
+		const idleText = button.textContent,
+		      label = _('Updating subscriptions…'),
+		      /* 语言包是随包编译出来的 .lmo：刚升级的机器上还没有这条新 msgid
+		         时，_() 会把英文原样返回 —— 按钮上突然冒出英文（0.2.9 现场）。
+		         未翻译就只加转圈、保留原来的中文文案。 */
+		      busyText = (label === 'Updating subscriptions…') ? idleText : label;
+
 		button.disabled = true;
 		button.textContent = '';
 		button.appendChild(E('span', { 'class': 'spinning' }));
-		button.appendChild(document.createTextNode(' '));
-		button.appendChild(E('span', {}, _('Updating subscriptions…')));
+		button.appendChild(document.createTextNode(' ' + busyText));
 	}
 	else if (button.dataset.idleHtml != null) {
 		button.innerHTML = button.dataset.idleHtml;

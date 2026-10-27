@@ -2012,6 +2012,32 @@ else
 	bad "transient failures (DNS / 5xx) still fail the whole airport, or the retry would also fire on 429"
 fi
 
+# 分组没有成员时，内核会整个起不来：
+#   FATAL: start outbound: start endpoint/urltest[香港自动]: missing outbound and provider tags
+# 而启动顺序是「先装防火墙/DNS 劫持、再拉起内核」，于是用户点「清除所有订阅
+# 节点」之后（节点 0 个 → 分组空 → 内核 exit 1）整个局域网失去 DNS，连订阅都
+# 拉不回来 —— 只能 SSH 进来自救。两道防线：
+#   ① generate_client 给空分组兜底一个 direct-out，配置永远合法；
+#   ② 启动后用 setsid 拉起 core_guard.sh：15 秒内必须看到内核进程，否则
+#      调 /etc/init.d/homeproxy stop 撤掉劫持。三处踩过的坑：不能在启动函数里
+#      直接 pgrep（procd 异步拉起，1 秒时进程还没 exec，必然误判）；不能只看
+#      内核日志（会被轮转/截断）；不能用 `( … ) &`（init 退出时子 shell 被一起
+#      杀掉，检查活不到 15 秒 —— 探针只写到了 start）。
+GEN_UC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+INIT_SH="$PKG/root/etc/init.d/homeproxy"
+if grep -q "outbounds: length(urltest_tags) ? urltest_tags : \[ 'direct-out' \]" "$GEN_UC" \
+   && grep -q "outbounds: length(selector_tags) ? selector_tags : \[ 'direct-out' \]" "$GEN_UC" \
+   && grep -q '^firewall_teardown() {' "$INIT_SH" \
+   && [ "$(grep -c 'firewall_teardown' "$INIT_SH")" -ge 2 ] \
+   && grep -q 'setsid /bin/sh "$HP_DIR/scripts/core_guard.sh"' "$INIT_SH" \
+   && [ -x "$PKG/root/etc/homeproxy/scripts/core_guard.sh" ] \
+   && grep -q '内核启动 15 秒后仍未运行' "$PKG/root/etc/homeproxy/scripts/core_guard.sh" \
+   && grep -q 'homeproxy stop' "$PKG/root/etc/homeproxy/scripts/core_guard.sh"; then
+	ok "an empty group falls back to direct, and a core that dies right after start tears the hijack down"
+else
+	bad "empty groups can still kill the core, or a dead core leaves the LAN without DNS"
+fi
+
 # 一条订阅都没成功时不许重启内核，也不许说 Successfully。
 # 旧行为：`need_restart` 恒为 true，机场全挂 / 家里断网时照样 stop+start 一次
 # —— 用户看到代理无缘无故断流几秒，节点还一个没变；日志末尾仍然写
