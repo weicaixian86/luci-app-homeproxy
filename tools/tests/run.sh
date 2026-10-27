@@ -340,6 +340,16 @@ else
 	ok "no gstatic URL left in the urltest defaults"
 fi
 
+# 探测间隔 180 → 300 秒：面板一次测速就对 48 个节点做完整 TLS+HTTP，7 个分组
+# 每 180 秒再各来一轮（92 个成员），两批叠在一起会互相挤占、把延迟抬上去。
+# 三处 interval 都要是 300：主出站 TCP / 主出站 UDP / 每个路由分组。
+if [ "$(grep -c "= '300'" "$CLIENT_JS")" -ge 3 ] \
+   && ! grep -q "= '180'" "$CLIENT_JS"; then
+	ok "every Test interval default is 300 s (main TCP, main UDP, per-group)"
+else
+	bad "a Test interval still defaults to 180 s: probe bursts will overlap the panel's own test"
+fi
+
 # ------------------------------------------ dns test ICMP fallback contract
 # 端口探测失败后会回退 ICMP。这时必须把「为什么失败」一起带回前端：
 # 只回 { result:true, kind:'ping' } 的话，界面就是一个绿色毫秒数 +

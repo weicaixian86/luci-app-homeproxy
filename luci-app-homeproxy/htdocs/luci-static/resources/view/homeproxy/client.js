@@ -785,8 +785,8 @@ return view.extend({
 		o = s.taboption('routing', form.Value, 'main_urltest_interval', _('Test interval'),
 			_('The test interval in seconds.'));
 		o.datatype = 'uinteger';
-		o.placeholder = '180';
-		o.default = '180';
+		o.placeholder = '300';
+		o.default = '300';
 		o.depends('main_node', 'urltest');
 
 		o = s.taboption('routing', form.Value, 'main_urltest_tolerance', _('Test tolerance'),
@@ -816,8 +816,8 @@ return view.extend({
 		o = s.taboption('routing', form.Value, 'main_udp_urltest_interval', _('Test interval'),
 			_('The test interval in seconds.'));
 		o.datatype = 'uinteger';
-		o.placeholder = '180';
-		o.default = '180';
+		o.placeholder = '300';
+		o.default = '300';
 		o.depends('main_udp_node', 'urltest');
 
 		o = s.taboption('routing', form.Value, 'main_udp_urltest_tolerance', _('Test tolerance'),
@@ -1798,8 +1798,8 @@ return view.extend({
 		so = ss.option(form.Value, 'urltest_interval', _('Test interval'),
 			_('The test interval in seconds.'));
 		so.datatype = 'uinteger';
-		so.placeholder = '180';
-		so.default = '180';
+		so.placeholder = '300';
+		so.default = '300';
 		so.validate = function(section_id, value) {
 			if (section_id && value) {
 				let idle_timeout = this.section.formvalue(section_id, 'idle_timeout') || '1800';
