@@ -40,6 +40,43 @@ const callSubscriptionProgress = rpc.declare({
 	expect: { '': {} }
 });
 
+/* 按钮要在整个更新期间保持「正在更新」的样子，结束再恢复。
+ *
+ * 0.2.9 现场：点「更新 N 个订阅」，按钮一闪就回到原样 —— 因为它只负责把后台
+ * 任务拉起来，RPC 毫秒级返回，真正的抓取在路由器上跑十几二十秒。用户看不到
+ * 任何持续状态，只会以为没点上，然后连点几次（每次都撞上「已在运行」）。
+ * 这里把按钮置灰 + 换成转圈 + 文案，由轮询在结束时还原。 */
+let subscriptionButton = null;
+
+function setSubscriptionBusy(busy, ev) {
+	const target = ev?.currentTarget ?? ev?.target ?? null;
+
+	if (target && target.tagName === 'BUTTON')
+		subscriptionButton = target;
+
+	const button = subscriptionButton;
+
+	if (!button || button.tagName !== 'BUTTON')
+		return;
+
+	if (busy) {
+		/* 原始 HTML 只存一次：忙→忙（例如重开页面后又点）不能把转圈存成正文。 */
+		if (button.dataset.idleHtml == null)
+			button.dataset.idleHtml = button.innerHTML;
+
+		button.disabled = true;
+		button.textContent = '';
+		button.appendChild(E('span', { 'class': 'spinning' }));
+		button.appendChild(document.createTextNode(' '));
+		button.appendChild(E('span', {}, _('Updating subscriptions…')));
+	}
+	else if (button.dataset.idleHtml != null) {
+		button.innerHTML = button.dataset.idleHtml;
+		button.disabled = false;
+		delete button.dataset.idleHtml;
+	}
+}
+
 /* 订阅更新在路由器上后台执行，这里轮询结果。
  *
  * 以前是一条同步的 fs.exec_direct：脚本依次抓 N 个订阅、成功后 stop+start
@@ -50,11 +87,14 @@ const callSubscriptionProgress = rpc.declare({
 function pollSubscriptionUpdate(reloadOnFinish) {
 	let ticks = 0;
 
+	setSubscriptionBusy(true);
+
 	hp.pollAdd('subscription-update', () => {
 		/* 兜底：脚本自身每条订阅有 60 秒上限，但界面不能无限轮询 —— 十分钟
 		   还不停手就提示去看日志，而不是一直转圈。 */
 		if (++ticks > 300) {
 			hp.pollRemove('subscription-update');
+			setSubscriptionBusy(false);
 			ui.addNotification(null, E('p',
 				_('The subscription update is taking unusually long; check the log for progress.')), 'warning');
 			return null;
@@ -65,6 +105,7 @@ function pollSubscriptionUpdate(reloadOnFinish) {
 				return null;
 
 			hp.pollRemove('subscription-update');
+			setSubscriptionBusy(false);
 
 			if (res.ok) {
 				ui.addNotification(null, E('p', _('Subscriptions updated.')), 'info');
@@ -2252,7 +2293,11 @@ return view.extend({
 				return _('No subscription available')
 			}
 		}
-		o.onclick = function() {
+		o.onclick = function(ev) {
+			/* 先把按钮切到「正在更新」。RPC 毫秒级返回，不这样做就是一闪而过，
+			   用户以为没点上会连点，第二次只会拿到「已在运行」。 */
+			setSubscriptionBusy(true, ev);
+
 			/* 后台启动 + 轮询。--source 由包装脚本传给 ucode，日志里因此仍
 			   能区分「面板按钮」与「cron / 单机场」这两个入口。 */
 			return L.resolveDefault(callSubscriptionUpdate(), {}).then((res) => {
@@ -2263,10 +2308,14 @@ return view.extend({
 					return null;
 				}
 
+				/* 任务没起来（脚本缺失、rc 立刻非 0）：按钮必须复原，否则会一直
+				   转下去，看起来像「点了没反应」。 */
+				setSubscriptionBusy(false);
 				ui.addNotification(null, E('p',
 					res.log || _('Failed to start the subscription update.')), 'danger');
 				return null;
 			}).catch((err) => {
+				setSubscriptionBusy(false);
 				ui.addNotification(null, E('p', _('An error occurred during updating subscriptions: %s').format(err)));
 				return null;
 			});

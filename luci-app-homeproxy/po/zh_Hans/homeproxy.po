@@ -3706,6 +3706,10 @@ msgstr "使用代理更新"
 msgid "Updating subscriptions in the background. You can leave this page."
 msgstr "正在后台更新订阅，可以离开本页面。"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:71
+msgid "Updating subscriptions…"
+msgstr "正在更新订阅…"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3050
 msgid "Updating..."
 msgstr "更新中…"

@@ -1988,20 +1988,28 @@ else
 	bad "no proxy fallback when the direct hop fails: the 4 overseas airports can never be updated"
 fi
 
-# exit=6（域名解析失败）要重试一次。现场：点完「保存并应用」立刻更新，正好
-# 撞上 stop→start 重启 dnsmasq、缓存清空，两条订阅报 Could not resolve host，
-# 两分钟后的下一轮同样的域名全部正常 —— 说明失败是那一两秒的时序，不是订阅。
-# 要求：① 只在 exitcode === 6 且正文为空时才重试（其它失败照旧走代理回退）；
-#       ② 等 1 秒用 busybox 的 sleep（不是 ucode 的 sleep()，单位没有明确写死）；
-#       ③ 重试成功/失败都要留一行，否则日志里会看到「失败→成功」但没有重试痕迹。
-if grep -q 'function fetch_with_dns_retry' "$SUB_UC" \
-   && grep -q 'response?.exitcode !== 6' "$SUB_UC" \
+# 临时性失败要重试一次，且只重试**这一秒的事**：
+#   · exit=6 域名解析失败 —— 点完「保存并应用」立刻更新，正好撞上 stop→start
+#     重启 dnsmasq、缓存清空（0.2.6 现场：两条订阅 Could not resolve host，
+#     两分钟后的下一轮同样的域名全通）；
+#   · HTTP 5xx —— 机场前面的 CDN 或面板抽风（0.2.9 现场：SNY 先报 error: 504
+#     / x-cache: Error from cloudfront，随后几轮报 error: 500）。
+# 429 绝不能重试：那是机场限流，再打只会把封禁拖长。所以只认 exitcode 6，
+# 以及 exitcode 22 且 stderr 里写明 5xx。
+# 要求：① 触发条件按上面两种判，不按「所有失败」；② 等 1 秒用 busybox 的
+#       sleep（不是 ucode 的 sleep()，单位没有明确写死）；③ 成功/失败都留一行，
+#       否则日志里只看到「失败→成功」却不知道中间重试过。
+if grep -q 'function transient_failure' "$SUB_UC" \
+   && grep -q 'function fetch_with_dns_retry' "$SUB_UC" \
+   && grep -q 'exitcode === 6' "$SUB_UC" \
+   && grep -q 'exitcode === 22 && match' "$SUB_UC" \
+   && grep -q 'error: 50\[0-4\]' "$SUB_UC" \
    && grep -q "system('sleep 1')" "$SUB_UC" \
-   && grep -q 'Retry after DNS failure succeeded for %s.' "$SUB_UC" \
-   && grep -q 'DNS lookup failed for %s (%s), retrying once in 1s.' "$SUB_UC"; then
-	ok "a DNS hiccup (curl exit 6) is retried once instead of failing the airport"
+   && grep -q 'Transient failure for %s (%s: %s), retrying once in 1s.' "$SUB_UC" \
+   && grep -q 'Retry after transient failure succeeded for %s.' "$SUB_UC"; then
+	ok "a DNS hiccup or a CDN 5xx is retried once instead of failing the airport"
 else
-	bad "a transient DNS failure still fails the whole airport, and the log gives no hint that it was transient"
+	bad "transient failures (DNS / 5xx) still fail the whole airport, or the retry would also fire on 429"
 fi
 
 # 一条订阅都没成功时不许重启内核，也不许说 Successfully。

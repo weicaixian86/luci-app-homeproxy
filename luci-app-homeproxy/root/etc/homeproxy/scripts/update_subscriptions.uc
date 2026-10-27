@@ -1650,35 +1650,55 @@ function local_proxy_listening(proxy) {
 
    返回的对象上打 `via_proxy`（true/false），调用方后面补 userinfo 头时
    沿用同一条路径，不要出现「正文直连拉的、响应头却去问代理」的错位。 */
-/* 抓一次，遇到 exit=6（域名没解析出来）再试一次。
+/* 抓一次，遇到「临时性失败」再试一次。
  *
- * 现场日志（0.2.6）：点完「保存并应用」立刻点更新，正好撞上 stop→start 把
- * dnsmasq 重启、缓存清空、上游又抖一下，两条订阅报 `curl: (6) Could not
- * resolve host`，而两分钟后的下一轮里同样的域名一个不差全通。也就是说失败
- * 原因跟订阅本身无关，纯粹是那一两秒的时序。
+ * 两种会被重试的失败，都是**这一秒的事**，跟订阅本身无关：
+ *   · exit=6 域名没解析出来 —— 点完「保存并应用」立刻更新，正好撞上 stop→start
+ *     把 dnsmasq 重启、缓存清空、上游又抖一下（0.2.6 现场：两条订阅报
+ *     `Could not resolve host`，两分钟后的下一轮同样的域名全通）；
+ *   · HTTP 502/503/504 —— 机场前面的 CDN 抽风（0.2.9 现场：SNY 报
+ *     `error: 504`、`x-cache: Error from cloudfront`，下一轮就正常）。
+ * 429 不在其列：那是机场限流，重试只会把封禁拖长。
  *
- * 代价可控：DNS 失败时 curl 是**立刻**返回的（不等 --connect-timeout，更不
- * 等 --max-time），所以真解析不了时也就多花 1 秒。用 `system()` 调 busybox
+ * 代价可控：DNS 没答案时 curl 立刻返回；5xx 是一个已经回来的响应。两种情况
+ * 都只多花 1 秒，不会像 --max-time 那样把整轮拖住。用 `system()` 调 busybox
  * 的 sleep，不用 ucode 的 `sleep()`——后者的单位在文档里没有明确写死是秒还是
  * 毫秒，靠猜等于给主链路埋一个「等错量级」的坑。 */
+function transient_failure(response) {
+	if (isEmpty(response?.body) === false)
+		return null;
+
+	if (response?.exitcode === 6)
+		return 'dns lookup failed';
+
+	/* musl 的 TRE 不支持 \d / {n,m}，这里只用字符组。curl -f 把 4xx/5xx 都
+	   记成 exit=22，区别只在 stderr 里那一行 `error: 5xx`。500 也算：服务端
+	   出错一样是「这一次的事」，而 429/4xx 不在其中。 */
+	if (response?.exitcode === 22 && match(response.headers ?? '', /error: 50[0-4]/))
+		return 'upstream 5xx';
+
+	return null;
+}
+
 function fetch_with_dns_retry(url, ua, proxy) {
 	let response = wGETResponse(url, ua, proxy);
+	const reason = transient_failure(response);
 
-	if (response?.exitcode !== 6 || !isEmpty(response?.body))
+	if (reason == null)
 		return response;
 
-	log(sprintf('DNS lookup failed for %s (%s), retrying once in 1s.',
-		url, describe_fetch_failure(response)));
+	log(sprintf('Transient failure for %s (%s: %s), retrying once in 1s.',
+		url, reason, describe_fetch_failure(response)));
 
 	system('sleep 1');
 
 	const retried = wGETResponse(url, ua, proxy);
 
 	if (isEmpty(retried?.body))
-		log(sprintf('Retry after DNS failure failed for %s (%s).',
+		log(sprintf('Retry after transient failure failed for %s (%s).',
 			url, describe_fetch_failure(retried)));
 	else
-		log(sprintf('Retry after DNS failure succeeded for %s.', url));
+		log(sprintf('Retry after transient failure succeeded for %s.', url));
 
 	return retried;
 }
@@ -1749,7 +1769,7 @@ function main() {
 	 * 前提下退出。旧版在下载前就 `init_action('homeproxy','stop')`（所谓
 	 * 「绕过自身代理」），失败再 start 回来——更新不成功也会把当前服务断
 	 * 一次流，面板上就是「点了更新、代理闪断一下、节点却没变」。 */
-	let succeeded = 0, failed = 0;
+	let succeeded = 0, failed = 0, failed_groups = {};
 
 	for (let url in subscription_urls) {
 		url = replace(url, /#.*$/, '');
@@ -1773,6 +1793,7 @@ function main() {
 
 			log(sprintf('Failed to fetch resources from %s (%s).', url,
 				proxy_url ? sprintf('direct and %s both failed: %s', proxy_url, why) : why));
+			failed_groups[groupHash] = true;
 			failed++;
 			continue;
 		}
@@ -1877,6 +1898,7 @@ function main() {
 
 		if (count == 0) {
 			log(sprintf('No valid node found in %s.', url));
+			failed_groups[groupHash] = true;
 			failed++;
 		}
 		else {
@@ -2110,7 +2132,43 @@ function main() {
 		init_action('homeproxy', 'start');
 	}
 
-	log(sprintf('%s nodes added, %s removed.', added, removed));
+	/* 这里必须把「总数」写出来。`9 nodes added` 只是本次的增量（机场改名、新增
+	   节点），用户读到的却是「怎么就更新出 9 个节点」——0.2.9 现场就是这句被
+	   误会成「只更新了 9 个」。总数 + 每个机场各自的条数一起打，"这次到底有
+	   多少节点"这个问题就不需要再回来问我一遍。 */
+	let total_nodes = 0;
+	uci.foreach(uciconfig, ucinode, (cfg) => {
+		if (cfg.grouphash)
+			total_nodes++;
+
+		return null;
+	});
+
+	/* 每个机场现有多少节点：直接数 uci 里的段。
+	   ⚠️ 不能数 node_cache —— 往里塞的时候每个节点存了**两份**（confHash 与
+	   nameHash 各一份，见 :1882），数出来正好翻倍（YU 48 会报成 96）。 */
+	let nodes_per_group = {};
+	uci.foreach(uciconfig, ucinode, (cfg) => {
+		if (!isEmpty(cfg.grouphash))
+			nodes_per_group[cfg.grouphash] = (nodes_per_group[cfg.grouphash] ?? 0) + 1;
+
+		return null;
+	});
+
+	let per_subscription = [];
+	for (let url in subscription_urls) {
+		const group_hash = md5(replace(url, /#.*$/, '')),
+		      count = nodes_per_group[group_hash] ?? 0;
+
+		/* 这次没抓到的机场：节点的确是这些，但它们是上一轮留下的 —— 标个
+		   kept，免得被读成「这轮刚拉到的」。 */
+		push(per_subscription, sprintf('%s=%d%s', subscription_display_name(url), count,
+			failed_groups[group_hash] ? '(kept)' : ''));
+	}
+
+	log(sprintf('%s nodes added, %s removed, %d nodes in total.',
+		added, removed, total_nodes));
+	log(sprintf('Nodes per subscription: %s.', join(' ', per_subscription)));
 
 	/* 部分失败时不许再说「Successfully」：这句话骗过一次排查——日志写着成功，
 	   用户却少了一整个机场的节点。失败数直接写进结论行和完成横幅。 */
@@ -2120,8 +2178,8 @@ function main() {
 	else
 		log('Successfully updated subscriptions.');
 
-	log(sprintf('==== 订阅更新完成：新增 %s 个节点，删除 %s 个，共 %d 个订阅%s ====',
-		added, removed, length(subscription_urls),
+	log(sprintf('==== 订阅更新完成：新增 %s 个、删除 %s 个，现有 %d 个订阅节点，共 %d 个订阅%s ====',
+		added, removed, total_nodes, length(subscription_urls),
 		failed > 0 ? sprintf('，其中 %d 个抓取失败', failed) : ''));
 
 	return true;
