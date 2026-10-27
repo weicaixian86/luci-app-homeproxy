@@ -7,7 +7,7 @@
 
 'use strict';
 
-import { access, lstat, popen, readfile, unlink, writefile } from 'fs';
+import { access, lstat, open, popen, readfile, unlink, writefile } from 'fs';
 import { cursor } from 'uci';
 
 /* Kanged from ucode/luci */
@@ -507,34 +507,47 @@ const methods = {
 					return { result: false, error: 'empty certificate file' };
 				}
 
-				let filecontent = readfile(tmpcert);
-				if (is_binary(filecontent)) {
-					system(`rm -f ${tmpcert}`);
-					return { result: false, error: 'illegal file type: binary' };
-				}
+				let filecontent = readfile(tmpcert) ?? '';
 
-				/* Kanged from luci-proto-openconnect */
-				const beg = priv ? /^-----BEGIN (RSA|EC) PRIVATE KEY-----$/ : /^-----BEGIN CERTIFICATE-----$/,
-				      end = priv ? /^-----END (RSA|EC) PRIVATE KEY-----$/ : /^-----END CERTIFICATE-----$/,
-				      lines = split(trim(filecontent), /[\r\n]/);
-				let start = false, i;
+				/* ⚠️ 这里原来调 `is_binary()` —— ucode 根本没有这个函数
+				   （`type(is_binary)` 返回 null），一调就抛
+				   `Type error: left-hand side is not a function`，rpcd 把它折叠成
+				   "Unknown error"：于是「上传证书 / 上传私钥」两个按钮**从来没成功过**
+				   （0.2.9 实测，私钥与证书都返回 Unknown error）。
+				   去掉这一步 —— 下面的结构校验（首行 BEGIN、末行 END、中间每行都是
+				   base64 字符）已经足够挡住二进制文件。
+				   顺带把 PKCS#8 的 `BEGIN PRIVATE KEY` 也认了：openssl 3 与
+				   `sing-box generate tls-keypair` 默认就是这种，只认 RSA|EC 会把
+				   正常生成的密钥判成「不是 PEM」。 */
+				filecontent = trim(replace(replace(filecontent, /\r\n/g, '\n'), /\r/g, '\n'));
 
-				for (i = 0; i < length(lines); i++) {
-					if (match(lines[i], beg))
-						start = true;
-					else if (start && !b64dec(lines[i]) && length(lines[i]) !== 64)
-						break;
-				}
+				const lines = split(filecontent, '\n'),
+				      begin_ok = priv
+				               ? [ '-----BEGIN RSA PRIVATE KEY-----',
+				                   '-----BEGIN EC PRIVATE KEY-----',
+				                   '-----BEGIN PRIVATE KEY-----' ]
+				               : [ '-----BEGIN CERTIFICATE-----' ],
+				      end_ok = priv
+				             ? [ '-----END RSA PRIVATE KEY-----',
+				                 '-----END EC PRIVATE KEY-----',
+				                 '-----END PRIVATE KEY-----' ]
+				             : [ '-----END CERTIFICATE-----' ];
 
-				if (!start || i < length(lines) - 1 || !match(lines[i], end)) {
+				if (index(begin_ok, lines[0] ?? '') === -1 ||
+				    index(end_ok, lines[length(lines) - 1] ?? '') === -1) {
 					system(`rm -f ${tmpcert}`);
 					return { result: false, error: 'this does not look like a correct PEM file' };
 				}
 
+				for (let i = 1; i < length(lines) - 1; i++) {
+					/* 只认 base64 的字符集：二进制内容在这里就被挡掉。 */
+					if (!match(lines[i], /^[A-Za-z0-9+\/=]+$/)) {
+						system(`rm -f ${tmpcert}`);
+						return { result: false, error: 'this does not look like a correct PEM file' };
+					}
+				}
+
 				/* Sanitize certificate */
-				filecontent = trim(filecontent);
-				filecontent = replace(filecontent, /\r\n/g, '\n');
-				filecontent = replace(filecontent, /\r/g, '\n');
 				if (!match(filecontent, /\n$/))
 					filecontent += '\n';
 
@@ -555,7 +568,7 @@ const methods = {
 				return writeCertificate(filename, true);
 				break;
 			default:
-				return { result: false, error: 'illegal cerificate filename' };
+				return { result: false, error: 'illegal certificate filename' };
 				break;
 			}
 		}
@@ -2056,7 +2069,22 @@ const methods = {
 			const type = req.args?.type;
 			let result = {};
 
-			const fd = popen(`/usr/bin/sing-box generate ${type} ${shellquote(req.args?.params || '')}`);
+			/* 参数规则按类型分，不能一概而论（0.2.9 实测）：
+			   · uuid / reality-keypair / wg-keypair / vapid-keypair **不接受**
+			     多余的位置参数，拼上空的 `''` 会直接
+			     `Error: unknown command "" for "sing-box generate uuid"` ——
+			     返回的 result 是空对象（JS 里还是 truthy），前端把字段填成空串，
+			     等于把刚填的密钥抹掉；
+			   · ech-keypair 相反：`sing-box generate ech-keypair <plain_server_name>`
+			     少这个参数直接 `accepts 1 arg(s), received 0`。
+			   所以只有非空时才拼，ECH 缺参数时明确报错而不是生成一个空 SNI 的配置。 */
+			const params = trim(req.args?.params ?? '');
+
+			if (type === 'ech-keypair' && !length(params))
+				return { result: false, error: 'missing plain server name (outer SNI)' };
+
+			const fd = popen(`/usr/bin/sing-box generate ${type}` +
+				(length(params) ? ` ${shellquote(params)}` : ''));
 			if (fd) {
 				let ech_cfg_set = false;
 				let ech_key_set = false;
@@ -2228,14 +2256,34 @@ const methods = {
 	resources_update: {
 		args: { type: 'string' },
 		call: function(req) {
-			if (req.args?.type) {
-				const type = shellquote(req.args?.type);
-				/* 显式走 /bin/sh：脚本的执行位万一丢了（644），直接调用会
-				 * "Permission denied"，而按钮只会回一个含糊的失败码。 */
-				const exit_code = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/update_resources.sh')} ${type}`);
-				return { status: exit_code };
-			} else
+			if (!req.args?.type)
 				return { status: 255, error: 'illegal type' };
+
+			const type = shellquote(req.args?.type);
+			const logfile = `${RUN_DIR}/homeproxy.log`;
+			const before = lstat(logfile)?.size ?? 0;
+
+			/* 显式走 /bin/sh：脚本的执行位万一丢了（644），直接调用会
+			 * "Permission denied"，而按钮只会回一个含糊的失败码。 */
+			const exit_code = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/update_resources.sh')} ${type}`);
+
+			/* 只回一个数字，界面上就是一句「更新失败」；真正的原因（GitHub API
+			   限流 / 网络不通 / CDN 404）只写进主日志，用户看不到，排查还得重新
+			   登设备捞。把这一次**新写入**的日志行一并返回（按调用前的文件大小
+			   偏移读增量，不去猜日志格式）。 */
+			let detail = '';
+			const after = lstat(logfile)?.size ?? 0;
+
+			if (after > before) {
+				const fh = open(logfile, 'r');
+				if (fh) {
+					fh.seek(before);
+					detail = trim(fh.read('all') ?? '');
+					fh.close();
+				}
+			}
+
+			return { status: exit_code, log: detail };
 		}
 	},
 

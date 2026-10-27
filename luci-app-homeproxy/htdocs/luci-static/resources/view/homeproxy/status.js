@@ -194,12 +194,17 @@ function getResVersion(o, type) {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(this, () => {
 					return L.resolveDefault(callResUpdate(type), {}).then((res) => {
+						/* 失败时把后端新写的日志行一起显示出来：只回一个 status
+						   时，界面上一句「更新失败」，真正的原因（GitHub API 限流、
+						   网络不通、CDN 404）只能登设备翻日志才知道。 */
+						const reason = (res.log ? ' ' + res.log.replace(/\s+/g, ' ').trim() : '');
+
 						switch (res.status) {
 						case 0:
 							o.description = _('Successfully updated.');
 							break;
 						case 1:
-							o.description = _('Update failed.');
+							o.description = _('Update failed.') + reason;
 							break;
 						case 2:
 							o.description = _('Already in updating.');

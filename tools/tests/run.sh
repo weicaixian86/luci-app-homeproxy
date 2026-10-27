@@ -2038,6 +2038,28 @@ else
 	bad "empty groups can still kill the core, or a dead core leaves the LAN without DNS"
 fi
 
+# 真机全功能走查（0.2.9）查出的三个后端问题，各留一条闸门：
+#   ① singbox_generator 把空 params 也拼进命令行 → `generate uuid ''` 报
+#      `unknown command ""`，uuid / reality-keypair / wg-keypair 三个「生成」
+#      按钮全部失效（返回空对象，前端还把字段填成空串）；ech-keypair 反过来
+#      缺参数直接失败；
+#   ② certificate_write 调用了 ucode 里**不存在**的 is_binary() → 抛异常 →
+#      rpcd 折叠成 "Unknown error"，上传证书/私钥从来就没成功过；
+#   ③ resources_update 只回一个数字，界面上一句「更新失败」，真正的原因
+#      （GitHub API 限流等）只写在日志里。
+RPC_UC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+STATUS_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/status.js"
+if grep -q "const params = trim(req.args?.params" "$RPC_UC" \
+   && grep -q "missing plain server name" "$RPC_UC" \
+   && grep -q -e "-----BEGIN PRIVATE KEY-----" "$RPC_UC" \
+   && ! grep -q "is_binary(filecontent)" "$RPC_UC" \
+   && grep -q 'fh.seek(before)' "$RPC_UC" \
+   && grep -q 'res.log' "$STATUS_JS"; then
+	ok "key generation, certificate upload and resource updates report like real features"
+else
+	bad "a ucode builtin that does not exist, an empty argv, or a bare status code still breaks these buttons"
+fi
+
 # 一条订阅都没成功时不许重启内核，也不许说 Successfully。
 # 旧行为：`need_restart` 恒为 true，机场全挂 / 家里断网时照样 stop+start 一次
 # —— 用户看到代理无缘无故断流几秒，节点还一个没变；日志末尾仍然写
