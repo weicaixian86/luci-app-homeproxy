@@ -3103,6 +3103,14 @@ msgstr "订阅节点"
 msgid "Subscription update failed: %s"
 msgstr "订阅更新失败：%s"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2246
+msgid "Auto-append sing-box parameters"
+msgstr "自动附加 sing-box 参数"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2247
+msgid "When needed, ?flag=singbox is appended to fetch the complete node list. The address you entered is never modified."
+msgstr "需要时会自动附加 ?flag=singbox 以拉取完整节点，你填的地址不会被改动。"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2240
 msgid "Subscriptions"
 msgstr "订阅"

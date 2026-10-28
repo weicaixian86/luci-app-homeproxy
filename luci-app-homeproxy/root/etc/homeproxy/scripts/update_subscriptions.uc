@@ -36,6 +36,10 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
       packet_encoding = uci.get(uciconfig, ucisubscription, 'packet_encoding') || 'xudp',
       all_subscription_urls = uci.get(uciconfig, ucisubscription, 'subscription_url') || [],
 	  user_agent = uci.get(uciconfig, ucisubscription, 'user_agent'),
+	  /* 「自动附加 sing-box 参数」开关（界面默认勾选）。缺省按**开启**处理：
+	   老配置升级上来时没有这个键，如果按关闭处理，等于这次改动对老用户
+	   完全不生效。只有界面明确写入关闭值才算关。 */
+	  auto_flag_option = uci.get(uciconfig, ucisubscription, 'auto_flag'),
 	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
 
 /* 「通过代理更新订阅」在 0.2.4 之前是**死开关**：界面上有这一项，但脚本里
@@ -1778,6 +1782,134 @@ function fetch_subscription(url, ua) {
 	return proxied;
 }
 
+/* ==== 自动附加 ?flag=singbox ==== */
+/*
+ * 机场按 UA 和查询参数决定「给哪种客户端准备节点」。实测（2026-10-28，237）：
+ * 同一时刻、同一条订阅，用户填的地址返回 base64、节点较少；追加
+ * `?flag=singbox` 之后返回 sing-box 专用 JSON、节点明显更多 ——
+ * YU 56→82、PKM 31→37、SNY 11→31、WS 4→9，而 NB 不认这个参数（24→24）。
+ * 所以不能无脑加：必须抓两次比一比，**只有确实变多才采用**，机场不认时
+ * 原样丢弃，用户无感。
+ *
+ * 硬约束：**绝不改写 uci 里的 subscription_url**。参数只拼在这一次请求上，
+ * 因为 md5(去掉 # 的原始 url) 是节点归属键（节点段 grouphash、provider 的
+ * update_id）：改了它，整批节点会重新归属，面板上该机场立刻变成 0/0
+ * （0.2.9 第 39 条事故）。界面显示的也就永远是用户自己填的那个地址。
+ */
+
+function auto_flag_enabled() {
+	if (isEmpty(auto_flag_option))
+		return true;
+
+	const value = trim(sprintf('%s', auto_flag_option));
+
+	/* 与 isSectionEnabled() 同一口径：只有明确的关闭值才算关。 */
+	if (value === '0' || value === 'false' || value === 'no' ||
+	    value === 'off' || value === 'disabled')
+		return false;
+
+	return true;
+}
+
+/* 只用于日志里标明「是哪个机场」，不参与任何判断。 */
+function url_host_part(url) {
+	let host = replace(url, /^[a-z]+:\/\//, '');
+	host = replace(host, /^[^@]*@/, '');
+	host = replace(host, /[\/?#].*$/, '');
+	return host;
+}
+
+/*
+ * 把一份正文解析成节点数组（JSON / YAML / base64 / 纯 URI 都在里面分派）。
+ *
+ * ⚠️ 探测比较**必须**走这个函数，不能用「数 `"type"` 出现几次」那种粗活。
+ * WS 这家机场的 sing-box 格式是个空壳：outbounds 里只有 selector / urltest /
+ * direct，**一个节点都没有**，但字面上有 9 个 `"type"`；而它的默认格式
+ * （base64）有 4 个真节点。粗数会得出 9 > 4 的假阳，把 4 个节点换成 0 个
+ * —— 2026-10-28 真机上就这么翻过一次车。
+ */
+function parse_subscription_nodes(body) {
+	let nodes;
+
+	try {
+		const parsed = json(body);
+		if (type(parsed?.servers) === 'array') {
+			nodes = parsed.servers;
+
+			/* Shadowsocks SIP008 format */
+			if (nodes[0].server && nodes[0].method)
+				map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
+		} else if (type(parsed?.proxies) === 'array') {
+			nodes = parsed.proxies;
+			map(nodes, (_, i) => nodes[i].nodetype = 'mihomo');
+		} else if (type(parsed?.outbounds) === 'array') {
+			nodes = parsed.outbounds;
+			map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
+		} else if (type(parsed) === 'array') {
+			nodes = parsed;
+			if (nodes[0]?.server && nodes[0]?.method)
+				map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
+			else if (nodes[0]?.type && nodes[0]?.server)
+				map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
+		} else {
+			nodes = [];
+		}
+	} catch(e) {
+		nodes = parse_mihomo_yaml(body);
+		if (isEmpty(nodes)) {
+			nodes = decodeBase64Str(body);
+			const decoded_nodes = parse_mihomo_yaml(nodes);
+			if (!isEmpty(decoded_nodes))
+				nodes = decoded_nodes;
+			else
+				nodes = nodes ? split(trim(replace(nodes, / /g, '_')), '\n') : [];
+		}
+	}
+
+	return nodes ?? [];
+}
+
+/*
+ * 返回 { body, nodes }：nodes 不为 null 表示这份正文已经解析过，调用方直接
+ * 复用，别再解析一遍。
+ */
+function choose_subscription_body(url, body) {
+	if (!auto_flag_enabled())
+		return { body: body, nodes: null };
+
+	/* 用户自己已经写了 flag 参数：尊重他的选择，既不重复加也不再探测。 */
+	if (index(url, 'flag=') >= 0)
+		return { body: body, nodes: null };
+
+	/* 已经是 JSON，说明机场按 sing-box 格式给了，没必要多抓一次。 */
+	const head = substr(trim(body), 0, 1);
+
+	if (head === '{' || head === '[')
+		return { body: body, nodes: null };
+
+	const separator = index(url, '?') >= 0 ? '&' : '?';
+	const flag_url = url + separator + 'flag=singbox';
+	const response = fetch_subscription(flag_url, user_agent);
+	const alternative = response?.body;
+
+	if (isEmpty(alternative) || alternative === body)
+		return { body: body, nodes: null };
+
+	const nodes = parse_subscription_nodes(body),
+	      alternative_nodes = parse_subscription_nodes(alternative);
+
+	/* 没有变多就当作「这个机场的 sing-box 格式没用」：静默丢弃探测结果。
+	   用**解析出的节点数**比，不是用正文里 `"type"` 的个数比（见上面）。 */
+	if (length(alternative_nodes) <= length(nodes))
+		return { body: body, nodes: nodes };
+
+	log(sprintf('订阅「%s」(%s) 默认格式解析出 %d 个节点，自动附加 ?flag=singbox 后 %d 个，本次采用后者；你填写的地址没有被改动。',
+		subscription_display_name(url), url_host_part(url),
+		length(nodes), length(alternative_nodes)));
+
+	return { body: alternative, nodes: alternative_nodes };
+}
+
 function main() {
 	cleanup_subscription_info();
 
@@ -1835,41 +1967,16 @@ function main() {
 		if (response.truncated)
 			log(sprintf('Warning: the response from %s exceeded the 16 MiB limit and was truncated; the node list may be incomplete.', url));
 
-		let nodes;
-		try {
-			const parsed = json(res);
-			if (type(parsed?.servers) === 'array') {
-				nodes = parsed.servers;
+		/* 默认格式（base64 / YAML）常常比 sing-box 专用格式少一批节点。
+		   开关打开时按需补抓一次带 ?flag=singbox 的正文，只有**解析出的节点
+		   数确实更多**才换用（见 choose_subscription_body）；关掉开关即完全
+		   回到旧行为，连这次探测请求都不会发出。 */
+		const chosen = choose_subscription_body(url, res);
+		res = chosen.body;
 
-				/* Shadowsocks SIP008 format */
-				if (nodes[0].server && nodes[0].method)
-					map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
-			} else if (type(parsed?.proxies) === 'array') {
-				nodes = parsed.proxies;
-				map(nodes, (_, i) => nodes[i].nodetype = 'mihomo');
-			} else if (type(parsed?.outbounds) === 'array') {
-				nodes = parsed.outbounds;
-				map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
-			} else if (type(parsed) === 'array') {
-				nodes = parsed;
-				if (nodes[0]?.server && nodes[0]?.method)
-					map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
-				else if (nodes[0]?.type && nodes[0]?.server)
-					map(nodes, (_, i) => nodes[i].nodetype = 'sing-box');
-			} else {
-				nodes = [];
-			}
-		} catch(e) {
-			nodes = parse_mihomo_yaml(res);
-			if (isEmpty(nodes)) {
-				nodes = decodeBase64Str(res);
-				const decoded_nodes = parse_mihomo_yaml(nodes);
-				if (!isEmpty(decoded_nodes))
-					nodes = decoded_nodes;
-				else
-					nodes = nodes ? split(trim(replace(nodes, / /g, '_')), '\n') : [];
-			}
-		}
+		/* chosen.nodes 非 null 表示探测时已经解析过同一份正文，直接复用；
+		   否则在这里解析一次。 */
+		let nodes = chosen.nodes ?? parse_subscription_nodes(res);
 
 		let count = 0;
 		pinned_node_count = 0;

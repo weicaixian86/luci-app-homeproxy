@@ -2237,6 +2237,19 @@ return view.extend({
 		o.default = 'icmp';
 		o.rmempty = false;
 
+		/* 有些机场按查询参数决定给哪种客户端准备节点：默认地址返回的是
+		   base64（节点少一截），追加 ?flag=singbox 才给 sing-box 专用 JSON。
+		   开关放在订阅列表正上方，默认勾选；关掉即完全回到旧行为（连探测
+		   请求都不发）。**无论如何都不改写下面输入的地址**——界面显示的
+		   永远是用户自己填的那个，脚本只在请求时临时拼参数。 */
+		o = s.taboption('subscription', form.Flag, 'auto_flag',
+			_('Auto-append sing-box parameters'),
+			_('When needed, ?flag=singbox is appended to fetch the complete node list. The address you entered is never modified.'));
+		o.default = '1';
+		/* 不设 rmempty=false 的话，取消勾选会把这个键整个删掉，脚本读不到
+		   就按「开启」处理，开关等于关不掉。 */
+		o.rmempty = false;
+
 		o = s.taboption('subscription', SubscriptionList, 'subscription_url', _('Subscriptions'),
 			_('Supports AnyTLS, HTTP/HTTPS, Hysteria, Hysteria2, Shadowsocks (SIP002, Shadowrocket and SIP008), SOCKS (4 / 4a / 5), Trojan, TUIC, VLESS and VMess share links, as well as Clash (mihomo) proxy lists, sing-box outbound JSON and SIP008 JSON. SSR and KCP transport are not supported.'));
 		subscription_list_option = o;

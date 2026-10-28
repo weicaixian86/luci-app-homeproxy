@@ -2708,6 +2708,104 @@ else
 	bad "the start line does not say which core instances came up"
 fi
 
+# ── 自动附加 ?flag=singbox（需求第 51 条）────────────────────────────────
+# 机场按 UA / 查询参数决定返回哪种格式：用户填的地址给 base64、节点少一截，
+# 追加 ?flag=singbox 才给 sing-box 专用 JSON（2026-10-28 实测 SNY 11→31、
+# PKM 31→37、YU 56→82）。但不能无脑加（NB 实测 24→24 不认这个参数），
+# 更不能改写 uci 里的地址——md5(原始 url) 是节点归属键，改了整批节点会
+# 重新归属、面板立刻 0/0（0.2.9 第 39 条事故）。
+NODEJS="$PKG/htdocs/luci-static/resources/view/homeproxy/node.js"
+if grep -A 6 "form.Flag, 'auto_flag'" "$NODEJS" | grep -q "o.default = '1'"; then
+	ok "the auto-flag switch exists and defaults to enabled"
+else
+	bad "the auto-flag switch is missing or does not default to enabled"
+fi
+
+# rmempty=false 是这条开关能不能关掉的关键：少了它，取消勾选会把键整个
+# 删掉，脚本读不到就按「开启」处理，用户看到的是「关了还在加参数」。
+if grep -A 6 "form.Flag, 'auto_flag'" "$NODEJS" | grep -q 'o.rmempty = false'; then
+	ok "unchecking the auto-flag switch persists an explicit 0"
+else
+	bad "the auto-flag switch deletes its key on uncheck, so it can never be disabled"
+fi
+
+if grep -q "auto_flag_option = uci.get(uciconfig, ucisubscription, 'auto_flag')" "$SUB_UC" \
+   && grep -q 'function auto_flag_enabled' "$SUB_UC"; then
+	ok "subscription updates read the auto-flag switch"
+else
+	bad "subscription updates ignore the auto-flag switch"
+fi
+
+# 老配置里没有这个键：必须按开启处理，否则这次改动对老用户完全不生效。
+if grep -q 'if (isEmpty(auto_flag_option))' "$SUB_UC" \
+   && grep -q 'return true;' "$SUB_UC"; then
+	ok "a config without the auto-flag key is treated as enabled"
+else
+	bad "a missing auto-flag key would silently disable the feature"
+fi
+
+if grep -q 'choose_subscription_body(url, res)' "$SUB_UC"; then
+	ok "the subscription body goes through the flag probe before parsing"
+else
+	bad "the flag probe is never applied to the fetched body"
+fi
+
+# 用户自己已经写了 flag：既不重复加也不再探测。
+if grep -q "index(url, 'flag=') >= 0" "$SUB_UC"; then
+	ok "a URL that already carries flag= is left alone"
+else
+	bad "the probe would append a second flag= to a hand-written URL"
+fi
+
+# 已经是 JSON 说明机场按 sing-box 格式给了，不该再白抓一次。
+if grep -q "head === '{' || head === '\[" "$SUB_UC"; then
+	ok "a body that is already JSON skips the extra probe request"
+else
+	bad "the probe fires even when the airport already returns JSON"
+fi
+
+# 只有节点数确实变多才采用；没变多就静默丢弃（NB 那类不认参数的机场）。
+if grep -q 'if (length(alternative_nodes) <= length(nodes))' "$SUB_UC"; then
+	ok "the flagged body is only used when it actually parses into more nodes"
+else
+	bad "the probe would adopt a flagged body that is not better"
+fi
+
+# 判据必须「真解析一遍」，绝不能数正文里 `"type"` 出现几次：WS 这家机场的
+# sing-box 格式是空壳（outbounds 里只有 selector / urltest / direct，一个
+# 节点都没有），字面上却有 9 个 "type"，而它的默认格式只有 4 个真节点。
+# 粗数会得到 9 > 4 的假阳，把能用的 4 个换成 0 个 —— 2026-10-28 真机翻车。
+if grep -q 'function parse_subscription_nodes' "$SUB_UC" \
+   && ! grep -q 'body_node_count' "$SUB_UC"; then
+	ok "the probe compares real parsed node counts, not a raw token count"
+else
+	bad "the probe compares a raw token count and can prefer an empty sing-box shell"
+fi
+
+# 探测时已经解析过的正文要复用，别为了比较再解析一遍。
+if grep -q 'const chosen = choose_subscription_body(url, res)' "$SUB_UC" \
+   && grep -q 'let nodes = chosen.nodes ?? parse_subscription_nodes(res)' "$SUB_UC"; then
+	ok "the chosen body is parsed once and reused"
+else
+	bad "the chosen body is parsed twice (or never)"
+fi
+
+# 日志要说清「哪个订阅被自动加了参数」，所以必须带订阅名 + 域名，且是中文。
+if grep -q '自动附加 ?flag=singbox 后 %d 个' "$SUB_UC" \
+   && grep -q 'subscription_display_name(url), url_host_part(url)' "$SUB_UC"; then
+	ok "the log names the subscription and its host when the flag is applied"
+else
+	bad "the log does not say which subscription got the flag"
+fi
+
+# 界面上显示的地址必须还是用户填的那个：脚本不许往 subscription_url 写回。
+if grep -q "uci.set(uciconfig, ucisubscription, 'subscription_url'" "$SUB_UC"; then
+	bad "the updater rewrites subscription_url, which breaks the node group hashes"
+else
+	ok "subscription_url in uci is never rewritten by the updater"
+fi
+
+
 # ----------------------------------------------------------------- summary
 printf '\n----------------------------------------\n'
 if [ "$FAILED" -eq 0 ]; then
