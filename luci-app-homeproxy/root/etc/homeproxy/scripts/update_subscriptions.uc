@@ -2272,8 +2272,15 @@ function main() {
 
 	if (need_restart) {
 		log('Restarting service...');
-		init_action('homeproxy', 'stop');
-		init_action('homeproxy', 'start');
+		/* ⚠️ 必须用 restart，不能写成 stop 紧跟 start。每次 init_action 都是
+		   一次独立的 /etc/init.d/homeproxy 调用，各自去抢 rc.common 的
+		   procd 锁（lock -w，**没有超时**）：只要 procd 触发器、面板或另一个
+		   更新任务同时在跑，stop 就会无限等锁。2026-10-28 现场：订阅更新卡在
+		   `Restarting service...` 整整 5 分钟不动，`ps` 里 stop 与 start 两个
+		   init.d 进程并存，最后只能 kill 掉那个 stop。restart 由 rc.common
+		   在**同一个进程**里顺序执行 stop+start（`restart(){ stop; start; }`），
+		   只取一次锁，不会自己跟自己抢。 */
+		init_action('homeproxy', 'restart');
 	}
 
 	/* 这里必须把「总数」写出来。`9 nodes added` 只是本次的增量（机场改名、新增

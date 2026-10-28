@@ -1678,6 +1678,88 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 }
 /* Experimental end */
 
+/* 出站引用完整性 ------------------------------------------------------------
+ * 0 节点（或删掉某个出站）之后，配置里会残留指向「选不出节点的分组」的引用。
+ *
+ * sing-box 不会因此拒绝启动，但运行期凡走该引用的连接都会失败，DNS 也一样。
+ * 2026-10-28 现场：清空节点后 dns.final 指向自定义 DoH，它的 detour 是
+ * 「默认代理」，而这条链的末端（各 urltest 组）虽然被降级成了 [direct-out]，
+ * 却永远测不出可用成员 —— 于是整个局域网解析不了任何域名（nslookup 只回
+ * No answer），订阅也就拉不回来，只能 SSH 进路由器手动救。
+ *
+ * 处理分两层：
+ *   ① 完全没有真实节点时，整套 DNS 退回直连（final = default-dns，所有
+ *      server 的 detour 一律 direct-out），route.final 也退回直连 ——
+ *      没有代理可用时，直连是唯一还能上网的路径，也正是用户点「更新订阅」
+ *      自救所需要的；
+ *   ② 其余悬空引用（指向根本不存在的 tag，或指向成员为空的分组）统一指回
+ *      direct-out。正常配置下这些引用都成立，本函数一个字段都不会改。 */
+function ensure_outbound_refs(config) {
+	let tags = { 'direct-out': true },
+	    dns_tags = {},
+	    has_proxy = false;
+
+	for (let outbound in config.outbounds ?? []) {
+		if (isEmpty(outbound.tag))
+			continue;
+
+		const kind = outbound.type;
+
+		if (kind !== 'selector' && kind !== 'urltest' && kind !== 'direct' &&
+		    kind !== 'block' && kind !== 'dns')
+			has_proxy = true;
+
+		/* 成员为空的组等于没有这个出站：指向它的连接一定选不出节点。 */
+		if ((kind === 'selector' || kind === 'urltest') &&
+		    length(outbound.outbounds ?? []) === 0)
+			continue;
+
+		tags[outbound.tag] = true;
+	}
+
+	for (let server in config.dns?.servers ?? [])
+		if (!isEmpty(server.tag))
+			dns_tags[server.tag] = true;
+
+	function dangling(tag) {
+		return type(tag) === 'string' && tags[tag] !== true;
+	}
+
+	if (!has_proxy) {
+		for (let server in config.dns?.servers ?? [])
+			if (server.tag !== 'system-dns')
+				server.detour = 'direct-out';
+
+		if (dns_tags['default-dns'] === true)
+			config.dns.final = 'default-dns';
+
+		config.route.final = 'direct-out';
+	}
+
+	if (dangling(config.route?.final))
+		config.route.final = 'direct-out';
+
+	for (let rule in config.route?.rules ?? []) {
+		if (type(rule.outbound) === 'array') {
+			for (let i = 0; i < length(rule.outbound); i++)
+				if (dangling(rule.outbound[i]))
+					rule.outbound[i] = 'direct-out';
+		} else if (dangling(rule.outbound)) {
+			rule.outbound = 'direct-out';
+		}
+	}
+
+	for (let server in config.dns?.servers ?? [])
+		if (dangling(server.detour))
+			server.detour = 'direct-out';
+
+	/* dns.final 指的是 DNS 服务器的 tag（不是出站 tag），单独判一次。 */
+	if (type(config.dns?.final) === 'string' && dns_tags[config.dns.final] !== true &&
+	    dns_tags['default-dns'] === true)
+		config.dns.final = 'default-dns';
+}
+
 system('mkdir -p ' + RUN_DIR);
 system('mkdir -p ' + RULESET_DIR);
+ensure_outbound_refs(config);
 writefile(RUN_DIR + '/sing-box-c.json', sprintf('%.J\n', removeBlankAttrs(config)));

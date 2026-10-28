@@ -2177,7 +2177,7 @@ fi
 # —— 用户看到代理无缘无故断流几秒，节点还一个没变；日志末尾仍然写
 # `Successfully updated subscriptions.`，把「一条都没拉到」伪装成成功。
 FAIL_LINE=$(grep -n 'if (succeeded === 0)' "$SUB_UC" | cut -d: -f1)
-RESTART_LINE=$(grep -n "init_action('homeproxy', 'stop')" "$SUB_UC" | cut -d: -f1)
+RESTART_LINE=$(grep -n "init_action('homeproxy', 'restart')" "$SUB_UC" | cut -d: -f1)
 if [ -n "$FAIL_LINE" ] && [ -n "$RESTART_LINE" ] && [ "$FAIL_LINE" -lt "$RESTART_LINE" ] \
    && grep -q 'All %d subscriptions failed, keeping the running configuration' "$SUB_UC" \
    && grep -q 'Updated %s of %s subscriptions, %s failed' "$SUB_UC" \
@@ -2483,15 +2483,16 @@ fi
 #   · [FATAL ERROR] 兜底无条件 stop+start——更新崩了还把正在跑的代理重启一遍。
 # 现在服务必须全程活着：main() 里只许成功路径末尾那一处 stop+start；下载前
 # 的 stop 与失败路径里的 start/stop 全部不允许出现。
+SUB_RESTART_HITS=$(grep -c "init_action('homeproxy', 'restart')" "$SUB")
 SUB_STOP_HITS=$(grep -c "init_action('homeproxy', 'stop')" "$SUB")
 SUB_START_HITS=$(grep -c "init_action('homeproxy', 'start')" "$SUB")
-if [ "$SUB_STOP_HITS" = 1 ] && [ "$SUB_START_HITS" = 1 ] \
+if [ "$SUB_RESTART_HITS" = 1 ] && [ "$SUB_STOP_HITS" = 0 ] && [ "$SUB_START_HITS" = 0 ] \
    && ! grep -q "log('Stopping service...')" "$SUB" \
    && ! grep -q "log('Starting service...')" "$SUB" \
    && sed -n '/^\tif (need_restart)/,/^\t}/p' "$SUB" | grep -q "init_action"; then
-	ok "subscription update touches the service only on success (stop+start once)"
+	ok "subscription update touches the service only on success (one restart)"
 else
-	bad "a failed subscription update can stop or restart the running service ($SUB_STOP_HITS stop / $SUB_START_HITS start)"
+	bad "a failed subscription update can stop or restart the running service ($SUB_RESTART_HITS restart / $SUB_STOP_HITS stop / $SUB_START_HITS start)"
 fi
 
 # ── 订阅更新：没有主节点时自动挑一个（0.2.5 现场实测） ───────────────────────
@@ -2803,6 +2804,52 @@ if grep -q "uci.set(uciconfig, ucisubscription, 'subscription_url'" "$SUB_UC"; t
 	bad "the updater rewrites subscription_url, which breaks the node group hashes"
 else
 	ok "subscription_url in uci is never rewritten by the updater"
+fi
+
+# ── 重启服务：必须用 restart，不能 stop 紧跟 start ──────────────────────
+# 每次 init_action 都是一次独立的 init.d 调用，各自去抢 rc.common 的 procd
+# 锁（lock -w，没有超时）。只要 procd 触发器或面板同时在跑，stop 就无限等锁：
+# 2026-10-28 现场卡在「Restarting service...」5 分钟，ps 里 stop 与 start
+# 并存，只能 kill。restart 由 rc.common 在同一进程里 stop+start，只取一次锁。
+if grep -q "init_action('homeproxy', 'restart')" "$SUB_UC"; then
+	ok "the subscription updater restarts the service in one shot (no lock race)"
+else
+	bad "the subscription updater calls stop and start separately (deadlocks on the procd lock)"
+fi
+
+if grep -q "init_action('homeproxy', 'stop')" "$SUB_UC" \
+   || grep -q "init_action('homeproxy', 'start')" "$SUB_UC"; then
+	bad "the subscription updater still issues a separate stop/start"
+else
+	ok "no separate stop/start calls are left in the updater"
+fi
+
+# ── 0 节点时 DNS 不能指向不存在的出站 ───────────────────────────────────
+# 清空节点后 dns.final 指向的自定义 DoH，detour 是「默认代理」，而那个
+# selector 已不存在 → 整个局域网解析不了任何域名（nslookup 只回 No answer），
+# 订阅也就永远拉不回来。生成器必须把所有悬空引用指回 direct-out。
+GEN_JS="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+if grep -q 'function ensure_outbound_refs' "$GEN_JS" \
+   && grep -q 'ensure_outbound_refs(config)' "$GEN_JS"; then
+	ok "the client generator repairs dangling outbound references"
+else
+	bad "a config without nodes keeps DNS/route refs to outbounds that do not exist"
+fi
+
+# 三处引用都要覆盖：route.final、route.rules[].outbound、dns.servers[].detour。
+if grep -q "config.route.final = 'direct-out'" "$GEN_JS" \
+   && grep -q "rule.outbound = 'direct-out'" "$GEN_JS" \
+   && grep -q "server.detour = 'direct-out'" "$GEN_JS"; then
+	ok "route final, rule targets and DNS detours all fall back to direct-out"
+else
+	bad "the reference repair misses route rules or DNS detours"
+fi
+
+# 修复必须发生在写盘之前，否则改的是内存里的副本、落盘的还是坏配置。
+if awk '/ensure_outbound_refs\(config\);/{f=1} /writefile\(RUN_DIR \+ .\/sing-box-c.json/{print (f?"ok":"late")}' "$GEN_JS" | grep -q '^ok$'; then
+	ok "the repair runs before the config is written to /var/run"
+else
+	bad "the repair runs after the config was already written"
 fi
 
 
