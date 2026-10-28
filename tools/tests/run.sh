@@ -59,6 +59,21 @@ WORK=$(mktemp -d 2>/dev/null) || WORK="$ROOT/.tests-tmp"
 mkdir -p "$WORK" 2>/dev/null
 trap 'rm -rf "$WORK"' EXIT INT TERM
 
+# 自检脚本自己必须能被 dash 解析。CI 与 OpenWrt 上 /bin/sh 是 dash/ash，本地
+# Git Bash 的 sh 是 bash —— bash 专属语法（进程替换 <(...)、[[ ]]、数组）在
+# 本地一路绿灯，到 CI 却在校验到那一行时 `Syntax error: "(" unexpected`，
+# 前面已经打印的 200 多条 OK 全部作废，还容易误以为是某条断言跑了没通过。
+# dash 的解析在子进程里进行，自己解析失败不影响父进程继续跑，所以这条能报出来。
+if [ "$SHN" = "dash" ]; then
+	if dash -n "$0" 2>"$WORK/dashself"; then
+		ok "tools/tests/run.sh parses under dash (what CI actually runs)"
+	else
+		bad "tools/tests/run.sh uses bash-only syntax and cannot run under dash: $(head -2 "$WORK/dashself" | tr '\n' ' ')"
+	fi
+else
+	skip "dash is unavailable, so run.sh cannot verify itself against CI's shell"
+fi
+
 # ---------------------------------------------------------------- JavaScript
 section "JavaScript syntax"
 find "$PKG/htdocs" -type f -name '*.js' | sort > "$WORK/js.list"
@@ -2411,10 +2426,15 @@ fi
 
 # 代理不可用时「直连」必须是真直连：服务在跑时先停掉（tproxy 会把镜像请求
 # 也劫持到当前节点，节点坏了等于所有镜像一起坏）。
+#
+# 这里原写成 `grep -q ... <(sed -n ...)`，进程替换是 bash 语法：本地 Git Bash
+# 的 sh 就是 bash，一路绿灯；CI 与设备上是 dash，解析到这一行直接
+# `Syntax error: "(" unexpected` 并让整份自检 exit 2 —— 前面 200 多条 OK 全白跑。
+# POSIX 写法：先取到文本存进变量，再喂给 grep。
+CLEANUP_BODY="$(sed -n '/^cleanup()/,/^}/p' "$FP")"
 if grep -q 'stop_service_for_direct' "$FP" \
    && grep -q '/etc/init.d/homeproxy stop' "$FP" \
-   && grep -q 'restore_service_after_direct' "$FP" \
-   && grep -q 'restore_service_after_direct'  <(sed -n '/^cleanup()/,/^}/p' "$FP"); then
+   && printf '%s\n' "$CLEANUP_BODY" | grep -q 'restore_service_after_direct'; then
 	ok "the panel download stops the service for a real direct link and restores it via trap"
 else
 	bad "the panel direct round is not a real direct connection (or never restores the service)"

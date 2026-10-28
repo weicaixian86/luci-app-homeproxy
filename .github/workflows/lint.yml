@@ -61,6 +61,14 @@ jobs:
           npm install --no-save --no-package-lock --no-fund --no-audit --loglevel=error jsdom@30.1.3 \
             || echo "::warning::jsdom install failed, the DOM tests will be skipped"
 
+      # 自检脚本本身先在 dash 下解析一遍。它跑在 `sh`（ubuntu 上是 dash）里，
+      # 而开发者本地 Git Bash 的 sh 是 bash：进程替换 <(...)、[[ ]] 这类语法
+      # 本地全绿，CI 却在解析到那一行时直接 `Syntax error: "(" unexpected`，
+      # 前面打印过的 200 多条 OK 全部作废，报错位置还指向无关断言行。
+      # 单独一步能把「脚本本身坏了」和「某条断言不通过」彻底区分开。
+      - name: Parse the self-check script under dash
+        run: dash -n tools/tests/run.sh
+
       - name: Run checks
         env:
           NODE: node
