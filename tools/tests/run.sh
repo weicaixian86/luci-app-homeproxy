@@ -93,6 +93,10 @@ section "Shell syntax"
 	[ -f "$PKG/root/etc/init.d/homeproxy" ] && printf '%s\n' "$PKG/root/etc/init.d/homeproxy"
 	# uci-defaults scripts carry no extension but are plain POSIX shell.
 	find "$PKG/root/etc/uci-defaults" -type f 2>/dev/null
+	# 工具栏里的脚本（run.sh 自己、以及临时排查用的 *.sh）同样会跑在
+	# dash / busybox ash 下，必须一起过 -n；漏掉自己正是 0.2.12 那次
+	# 「本地全绿、CI 解析期报 Syntax error」的直接原因。
+	find "$ROOT/tools/tests" -type f -name '*.sh' 2>/dev/null
 } | sort > "$WORK/sh.list"
 while IFS= read -r f; do
 	[ -n "$f" ] || continue
