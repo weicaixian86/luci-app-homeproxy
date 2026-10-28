@@ -2395,6 +2395,53 @@ else
 	bad "update_core_async.sh does not pass --source"
 fi
 
+# 镜像列表里放过两个已经注销的域名（hub.gitmirror.com / github.moeyy.xyz）：
+# 每次下载都要白等一次 NXDOMAIN，日志里留下 `返回码 6`，用户会以为是自己
+# 路由器 DNS 坏了。2026-10-28 现场 nslookup 实测两个域名都是 NXDOMAIN。
+# 只判赋值那一行：注释里会提到这些域名（说明它们为什么被移除）。
+MIRROR_LINE="$(grep '^GH_PROXY_PREFIXES=' "$UC" | head -n1)"
+case "$MIRROR_LINE" in
+	*hub.gitmirror.com*|*github.moeyy.xyz*)
+		bad "the core mirror list still holds a dead domain (NXDOMAIN since 2026-10-28)" ;;
+	*gh-proxy.com*)
+		ok "the core mirror list no longer holds the dead domains" ;;
+	*)
+		bad "GH_PROXY_PREFIXES is missing or unrecognised" ;;
+esac
+
+if grep -q '^GH_PROXY_PREFIXES="https://gh-proxy\.com/ https://ghproxy\.net/' "$UC"; then
+	ok "the two mirrors measured reachable lead the core download list"
+else
+	bad "the core download list does not lead with the mirrors that actually work"
+fi
+
+# 全源失败时，真正的原因常常是「当前代理节点已失效」而不是镜像挂了：
+# 服务运行时路由器自身出站被 tproxy 劫持，curl 拿到的不是直连。
+# 这时必须停一次服务（firewall_teardown 撤掉劫持）再用真直连重试一轮。
+if grep -q 'core_direct_retry' "$UC" \
+   && grep -q '/etc/init\.d/homeproxy stop' "$UC" \
+   && grep -q 'core_direct_retry "$asset_url"' "$UC"; then
+	ok "a fully failed core download retries over a real direct link (service stopped first)"
+else
+	bad "core download never falls back to a genuine direct connection"
+fi
+
+if grep -q 'core_direct_restore' "$UC" && grep -q '/etc/init\.d/homeproxy start' "$UC"; then
+	ok "the service is restarted no matter how the direct retry ends"
+else
+	bad "the service stays stopped after a direct retry"
+fi
+
+# 失败收口必须带上每个源的返回码（6=域名解析失败、28=超时、22=HTTP 4xx/5xx），
+# 只写「下载失败」用户分不清是自家网络坏了还是镜像失效。
+if grep -q 'DOWNLOAD_ATTEMPTS' "$UC" \
+   && grep -q 'rc${rc}/http${LAST_HTTP:-000}' "$UC" \
+   && grep -q '所有源都不可用' "$UC"; then
+	ok "a failed core download lists every source with its return code"
+else
+	bad "a failed core download reports only a bare 'download failed'"
+fi
+
 # 「默认出站（漏网之鱼）」下拉里那个 nil 选项其实是整个插件的总开关：选它
 # start_service 直接 return 1，插件完全不运行。旧文案 `Disable (the service)`
 # 被读成「禁用漏网之鱼这条规则」，于是用户配好一堆规则却发现插件不起来。

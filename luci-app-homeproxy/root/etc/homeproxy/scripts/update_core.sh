@@ -20,6 +20,10 @@
 # Download methodology follows luci-app-vnt2cli:
 #   - curl is the preferred downloader, with --retry 2 inside a single mirror;
 #   - if a mirror fails, fail over to the next source (gh-proxy -> github);
+#   - if EVERY source fails, stop the service for a moment and retry the whole
+#     list over a real direct connection: while homeproxy runs, its own outbound
+#     traffic is tproxy-hijacked into the selected proxy node, so a dead node
+#     looks exactly like "all mirrors are down" (see core_direct_retry);
 #   - the download cache is cleared before every download;
 #   - SHA-256 is verified when an official checksum can be located.
 
@@ -35,6 +39,13 @@ CORE_BIN="/usr/bin/sing-box"
 STATE_FILE="${HP_DIR}/core.state"
 DOWNLOAD_LOG="${RUN_DIR}/core_download.log"
 CACHE_DIR="/tmp/homeproxy-core-dl"
+
+# 每个下载源的失败明细，形如 `gh-proxy.com=rc28/http000; github.com=rc6/http000`。
+# 由 download_file() 累积、download_and_install() 汇总成最后一行日志。
+# 必须在全局初始化：脚本带 `set -u`，函数里读未定义变量会直接退出。
+# 两轮分开记：第一轮经代理劫持，第二轮是真直连，混在一起会让人以为试了 8 次。
+DOWNLOAD_ATTEMPTS=""
+DOWNLOAD_ATTEMPTS_PROXIED=""
 
 # Pinned reF1nd release. Only the leading 'v' differs between the git tag and
 # the download path; the version string itself is reused verbatim.
@@ -92,7 +103,15 @@ CORE_SHA256_MISSING="${CORE_SHA256_MISSING:-warn}"   # warn=放行并告警；fa
 #
 # gh-proxy.com leads because it was reachable on every network we measured
 # (router: ~22 KB/s; dev machine: ~114 KB/s on the 34 MB core).
-GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://hub.gitmirror.com/ https://gh.llkk.cc/ https://github.moeyy.xyz/"
+#
+# 2026-10-28 现场复测（237，每个源只取 1 KB，避开 34 MB 全量下载）：
+#   gh-proxy.com  206 可用      ghproxy.net  206 可用
+#   ghfast.top    rc=28 超时    gh.llkk.cc   rc=28 超时
+#   hub.gitmirror.com / github.moeyy.xyz  ——  nslookup 直接 NXDOMAIN，域名已注销
+# 两个死域名已移除。留着的代价不只是浪费一次尝试：日志里会写
+# `下载失败（返回码 6，HTTP 000）`，而返回码 6 是「域名解析不了」，
+# 用户会误以为是自己路由器 DNS 或网络坏了，实际是我们的镜像列表过期了。
+GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://gh.llkk.cc/"
 
 # NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
 # its functions, and under `set -u` sourcing it is fatal: if that library
@@ -409,6 +428,7 @@ candidate_urls() {
 download_file() {
 	local url="$1" out="$2" purpose="${3:-generic}" mirror="${4:-auto}"
 	local downloader rc actual_url connect_timeout codefile LAST_HTTP=""
+	local round_attempts="" label
 
 	downloader="$(get_downloader "$purpose")" || return 1
 
@@ -484,12 +504,19 @@ download_file() {
 				fi
 			fi
 			log_download "下载成功：${actual_url}"
+			DOWNLOAD_ATTEMPTS="${DOWNLOAD_ATTEMPTS}${DOWNLOAD_ATTEMPTS:+; }${round_attempts}"
 			return 0
 		fi
+		# 每个源失败的返回码都要留档：全失败时汇总成一行给用户看，
+		# 才分得清「域名死了(6)」「超时(28)」「文件不对(22)」。
+		label="${actual_url#*://}"
+		label="${label%%/*}"
 		log_download "下载失败（返回码 ${rc}，HTTP ${LAST_HTTP:-000}）：${actual_url}"
+		round_attempts="${round_attempts}${round_attempts:+; }${label}=rc${rc}/http${LAST_HTTP:-000}"
 		rm -f "$out"
 	done
 
+	DOWNLOAD_ATTEMPTS="${DOWNLOAD_ATTEMPTS}${DOWNLOAD_ATTEMPTS:+; }${round_attempts}"
 	return 1
 }
 
@@ -637,6 +664,52 @@ setup_cache_dir() {
 	fi
 }
 
+# 服务运行时，路由器自身出站会被 homeproxy 的 nft tproxy 规则劫持
+# （firewall_post.ut 的 homeproxy_output_redir）：curl 拿到的不是「直连」，
+# 而是「当前选中的那个代理节点」。而「要更新内核」往往恰恰是「代理已经
+# 不工作」的时刻 —— 于是镜像一个都连不上，日志里一片 `返回码 6` / `28`。
+#
+# 第一轮（不停服务）全失败后，临时停一次服务：stop_service 会做
+# firewall_teardown，nft 劫持与 DNS 劫持一起撤掉，这一轮才是真的直连。
+# 无论成败都立刻恢复，避免把局域网一直挂在「代理停了」的状态上。
+CORE_DIRECT_RETRY_STOPPED=''
+
+core_direct_retry() {
+	local url="$1" out="$2"
+
+	if ! /etc/init.d/homeproxy running >/dev/null 2>&1; then
+		log_download "服务当前未运行，没有代理劫持可绕开，不再重试。"
+		return 1
+	fi
+
+	log_download "全部源都不可用，疑似当前代理节点已失效。临时停止 homeproxy 改用直连再试一轮（下载结束后自动恢复服务）"
+	/etc/init.d/homeproxy stop >/dev/null 2>&1
+	CORE_DIRECT_RETRY_STOPPED=1
+
+	# stop_service 要 teardown nft、重启 dnsmasq，给它一点时间落地，
+	# 否则紧接着发出的 curl 仍可能命中尚未撤掉的规则。
+	sleep 2
+
+	DOWNLOAD_ATTEMPTS_PROXIED="$DOWNLOAD_ATTEMPTS"
+	DOWNLOAD_ATTEMPTS=""
+
+	download_file "$url" "$out" asset auto
+	return 0
+}
+
+core_direct_restore() {
+	[ -n "$CORE_DIRECT_RETRY_STOPPED" ] || return 0
+	CORE_DIRECT_RETRY_STOPPED=''
+
+	if /etc/init.d/homeproxy start >/dev/null 2>&1; then
+		log_download "已重新启动 homeproxy。"
+	else
+		log_download "警告：homeproxy 未能自动重新启动，请到「服务状态」页确认，必要时手动执行 /etc/init.d/homeproxy start"
+	fi
+
+	return 0
+}
+
 # Download and install the matching reF1nd core for the given arch/asset.
 download_and_install() {
 	local arch="$1" asset="$2"
@@ -645,11 +718,29 @@ download_and_install() {
 	setup_cache_dir
 	clear_cache
 
+	DOWNLOAD_ATTEMPTS=""
+	DOWNLOAD_ATTEMPTS_PROXIED=""
 	asset_url="https://github.com/${REFIND_REPO}/releases/download/${REFIND_TAG}/${asset}"
 	log_download "开始下载 reF1nd 内核：${asset}（架构 ${arch}）"
 
 	if ! download_file "$asset_url" "${CACHE_DIR}/${asset}" asset auto; then
-		log_download "下载失败：${asset}（已尝试 gh-proxy 与 github 故障转移）"
+		core_direct_retry "$asset_url" "${CACHE_DIR}/${asset}"
+		core_direct_restore
+	fi
+
+	if [ ! -s "${CACHE_DIR}/${asset}" ]; then
+		# 一行收口，并且把每个源的返回码带上：6=域名解析不了，
+		# 28=超时，22=HTTP 4xx/5xx。没有这串数字，用户只能看到
+		# 「下载失败」四个字，分不清是自己的网络问题还是镜像失效。
+		local detail=""
+		if [ -n "$DOWNLOAD_ATTEMPTS_PROXIED" ]; then
+			detail="经代理：${DOWNLOAD_ATTEMPTS_PROXIED}"
+		fi
+		if [ -n "$DOWNLOAD_ATTEMPTS" ]; then
+			[ -n "$detail" ] && detail="${detail}｜"
+			detail="${detail}直连：${DOWNLOAD_ATTEMPTS}"
+		fi
+		log_download "下载失败：${asset}（所有源都不可用 ${detail:-无记录}）"
 		return 1
 	fi
 
