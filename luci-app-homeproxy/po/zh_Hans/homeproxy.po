@@ -3626,10 +3626,6 @@ msgstr "UDP 超时"
 msgid "UI download URL"
 msgstr "UI 下载地址"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:3591
-msgid "UI download detour"
-msgstr "UI 下载节点"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3505
 msgid "UI path"
 msgstr "UI 路径"

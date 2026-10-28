@@ -2376,6 +2376,100 @@ else
 	bad "fetch_panel.sh has no --source"
 fi
 
+# ── 下载顺序：原地址走代理优先，代理不可用才用镜像直连 ─────────────────
+# 两个脚本（面板 fetch_panel.sh / 内核 update_core.sh）必须同一套语义：
+# 候选条目带 P/D 前缀，P 只在第一轮出现，第二轮 dirct 前先停服务撤掉 tproxy。
+UCORE="$PKG/root/etc/homeproxy/scripts/update_core.sh"
+
+# P 必须排在 D 前面 —— 按行号比，别去拼 "printf 'D|%s\n' ..." 这种带引号、
+# 反斜杠和 $ 的模式串，转义层数一多就变成匹配 "%sn"，白红一轮。
+P_LINE=$(grep -n "printf 'P|%s" "$FP" | head -n1 | cut -d: -f1)
+D_LINE=$(grep -n "printf 'D|%s" "$FP" | head -n1 | cut -d: -f1)
+if [ -n "$P_LINE" ] && [ -n "$D_LINE" ] && [ "$P_LINE" -lt "$D_LINE" ]; then
+	ok "the panel download lists the proxy-first candidate before any mirror"
+else
+	bad "the panel download still tries mirrors before the proxy"
+fi
+
+# 直连轮里镜像必须排在原地址前面：直连 github.com 实测只有 60~80 KB/s 且易断，
+# 放前面会把整个预算耗光（真机实测 5 分钟才下到 5 MB）。
+MIRROR_D_LINE=$(grep -n "printf 'D|%s" "$FP" | grep 'gh-proxy\.com' | head -n1 | cut -d: -f1)
+ORIGIN_D_LINE=$(grep -n "printf 'D|%s" "$FP" | grep 'direct"$' | tail -n1 | cut -d: -f1)
+if [ -n "$MIRROR_D_LINE" ] && [ -n "$ORIGIN_D_LINE" ] && [ "$MIRROR_D_LINE" -lt "$ORIGIN_D_LINE" ]; then
+	ok "the panel direct round tries the mirror before the bare GitHub URL"
+else
+	bad "the panel direct round would start with a slow direct GitHub download"
+fi
+
+# 代理必须真的传进 curl/wget；只写注释不传参等于没做。
+if grep -q -- '--proxy "$via_proxy"' "$FP" && grep -q 'http_proxy="$via_proxy"' "$FP" \
+   && grep -q -- '--proxy "$via_proxy"' "$UCORE"; then
+	ok "both downloaders actually pass the proxy to curl and wget"
+else
+	bad "the proxy endpoint is resolved but never passed to the downloader"
+fi
+
+# 代理不可用时「直连」必须是真直连：服务在跑时先停掉（tproxy 会把镜像请求
+# 也劫持到当前节点，节点坏了等于所有镜像一起坏）。
+if grep -q 'stop_service_for_direct' "$FP" \
+   && grep -q '/etc/init.d/homeproxy stop' "$FP" \
+   && grep -q 'restore_service_after_direct' "$FP" \
+   && grep -q 'restore_service_after_direct'  <(sed -n '/^cleanup()/,/^}/p' "$FP"); then
+	ok "the panel download stops the service for a real direct link and restores it via trap"
+else
+	bad "the panel direct round is not a real direct connection (or never restores the service)"
+fi
+
+# 没配 mixed_port（老配置 / uci 读不到）时必须跳过代理那条，不能卡住。
+if grep -qF '[ -z "$via_proxy" ] && continue' "$FP" \
+   && grep -qF '[ -z "$via_proxy" ] && continue' "$UCORE"; then
+	ok "a missing mixed_port makes both scripts skip the proxy candidate"
+else
+	bad "a missing mixed_port would stall the download on a dead proxy"
+fi
+
+# 「UI 下载节点」下拉已删除：它只作用于 sing-box 内建的 /upgrade/ui，
+# 对 fetch_panel.sh 这条真正在用的路径毫无作用，留着只会误导。
+if grep -q 'external_ui_download_detour' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	bad "the dead 'UI download detour' dropdown is still in the panel settings"
+else
+	ok "the dead 'UI download detour' dropdown is gone from the panel settings"
+fi
+
+# 下载地址下拉里每个面板只留一条（GitHub 原地址）。之前同一份 Zashboard
+# 列了 gh-proxy / ghproxy.net / 直连三条，看起来像三个不同面板，实际只是
+# 同一个文件的三条路径 —— 而这三条现在由脚本自动选。
+if grep -q "so.value('https://gh-proxy.com/" "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	bad "the UI download list still offers mirror-prefixed duplicates of the same dashboard"
+else
+	ok "the UI download list offers exactly one entry per dashboard"
+fi
+
+# 老配置里存的是带前缀的地址：load 时先剥掉前缀再匹配，否则会退化成「自定义」。
+if grep -q 'stripPanelMirror' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js" \
+   && grep -q 'const value = stripPanelMirror(uci.get' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	ok "an old mirror-prefixed panel URL still shows up as its named preset"
+else
+	bad "an old mirror-prefixed panel URL would fall back to the Custom entry"
+fi
+
+# 「终端里敲 reload 就该真的重载」：登录 shell 直接 exec 时 $PPID 就是 shell，
+# 之前落到「未识别」→ 按 mtime 判定 → 配置没变就跳过，与约定不符。
+if grep -q '终端手动执行（登录 shell）' "$INIT" \
+   && grep -q '\*终端手动执行\*' "$INIT"; then
+	ok "a reload typed in an interactive shell is treated as a manual request"
+else
+	bad "a reload typed in an interactive shell may be skipped as unidentified"
+fi
+
+# 但被 shell 包一层执行（ash -c '...'）不能算手动：有脚本循环这么调的话，
+# force=1 会把服务带成重载风暴。
+if grep -q 'shell 包装调用' "$INIT"; then
+	ok "a shell-wrapped reload is not forced (storm guard still applies)"
+else
+	bad "a shell-wrapped reload would be forced and could storm"
+fi
+
 if [ "$(grep -c -- '--source' "$INIT")" -ge 2 ] && grep -q 'LuCI「更新面板」按钮' "$HPUC"; then
 	ok "every panel download caller names itself"
 else

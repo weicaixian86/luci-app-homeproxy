@@ -327,6 +327,17 @@ hp_caller() {
 			else
 				printf '%s' "系统启动（procd/开机自启）"
 			fi ;;
+		*" -c "*)
+			# 被 shell 包了一层（`ash -c 'reload'`、脚本里的一次性命令）。
+			# **不**当作「终端手动」：万一有脚本在循环里这么调，force=1
+			# 会把服务带成重载风暴（0.2.1 现场）。仍按配置 mtime 判定。
+			printf '%s' "shell 包装调用（${cmd}）" ;;
+		-ash*|*/ash|*/ash\ *|*"/bin/sh"*|"sh "*)
+			# 交互式登录 shell：用户敲完命令后 shell 直接 exec，$PPID 就是
+			# 它本身，命令行里没有 `-c`。以前这里落到「未识别」，结果
+			# `reload` 在终端里敲了也只会按 mtime 判定（配置没变就跳过），
+			# 与「终端手动执行永远执行」的约定不符。
+			printf '%s' "终端手动执行（登录 shell）" ;;
 		'') printf '%s' "未知（读不到父进程命令行）" ;;
 		*) printf '%s' "未识别（${cmd}）" ;;
 	esac
@@ -1394,7 +1405,7 @@ reload_service() {
 	esac
 
 	case "$caller" in
-		*rpcd*|*uhttpd*|*SSH*|*"service/rc"*) force=1 ;;
+		*rpcd*|*uhttpd*|*SSH*|*"service/rc"*|*终端手动执行*) force=1 ;;
 		*) force=0 ;;
 	esac
 

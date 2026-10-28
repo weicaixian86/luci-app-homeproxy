@@ -224,22 +224,35 @@ strip_proxy_prefix() {
 	return 0
 }
 
-# Ordered, de-duplicated candidate URLs. The configured URL is tried first so
-# that whatever the user picked in LuCI keeps priority; the wrappers around it
-# are pure redundancy for the case where that one wrapper is down.
+# 候选列表，每条是「模式 URL」：P = 经本地代理，D = 直连。
+#
+# 顺序：**原地址走代理优先**（用户配置的 URL 只取其中的 GitHub 原地址，
+# 镜像前缀先剥掉）。代理能用时它是唯一一条又完整又快的路；镜像服务器本身
+# 也是替我们回 GitHub 取，多绕一圈只会更慢。
+# 代理不可用时（mode=direct，此时已停服务）才用镜像地址走直连——镜像存在
+# 的意义正是「直连可达」。
 build_candidates() {
-	local url="$1" direct
+	local url="$1" mode="${2:-auto}" direct
 	direct="$(strip_proxy_prefix "$url")"
 
-	printf '%s\n' "$url"
-	[ "$direct" != "$url" ] && printf '%s\n' "$direct"
+	# auto 轮**只**给代理那条：这一轮里任何「直连」请求在服务运行时都会被
+	# tproxy 劫持回当前节点，等于用同一个（可能已坏掉的）节点再试一次，
+	# 白白多等一轮超时。直连是第二轮的职责——那一轮会先停服务。
+	if [ "$mode" = "auto" ]; then
+		printf 'P|%s\n' "$direct"
+		return 0
+	fi
+
+	# 直连轮：镜像在前、原地址最后。镜像存在的意义就是「直连可达」，
+	# 而直连 github.com 实测只有 60~80 KB/s 且经常断，放前面会把预算耗光。
 	case "$direct" in
 		https://github.com/*|http://github.com/*)
-			printf '%s\n' "https://gh-proxy.com/${direct}"
-			printf '%s\n' "https://ghproxy.net/${direct}"
-			printf '%s\n' "https://ghfast.top/${direct}"
+			printf 'D|%s\n' "https://gh-proxy.com/${direct}"
+			printf 'D|%s\n' "https://ghproxy.net/${direct}"
+			printf 'D|%s\n' "https://ghfast.top/${direct}"
 			;;
 	esac
+	printf 'D|%s\n' "$direct"
 	return 0
 }
 
@@ -252,7 +265,7 @@ LAST_HTTP=""
 # 这是本脚本唯一的下载入口（旧的静默 download_to 已删除，避免两套超时参数
 # 与镜像策略各走一路、彼此不一致）。
 download_with_progress() {
-	local url="$1" out="$2" max="$3" label="$4"
+	local url="$1" out="$2" max="$3" label="$4" via_proxy="${5:-}"
 	LAST_HTTP=""
 	local total=0 cur=0 pct=0 last_pct=0 last_time=0 last_cur=0 pid rc codefile now
 
@@ -260,12 +273,23 @@ download_with_progress() {
 		codefile="$out.code"
 		# HEAD 探测总大小；部分镜像（如 gh-proxy）可能不支持 HEAD，
 		# 此时 total=0，退化为只显示已下载字节数。
-		total="$(curl -sI --connect-timeout 20 "$url" 2>/dev/null \
-			| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+		if [ -n "$via_proxy" ]; then
+			total="$(curl -sI --connect-timeout 20 --proxy "$via_proxy" "$url" 2>/dev/null \
+				| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+		else
+			total="$(curl -sI --connect-timeout 20 "$url" 2>/dev/null \
+				| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+		fi
 		rm -f "$codefile" "$out"
-		curl -fsSL --connect-timeout 20 \
-			--speed-limit 6144 --speed-time 60 --max-time "$max" \
-			-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
+		if [ -n "$via_proxy" ]; then
+			curl -fsSL --connect-timeout 20 --proxy "$via_proxy" \
+				--speed-limit 6144 --speed-time 60 --max-time "$max" \
+				-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
+		else
+			curl -fsSL --connect-timeout 20 \
+				--speed-limit 6144 --speed-time 60 --max-time "$max" \
+				-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
+		fi
 		pid=$!
 		while kill -0 "$pid" 2>/dev/null; do
 			# curl 是后台启动的，输出文件可能尚未创建；此时 `wc -c < 文件`
@@ -296,7 +320,12 @@ download_with_progress() {
 		LAST_HTTP="$(cat "$codefile" 2>/dev/null | tr -d ' \r\n')"
 		rm -f "$codefile"
 	else
-		wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
+		if [ -n "$via_proxy" ]; then
+			http_proxy="$via_proxy" https_proxy="$via_proxy" \
+				wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
+		else
+			wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
+		fi
 		rc=$?
 	fi
 	return $rc
@@ -337,7 +366,48 @@ extract="$work/extract"
 stage="$work/stage"
 backup="$panel_dir.backup"
 
+# 本地代理入口（mixed-inbound）：优先走它拉原地址，代理不可用时才退回镜像直连。
+proxy_endpoint() {
+	local port
+
+	port="$(uci -q get "$CONF.infra.mixed_port" 2>/dev/null)"
+	[ -n "$port" ] || return 1
+
+	printf 'http://127.0.0.1:%s' "$port"
+}
+
+# 第二轮（直连轮）前要停一次服务：服务运行时路由器自身出站被 tproxy 劫持，
+# 「直连镜像」其实还是走当前节点；节点坏了就等于所有镜像一起坏。停服务会走
+# firewall_teardown 撤掉 nft 与 DNS 劫持，这一轮才是真的直连。
+# 用 EXIT trap 兜底恢复，脚本被 Ctrl-C / 被 sleep 打断也不会把局域网挂在
+# 「代理停了」的状态上。
+panel_stopped=""
+
+stop_service_for_direct() {
+	[ -n "$panel_stopped" ] && return 1
+	/etc/init.d/homeproxy running >/dev/null 2>&1 || return 1
+
+	log_msg "代理不可用，临时停止 homeproxy 改用直连重试（下载结束后自动恢复服务）"
+	/etc/init.d/homeproxy stop >/dev/null 2>&1
+	panel_stopped=1
+	sleep 2
+	return 0
+}
+
+restore_service_after_direct() {
+	[ -n "$panel_stopped" ] || return 0
+	panel_stopped=""
+
+	if /etc/init.d/homeproxy start >/dev/null 2>&1; then
+		log_msg "已重新启动 homeproxy。"
+	else
+		log_msg "警告：homeproxy 未能自动重新启动，请到「服务状态」页确认，必要时手动执行 /etc/init.d/homeproxy start"
+	fi
+	return 0
+}
+
 cleanup() {
+	restore_service_after_direct
 	lock_release
 	rm -rf "$work" 2>/dev/null
 	return 0
@@ -361,31 +431,63 @@ used_url=""
 
 log_msg "开始下载面板（来源=「$SOURCE」，不依赖 clash API）：$panel_url"
 
-for u in $(build_candidates "$panel_url" | awk '!seen[$0]++'); do
-	now=$(date +%s)
-	left=$((deadline - now))
-	if [ "$left" -lt 15 ]; then
-		log_msg "预算 ${BUDGET}s 用尽，停止尝试。"
-		break
+# 两轮：
+#   第一轮 auto  —— 原地址走本地代理（代理能用时最快最完整）
+#   第二轮 direct —— 先停服务撤掉 tproxy，再用镜像地址真直连
+# 每组内部仍是「逐条试、成功即停」。第一轮若在原地址就成功，第二轮连
+# 停服务这一步都不会发生。
+for round in auto direct; do
+	if [ "$round" = "direct" ]; then
+		stop_service_for_direct || true
 	fi
-	rm -f "$zip" 2>/dev/null
-		log_msg "面板：开始从镜像下载：$u"
-	if download_with_progress "$u" "$zip" "$left" "面板"; then
-		if valid_zip "$zip"; then
-			got=1
-			used_url="$u"
-			log_msg "已取到面板包（$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")）：$u"
-			break
+
+	for candidate in $(build_candidates "$panel_url" "$round" | awk '!seen[$0]++'); do
+		candidate_mode="${candidate%%|*}"
+		candidate_url="${candidate#*|}"
+		via_proxy=""
+
+		if [ "$candidate_mode" = "P" ]; then
+			via_proxy="$(proxy_endpoint)" || via_proxy=""
+
+			# 读不到 mixed 端口（老配置没写 / uci 异常）就当没有代理，
+			# 跳过这条直接进直连轮。
+			[ -z "$via_proxy" ] && continue
 		fi
-		# Exit status 0 but not a zip: a mirror that answers 200 with an HTML
-		# placeholder page. Installing that is exactly how a "downloaded"
-		# dashboard ends up as a blank screen, so drop it and move on.
-		log_msg "镜像返回的不是 zip（HTTP ${LAST_HTTP:-000}，$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")），已丢弃：$u"
-	else
-		log_msg "镜像不可用或传输中断（HTTP ${LAST_HTTP:-000}）：$u"
-	fi
-	codes="$codes ${LAST_HTTP:-000}"
+
+		now=$(date +%s)
+		left=$((deadline - now))
+		if [ "$left" -lt 15 ]; then
+			log_msg "预算 ${BUDGET}s 用尽，停止尝试。"
+			break 2
+		fi
+
+		rm -f "$zip" 2>/dev/null
+		if [ -n "$via_proxy" ]; then
+			log_msg "面板：经代理 ${via_proxy} 下载原地址：$candidate_url"
+		else
+			log_msg "面板：直连下载：$candidate_url"
+		fi
+
+		if download_with_progress "$candidate_url" "$zip" "$left" "面板" "$via_proxy"; then
+			if valid_zip "$zip"; then
+				got=1
+				used_url="$candidate_url"
+				log_msg "已取到面板包（$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")）：$candidate_url（$([ -n "$via_proxy" ] && printf '经代理' || printf '直连')）"
+				break
+			fi
+			# Exit status 0 but not a zip: a mirror that answers 200 with an HTML
+			# placeholder page. Installing that is exactly how a "downloaded"
+			# dashboard ends up as a blank screen, so drop it and move on.
+			log_msg "镜像返回的不是 zip（HTTP ${LAST_HTTP:-000}，$(human_size "$(wc -c < "$zip" 2>/dev/null | tr -d ' ')")），已丢弃：$candidate_url"
+		else
+			log_msg "镜像不可用或传输中断（HTTP ${LAST_HTTP:-000}）：$candidate_url"
+		fi
+		codes="$codes ${LAST_HTTP:-000}"
+	done
+
+	[ "$got" = "1" ] && break
 done
+
 
 if [ "$got" != "1" ]; then
 	log_msg "下载失败：所有镜像均不可用（HTTP 状态：${codes# }）。"

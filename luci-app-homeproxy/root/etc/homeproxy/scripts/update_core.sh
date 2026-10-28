@@ -402,22 +402,42 @@ sync_time() {
 	return 0
 }
 
-# Produce the ordered list of candidate URLs for a github release asset.
-# Auto mode tries gh-proxy first, then github (failover).
+# 本地代理入口（mixed-inbound）。订阅更新那边叫 proxy_url，这里按需现取：
+# init.d、面板、SSH 三种调用环境下 uci 都可用，多读一次的开销可以忽略。
+proxy_endpoint() {
+	local port
+
+	port="$(uci -q get homeproxy.infra.mixed_port 2>/dev/null)"
+	[ -n "$port" ] || return 1
+
+	printf 'http://127.0.0.1:%s' "$port"
+}
+
+# 候选源列表，每条是「模式 URL」：P = 经本地代理，D = 直连。
+#
+# 顺序按现场需求定：**原地址走代理优先**。代理能用时它是唯一一条既快又完整
+# 的路 —— 镜像服务器本身也是替我们回 GitHub 取，多绕这一圈只会更慢；而
+# 直连 github.com 在国内基本拿不到。只有代理不可用（服务没跑、或节点全坏）
+# 时才换成镜像地址走直连：镜像存在的意义正是「直连可达」。
+#
+# mode=direct 时跳过 P 那条：core_direct_retry() 已经把服务停了，代理端口
+# 必然不通，再试一次只是白等一轮连接超时。
 candidate_urls() {
-	local url="$1" mirror="${2:-auto}" prefix
+	local url="$1" mode="${2:-auto}" prefix
 
-	[ "$mirror" = "github" ] && { printf '%s\n' "$url"; return 0; }
+	[ "$mode" = "github" ] && { printf 'D|%s\n' "$url"; return 0; }
+	# auto 轮**只**给代理那条：服务运行时任何「直连」请求都会被 tproxy 劫持
+	# 回当前节点，等于用同一个（可能已坏掉的）节点再试一次，白白多等一轮超时。
+	# 直连是第二轮的职责——core_direct_retry() 会先停服务再走这里。
+	if [ "$mode" = "auto" ]; then
+		printf 'P|%s\n' "$url"
+		return 0
+	fi
 
-	# Mirrors FIRST, direct GitHub LAST. Direct is faster when it connects
-	# (~89 KB/s vs ~22 KB/s) but unreliable — usually unreachable from
-	# mainland China, and a half-open connection stalls until --max-time
-	# expires. Trying it first would add a long dead wait before every
-	# failover, so it stays the authoritative fallback.
 	for prefix in $GH_PROXY_PREFIXES; do
-		printf '%s\n' "${prefix}${url}"
+		printf 'D|%s\n' "${prefix}${url}"
 	done
-	printf '%s\n' "$url"
+	printf 'D|%s\n' "$url"
 }
 
 # Download a file with curl --retry 2 inside each mirror, then fail over.
@@ -428,7 +448,7 @@ candidate_urls() {
 download_file() {
 	local url="$1" out="$2" purpose="${3:-generic}" mirror="${4:-auto}"
 	local downloader rc actual_url connect_timeout codefile LAST_HTTP=""
-	local round_attempts="" label
+	local round_attempts="" label via_proxy candidate candidate_mode
 
 	downloader="$(get_downloader "$purpose")" || return 1
 
@@ -438,23 +458,51 @@ download_file() {
 		connect_timeout=10
 	fi
 
-	for actual_url in $(candidate_urls "$url" "$mirror"); do
+	for candidate in $(candidate_urls "$url" "$mirror"); do
+		candidate_mode="${candidate%%|*}"
+		actual_url="${candidate#*|}"
+		via_proxy=""
+
+		if [ "$candidate_mode" = "P" ]; then
+			via_proxy="$(proxy_endpoint)" || via_proxy=""
+
+			# 读不到 mixed 端口（老配置没写 / uci 异常）就当没有代理，
+			# 跳过这条直接走镜像轮，不要在这里卡住。
+			[ -z "$via_proxy" ] && continue
+		fi
+
 		# 34MB 的包按镜像速度需 4~26 分钟。先打印源地址，避免首条进度
 		# （慢链路上可能要等约 10 秒）之前 UI 看起来像卡死。
-		log_download "正在下载（源：${actual_url}）"
+		if [ -n "$via_proxy" ]; then
+			log_download "正在下载（源：${actual_url}，经代理 ${via_proxy}）"
+		else
+			log_download "正在下载（源：${actual_url}，直连）"
+		fi
 		case "$downloader" in
 			curl)
 				local total=0 cur=0 pct=0 last_pct=0 last_time=0 last_cur=0 pid now
 				codefile="${out}.code"
 				# HEAD 探测总大小；部分镜像不支持 HEAD 时 total=0，
 				# 退化为只显示已下载字节数。
-				total="$(curl -sI --connect-timeout "$connect_timeout" "$actual_url" 2>/dev/null \
-					| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+				if [ -n "$via_proxy" ]; then
+					total="$(curl -sI --connect-timeout "$connect_timeout" --proxy "$via_proxy" "$actual_url" 2>/dev/null \
+						| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+				else
+					total="$(curl -sI --connect-timeout "$connect_timeout" "$actual_url" 2>/dev/null \
+						| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
+				fi
 				rm -f "$codefile" "$out"
-				curl -fsSL --connect-timeout "$connect_timeout" \
-					--speed-limit 6144 --speed-time 60 --max-time 7200 \
-					-A "luci-app-homeproxy" \
-					-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
+				if [ -n "$via_proxy" ]; then
+					curl -fsSL --connect-timeout "$connect_timeout" \
+						--speed-limit 6144 --speed-time 60 --max-time 7200 \
+						-A "luci-app-homeproxy" --proxy "$via_proxy" \
+						-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
+				else
+					curl -fsSL --connect-timeout "$connect_timeout" \
+						--speed-limit 6144 --speed-time 60 --max-time 7200 \
+						-A "luci-app-homeproxy" \
+						-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
+				fi
 				pid=$!
 				while kill -0 "$pid" 2>/dev/null; do
 					# 同 fetch_panel.sh：curl 后台启动，输出文件可能尚未创建，
@@ -485,7 +533,12 @@ download_file() {
 				rm -f "$codefile"
 				;;
 			wget)
-				wget -q -T 60 -O "$out" "$actual_url" >/dev/null 2>&1
+				if [ -n "$via_proxy" ]; then
+					http_proxy="$via_proxy" https_proxy="$via_proxy" \
+						wget -q -T 60 -O "$out" "$actual_url" >/dev/null 2>&1
+				else
+					wget -q -T 60 -O "$out" "$actual_url" >/dev/null 2>&1
+				fi
 				rc=$?
 				;;
 			*)
@@ -693,7 +746,7 @@ core_direct_retry() {
 	DOWNLOAD_ATTEMPTS_PROXIED="$DOWNLOAD_ATTEMPTS"
 	DOWNLOAD_ATTEMPTS=""
 
-	download_file "$url" "$out" asset auto
+	download_file "$url" "$out" asset direct
 	return 0
 }
 

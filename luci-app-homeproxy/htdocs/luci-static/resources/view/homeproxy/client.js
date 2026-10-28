@@ -3527,42 +3527,38 @@ return view.extend({
 			return true;
 		};
 
+		/* 老配置里存的是带镜像前缀的地址（`gh-proxy.com/https://github.com/...`）。
+		   现在下拉里只列 GitHub 原地址 —— 镜像由下载脚本自己按需挑，URL 里再
+		   写一遍只会重复绕一层。这里先剥掉前缀再匹配，老配置打开时仍然显示成
+		   「Zashboard 完整版」而不是「自定义」，保存一次就顺手清理干净了。 */
+		const stripPanelMirror = function(value) {
+			return String(value || '').replace(
+				/^https?:\/\/(?:gh-proxy\.com|ghproxy\.net|ghproxy\.com|mirror\.ghproxy\.com|ghfast\.top|gh\.llkk\.cc|github\.moeyy\.xyz|gh\.api\.kkgithub\.com)\//,
+				'');
+		};
+
+		/* 每个面板只留**一个**选项（GitHub 原地址）。之前同一份 Zashboard
+		   列出过 gh-proxy / ghproxy.net / 直连三份，看起来像三个不同的面板，
+		   其实只是同一个文件的三条下载路径 —— 而这三条现在由脚本自动选择，
+		   不需要用户挑。 */
 		const panelPresetUrls = {
-			'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版 (ghproxy.net)',
-			'https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts (ghproxy.net)',
-			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts (gh-proxy)',
-			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts',
-			'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版 (gh-proxy)',
 			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip': 'Zashboard 完整版',
-			'https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip': 'MetaCubeXD (gh-proxy)',
+			'https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip': 'Zashboard CDN Fonts',
 			'https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip': 'MetaCubeXD',
-			'https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip': 'YACD (gh-proxy)',
 			'https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip': 'YACD',
-			'https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip': 'Razord (gh-proxy)',
 			'https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip': 'Razord'
 		};
 
 		so = ss.option(form.ListValue, 'external_ui_download_url', _('UI download URL'));
-		/* gh-proxy.com leads: direct GitHub measured faster (~89 KB/s vs
-		   ~22 KB/s) but is unreliable — usually unreachable, and a half-open
-		   connection stalls until the timeout expires, so the download never
-		   completes. Reliability beats peak throughput here. */
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (gh-proxy，推荐)');
-		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版 (ghproxy.net)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版（直连）');
-		so.value('https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (gh-proxy)');
-		so.value('https://ghproxy.net/https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts (ghproxy.net)');
-		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts（直连）');
-		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD (gh-proxy)');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip', 'Zashboard 完整版');
+		so.value('https://github.com/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip', 'Zashboard CDN Fonts');
 		so.value('https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip', 'MetaCubeXD');
-		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Yacd-meta/archive/refs/heads/gh-pages.zip', 'YACD');
-		so.value('https://gh-proxy.com/https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord (gh-proxy)');
 		so.value('https://github.com/MetaCubeX/Razord-meta/archive/refs/heads/gh-pages.zip', 'Razord');
 		so.value('__custom__', _('Custom'));
-		so.default = 'https://gh-proxy.com/https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
+		so.default = 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip';
 		so.load = function(section_id) {
-			const value = uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default;
+			const value = stripPanelMirror(uci.get(data[0], section_id, 'external_ui_download_url') ?? this.default);
 			return (value in panelPresetUrls) ? value : '__custom__';
 		};
 		so.write = function(section_id, value) {
@@ -3578,7 +3574,7 @@ return view.extend({
 		so.placeholder = 'https://example.com/dist.zip';
 		so.depends('external_ui_download_url', '__custom__');
 		so.load = function(section_id) {
-			const value = (uci.get(data[0], section_id, 'external_ui_download_url') || '').trim();
+			const value = stripPanelMirror((uci.get(data[0], section_id, 'external_ui_download_url') || '').trim());
 			return (value in panelPresetUrls) ? '' : value;
 		};
 		so.write = function(section_id, value) {
@@ -3588,14 +3584,11 @@ return view.extend({
 			uci.unset(data[0], section_id, 'external_ui_download_url_custom');
 		};
 
-		so = ss.option(form.ListValue, 'external_ui_download_detour', _('UI download detour'));
-		so.value('', _('Default'));
-		so.value('direct-out', _('Direct'));
-		uci.sections(data[0], 'routing_node', (res) => {
-			if (res.enabled === '1')
-				so.value(res['.name'], res.label);
-		});
-		so.default = 'direct-out';
+		/* 「UI 下载节点」下拉已移除：它只作用于 sing-box 内建的
+		   POST /upgrade/ui，而面板实际由 fetch_panel.sh 下载，那个字段
+		   对我们自己的下载路径从来没用过——留着只会让人以为「选直连就能
+		   更快」。下载顺序改成脚本自己决定：优先走本地代理入口拉原地址，
+		   代理不可用时再换成镜像地址走直连，不需要用户选。 */
 
 		so = ss.option(form.Value, 'external_controller', _('API listen'),
 			_('Use 0.0.0.0:port to open the panel from your browser.'));
