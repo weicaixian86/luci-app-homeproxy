@@ -2452,6 +2452,16 @@ else
 	bad "a missing mixed_port would stall the download on a dead proxy"
 fi
 
+# 一个 reality 节点没带 fp 就能让整个客户端实例起不来
+# （FATAL initialize outbound[N]: uTLS is required by reality client）。
+# 生成器必须补默认指纹，否则「少一个字段」= 整机断网。
+if grep -q "node.type === 'anytls' || (node.tls === '1' && node.tls_reality === '1')" \
+   "$PKG/root/etc/homeproxy/scripts/generate_client.uc"; then
+	ok "a reality node without fp gets a default uTLS fingerprint (one node cannot break the config)"
+else
+	bad "a reality node without fp would emit reality without utls and the whole core refuses to start"
+fi
+
 # 「UI 下载节点」下拉已删除：它只作用于 sing-box 内建的 /upgrade/ui，
 # 对 fetch_panel.sh 这条真正在用的路径毫无作用，留着只会误导。
 if grep -q 'external_ui_download_detour' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then

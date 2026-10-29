@@ -589,7 +589,17 @@ function generate_outbound(node) {
 	if (type(node) !== 'object' || isEmpty(node))
 		return null;
 
-	const tls_utls_value = (node.type === 'anytls' && isEmpty(node.tls_utls)) ? 'chrome' : node.tls_utls;
+	/* sing-box 对 reality 是**硬性**要求 uTLS：配置里出现 `reality.enabled`
+	   而没有 `utls` 时，内核直接
+	     FATAL initialize outbound[N]: uTLS is required by reality client
+	   然后整个客户端实例起不来 —— 一个节点就能让整机断网（2026-10-29 现场：
+	   YU 订阅里 19 个 reality 节点没带 `fp=`，服务每 6 秒重启一次，全靠 `sing-box
+	   check` 那句「检测到客户端配置有误」才发现）。
+	   机场不给 `fp` 时按业界默认补 chrome（mihomo / v2rayN 对 reality 也是这个
+	   默认值，且服务端 public_key 与客户端指纹无关，不会因此连不上）。
+	   anytls 同理：它没有 `flow`，不少机场也不带 `fp`。 */
+	const tls_utls_value = !isEmpty(node.tls_utls) ? node.tls_utls
+		: ((node.type === 'anytls' || (node.tls === '1' && node.tls_reality === '1')) ? 'chrome' : null);
 	const outbound = {
 		type: node.type,
 		tag: get_section_outbound_tag(node['.name']),
