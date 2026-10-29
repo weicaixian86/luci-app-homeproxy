@@ -2486,7 +2486,7 @@ fi
 # last-start 必须在所有早退分支之前写：它是 reload 风暴守卫的判据。只在启动
 # 成功那一刻写，启动一失败就永远不前进 → 守卫失效 → procd 每 6 秒重启一轮。
 LS_LINE=$(grep -n 'date +%s >"$RUN_DIR/last-start"' "$INIT" | head -n1 | cut -d: -f1)
-ENSURE_LINE=$(grep -n 'CORE_SCRIPT" ensure' "$INIT" | head -n1 | cut -d: -f1)
+ENSURE_LINE=$(grep -n 'CORE_SCRIPT" check' "$INIT" | head -n1 | cut -d: -f1)
 if [ -n "$LS_LINE" ] && [ -n "$ENSURE_LINE" ] && [ "$LS_LINE" -lt "$ENSURE_LINE" ]; then
 	ok "the reload-storm watermark is written before any early return (a failed start still advances it)"
 else
@@ -2559,12 +2559,71 @@ else
 	bad "the QUIC skip summary cannot tell 'kernel missing' from 'built without QUIC'"
 fi
 
-# 「内核不可用」的原因提取必须排除「提示：…」这类建议性文案，否则真因被顶掉。
-if grep -q "grep -v '提示：'" "$INIT" \
-   && ! sed -n '/core_out/,/请查看/p' "$INIT" | grep -q 'tail -n 40 "\$RUN_DIR/core_download.log"'; then
-	ok "the core-unavailable reason prefers the concrete failure over the NTP hint"
+# 失败原因必须排除「提示：…」这类建议性文案，否则真因被顶掉（0.2.13 现场
+# 被引去查 NTP）。启动路径现在不下载了，这段逻辑落在异步启动器里：下载失败
+# 时把具体原因写进 core_update.out，面板读的就是它。
+if grep -q "grep -v '提示：'" "$PKG/root/etc/homeproxy/scripts/update_core_async.sh" \
+   && grep -q "printf 'failed: %s" "$PKG/root/etc/homeproxy/scripts/update_core_async.sh"; then
+	ok "the download failure reason prefers the concrete failure over the NTP hint"
 else
-	bad "the core-unavailable reason can surface a hint line instead of the real cause"
+	bad "the download failure reason can surface a hint line instead of the real cause"
+fi
+
+# ── 启动路径不许等内核下载（0.2.13 现场：apk 安装被卡 10 分钟）─────────
+# start_service 只能做「本地就绪检查」，一旦缺内核就转后台，绝不能同步跑
+# ensure（那会真的下 26 MB，期间还握着 procd 锁，面板点什么都在排队）。
+if ! sed -n '/^start_service()/,/^}/p' "$INIT" | grep -q 'CORE_SCRIPT" ensure'; then
+	ok "the start path never runs a synchronous core download"
+else
+	bad "start_service still blocks on the 26 MB core download while holding the procd lock"
+fi
+
+if sed -n '/^start_service()/,/^}/p' "$INIT" | grep -q 'CORE_SCRIPT" check' \
+   && grep -q 'core=ready' "$PKG/root/etc/homeproxy/scripts/update_core.sh" \
+   && grep -q 'core=unsupported' "$PKG/root/etc/homeproxy/scripts/update_core.sh"; then
+	ok "the start path asks a local-only 'check' and can tell ready / missing / unsupported"
+else
+	bad "there is no local core check, so start must guess or download"
+fi
+
+# check 必须是纯本地：分支里不许出现下载动作。
+if ! sed -n '/^\t\tcheck)/,/^\t\t\t;;/p' "$PKG/root/etc/homeproxy/scripts/update_core.sh" \
+   | grep -qE 'download_file|curl|wget|ensure_core'; then
+	ok "the core check never touches the network (no curl / download_file inside)"
+else
+	bad "update_core.sh check performs a network operation"
+fi
+
+# 缺内核时转后台：启动器必须带 --start-after，下完自己把服务拉起来。
+if grep -q 'start_core_download_in_background' "$INIT" \
+   && sed -n '/^start_core_download_in_background()/,/^}/p' "$INIT" | grep -q -- '--detach --source "$src" --start-after'; then
+	ok "a missing core is handed to the detached downloader, which starts the service afterwards"
+else
+	bad "a missing core is not handed to the background downloader (start would still block)"
+fi
+
+# 参数必须原样透传给 detach 出去的 worker，否则 --start-after 会被吞掉。
+if sed -n '/--detach/,/^fi$/p' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh" \
+   | grep -q 'no /bin/sh "$0" "$@"\|/bin/sh "$0" "$@"'; then
+	ok "the detached launcher passes its arguments through to the worker"
+else
+	bad "the detach stage drops --source / --start-after"
+fi
+
+if grep -q -- '--start-after' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh" \
+   && grep -q 'init.d/homeproxy start' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh"; then
+	ok "the background downloader starts the service itself once the core is in place"
+else
+	bad "the background downloader never starts the service, so the user must click again"
+fi
+# 启动服务必须**直接执行** init.d（它的 shebang 是 `#!/bin/sh /etc/rc.common`）。
+# 写成 `sh /etc/init.d/homeproxy start` 会跳过 shebang：rc.common 没被 source，
+# 函数定义完就结束，退出码 0 却什么都没做 —— 服务静默不启动、日志一行都没有。
+if ! grep -q 'sh /etc/init.d/homeproxy start' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh" \
+   && grep -qE '^[[:space:]]*/etc/init.d/homeproxy start' "$PKG/root/etc/homeproxy/scripts/update_core_async.sh"; then
+	ok "the post-download start executes init.d directly, so rc.common actually dispatches"
+else
+	bad "the post-download start bypasses the shebang and silently does nothing"
 fi
 
 if [ "$(grep -c -- '--source' "$INIT")" -ge 2 ] && grep -q 'LuCI「更新面板」按钮' "$HPUC"; then

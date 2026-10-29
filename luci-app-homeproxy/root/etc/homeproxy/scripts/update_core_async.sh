@@ -44,18 +44,38 @@ RC_FILE="${RUN_DIR}/core_update.rc"
 # `setsid` gives a new session when available; a plain `&` is the POSIX
 # last resort and is enough on Linux, where the orphan is reparented to init.
 if [ "${1:-}" = "--detach" ]; then
+	shift
 	mkdir -p "$RUN_DIR" 2>/dev/null
 
+	# 参数必须原样带给 worker：`--source`（日志里谁发起的）和
+	# `--start-after`（下完自己把服务拉起来）都是调用方的语义，
+	# 这里吞掉就等于没传。
 	if command -v nohup >/dev/null 2>&1; then
-		nohup /bin/sh "$0" >/dev/null 2>&1 &
+		nohup /bin/sh "$0" "$@" >/dev/null 2>&1 &
 	elif command -v setsid >/dev/null 2>&1; then
-		setsid /bin/sh "$0" >/dev/null 2>&1 &
+		setsid /bin/sh "$0" "$@" >/dev/null 2>&1 &
 	else
-		/bin/sh "$0" >/dev/null 2>&1 &
+		/bin/sh "$0" "$@" >/dev/null 2>&1 &
 	fi
 
 	exit 0
 fi
+
+# --- worker arguments -------------------------------------------------------
+#   --source <文本>   谁发起的（写进 core_download.log，排查时区分
+#                     面板按钮 / 服务启动 / cron）
+#   --start-after     下载成功后自己执行 init.d start —— 服务启动路径把内核
+#                     下载转后台时靠它收尾，用户不需要再点一次
+SRC="LuCI「更新内核」按钮"
+START_AFTER=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--source) shift; [ -n "${1:-}" ] && SRC="$1" ;;
+		--start-after) START_AFTER=1 ;;
+		--detach) : ;;
+	esac
+	shift
+done
 # ---------------------------------------------------------------------------
 
 mkdir -p "$RUN_DIR" 2>/dev/null || exit 1
@@ -80,8 +100,29 @@ trap 'exit 1' INT TERM
 # stdout carries the machine-readable verdict ("ok" / "unsupported" /
 # "no_asset" / "failed"); stderr is merged in so a fatal shell error (bad
 # syntax, missing interpreter) is preserved for the UI instead of vanishing.
-/bin/sh "$CORE_SCRIPT" update --source "LuCI「更新内核」按钮" > "$OUT_FILE" 2>&1
+/bin/sh "$CORE_SCRIPT" update --source "$SRC" > "$OUT_FILE" 2>&1
 rc=$?
 
+if [ "$rc" -ne 0 ]; then
+	# 失败时把「具体原因」补进 out：面板只看 out 与 rc，而 core_download.log
+	# 里既有真正的失败行，也有「提示：若系统时间未同步…」这类建议性文案；
+	# 不筛一下就会把用户引去查 NTP（0.2.13 现场踩过）。
+	reason="$(grep -v '提示：' "$RUN_DIR/core_download.log" 2>/dev/null \
+		| grep -E '内核缺失|下载失败（返回码|暂不支持|未找到' \
+		| tail -n 1 | sed 's/^.*download : //')"
+	[ -n "$reason" ] && printf 'failed: %s\n' "$reason" >> "$OUT_FILE"
+fi
+
 echo "$rc" > "$RC_FILE" 2>/dev/null
+
+if [ "$rc" -eq 0 ] && [ "$START_AFTER" = "1" ]; then
+	# 后台下载的收尾：内核就绪后自己把服务拉起来。这时 check 一定返回
+	# 「ready」，启动路径不会再触发第二次下载，也就不会自己等自己。
+	# 注意这里是**直接执行** init.d，没有 `sh ` 前缀：那个脚本的 shebang 是
+	# `#!/bin/sh /etc/rc.common`，靠它才会 source 到 rc.common 并派发 start。
+	# 用解释器硬跑（`sh <路径> start`）会跳过 shebang：函数定义完就结束，
+	# 退出码 0 却什么都没干 —— 服务静默不启动，日志里连一行都没有。
+	/etc/init.d/homeproxy start >"$RUN_DIR/core_update.start.log" 2>&1 || true
+fi
+
 exit 0

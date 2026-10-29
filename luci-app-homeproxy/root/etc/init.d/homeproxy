@@ -964,6 +964,36 @@ firewall_teardown() {
 
 }
 
+# ── 内核下载转后台 ────────────────────────────────────────────────────────
+# 26 MB 的内核在慢链路上要几十分钟，**绝不能**放在 start 的同步路径上：
+# 0.2.13 现场 apk 安装里的 init.d start 被它卡住十来分钟，期间一直占着
+# procd 锁，面板点「启动/重载」全部排队，用户完全看不出在等什么。
+#
+# 复用面板按钮那套异步启动器（update_core_async.sh）：它写的
+# core_update.pid / .rc / .out 正是「服务状态」页进度条与结果的数据来源，
+# 所以后台下载的进度天然可见，不需要另做一套接口。--start-after 让它
+# 下完后自己把服务拉起来，用户不必再点一次。
+start_core_download_in_background() {
+	local src="$1" launcher holder
+
+	launcher="$(dirname "$CORE_SCRIPT")/update_core_async.sh"
+	if [ ! -f "$launcher" ]; then
+		log "错误：缺少 ${launcher}，无法在后台下载内核。"
+		return 1
+	fi
+
+	# 已经在下一个了就别再起：多次 start（procd 触发器、面板按钮、安装脚本）
+	# 会连着来，重复启动只会互相抢锁、反复改写进度文件。
+	holder="$(cat "$RUN_DIR/core_update.pid" 2>/dev/null)"
+	case "$holder" in
+		''|*[!0-9]*) ;;
+		*) kill -0 "$holder" 2>/dev/null && return 0 ;;
+	esac
+
+	/bin/sh "$launcher" --detach --source "$src" --start-after >/dev/null 2>&1
+	return 0
+}
+
 start_service() {
 	# 上一次停止留的标记必须清掉，否则 core_health_check 会一直以为「正在停止」
 	# 而提前返回，兜底就永远不触发。
@@ -1027,35 +1057,33 @@ start_service() {
 		# dedicated file: if core_download.log ends up empty (script aborted
 		# before its first log write, missing interpreter, parse error, ...),
 		# we can still surface the real cause instead of a generic message.
-		local core_out="$RUN_DIR/core_ensure.out"
-		if ! /bin/sh "$CORE_SCRIPT" ensure >"$core_out" 2>&1; then
-			# 1) Prefer a concrete per-mirror reason from core_download.log
-			#    (e.g. "下载失败（返回码 60）"). 2) If that log has nothing
-			#    useful, fall back to the helper's own stdout/stderr. 3) Only
-			#    then use the generic hint.
-			local reason
-			# 先取「最具体」的那类原因（内核缺失 / 下载失败带返回码），
-			# 再退回一般匹配。**必须排除「提示：…」这类建议性文案**：
-			# 它只是在教用户自查 NTP，却因为同样含「失败」二字被 tail 选中，
-			# 把真因顶掉了 —— 0.2.12 现场日志写「若系统时间未同步（NTP 未校时）」，
-			# 实际是 /usr/bin/sing-box 根本不存在，方向完全被带偏。
-			reason="$(grep -v '提示：' "$RUN_DIR/core_download.log" 2>/dev/null \
-				| grep -E '内核缺失|内核下载|下载失败（返回码|暂不支持|未找到' \
-				| tail -n 1 | sed 's/^.*download : //')"
-			if [ -z "$reason" ]; then
-				reason="$(grep -v '提示：' "$RUN_DIR/core_download.log" 2>/dev/null \
-					| grep -E '下载失败|错误|返回码' \
-					| tail -n 1 | sed 's/^.*download : //')"
-			fi
-			if [ -z "$reason" ]; then
-				reason="$(tail -n 3 "$core_out" 2>/dev/null | tr '\n' ' ' \
-					| sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')"
-			fi
-			[ -n "$reason" ] || reason="下载失败或架构暂不支持"
-			log "错误：sing-box 内核不可用：${reason}。请查看 $RUN_DIR/core_download.log，或手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
-			panel_log "面板未下载：sing-box 内核不可用，服务未启动（面板依赖内核运行）。"
-			return 1
-		fi
+		# 「内核是否就绪」用纯本地检查（update_core.sh check：不联网、不下载、
+		# 不加锁），**不再**在启动路径上跑 ensure。ensure 会真的去下 26 MB，
+		# 慢链路上要几十分钟；0.2.13 现场 apk 安装里的 init.d start 就被它
+		# 卡了十来分钟，期间一直握着 procd 锁，面板点「启动/重载」全部排队。
+		local core_state core_rc
+		core_state="$(/bin/sh "$CORE_SCRIPT" check 2>&1)"
+		core_rc=$?
+
+		case "$core_state" in
+			core=ready*)
+				;;
+			core=unsupported*)
+				# 架构没有可下载的内核：转后台也没用，直接说清楚。
+				log "错误：sing-box 内核不可用：当前架构没有可下载的内核（${core_state#core=unsupported }）。请手动将内核放到 /usr/bin/sing-box 并 chmod 755。"
+				panel_log "面板未下载：内核不可用（架构不支持），服务未启动。"
+				return 1
+				;;
+			*)
+				# 缺内核 = 要下 26 MB。**本次启动立即返回**，下载转后台；
+				# 进度写进 core_update.pid/.rc/.out，「服务状态」页能直接看到，
+				# 下完由 --start-after 自动把服务拉起来。
+				log "内核缺失（${core_state:-check 没有输出，rc=${core_rc}}）：已转入后台下载，本次启动就此返回。可在「服务状态」页查看进度，下载完成后会自动启动服务。"
+				panel_log "面板未下载：内核缺失，已在后台下载（服务状态页可见进度），完成后自动启动。"
+				start_core_download_in_background "服务启动（内核缺失，后台下载）"
+				return 1
+				;;
+		esac
 	else
 		log "错误：内核下载脚本 $CORE_SCRIPT 缺失。"
 		panel_log "面板未下载：内核下载脚本缺失，服务未启动（面板依赖内核运行）。"

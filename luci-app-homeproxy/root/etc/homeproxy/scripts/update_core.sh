@@ -826,6 +826,22 @@ download_and_install() {
 
 # Ensure a usable reF1nd core is present. Returns 0 when /usr/bin/sing-box
 # exists (correct version, or at least an existing binary), 1 otherwise.
+# 本地是否已有「基版本匹配」的可执行内核。
+#
+# 纯本地判断：不联网、不下载、不加锁 —— 启动路径用它决定「继续启动」还是
+# 「转入后台下载」。ensure_core() 会 sync_time、探测架构、必要时开始下载，
+# 那是几十秒到几十分钟的事，绝不能放在服务启动的同步路径上
+# （0.2.13 现场：apk 安装里的 init.d start 被 26 MB 下载卡住 10 分钟，
+# 期间它一直占着 procd 锁，面板点「启动/重载」全部排队）。
+core_ready() {
+	local cur
+
+	[ -x "$CORE_BIN" ] || return 1
+	cur="$(installed_core_version)"
+	[ "${cur%%_*}" = "${REFIND_VERSION}" ] || return 1
+	return 0
+}
+
 ensure_core() {
 	local arch candidates asset cur_ver cur_base
 
@@ -967,7 +983,7 @@ main() {
 	local cmd="" source=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
-			ensure|update|status) cmd="$1" ;;
+			ensure|update|status|check) cmd="$1" ;;
 			--source)
 				shift
 				source="${1:-}"
@@ -982,7 +998,10 @@ main() {
 	# parse error before this point, or the file missing) apart from "it ran
 	# but failed early". On a fresh boot /var/run/homeproxy may not exist yet,
 	# so ensure_log() inside log_download creates it first.
-	log_download "==== 脚本启动：命令=${cmd}，来源=${source} ===="
+	# check 是启动路径上每几秒就可能调一次的轻量查询，不写下载日志。
+	case "$cmd" in
+		ensure|update) log_download "==== 脚本启动：命令=${cmd}，来源=${source} ====" ;;
+	esac
 	case "$cmd" in
 		ensure)
 			# 另一个实例正在下载/安装内核：它做的正是 ensure 要做的事，
@@ -1004,6 +1023,25 @@ main() {
 			update_core
 			;;
 		status)  print_status ;;
+		check)
+			# 只回答「本地内核是否已就绪」，**不联网**。
+			#   0 = 就绪，可以继续启动
+			#   1 = 缺失/版本不匹配，需要下载（调用方转后台）
+			#   2 = 当前架构没有可下载的内核（转后台也没用，直接报错）
+			if core_ready; then
+				echo "core=ready version=$(installed_core_version)"
+				exit 0
+			fi
+
+			arch="$(detect_arch_name)"
+			if [ "$arch" = "unsupported" ] || ! asset_candidates_for_arch "$arch" >/dev/null 2>&1; then
+				echo "core=unsupported arch=${arch} version=$(installed_core_version)"
+				exit 2
+			fi
+
+			echo "core=missing arch=${arch} version=$(installed_core_version) target=${CORE_TARGET_VERSION}"
+			exit 1
+			;;
 		*)
 			echo "Usage: $0 {ensure|update|status}" >&2
 			exit 2
