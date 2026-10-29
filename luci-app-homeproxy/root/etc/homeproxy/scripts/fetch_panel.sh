@@ -39,6 +39,9 @@ LOG_FILE="$RUN_DIR/panel_download.log"
 BUDGET=900
 FORCE=0
 QUIET=0
+# 后台下载（服务正在给用户上网）时置 1：**绝不停服务**。面板只是一个静态
+# 目录，为了它掐断全屋网络几分钟完全不值得 —— 失败就失败，用户可稍后手动更新。
+NO_STOP_SERVICE=0
 
 # 谁触发了这次面板下载，由调用方显式传入并写进日志。
 # 以前面板日志只有「开始下载面板」，看不出是开机自动下、还是界面点了按钮，
@@ -125,6 +128,7 @@ Usage: fetch_panel.sh [options]
   --force        re-download even when index.html already exists
   --budget N     total time budget in seconds (default 900)
   --quiet        do not log to syslog
+  --no-stop-service  never stop homeproxy to get a direct link (background runs)
 EOF
 }
 
@@ -132,6 +136,7 @@ while [ $# -gt 0 ]; do
 	case "$1" in
 		--force) FORCE=1 ;;
 		--quiet) QUIET=1 ;;
+		--no-stop-service) NO_STOP_SERVICE=1 ;;
 		--source)
 			shift
 			case "${1:-}" in
@@ -383,9 +388,28 @@ proxy_endpoint() {
 # 「代理停了」的状态上。
 panel_stopped=""
 
+# 服务是否在运行。**不走 `init.d running`**：rc.common 的每个动作都要拿
+# procd 锁（`lock -w`，没有超时），而这里只是想知道一个事实 —— 0.2.14 现场
+# 一个 `init.d running` 与 start 互等十分钟就是这么来的。
+service_running() {
+	if command -v pgrep >/dev/null 2>&1; then
+		pgrep -f '[s]ing-box run' >/dev/null 2>&1
+	else
+		ps w 2>/dev/null | grep -q '[s]ing-box run'
+	fi
+}
+
 stop_service_for_direct() {
 	[ -n "$panel_stopped" ] && return 1
-	/etc/init.d/homeproxy running >/dev/null 2>&1 || return 1
+
+	# 后台下载时服务可能正在给用户上网：为了一块面板掐断全屋网络几分钟，
+	# 代价和收益完全不成比例。直接放弃这一轮，日志留痕。
+	if [ "$NO_STOP_SERVICE" = "1" ]; then
+		log_msg "跳过「临时停服务走直连」：本次是后台下载，不停正在运行的服务（面板不影响上网；失败可稍后在面板设置里手动更新）。"
+		return 1
+	fi
+
+	service_running || return 1
 
 	log_msg "代理不可用，临时停止 homeproxy 改用直连重试（下载结束后自动恢复服务）"
 	/etc/init.d/homeproxy stop >/dev/null 2>&1

@@ -514,7 +514,9 @@ ensure_panel_worker() {
 	# the core nor the API: it downloads, validates the zip magic, unpacks and
 	# installs into external_ui, which the core serves statically.
 	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
-		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 \
+		# --no-stop-service：这里的下载跑在后台，服务可能正在给用户上网。
+		# 为了拉一块面板去停服务（那会把全屋网络掐断几分钟）完全不值得。
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 --no-stop-service \
 			--source "服务启动（内核就绪后，ensure_panel）"; then
 			if [ -f "$panel_dir/index.html" ]; then
 				panel_log "下载成功（本地预下载，未依赖 clash API）"
@@ -708,7 +710,8 @@ prefetch_panel() {
 	[ -f "$panel_dir/index.html" ] && return 0
 
 	if [ -x "$HP_DIR/scripts/fetch_panel.sh" ]; then
-		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 \
+		# 同上：后台预取绝不停服务。
+		if /bin/sh "$HP_DIR/scripts/fetch_panel.sh" --budget 900 --no-stop-service \
 			--source "服务启动前预下载（不依赖内核）"; then
 			if [ -f "$panel_dir/index.html" ]; then
 				panel_log "面板已提前下载（本地预下载，不依赖服务启动）。"

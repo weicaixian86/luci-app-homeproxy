@@ -2422,6 +2422,33 @@ else
 	bad "ensure_panel still polls the clash API / runs the 900s download inline"
 fi
 
+# 后台下的面板**绝不能**为了走直连去停服务：面板只是一块静态文件，
+# 停了服务等于把全屋网络掐断几分钟。现场实测过一次（0.2.14 验证时，
+# 后台面板下载触发「临时停止 homeproxy」，代理直接断掉）。
+# FP 在下面几个小节才赋值，这里先兜一个默认值（同一路径）。
+FP="${FP:-$PKG/root/etc/homeproxy/scripts/fetch_panel.sh}"
+if grep -q -- '--no-stop-service' "$FP" \
+   && grep -q 'NO_STOP_SERVICE=1' "$FP" \
+   && sed -n '/^stop_service_for_direct()/,/^}/p' "$FP" | grep -q 'NO_STOP_SERVICE'; then
+	ok "the panel downloader can refuse to stop the service (background runs must not cut traffic)"
+else
+	bad "a background panel download can still stop homeproxy and cut the user's network"
+fi
+
+if [ "$(grep -c -- 'fetch_panel.sh\" --budget 900 --no-stop-service' "$INIT")" -ge 2 ]; then
+	ok "every background panel download passes --no-stop-service"
+else
+	bad "a background panel download would stop the service for a direct link"
+fi
+
+# 这里也只是想知道「服务在不在跑」，同样不许走会拿锁的 init.d running。
+if ! sed -n '/^stop_service_for_direct()/,/^}/p' "$FP" | grep -q 'init\.d/homeproxy running' \
+   && grep -q '^service_running()' "$FP"; then
+	ok "the panel downloader checks the running service with pgrep, not init.d"
+else
+	bad "the panel downloader asks init.d running and can deadlock on the procd lock"
+fi
+
 if grep -q -- '--source "定时更新' "$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"; then
 	ok "the cron rule-set refresh names itself in the log"
 else
