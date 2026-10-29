@@ -2376,10 +2376,50 @@ else
 	bad "ruleset_update does not pass --source"
 fi
 
-if grep -q -- '--source "服务启动预取' "$INIT"; then
+if grep -q -- '--source "服务启动（规则集缺失，后台下载）"' "$INIT"; then
 	ok "init.d names the start-up pre-fetch as the trigger"
 else
 	bad "init.d sync_rulesets does not pass --source"
+fi
+
+# ── 启动路径上的三个下载：内核、规则集、面板，一律不许同步跑 ──────────────
+# start_service 握着 rc.common 的 procd 锁（lock -w，无超时），任何一次慢下载
+# 都会让「启动/重载/装包」整体排队。0.2.14 现场：21 条规则集 4 分 10 秒、
+# 9 MB 面板 7 分钟以上，用户看到的就是「装完很久没反应」。
+if ! sed -n '/^sync_rulesets()/,/^}/p' "$INIT" | grep -qE 'rs_waited|wait "\$rs_pid"|while \[ -f "\$rs_flag"'; then
+	ok "rule-set pre-fetch no longer blocks start (it is handed to a background job)"
+else
+	bad "sync_rulesets still waits for the download while holding the procd lock"
+fi
+
+if grep -q -- '--autostart >>"\$LOG_PATH"' "$INIT" \
+   && sed -n '/^sync_rulesets()/,/^}/p' "$INIT" | grep -q 'return 1'; then
+	ok "the background rule-set job starts the service itself, and start returns early"
+else
+	bad "a missing rule-set would neither start the service later nor stop start from running the core"
+fi
+
+# 内核起来的前提是规则集齐全（local 文件缺失 → 内核 FATAL），所以 start_service
+# 必须认这个返回值，否则会带着空规则集去启动内核。
+if sed -n '/^start_service()/,/^}/p' "$INIT" | grep -q 'if ! sync_rulesets; then'; then
+	ok "start_service stops when the rule-sets are not ready yet"
+else
+	bad "start_service ignores sync_rulesets and would start the core with missing rule-sets"
+fi
+
+# 面板：真正的下载留在 ensure_panel_worker，对外只暴露「检查 + 转后台」。
+if grep -q '^ensure_panel_worker()' "$INIT" \
+   && sed -n '/^ensure_panel()/,/^}/p' "$INIT" | grep -q 'ensure_panel_worker' \
+   && sed -n '/^ensure_panel()/,/^}/p' "$INIT" | grep -q "pgrep -f '\[f\]etch_panel.sh'"; then
+	ok "the panel download is a detached worker, and a second caller does not start a duplicate"
+else
+	bad "ensure_panel still downloads synchronously on the start path"
+fi
+
+if ! sed -n '/^ensure_panel()/,/^}/p' "$INIT" | grep -qE 'sleep 2|seq 1 300|--budget 900'; then
+	ok "the fast ensure_panel has no waiting loop of its own"
+else
+	bad "ensure_panel still polls the clash API / runs the 900s download inline"
 fi
 
 if grep -q -- '--source "定时更新' "$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"; then

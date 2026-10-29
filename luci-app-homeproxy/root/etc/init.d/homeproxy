@@ -479,7 +479,7 @@ hp_event() {
 # routing modes that actually use the panel. The sing-box core must be running
 # first (the clash API serves /upgrade/ui), so we poll for readiness, then let
 # the core download and extract the dashboard itself.
-ensure_panel() {
+ensure_panel_worker() {
 	local routing_mode controller port secret panel_dir base_url tmp ok
 
 	routing_mode="$(uci -q get "$CONF.config.routing_mode" 2>/dev/null)"
@@ -641,6 +641,49 @@ ensure_panel() {
 	panel_log "提示：可在「面板」设置里换一个更快的下载镜像；也可手动下载面板 zip 解压到 ${panel_dir}。"
 	rm -f "$tmp"
 	return 1
+}
+
+# 面板缺失时**只**起一个后台任务，本次调用立即返回。
+#
+# 真正的下载在 ensure_panel_worker 里（本地多镜像 → 等 clash API → /upgrade/ui），
+# 最慢能跑十几分钟：本地镜像 900 秒预算，等 API 最多 300×2 秒，API 下载 1200 秒
+# 超时。它原来是在 start_service 的同步路径上跑的，而那条路径全程握着 rc.common
+# 的 procd 锁（`lock -w`，无超时）—— 0.2.14 现场装完包后设备 7 分钟没反应，
+# 面板点什么都在排队。
+#
+# 面板和能不能上网完全无关（它只是内核静态托管的一个目录），所以没有理由
+# 让它挡住启动：丢后台，缺着也照常起来。
+ensure_panel() {
+	local routing_mode panel_dir
+
+	routing_mode="$(uci -q get "$CONF.config.routing_mode" 2>/dev/null)"
+	case "$routing_mode" in
+		custom|bypass_mainland_china) ;;
+		*)
+			panel_log "面板自动下载跳过：routing_mode='${routing_mode:-空}'（仅 custom / bypass_mainland_china 模式需要面板）。"
+			return 0
+			;;
+	esac
+
+	panel_dir="$(uci -q get "$CONF.clash_api.external_ui" 2>/dev/null)"
+	[ -n "$panel_dir" ] || panel_dir="$HP_DIR/run/ui"
+	if [ -f "$panel_dir/index.html" ]; then
+		panel_log "面板已存在，跳过自动下载。"
+		return 0
+	fi
+
+	# 已经在下了就别再起一份：prefetch_panel、procd 触发器、面板按钮会连着来。
+	if pgrep -f '[f]etch_panel.sh' >/dev/null 2>&1; then
+		panel_log "面板缺失：已有下载任务在跑，不再重复启动。"
+		return 0
+	fi
+
+	panel_log "面板缺失：已转入后台下载（不占启动锁，也不影响代理上网）。下完后刷新面板页即可；也可在「面板」设置里手动更新。"
+	(
+		trap '' HUP
+		ensure_panel_worker
+	) >/dev/null 2>&1 &
+	return 0
 }
 
 # 提前下载面板：与 ensure_panel 不同，本函数只走「本地多镜像预下载」
@@ -835,64 +878,31 @@ sync_rulesets() {
 		return 0
 	fi
 
-	log "规则集检查：共 ${total} 条远程规则集，其中 ${missing} 条本地缺失或无效，正在预下载（最多约 4 分钟）…"
+	# 规则集是 **local** 文件（生成器写的是 rule_set.type=local），缺失会让内核
+	# 直接 FATAL：`initialize router: parse rule-set[0]: open …: no such file`。
+	# 所以不能像面板那样「先起内核、后补规则集」——必须等它下完再启动内核。
+	#
+	# 但**绝不能**在这里同步等：start_service 全程握着 rc.common 的 procd 锁
+	#（`lock -w`，没有超时）。0.2.14 现场 21 条规则集要 4 分 10 秒，这期间
+	# 面板点什么都在排队，装包事务也一起挂着（用户看到的就是「装完很久没反应」）。
+	# 改成：丢后台 + 本次启动立即返回，`--autostart` 让脚本下完自己把服务拉起来
+	#（与内核后台下载的 `--start-after` 是同一套思路）。
+	log "规则集检查：共 ${total} 条远程规则集，其中 ${missing} 条本地缺失或无效，已转入后台下载，本次启动就此返回。（规则集是本地文件，缺失会让内核无法启动，所以下完才拉起内核；可在「服务状态」页查看进度。）"
 
-	# 用「标记文件 + 退出码文件」而不是 kill -0 来判断下载是否结束：
-	# 某些 shell 的 kill -0 对后台兄弟进程并不可靠，一旦判断失败，等待循环
-	# 会一次都不执行，用户就只能等下载全部结束后才看到结果。
-	# 下载明细不再 tail 进主日志：日志页现在直接读 ruleset_download.log
-	# （ACL 已授读），tail 只会制造两份相同的行；失败摘要仍随 stdout 落进
-	# 主日志，结论不受影响。
-	local rs_rc rs_waited rs_pid
-	local rs_flag="$RUN_DIR/.ruleset_running"
-	local rs_rcf="$RUN_DIR/.ruleset_rc"
-	rm -f "$rs_rcf" 2>/dev/null
-	: > "$rs_flag" 2>/dev/null
+	# 已经在下了就别再起一份：procd 触发器、面板按钮、装包会连着来。
+	if pgrep -f '[f]etch_rulesets.sh' >/dev/null 2>&1; then
+		log "规则集检查：已有规则集下载任务在跑，不再重复启动。"
+		return 1
+	fi
 
-	# fetch_rulesets.sh prints its failure summary to stdout, so redirecting it
-	# here lands it in homeproxy.log directly.
-	# trap '' HUP：start_service 返回后 procd 或调用方的 shell 退出时会向
-	# 进程组发 SIGHUP，后台下载会被无声掐断（前台看只剩半截日志）。
-	# 这里忽略它，保证 21 条规则集能跑完（脚本自身不依赖 nohup）。
 	(
 		trap '' HUP
-		# --source 让 ruleset_download.log 自己写明这次是「服务启动预取」：
-		# 以前只有预算 240 这个隐式指纹可推断来源。
-		/bin/sh "$ruleset_script" --budget 240 --source "服务启动预取（init.d sync_rulesets）" >>"$LOG_PATH" 2>&1
-		echo $? > "$rs_rcf"
-		rm -f "$rs_flag"
+		/bin/sh "$ruleset_script" --budget 600 \
+			--source "服务启动（规则集缺失，后台下载）" \
+			--autostart >>"$LOG_PATH" 2>&1
 	) &
-	rs_pid=$!
 
-	# 等待下载结束（带上限，避免标记文件残留时把服务启动卡死）。
-	# 只等下载这一个后台任务：无参 wait 会连更早启动的面板预下载一起等，
-	# 把服务启动拖到面板下载完成为止。
-	rs_waited=0
-	while [ -f "$rs_flag" ] && [ "$rs_waited" -lt 400 ]; do
-		sleep 2
-		rs_waited=$((rs_waited + 2))
-	done
-	wait "$rs_pid" 2>/dev/null
-
-	rs_rc=$(cat "$rs_rcf" 2>/dev/null)
-	case "$rs_rc" in ''|*[!0-9]*) rs_rc=1 ;; esac
-
-	rm -f "$rs_flag" "$rs_rcf" 2>/dev/null
-
-	if [ "$rs_rc" -eq 75 ]; then
-		# 75 = fetch_rulesets.sh 让路（另一个下载任务正在跑）。
-		log "规则集检查：另一个规则集下载任务正在运行，本次跳过补齐（不影响服务启动）。"
-		return 0
-	fi
-
-	if [ "$rs_rc" -eq 0 ]; then
-		log "规则集预下载完成：${missing} 条缺失已补齐。"
-	else
-		log "【规则集下载失败】预下载未全部成功（失败项见上方明细及 $RUN_DIR/ruleset_download.log）。失败项将由内核按 remote 方式下载；若 URL 返回 404，内核会把它当 .srs 载入并崩溃，导致服务起不来。请检查失败项 URL：geoip-* 公司/服务类域名规则应改为 geosite-*，或手动下载正确 .srs 放到 $HP_DIR/ruleset。"
-		panel_log "规则集有下载失败项，已在主日志提示处理办法（geoip-* 公司/服务类应改为 geosite-*）。"
-	fi
-
-	return 0
+	return 1
 }
 
 # ucitrack 自登记：让 LuCI 的 /sbin/luci-reload 在 /etc/config/homeproxy
@@ -1132,7 +1142,11 @@ start_service() {
 	# 「保存并应用」走 reload_service() = stop + start，同样会执行到这里，
 	# 所以点保存并应用就会检查并补齐规则集：本地已有有效副本的跳过，
 	# 缺失/无效的才下载。放在早退判定之前，未配置节点时也会同步。
-	sync_rulesets
+	# 规则集还没备齐时 sync_rulesets 返回 1：本次启动必须就此返回，
+	# 让后台下载去补齐（清空节点/首次安装都是这种形态）。
+	if ! sync_rulesets; then
+		return 1
+	fi
 
 	local routing_mode proxy_mode
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
