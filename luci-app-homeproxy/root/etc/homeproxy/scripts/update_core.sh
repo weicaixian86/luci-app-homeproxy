@@ -727,6 +727,31 @@ setup_cache_dir() {
 # 无论成败都立刻恢复，避免把局域网一直挂在「代理停了」的状态上。
 CORE_DIRECT_RETRY_STOPPED=''
 
+# 服务是否在运行。**不走 `init.d running`**：rc.common 的每个动作都要拿
+# procd 锁（`lock -w`，没有超时），而这里只是想知道一个事实。0.2.14 现场：
+# 内核缺失 → 后台下载 → 本函数去问 `init.d running`，恰好同时有 procd 触发器
+# 发起的 start 握着那把锁，两边永久互等 —— `ps` 里一个 `init.d running` 挂了
+# 十分钟，三个 start 排在它后面，整套自救彻底停摆（内核已经装好也起不来，
+# 只能人工 kill）。判断「有没有进程」不需要任何锁。
+service_running() {
+	if command -v pgrep >/dev/null 2>&1; then
+		pgrep -f '[s]ing-box run' >/dev/null 2>&1
+	else
+		ps w 2>/dev/null | grep -q '[s]ing-box run'
+	fi
+}
+
+# 有没有别的 init.d start 正在跑（不要和自己、自己的父进程混淆）。
+other_start_running() {
+	local p
+	for p in $(pgrep -f 'init\.d/homeproxy start' 2>/dev/null); do
+		[ "$p" = "$$" ] && continue
+		[ "$p" = "$PPID" ] && continue
+		return 0
+	done
+	return 1
+}
+
 core_direct_retry() {
 	local url="$1" out="$2"
 
@@ -739,7 +764,7 @@ core_direct_retry() {
 	# 都没试，设备在「无内核」状态卡了 12 分钟（41 次重试全部只打了 github
 	# 直连，全部 rc7），只能人工 SSH 传内核。内核缺失正是最需要镜像的时刻，
 	# 此时应当**不停服务、直接进镜像轮**。
-	if /etc/init.d/homeproxy running >/dev/null 2>&1; then
+	if service_running; then
 		log_download "全部源都不可用，疑似当前代理节点已失效。临时停止 homeproxy 改用直连再试一轮（下载结束后自动恢复服务）"
 		/etc/init.d/homeproxy stop >/dev/null 2>&1
 		CORE_DIRECT_RETRY_STOPPED=1
@@ -763,6 +788,13 @@ core_direct_retry() {
 core_direct_restore() {
 	[ -n "$CORE_DIRECT_RETRY_STOPPED" ] || return 0
 	CORE_DIRECT_RETRY_STOPPED=''
+
+	# 已经有人在启动就别再插一脚：rc.common 的锁没有超时，两个 start 撞在
+	# 一起会互相等到天荒地老。这时内核已经装好，对方那次启动会把它用起来。
+	if other_start_running; then
+		log_download "已有启动流程在跑，跳过自动重启（内核已就绪）。"
+		return 0
+	fi
 
 	if /etc/init.d/homeproxy start >/dev/null 2>&1; then
 		log_download "已重新启动 homeproxy。"

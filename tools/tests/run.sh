@@ -2463,6 +2463,26 @@ else
 	bad "the core retry still bails out when the service is not running, so nothing can fetch a missing core"
 fi
 
+# 「服务在不在跑」**不能**问 `init.d running`：rc.common 的每个动作都要拿
+# procd 锁（lock -w，无超时）。0.2.14 现场：内核缺失 → 后台下载 → 去问
+# running，恰好有 procd 触发器发起的 start 握着锁，两边永久互等：一个
+# `init.d running` 挂了 10 分钟、三个 start 排在后面，内核装好了也起不来。
+if ! sed -n '/^core_direct_retry()/,/^}/p' "$UCORE" | grep -q 'init\.d/homeproxy running' \
+   && grep -q '^service_running()' "$UCORE" \
+   && sed -n '/^service_running()/,/^}/p' "$UCORE" | grep -q 'pgrep'; then
+	ok "the retry asks about the running service with pgrep, not via the locked init.d"
+else
+	bad "the retry calls init.d running, which blocks on the procd lock and deadlocks against start"
+fi
+
+# 下载结束后的自动启动也要让路：rc.common 的锁没有超时，两个 start 撞在
+# 一起会互相等到天荒地老。
+if sed -n '/^core_direct_restore()/,/^}/p' "$UCORE" | grep -q 'other_start_running'; then
+	ok "the post-download start yields when another start is already running"
+else
+	bad "the post-download start can deadlock against a concurrent start"
+fi
+
 # 两轮的账必须分开：否则汇总行会把经代理的失败写成「直连：github.com=rc7」，
 # 看起来像镜像全挂、实际镜像根本没被测过。
 BUCKET_LINE=$(grep -n 'DOWNLOAD_ATTEMPTS_PROXIED="$DOWNLOAD_ATTEMPTS"' "$UCORE" | head -n1 | cut -d: -f1)
