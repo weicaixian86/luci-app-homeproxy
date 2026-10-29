@@ -1034,9 +1034,19 @@ start_service() {
 			#    useful, fall back to the helper's own stdout/stderr. 3) Only
 			#    then use the generic hint.
 			local reason
-			reason="$(tail -n 40 "$RUN_DIR/core_download.log" 2>/dev/null \
-				| grep -E '下载失败|错误|返回码|reF1nd 内核缺失|reF1nd 内核下载|暂不支持|未找到' \
+			# 先取「最具体」的那类原因（内核缺失 / 下载失败带返回码），
+			# 再退回一般匹配。**必须排除「提示：…」这类建议性文案**：
+			# 它只是在教用户自查 NTP，却因为同样含「失败」二字被 tail 选中，
+			# 把真因顶掉了 —— 0.2.12 现场日志写「若系统时间未同步（NTP 未校时）」，
+			# 实际是 /usr/bin/sing-box 根本不存在，方向完全被带偏。
+			reason="$(grep -v '提示：' "$RUN_DIR/core_download.log" 2>/dev/null \
+				| grep -E '内核缺失|内核下载|下载失败（返回码|暂不支持|未找到' \
 				| tail -n 1 | sed 's/^.*download : //')"
+			if [ -z "$reason" ]; then
+				reason="$(grep -v '提示：' "$RUN_DIR/core_download.log" 2>/dev/null \
+					| grep -E '下载失败|错误|返回码' \
+					| tail -n 1 | sed 's/^.*download : //')"
+			fi
 			if [ -z "$reason" ]; then
 				reason="$(tail -n 3 "$core_out" 2>/dev/null | tr '\n' ' ' \
 					| sed 's/[[:space:]][[:space:]]*/ /g; s/^ //; s/ $//')"

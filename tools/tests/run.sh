@@ -2559,6 +2559,14 @@ else
 	bad "the QUIC skip summary cannot tell 'kernel missing' from 'built without QUIC'"
 fi
 
+# 「内核不可用」的原因提取必须排除「提示：…」这类建议性文案，否则真因被顶掉。
+if grep -q "grep -v '提示：'" "$INIT" \
+   && ! sed -n '/core_out/,/请查看/p' "$INIT" | grep -q 'tail -n 40 "\$RUN_DIR/core_download.log"'; then
+	ok "the core-unavailable reason prefers the concrete failure over the NTP hint"
+else
+	bad "the core-unavailable reason can surface a hint line instead of the real cause"
+fi
+
 if [ "$(grep -c -- '--source' "$INIT")" -ge 2 ] && grep -q 'LuCI「更新面板」按钮' "$HPUC"; then
 	ok "every panel download caller names itself"
 else
