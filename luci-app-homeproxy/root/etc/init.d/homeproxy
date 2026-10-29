@@ -33,6 +33,8 @@ CORE_SCRIPT="/etc/homeproxy/scripts/update_core.sh"
 HP_DIR="/etc/homeproxy"
 RUN_DIR="/var/run/homeproxy"
 LOG_PATH="$RUN_DIR/homeproxy.log"
+# 主日志去重状态（见 log()）：同一行连续重复时只写一条并计数。
+LOG_DEDUPE="$RUN_DIR/.log-last"
 
 # we don't know which is the default server, just take the first one
 DNSMASQ_UCI_CONFIG="$(uci -q show "dhcp.@dnsmasq[0]" | awk 'NR==1 {split($0, conf, /[.=]/); print conf[2]}')"
@@ -285,12 +287,67 @@ clock_jump_note() {
 	return 0
 }
 
-log() {
-	local ts marker=""
-	clock_jump_note
+# ── 日志去重（主日志与面板日志共用）──────────────────────────────────────
+# 完全相同的日志连续出现时只写一条，其余按次数合并。现场（0.2.12，procd
+# 触发器风暴）：「跳过重复重载（第 N 次）」按次数节流反而每 2 秒一行，几分钟
+# 写了 4.5 万条，面板翻半屏都是同一句话，真错误全被埋掉；面板日志里
+# 「面板未下载：sing-box 内核不可用」也跟着每次启动写一行。
+#
+# 只合并**逐字相同**的行，不做数字归一：像 `rc7` / `rc28` / 不同节点名这类
+# 「长得像但信息不同」的行绝不能被吞掉。带计数的消息（第 N 次、下载进度）
+# 由产生方按时间节流，两套机制各管一段，不重叠。
+#
+# 状态文件一行：`<次数> <起始时刻> <正文>`。正文用 read 的「剩余字段」接，
+# 空格、竖线、中文都不影响解析（IFS 只吃掉前两段）。
+# 用法：log_dedup_write <日志文件> <状态文件> <不含时间戳的整行> [合并提示行的级别标签]
+# 返回 0 = 这次真的写了；1 = 被合并掉了（调用方据此决定要不要再送 syslog）。
+#
+# 落盘用 printf 而不是 echo -e：dash 的 echo 不认 -e，会把 "-e" 当正文写进
+# 日志首列，面板按「时间戳 [级别] 正文」解析时就错位了。
+log_dedup_write() {
+	local file="$1" state="$2" text="$3" tag="${4:-}"
+	local count since prev now ts
+
+	[ -n "$file" ] && [ -n "$state" ] || return 0
+	count=0; since=0; prev=""
+	[ -r "$state" ] && IFS=' ' read -r count since prev <"$state" 2>/dev/null
+	case "$count" in ''|*[!0-9]*) count=0 ;; esac
+	case "$since" in ''|*[!0-9]*) since=0 ;; esac
+	now="$(date +%s 2>/dev/null)"
+	case "$now" in ''|*[!0-9]*) now=0 ;; esac
 	ts="$(date "+%Y-%m-%d %H:%M:%S")"
+
+	if [ "$count" -gt 0 ] && [ "$prev" = "$text" ]; then
+		count=$((count + 1))
+		# 仍然每 5 分钟放行一条：证明「还在重复」，但绝不逐条刷屏。
+		if [ "$now" -gt 0 ] && [ "$since" -gt 0 ] && [ $((now - since)) -ge 300 ]; then
+			printf '%s %s %s\n' "$count" "$now" "$text" >"$state" 2>/dev/null
+			printf '%s %s（同一行日志已连续重复 %s 次，本行是其中最新一条）\n' \
+				"$ts" "$text" "$count" >>"$file" 2>/dev/null
+			return 0
+		fi
+		printf '%s %s %s\n' "$count" "$since" "$text" >"$state" 2>/dev/null
+		return 1
+	fi
+
+	# 换了新内容：先把上一段被合并的次数补一句，否则读者会以为它只发生过一次。
+	if [ "$count" -gt 1 ]; then
+		# 合并提示行也带级别标签，保持「时间戳 [级别] 正文」这一行格式统一，
+		# 面板日志页按这个格式着色，缺了标签会落到「未知级别」。
+		printf '%s %s…（上一条相同内容的日志又重复了 %s 次，已合并，不逐条记录）\n' \
+			"$ts" "${tag:+$tag }" "$((count - 1))" >>"$file" 2>/dev/null
+	fi
+	printf '1 %s %s\n' "$now" "$text" >"$state" 2>/dev/null
+	printf '%s %s\n' "$ts" "$text" >>"$file" 2>/dev/null
+	return 0
+}
+
+# 主日志：带 [DAEMON] 前缀与「时间未同步」标记，走同一套去重。
+log() {
+	local marker=""
+	clock_jump_note
 	clock_looks_unsynced && marker="（时间未同步）"
-	echo -e "$ts [DAEMON] ${marker}$*" >> "$LOG_PATH"
+	log_dedup_write "$LOG_PATH" "$LOG_DEDUPE" "[DAEMON] ${marker}$*" "[DAEMON]"
 }
 
 # ── 服务启停的「谁干的」 ────────────────────────────────────────────────────
@@ -383,7 +440,11 @@ hp_event() {
 	panel_log() {
 		mkdir -p "$RUN_DIR" 2>/dev/null
 		local msg="面板: $*"
-		printf '%s %s\n' "$(date "+%Y-%m-%d %H:%M:%S")" "$msg" >> "$RUN_DIR/panel_download.log" 2>/dev/null
+		# 与主日志同一套去重：同一句话（例如每次启动都失败时的
+		# 「面板未下载：sing-box 内核不可用」）只写一条并计次，
+		# 被合并掉的行也不再送 syslog，免得面板「运行日志」跟着刷屏。
+		log_dedup_write "$RUN_DIR/panel_download.log" \
+			"$RUN_DIR/.panel-last" "$msg" "面板:" || return 0
 		logger -t homeproxy "$msg" 2>/dev/null
 	}
 
@@ -1319,7 +1380,7 @@ start_service() {
 	# 重载到底有没有带新配置：配置 mtime 不新于这个时刻，就说明是 procd 触发器
 	# 的重复事件。用 epoch 而不是格式化时间，免得再踩时区那条链的坑。
 	date +%s >"$RUN_DIR/last-start" 2>/dev/null
-	rm -f "$RUN_DIR/.reload-skips" 2>/dev/null
+	rm -f "$RUN_DIR/.reload-skips" "$RUN_DIR/.reload-skips-ts" "$LOG_DEDUPE" 2>/dev/null
 
 	# 配置备份已在 start_service 开头完成（必须排在所有早退判定之前，见上）。
 
@@ -1398,7 +1459,7 @@ reload_service() {
 	#   每 30~40 秒「未运行/运行中」循环一次、永远停不下来。窗口去掉后，
 	#   只要配置没变，风暴再多也一次都不放行；而带新配置的重载不靠时间
 	#   判定（mtime 一定比 last-start 新），不会误伤。
-	local now last_start cfg_mtime skips caller force rel_age reason
+	local now last_start cfg_mtime skips caller force rel_age reason now_ts last_skip_log
 	caller="$(hp_caller)"
 
 	# 「这道重载是谁要的」。procd 的两个触发器里只有接口触发器能带参数
@@ -1455,16 +1516,30 @@ reload_service() {
 		case "$skips" in ''|*[!0-9]*) skips=0 ;; esac
 		skips=$((skips + 1))
 		echo "$skips" >"$RUN_DIR/.reload-skips" 2>/dev/null
-		# 只记前 3 次与之后每 200 次：现场实测过 3500+ 次/分钟的事件风暴
-		#（约 50 次/秒），每 20 次记一行时一分钟就能写 175 行，真错误会被
-		# 埋掉；200 次一行在风暴里约每 4 秒一行，足够确认「还在跳」，又不刷屏。
-		if [ "$skips" -le 3 ] || [ $((skips % 200)) -eq 0 ]; then
-			log "服务重载：跳过重复重载（第 ${skips} 次）：距上次启动 $((now - last_start)) 秒、/etc/config/$CONF 未改动，重载不会带来任何变化（原因=${reason}）。确实需要重启时请点界面「重载服务」，或在 SSH 执行 /etc/init.d/$CONF reload。"
+
+		# 记一条的判据是**时间**，不是次数。按次数（每 200 次）在 0.2.12 现场
+		# 反而变成每 2 秒一行：那次风暴峰值约 100 次/秒，几分钟就写了 4.5 万条，
+		# 面板翻半屏都是同一句话，真错误全被埋掉。改成「前 3 次必记，之后每
+		# 5 分钟最多一条」；行内的「第 N 次」本身就是累计计数，读者不会误以为
+		# 只发生过几次。
+		now_ts="$(date +%s 2>/dev/null)"
+		case "$now_ts" in ''|*[!0-9]*) now_ts=0 ;; esac
+		last_skip_log="$(cat "$RUN_DIR/.reload-skips-ts" 2>/dev/null)"
+		case "$last_skip_log" in ''|*[!0-9]*) last_skip_log=0 ;; esac
+		if [ "$skips" -le 3 ] || [ "$now_ts" -eq 0 ] \
+		   || [ $((now_ts - last_skip_log)) -ge 300 ]; then
+			echo "${now_ts:-0}" >"$RUN_DIR/.reload-skips-ts" 2>/dev/null
+			log "服务重载：跳过重复重载（第 ${skips} 次）：距上次启动 $((now - last_start)) 秒、/etc/config/$CONF 未改动，重载不会带来任何变化（原因=${reason}）。确实需要重启时请点界面「重载服务」，或在 SSH 执行 /etc/init.d/$CONF reload。同类日志每 5 分钟最多记一条。"
 		fi
 		return 0
 	fi
 
-	rm -f "$RUN_DIR/.reload-skips" 2>/dev/null
+	skips="$(cat "$RUN_DIR/.reload-skips" 2>/dev/null)"
+	case "$skips" in ''|*[!0-9]*) skips=0 ;; esac
+	if [ "$skips" -gt 3 ]; then
+		log "（此前累计跳过 ${skips} 次重复重载，本次是真正执行的重载）"
+	fi
+	rm -f "$RUN_DIR/.reload-skips" "$RUN_DIR/.reload-skips-ts" 2>/dev/null
 	hp_event "服务重载" ""
 	log "正在重新加载服务（reload = stop + start），原因=${reason}..."
 	date +%s >"$RUN_DIR/.reloading" 2>/dev/null

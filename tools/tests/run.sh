@@ -2803,6 +2803,39 @@ else
 	bad "reload storms are unguarded: stop/start can loop forever"
 fi
 
+# 跳过日志必须按**时间**节流，不能按次数。0.2.12 现场风暴峰值约 100 次/秒，
+# 「每 200 次记一行」结果是每 2 秒一行、几分钟 4.5 万条，面板翻半屏都是同一句。
+if grep -q '\.reload-skips-ts' "$INIT" \
+   && ! sed -n '/^reload_service()/,/^}/p' "$INIT" | grep -q '% 200'; then
+	ok "skip logging is throttled by time, not by a count modulo"
+else
+	bad "skip logging is still throttled by occurrence count, which floods during a storm"
+fi
+
+# 完全相同的日志连续出现时合并成一条并计次（主日志与面板日志同一套）。
+if grep -q '^log_dedup_write()' "$INIT" \
+   && sed -n '/^log() {/,/^}/p' "$INIT" | grep -q 'log_dedup_write' \
+   && sed -n '/panel_log() {/,/^\t}/p' "$INIT" | grep -q 'log_dedup_write'; then
+	ok "identical log lines are merged with a count (main log and panel log share it)"
+else
+	bad "repeated log lines are written one by one and bury the real errors"
+fi
+
+# 只合并逐字相同的行：不许做数字归一，否则 rc7 / rc28、不同节点名会被吞掉。
+if sed -n '/^log_dedup_write() {/,/^}/p' "$INIT" | grep -q '\[ "$prev" = "$text" \]' \
+   && ! sed -n '/^log_dedup_write() {/,/^}/p' "$INIT" | grep -q 'sed '; then
+	ok "log merging keys on the exact text, so different rc codes are never folded together"
+else
+	bad "log merging normalises the text and can silently swallow distinct errors"
+fi
+
+# 被合并掉的面板日志不能再送 syslog，否则面板「运行日志」还是刷屏。
+if sed -n '/panel_log() {/,/^\t}/p' "$INIT" | grep -q '|| return 0'; then
+	ok "a merged panel log line is not forwarded to syslog either"
+else
+	bad "panel log lines are forwarded to syslog even when merged"
+fi
+
 # 0.2.1 现场（3500+ 次/分钟的事件风暴）：旧守卫带「距上次启动 ≤30 秒才跳过」
 # 的时间窗，窗口一过就放行一次真重载，面板于是每 30~40 秒「未运行/运行中」
 # 循环一次、永不收敛。无配置变更的触发器重载必须**不限时**地跳过——带新配置
