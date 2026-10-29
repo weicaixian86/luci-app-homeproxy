@@ -730,19 +730,29 @@ CORE_DIRECT_RETRY_STOPPED=''
 core_direct_retry() {
 	local url="$1" out="$2"
 
-	if ! /etc/init.d/homeproxy running >/dev/null 2>&1; then
-		log_download "服务当前未运行，没有代理劫持可绕开，不再重试。"
-		return 1
+	# 服务在跑：路由器自身出站被 tproxy 劫持，「直连镜像」其实还是走当前那个
+	# 节点（而它往往正是坏掉的那个）。停一次服务，firewall_teardown 会把 nft
+	# 与 DNS 劫持一并撤掉，这一轮才是真直连；下完由 core_direct_restore 起回来。
+	#
+	# 服务**没在跑**：没有劫持可绕 —— 但这不等于「不用试」！0.2.12 现场：
+	# 内核文件缺失导致服务根本起不来，这里 return 1 直接放弃，四个镜像一次
+	# 都没试，设备在「无内核」状态卡了 12 分钟（41 次重试全部只打了 github
+	# 直连，全部 rc7），只能人工 SSH 传内核。内核缺失正是最需要镜像的时刻，
+	# 此时应当**不停服务、直接进镜像轮**。
+	if /etc/init.d/homeproxy running >/dev/null 2>&1; then
+		log_download "全部源都不可用，疑似当前代理节点已失效。临时停止 homeproxy 改用直连再试一轮（下载结束后自动恢复服务）"
+		/etc/init.d/homeproxy stop >/dev/null 2>&1
+		CORE_DIRECT_RETRY_STOPPED=1
+
+		# stop_service 要 teardown nft、重启 dnsmasq，给它一点时间落地，
+		# 否则紧接着发出的 curl 仍可能命中尚未撤掉的规则。
+		sleep 2
+	else
+		log_download "服务当前未运行（没有代理可借），不停服务，直接走镜像直连再试一轮。"
 	fi
 
-	log_download "全部源都不可用，疑似当前代理节点已失效。临时停止 homeproxy 改用直连再试一轮（下载结束后自动恢复服务）"
-	/etc/init.d/homeproxy stop >/dev/null 2>&1
-	CORE_DIRECT_RETRY_STOPPED=1
-
-	# stop_service 要 teardown nft、重启 dnsmasq，给它一点时间落地，
-	# 否则紧接着发出的 curl 仍可能命中尚未撤掉的规则。
-	sleep 2
-
+	# 无论哪条分支都要先把「第一轮的账」挪到 proxied 桶里，否则汇总行会把
+	# 经代理的失败写成「直连：github.com=rc7」，看起来像镜像没配上。
 	DOWNLOAD_ATTEMPTS_PROXIED="$DOWNLOAD_ATTEMPTS"
 	DOWNLOAD_ATTEMPTS=""
 

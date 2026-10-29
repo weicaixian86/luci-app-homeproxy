@@ -2452,6 +2452,27 @@ else
 	bad "a missing mixed_port would stall the download on a dead proxy"
 fi
 
+# 内核缺失（服务根本起不来）正是最需要镜像的时刻。0.2.12 现场：core 文件
+# 不在 /usr/bin，服务未运行 → core_direct_retry 直接 return 1 → 四个镜像一次
+# 都没试，设备在「无内核」状态下每 6 秒重试一轮、12 分钟 41 次全部只打
+# github 直连（rc7），只能人工 SSH 传内核。这一轮必须无条件执行。
+if grep -q '不停服务，直接走镜像直连再试一轮' "$UCORE" \
+   && ! sed -n '/^core_direct_retry()/,/^}/p' "$UCORE" | grep -q '不再重试'; then
+	ok "a missing core still falls back to the mirrors (service down is not a reason to give up)"
+else
+	bad "the core retry still bails out when the service is not running, so nothing can fetch a missing core"
+fi
+
+# 两轮的账必须分开：否则汇总行会把经代理的失败写成「直连：github.com=rc7」，
+# 看起来像镜像全挂、实际镜像根本没被测过。
+BUCKET_LINE=$(grep -n 'DOWNLOAD_ATTEMPTS_PROXIED="$DOWNLOAD_ATTEMPTS"' "$UCORE" | head -n1 | cut -d: -f1)
+DIRECT_LINE=$(grep -n 'download_file "$url" "$out" asset direct' "$UCORE" | head -n1 | cut -d: -f1)
+if [ -n "$BUCKET_LINE" ] && [ -n "$DIRECT_LINE" ] && [ "$BUCKET_LINE" -lt "$DIRECT_LINE" ]; then
+	ok "the proxied round is filed under its own label before the direct round starts"
+else
+	bad "the proxied round's failures would be reported as direct-link failures"
+fi
+
 # 一个 reality 节点没带 fp 就能让整个客户端实例起不来
 # （FATAL initialize outbound[N]: uTLS is required by reality client）。
 # 生成器必须补默认指纹，否则「少一个字段」= 整机断网。
@@ -2460,6 +2481,16 @@ if grep -q "node.type === 'anytls' || (node.tls === '1' && node.tls_reality === 
 	ok "a reality node without fp gets a default uTLS fingerprint (one node cannot break the config)"
 else
 	bad "a reality node without fp would emit reality without utls and the whole core refuses to start"
+fi
+
+# last-start 必须在所有早退分支之前写：它是 reload 风暴守卫的判据。只在启动
+# 成功那一刻写，启动一失败就永远不前进 → 守卫失效 → procd 每 6 秒重启一轮。
+LS_LINE=$(grep -n 'date +%s >"$RUN_DIR/last-start"' "$INIT" | head -n1 | cut -d: -f1)
+ENSURE_LINE=$(grep -n 'CORE_SCRIPT" ensure' "$INIT" | head -n1 | cut -d: -f1)
+if [ -n "$LS_LINE" ] && [ -n "$ENSURE_LINE" ] && [ "$LS_LINE" -lt "$ENSURE_LINE" ]; then
+	ok "the reload-storm watermark is written before any early return (a failed start still advances it)"
+else
+	bad "a failed start never advances last-start, so the reload-storm guard stops working"
 fi
 
 # 「UI 下载节点」下拉已删除：它只作用于 sing-box 内建的 /upgrade/ui，
