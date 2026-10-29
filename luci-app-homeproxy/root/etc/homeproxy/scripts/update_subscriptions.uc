@@ -205,6 +205,19 @@ function normalize_hysteria_hopping_port(mport) {
 /* 本次订阅里因 pinSHA256 而被迫跳过证书校验的节点数（每个订阅开始前清零）。 */
 let pinned_node_count = 0;
 
+/* 本轮因为「内核不支持（或读不到）QUIC」被跳过的节点。
+ * 0.2.12 现场：内核文件根本不在 /usr/bin，features 读不到任何 tag，
+ * 于是一个机场的 18 个 hysteria2 节点全被丢掉；而日志逐节点写两行
+ * （「Skipping unsupported …」+「Please rebuild sing-box with QUIC support!」），
+ * 36 行噪音里那句真正有用的「内核不可用」反而被埋掉，用户还以为要重编内核。
+ * 这里只记录，由每个订阅的汇总行一次说清。 */
+let skipped_quic = [];
+
+function note_skipped_quic(type_name, node_name) {
+	push(skipped_quic, sprintf('%s（%s）', node_name ?? '?', type_name ?? '?'));
+	return null;
+}
+
 /* 节点链接里的 `pinSHA256` 是**证书指纹**（SHA256 of DER），机场用它正是因为
    自己发的是旧式 Common Name 证书（没有 SAN）—— 而 Go 1.15 起直接拒绝这种证书：
    `x509: certificate relies on legacy Common Name field, use SANs instead`。
@@ -419,11 +432,8 @@ function parse_mihomo_proxy(proxy) {
 		apply_transport_opts(config, proxy);
 		break;
 	case 'hysteria2':
-		if (!sing_features.with_quic) {
-			log(sprintf('Skipping unsupported %s node: %s.', proxy.type, proxy.name || proxy.server));
-			log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
-			return null;
-		}
+		if (!sing_features.with_quic)
+			return note_skipped_quic(proxy.type, proxy.name || proxy.server);
 		config = {
 			label: proxy.name,
 			type: 'hysteria2',
@@ -443,11 +453,8 @@ function parse_mihomo_proxy(proxy) {
 		};
 		break;
 	case 'hysteria':
-		if (!sing_features.with_quic) {
-			log(sprintf('Skipping unsupported %s node: %s.', proxy.type, proxy.name || proxy.server));
-			log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
-			return null;
-		}
+		if (!sing_features.with_quic)
+			return note_skipped_quic(proxy.type, proxy.name || proxy.server);
 		config = {
 			label: proxy.name,
 			type: 'hysteria',
@@ -562,11 +569,8 @@ function parse_mihomo_proxy(proxy) {
 		};
 		break;
 	case 'tuic': {
-		if (!sing_features.with_quic) {
-			log(sprintf('Skipping unsupported %s node: %s.', proxy.type, proxy.name || proxy.server));
-			log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
-			return null;
-		}
+		if (!sing_features.with_quic)
+			return note_skipped_quic(proxy.type, proxy.name || proxy.server);
 		let tuic_heartbeat = proxy['heartbeat-interval'];
 		if (has_value(tuic_heartbeat)) {
 			tuic_heartbeat = int(tuic_heartbeat);
@@ -1017,10 +1021,10 @@ function parse_uri(uri) {
 			params = url.searchParams || {};
 
 			if (!sing_features.with_quic || (params.protocol && params.protocol !== 'udp')) {
-				log(sprintf('Skipping unsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
 				if (!sing_features.with_quic)
-					log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
+					return note_skipped_quic(uri[0], urldecode(url.hash) || url.hostname);
 
+				log(sprintf('Skipping unsupported %s node: %s（传输方式不支持）.', uri[0], urldecode(url.hash) || url.hostname));
 				return null;
 			}
 
@@ -1049,11 +1053,8 @@ function parse_uri(uri) {
 			url = parseURL('http://' + uri[1]) || {};
 			params = url.searchParams || {};
 
-			if (!sing_features.with_quic) {
-				log(sprintf('Skipping unsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
-				log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
-				return null;
-			}
+			if (!sing_features.with_quic)
+				return note_skipped_quic(uri[0], urldecode(url.hash) || url.hostname);
 
 			config = {
 				label: url.hash ? urldecode(url.hash) : null,
@@ -1174,12 +1175,8 @@ function parse_uri(uri) {
 			url = parseURL('http://' + uri[1]) || {};
 			params = url.searchParams || {};
 
-			if (!sing_features.with_quic) {
-				log(sprintf('Skipping unsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
-				log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
-
-				return null;
-			}
+			if (!sing_features.with_quic)
+				return note_skipped_quic(uri[0], urldecode(url.hash) || url.hostname);
 
 			config = {
 				label: url.hash ? urldecode(url.hash) : null,
@@ -1207,10 +1204,10 @@ function parse_uri(uri) {
 				log(sprintf('Skipping sunsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
 				return null;
 			} else if (params.type === 'quic' && ((params.quicSecurity && params.quicSecurity !== 'none') || !sing_features.with_quic)) {
-				log(sprintf('Skipping sunsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
 				if (!sing_features.with_quic)
-					log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
+					return note_skipped_quic(uri[0], urldecode(url.hash) || url.hostname);
 
+				log(sprintf('Skipping unsupported %s node: %s（传输方式不支持）.', uri[0], urldecode(url.hash) || url.hostname));
 				return null;
 			}
 
@@ -1288,10 +1285,10 @@ function parse_uri(uri) {
 				log(sprintf('Skipping unsupported %s node: %s.', uri[0], uri.ps || uri.add));
 				return null;
 			} else if (uri.net === 'quic' && ((uri.type && uri.type !== 'none') || uri.path || !sing_features.with_quic)) {
-				log(sprintf('Skipping unsupported %s node: %s.', uri[0], uri.ps || uri.add));
 				if (!sing_features.with_quic)
-					log(sprintf('Please rebuild sing-box with %s support!', 'QUIC'));
+					return note_skipped_quic(uri[0], uri.ps || uri.add);
 
+				log(sprintf('Skipping unsupported %s node: %s（传输方式不支持）.', uri[0], uri.ps || uri.add));
 				return null;
 			}
 			/*
@@ -1980,6 +1977,7 @@ function main() {
 
 		let count = 0;
 		pinned_node_count = 0;
+		skipped_quic = [];
 		for (let node in nodes) {
 			let config = null;
 			if (!isEmpty(node)) {
@@ -2039,6 +2037,20 @@ function main() {
 		/* 安全降级必须留痕：这些节点的证书 sing-box 验不了（旧式 CN），只能不验。 */
 		if (pinned_node_count > 0)
 			log(sprintf('%d node(s) in %s carry pinSHA256: their certificate cannot be checked by sing-box (legacy CN), certificate verification is disabled for them.', pinned_node_count, url));
+
+		/* 需要 QUIC 的节点被跳过的原因只有一个：内核不支持，或者内核根本没装
+		   （features 读不到任何 tag）。这里一次说清，不再每个节点写两行 ——
+		   0.2.12 现场一个机场 18 个 hysteria2 节点产生 36 行噪音，反而把
+		   「内核不可用」那句真正有用的话埋掉了。 */
+		if (length(skipped_quic)) {
+			const quic_why = isEmpty(sing_features.version)
+				? '当前内核未安装或读不到版本（不是编译时缺 QUIC）'
+				: sprintf('当前内核 %s 未声明 QUIC 支持', sing_features.version);
+
+			log(sprintf('跳过 %d 个需要 QUIC 的节点：%s。装好内核后重新更新订阅即可恢复。明细：%s',
+				length(skipped_quic), quic_why, join('、', skipped_quic)));
+			skipped_quic = [];
+		}
 
 		if (count == 0) {
 			log(sprintf('No valid node found in %s.', url));

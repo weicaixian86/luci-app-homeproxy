@@ -2535,6 +2535,30 @@ else
 	bad "a shell-wrapped reload would be forced and could storm"
 fi
 
+# ── QUIC 不支持的节点：一次汇总，不再逐节点写两行 ────────────────────────
+# 0.2.12 现场：内核文件不在 /usr/bin → rpcd 的 features 读不到任何 tag →
+# 订阅里 18 个 hysteria2 节点被丢掉，而每个节点写两行日志（36 行噪音），
+# 真正有用的「内核不可用」反而被埋掉，用户以为要重编内核。
+if grep -q 'function note_skipped_quic' "$SUB_UC" \
+   && [ "$(grep -c 'return note_skipped_quic(' "$SUB_UC")" -ge 8 ]; then
+	ok "nodes dropped for missing QUIC support are collected, not logged one by one"
+else
+	bad "each QUIC node still writes its own two log lines (noise buries the real cause)"
+fi
+
+if ! grep -v '^[[:space:]]*\*' "$SUB_UC" | grep -q 'Please rebuild sing-box'; then
+	ok "the misleading 'Please rebuild sing-box with QUIC support' line is gone"
+else
+	bad "the log still tells users to rebuild sing-box when the real cause may be a missing core"
+fi
+
+if grep -q '跳过 %d 个需要 QUIC 的节点' "$SUB_UC" \
+   && grep -q 'isEmpty(sing_features.version)' "$SUB_UC"; then
+	ok "the QUIC summary names the real reason (kernel missing) and lists the nodes once"
+else
+	bad "the QUIC skip summary cannot tell 'kernel missing' from 'built without QUIC'"
+fi
+
 if [ "$(grep -c -- '--source' "$INIT")" -ge 2 ] && grep -q 'LuCI「更新面板」按钮' "$HPUC"; then
 	ok "every panel download caller names itself"
 else
