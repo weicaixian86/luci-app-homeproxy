@@ -71,7 +71,7 @@ return view.extend({
 		});
 		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const currentText = E('div', { 'class': 'cbi-value-description' }, _('Current configuration file: %s').format(current));
-		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile cannot be uploaded; names must match homeproxy-*.'));
+		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile is not uploadable; uploaded files must be named homeproxy-<your-name>; the default profile is /etc/config/homeproxy-default.'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('Switch & Apply'));
 		const upload = E('button', { 'class': 'cbi-button cbi-button-add' }, _('Upload configuration file'));
 		const refresh = E('button', { 'class': 'cbi-button' }, _('Refresh list'));
@@ -110,15 +110,21 @@ return view.extend({
 			])
 		]);
 
+		/* 条件子节点必须用数组 push，不能写 `cond ? null : E(...)`：LuCI 的 E()
+		   不会跳过 null，会把它变成一个文本节点，界面上直接显示字面 "null"
+		   （0.3.1 现场：「使用中」那一行的删除按钮位置就印着 null）。 */
 		const fileRow = (name) => {
 			const inUse = (name === current);
+			const cells = [
+				E('span', { 'style': 'min-width:16em;' }, inUse ? [ name, ' ', _('(in use)') ] : [ name ]),
+				E('button', { 'class': 'cbi-button', 'click': () => downloadProfile(name) }, _('Download'))
+			];
 
-			return E('div', { 'style': 'display:flex;align-items:center;gap:.5em;margin:.25em 0;' }, [
-				E('span', { 'style': 'min-width:16em;' }, [ name, inUse ? ' ' + _('(in use)') : null ]),
-				E('button', { 'class': 'cbi-button', 'click': () => downloadProfile(name) }, _('Download')),
-				/* 正在用的那份不给删：脚本也会拒，界面上直接不给按钮更省事。 */
-				inUse ? null : E('button', { 'class': 'cbi-button cbi-button-remove', 'click': () => confirmDelete(name) }, _('Delete'))
-			]);
+			/* 正在用的那份不给删：脚本也会拒，界面上直接不给按钮更省事。 */
+			if (!inUse)
+				cells.push(E('button', { 'class': 'cbi-button cbi-button-remove', 'click': () => confirmDelete(name) }, _('Delete')));
+
+			return E('div', { 'style': 'display:flex;align-items:center;gap:.5em;margin:.25em 0;' }, cells);
 		};
 
 		const panel = E('div', { 'class': 'cbi-map' }, [

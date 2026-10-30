@@ -551,13 +551,9 @@ msgstr "仅常用端口（绕过 P2P 流量）"
 msgid "Configuration File"
 msgstr "配置文件"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:60
-msgid ""
-"Configuration directory: /etc/config/; the default profile cannot be "
-"uploaded; names must match homeproxy-*."
-msgstr ""
-"配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-"
-"*。"
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:74
+msgid "Configuration directory: /etc/config/; the default profile is not uploadable; uploaded files must be named homeproxy-<your-name>; the default profile is /etc/config/homeproxy-default."
+msgstr "配置文件目录：/etc/config/，默认配置文件不参与上传列表，上传文件名为 homeproxy-<自定义名称>，默认配置文件/etc/config/homeproxy-default。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1564
 #: htdocs/luci-static/resources/view/homeproxy/server.js:362

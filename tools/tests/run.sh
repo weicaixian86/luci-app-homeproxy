@@ -2714,7 +2714,7 @@ fi
 # 上传名的输入框不能预填示例（`placeholder: homeproxy-123` 看起来就像已经填好
 # 的文件名，用户点上传会以为名字已定）；命名规则改由说明文字承担。
 if ! grep -q "'placeholder'" "$PROFILE_VIEW" \
-   && grep -q 'names must match homeproxy-\*' "$PROFILE_VIEW"; then
+   && grep -q 'must be named homeproxy-<your-name>' "$PROFILE_VIEW"; then
 	ok "the upload name field carries no pre-filled example; the hint states the homeproxy-* rule"
 else
 	bad "the upload name field is still pre-filled with an example (or the naming rule is unstated)"
@@ -2779,6 +2779,16 @@ if grep -q 'config_profile_read:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy
 	ok "each uploaded profile can be downloaded as a file"
 else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
+fi
+
+# LuCI 的 E() 不会跳过 null 子节点，它被当成文本节点渲染成字面 "null"（0.3.1
+# 现场：「使用中」那一行的删除按钮位置就印着 null）。条件子节点只能用数组 push。
+# 判据看结构而不是 grep 关键字：注释里提到这个写法时不该误报。
+if grep -q 'const cells = \[' "$PROFILE_VIEW" \
+   && grep -q 'cells.push(E(' "$PROFILE_VIEW"; then
+	ok "conditional cells are pushed into an array (E would print a null child verbatim)"
+else
+	bad "a null child would render as the literal text null on the page"
 fi
 
 # 切换失败必须在主日志里留下原因（uci 的 Parse error 带 line/byte）：只闪一条
