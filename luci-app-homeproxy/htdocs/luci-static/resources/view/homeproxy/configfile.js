@@ -48,8 +48,16 @@ return view.extend({
 		const current = state.current || 'homeproxy-default';
 		const files = state.files || [];
 		const select = E('select', { 'class': 'cbi-input-select', 'style': 'min-width: 22em;' },
-			[ 'homeproxy-default' ].concat(files).map((name) =>
-				E('option', { value: name, selected: name === current }, name)));
+			[ 'homeproxy-default' ].concat(files).map((name) => E('option', { value: name }, name)));
+
+		/* 选中项用 value 显式设定，不能把 `selected: false` 交给 E()：那会写出
+		   selected="false"，而 HTML 里**属性存在就算选中**，于是所有 option 都成
+		   了选中态，刷新后下拉停下来的那一项并不是当前配置（0.3.1 现场：状态行写
+		   homeproxy-default，下拉却停在 homeproxy-0.2.15）。 */
+		select.value = current;
+
+		if (select.value !== current)
+			select.value = 'homeproxy-default';
 		const nameInput = E('input', {
 			'class': 'cbi-input-text', 'type': 'text',
 			'style': 'min-width: 18em;'

@@ -2781,6 +2781,16 @@ else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
+# 下拉的选中项必须靠 value 设定：把 `selected: false` 交给 E() 会写出
+# selected="false"，而 HTML 里属性存在就算选中 —— 所有 option 都成选中态，
+# 刷新后停下来的那一项不是当前配置（0.3.1 现场：状态写 default、下拉停 0.2.15）。
+if grep -q 'select.value = current' "$PROFILE_VIEW" \
+   && ! grep -q 'selected: name === current' "$PROFILE_VIEW"; then
+	ok "the selector starts on the active profile (set by value, not by an attribute)"
+else
+	bad "the selector relies on a selected attribute that E() writes even when false"
+fi
+
 # LuCI 的 E() 不会跳过 null 子节点，它被当成文本节点渲染成字面 "null"（0.3.1
 # 现场：「使用中」那一行的删除按钮位置就印着 null）。条件子节点只能用数组 push。
 # 判据看结构而不是 grep 关键字：注释里提到这个写法时不该误报。
