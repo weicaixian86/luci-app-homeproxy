@@ -2730,6 +2730,15 @@ else
 	bad "the check button is gone but apply neither validates nor rolls the selector back"
 fi
 
+# 「删除选中配置」按钮也去掉了：删除不可逆（设备上只能 SSH 里 rm），放在
+# 下拉右边极易误点。rpcd 的 config_profile_delete 保留，但界面不该有入口。
+if ! grep -q '删除选中配置' "$PROFILE_VIEW" \
+   && ! grep -q 'config_profile_delete' "$PROFILE_VIEW"; then
+	ok "the profile page has no delete button next to the selector"
+else
+	bad "the delete button is back next to the profile selector (easy to hit by accident)"
+fi
+
 # 切换失败必须在主日志里留下原因（uci 的 Parse error 带 line/byte）：只闪一条
 # 通知，页面一刷新就什么都不剩，用户只能反复重试。
 if grep -q 'function profileLog' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \

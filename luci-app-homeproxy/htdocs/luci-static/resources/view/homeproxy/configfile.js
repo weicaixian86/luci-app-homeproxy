@@ -21,12 +21,6 @@ const callUpload = rpc.declare({
 	params: [ 'name' ],
 	expect: { '': {} }
 });
-const callDelete = rpc.declare({
-	object: 'luci.homeproxy',
-	method: 'config_profile_delete',
-	params: [ 'name' ],
-	expect: { '': {} }
-});
 
 function notify(message, level) {
 	ui.addNotification(null, E('p', {}, message), level || 'info');
@@ -54,13 +48,12 @@ return view.extend({
 		const status = E('div', { 'class': 'cbi-value-description' }, _('配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('切换并应用'));
 		const upload = E('button', { 'class': 'cbi-button cbi-button-add' }, _('上传配置文件'));
-		const remove = E('button', { 'class': 'cbi-button cbi-button-remove' }, _('删除选中配置'));
 		const refresh = E('button', { 'class': 'cbi-button' }, _('刷新列表'));
 		const panel = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('配置文件')),
 			E('div', { 'class': 'cbi-map-descr' }, _('管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。')),
 			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('选择配置文件')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply, ' ', remove ]) ]),
+				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('选择配置文件')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('状态')), E('div', { 'class': 'cbi-value-field' }, [ currentText, checkBox ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('上传配置文件')), E('div', { 'class': 'cbi-value-field' }, [ nameInput, ' ', fileInput, ' ', upload, ' ', refresh, status ]) ])
 			])
@@ -111,14 +104,6 @@ return view.extend({
 			}
 			ui.uploadFile('/tmp/homeproxy_profile.tmp', fileInput).then(() => callUpload(name)).then((res) => {
 				notify(res.result ? _('上传成功：%s。请在列表中选择后点击“切换并应用”。').format(name) : _('上传失败：%s').format(res.error || _('未知错误')), res.result ? 'info' : 'danger');
-				if (res.result) window.setTimeout(() => window.location.reload(), 500);
-			});
-		});
-		remove.addEventListener('click', () => {
-			const name = selected();
-			if (name === 'homeproxy-default') { notify(_('默认配置文件不能删除。'), 'danger'); return; }
-			callDelete(name).then((res) => {
-				notify(res.result ? _('已删除：%s').format(name) : _('删除失败：%s').format(res.error || _('未知错误')), res.result ? 'info' : 'danger');
 				if (res.result) window.setTimeout(() => window.location.reload(), 500);
 			});
 		});

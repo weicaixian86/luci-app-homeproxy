@@ -4186,9 +4186,6 @@ msgstr "切换并应用"
 msgid "刷新列表"
 msgstr "刷新列表"
 
-msgid "删除选中配置"
-msgstr "删除选中配置"
-
 msgid "当前配置文件：%s"
 msgstr "当前配置文件：%s"
 
@@ -4225,14 +4222,6 @@ msgstr "上传成功：%s。请在列表中选择后点击“切换并应用”�
 msgid "上传失败：%s"
 msgstr "上传失败：%s"
 
-msgid "删除失败：%s"
-msgstr "删除失败：%s"
-
-msgid "已删除：%s"
-msgstr "已删除：%s"
-
-msgid "默认配置文件不能删除。"
-msgstr "默认配置文件不能删除。"
 #~ msgid "Log size limit unit"
 #~ msgstr "日志大小上限单位"
 
