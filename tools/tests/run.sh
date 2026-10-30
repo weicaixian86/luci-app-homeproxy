@@ -2743,14 +2743,15 @@ else
 	bad "the upload picker filters by extension, so extension-less UCI configs are invisible"
 fi
 
-# 选完文件必须自动把文件名填进名称框：两者分离时，用户看着「选文件」会以为名字
-# 取自文件名，直接点上传只撞一句「文件名必须是 homeproxy- 前缀」。带点的名字
-# （homeproxy-0.2.15）要原样保留，只切掉 .conf / .uci 这类真扩展名。
-if grep -q "fileInput.addEventListener('change'" "$PROFILE_VIEW" \
-   && grep -q 'nameInput.value = picked.name.replace' "$PROFILE_VIEW"; then
-	ok "picking a file fills the name box (only real extensions are stripped)"
+# 上传只留一个动作：点「上传文件」打开文件选择框，选完立刻上传，名字取自文件名
+# （只切 .conf/.uci 这类真扩展名，homeproxy-0.2.15 的 .15 保留）。页面上不再有
+# 名称输入框，也没有第二个「上传」按钮 —— 之前那两个框和两个按钮让人不知道先填谁。
+if grep -q "uploadFile.addEventListener('click', () => fileInput.click())" "$PROFILE_VIEW" \
+   && grep -q 'uploadProfile(name)' "$PROFILE_VIEW" \
+   && ! grep -q 'nameInput' "$PROFILE_VIEW"; then
+	ok "one upload button: picking a file uploads it right away, name taken from the file"
 else
-	bad "the name box stays empty after picking a file, so upload fails with a prefix error"
+	bad "upload still needs a separate name box or a second button"
 fi
 
 # 上传必须挡大小：真实的 UCI 配置几十 KB，不设上限时误选一个镜像/日志就会被

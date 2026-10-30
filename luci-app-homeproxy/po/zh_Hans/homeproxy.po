@@ -1146,9 +1146,6 @@ msgid "Encrypt method"
 msgstr "加密方式"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:186
-msgid "Enter a name for the configuration (it must start with homeproxy-)."
-msgstr "请先填写配置文件名（必须以 homeproxy- 开头）。"
-
 #: htdocs/luci-static/resources/view/homeproxy/log.js:356
 #: htdocs/luci-static/resources/view/homeproxy/node.js:919
 msgid "Error"
@@ -2988,9 +2985,6 @@ msgid "Scheduled update time"
 msgstr "定时更新时间"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:195
-msgid "Select a configuration file to upload."
-msgstr "请选择要上传的配置文件。"
-
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:141
 msgid "Select configuration file"
 msgstr "选择配置文件"
@@ -3520,12 +3514,8 @@ msgid "The minimum TLS version that is acceptable."
 msgstr "可接受的最低 TLS 版本。"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:191
-msgid ""
-"The name must start with homeproxy-, and may only contain letters, digits, "
-"dots, underscores and dashes."
-msgstr ""
-"文件名必须以 homeproxy- 开头，且只能包含字母、数字、点、下划线和短横线（例如 "
-"homeproxy-home、homeproxy-0.2.15）。"
+msgid "The file name must start with homeproxy- and may only contain letters, digits, dots, underscores and dashes."
+msgstr "文件名必须以 homeproxy- 开头，且只能包含字母、数字、点、下划线和短横线。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1609
 #: htdocs/luci-static/resources/view/homeproxy/server.js:884
@@ -3894,6 +3884,9 @@ msgstr "上传配置文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:205
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:207
+msgid "Upload file"
+msgstr "上传文件"
+
 msgid "Upload failed: %s"
 msgstr "上传失败：%s"
 
