@@ -51,13 +51,13 @@ return view.extend({
 			[ 'homeproxy-default' ].concat(files).map((name) =>
 				E('option', { value: name, selected: name === current }, name)));
 		const nameInput = E('input', {
-			'class': 'cbi-input-text', 'type': 'text', 'placeholder': 'homeproxy-123',
+			'class': 'cbi-input-text', 'type': 'text',
 			'style': 'min-width: 18em;'
 		});
 		const fileInput = E('input', { 'type': 'file', 'accept': '.conf,.uci,*/*' });
 		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('切换前会检查 UCI 配置格式，错误时当前配置不会改变。'));
 		const currentText = E('div', { 'class': 'cbi-value-description' }, _('当前配置文件：%s').format(current));
-		const status = E('div', { 'class': 'cbi-value-description' }, _('配置文件目录：/etc/config/；默认配置文件不参与上传列表。'));
+		const status = E('div', { 'class': 'cbi-value-description' }, _('配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('切换并应用'));
 		const check = E('button', { 'class': 'cbi-button cbi-button-action' }, _('检查配置'));
 		const upload = E('button', { 'class': 'cbi-button cbi-button-add' }, _('上传配置文件'));

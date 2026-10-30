@@ -976,7 +976,7 @@ esac
 section "gettext catalog"
 "$PY" "$ROOT/tools/tests/pocheck.py" > "$WORK/po.out" 2>&1
 case $? in
-	0)  ok "po/zh_Hans/homeproxy.po consistent with JS sources"; sed 's/^/       /' "$WORK/po.out" | tail -8 ;;
+	0)  ok "po/zh_Hans/homeproxy.po consistent with JS sources"; sed 's/^/       /' "$WORK/po.out" | tail -9 ;;
 	2)  skip "polib unavailable (pip install polib)" ;;
 	*)  bad "po/zh_Hans/homeproxy.po has problems"; sed 's/^/       /' "$WORK/po.out" | tail -25 ;;
 esac
@@ -2708,6 +2708,15 @@ if grep -q '\[ -f "$HP_DIR/scripts/config_profile.sh" \] && sh' "$INIT" \
 	ok "the start-path profile sync is guarded by -f, not -x (a 644 script would never run)"
 else
 	bad "the profile sync uses -x on a 644 script, so it silently never runs"
+fi
+
+# 上传名的输入框不能预填示例（`placeholder: homeproxy-123` 看起来就像已经填好
+# 的文件名，用户点上传会以为名字已定）；命名规则改由说明文字承担。
+if ! grep -q "'placeholder'" "$PROFILE_VIEW" \
+   && grep -q '文件名为 homeproxy-\*' "$PROFILE_VIEW"; then
+	ok "the upload name field carries no pre-filled example; the hint states the homeproxy-* rule"
+else
+	bad "the upload name field is still pre-filled with an example (or the naming rule is unstated)"
 fi
 
 # ── QUIC 不支持的节点：一次汇总，不再逐节点写两行 ────────────────────────

@@ -533,6 +533,10 @@ msgstr "CloudFlare 公共DNS (DoH)"
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
 
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:37
+msgid "Configuration File"
+msgstr "配置文件"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:916
 msgid "Common ports only (bypass P2P traffic)"
 msgstr "仅常用端口（绕过 P2P 流量）"
@@ -4194,8 +4198,8 @@ msgstr "当前配置文件：%s"
 msgid "切换前会检查 UCI 配置格式，错误时当前配置不会改变。"
 msgstr "切换前会检查 UCI 配置格式，错误时当前配置不会改变。"
 
-msgid "配置文件目录：/etc/config/；默认配置文件不参与上传列表。"
-msgstr "配置文件目录：/etc/config/；默认配置文件不参与上传列表。"
+msgid "配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。"
+msgstr "配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。"
 
 msgid "管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。"
 msgstr "管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。"

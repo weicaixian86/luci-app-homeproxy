@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """po/JS gettext consistency check for luci-app-homeproxy.
 
-Extracts every ``_('...')`` string from the LuCI JS sources and verifies that
-the Simplified Chinese catalog has a matching, translated entry. Also reports
-structural problems in the catalog itself (fuzzy, duplicate msgid, leading or
-trailing whitespace in msgid).
+Extracts every ``_('...')`` string from the LuCI JS sources **and every menu
+title from the LuCI menu.d JSON** and verifies that the Simplified Chinese
+catalog has a matching, translated entry. The menu titles matter because LuCI
+translates them at render time: a tab whose title is missing from the catalog
+shows up in English in an otherwise Chinese UI (that is exactly how the
+"Configuration File" tab shipped half-translated). Also reports structural
+problems in the catalog itself (fuzzy, duplicate msgid, leading or trailing
+whitespace in msgid).
 
 Vendored from the ad-hoc ``_pocheck.py`` used during development so CI and any
 contributor can run the exact same check:
@@ -15,6 +19,7 @@ Exit code 0 = clean, 1 = problems found, 2 = missing dependency (polib).
 """
 
 import glob
+import json
 import os
 import re
 import sys
@@ -32,6 +37,11 @@ PO = os.path.join(PKG, 'po', 'zh_Hans', 'homeproxy.po')
 JS_PATTERNS = (
     'htdocs/luci-static/resources/homeproxy.js',
     'htdocs/luci-static/resources/view/homeproxy/*.js',
+)
+
+# LuCI renders menu.d titles through gettext, so they need catalog entries too.
+MENU_PATTERNS = (
+    'root/usr/share/luci/menu.d/*.json',
 )
 
 # _('...') / _("...") — the value may span lines and use escaped quotes.
@@ -80,6 +90,21 @@ def js_strings():
     return files, found
 
 
+def menu_titles():
+    """Every ``title`` in the LuCI menu tree, keyed to its source file."""
+    found = {}
+    for pattern in MENU_PATTERNS:
+        for path in sorted(glob.glob(os.path.join(PKG, pattern))):
+            with open(path, encoding='utf-8') as handle:
+                tree = json.load(handle)
+            if not isinstance(tree, dict):
+                continue
+            for body in tree.values():
+                if isinstance(body, dict) and isinstance(body.get('title'), str):
+                    found.setdefault(body['title'], os.path.relpath(path, ROOT))
+    return found
+
+
 def main():
     if not os.path.isfile(PO):
         sys.stderr.write('pocheck: catalog not found: %s\n' % PO)
@@ -91,8 +116,11 @@ def main():
     msgid_set = set(msgids)
 
     files, found = js_strings()
+    menu = menu_titles()
 
-    missing = sorted(key for key in found if key not in msgid_set)
+    missing_js = sorted(key for key in found if key not in msgid_set)
+    missing_menu = sorted(key for key in menu if key not in msgid_set)
+    missing = missing_js + missing_menu
     untranslated = [entry for entry in live if not entry.msgstr and not entry.msgstr_plural]
     fuzzy = [entry for entry in live if 'fuzzy' in entry.flags]
     duplicates = sorted({key for key in msgids if msgids.count(key) > 1})
@@ -101,6 +129,7 @@ def main():
 
     print('js files    : %d' % len(files))
     print('js strings  : %d' % len(found))
+    print('menu titles : %d' % len(menu))
     print('po entries  : %d' % len(live))
     print('missing     : %d' % len(missing))
     print('untranslated: %d' % len(untranslated))
@@ -108,8 +137,10 @@ def main():
     print('duplicates  : %d' % len(duplicates))
     print('msgid padded: %d' % len(padded))
 
-    for key in missing[:40]:
+    for key in missing_js[:40]:
         print('  MISSING %r  <- %s' % (key, found[key]))
+    for key in missing_menu[:40]:
+        print('  MISSING menu title %r  <- %s' % (key, menu[key]))
     for entry in untranslated[:20]:
         print('  UNTRANSLATED %r' % entry.msgid)
     for key in duplicates[:20]:
