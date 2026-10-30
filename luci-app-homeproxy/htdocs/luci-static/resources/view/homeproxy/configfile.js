@@ -67,8 +67,8 @@ return view.extend({
 		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked when switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile is not uploadable; uploaded files must be named homeproxy-<your-name>; the default profile is /etc/config/homeproxy-default.'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('Switch & Apply'));
-		const uploadFile = E('button', { 'class': 'cbi-button cbi-button-add' }, _('Upload file'));
-		const refresh = E('button', { 'class': 'cbi-button' }, _('Refresh list'));
+		const uploadFile = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Upload file'));
+		const refresh = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Refresh list'));
 
 		const uploadProfile = (name) => ui.uploadFile('/tmp/homeproxy_profile.tmp', fileInput).then(() => callUpload(name)).then((res) => {
 			notify(res.result ? _('Uploaded %s. Choose it in the dropdown above, then click Switch & Apply.').format(name) : _('Upload failed: %s').format(res.error || _('Unknown error')), res.result ? 'info' : 'danger');
@@ -148,7 +148,7 @@ return view.extend({
 			const inUse = (name === current);
 			const cells = [
 				E('span', { 'style': 'min-width:16em;' }, inUse ? [ name, ' ', _('(in use)') ] : [ name ]),
-				E('button', { 'class': 'cbi-button', 'click': () => downloadProfile(name) }, _('Download'))
+				E('button', { 'class': 'cbi-button cbi-button-action', 'click': () => downloadProfile(name) }, _('Download'))
 			];
 
 			/* 正在用的那份不给删：脚本也会拒，界面上直接不给按钮更省事。 */

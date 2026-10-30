@@ -2795,6 +2795,14 @@ else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
+# 「上传文件」「刷新列表」「下载」统一成蓝色动作按钮（cbi-button-action）：这一页上
+# 灰色默认按钮看着不像能点，用户明确要求这三个跟「切换并应用」一样是蓝色。
+if [ "$(grep -c "'class': 'cbi-button cbi-button-action'" "$PROFILE_VIEW")" -ge 3 ]; then
+	ok "upload / refresh / download share the blue action style"
+else
+	bad "one of upload / refresh / download is still a grey default button"
+fi
+
 # 标题下那段「管理 HomeProxy 配置文件…普通设置仍用右下角保存并应用…」用户要求去掉：
 # 它是纯说明，占掉一整行，而下拉与按钮本身已经把用法摆出来了。
 if ! grep -q 'Manage HomeProxy configuration files' "$PROFILE_VIEW"; then
