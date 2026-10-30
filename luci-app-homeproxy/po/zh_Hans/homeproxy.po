@@ -4144,115 +4144,109 @@ msgid "valid uuid"
 msgstr "有效 uuid"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:298
-msgid "订阅名称"
+msgid "Subscription name"
 msgstr "订阅名称"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:413
-msgid "订阅名称不能重复"
+msgid "Subscription name is already used"
 msgstr "订阅名称不能重复"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:402
-msgid "订阅名称和订阅地址为必填项"
+msgid "Subscription name and URL are required"
 msgstr "订阅名称和订阅地址为必填项"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:410
-msgid "订阅名称和订阅地址必须成对填写"
+msgid "Subscription name and URL must be filled in together"
 msgstr "订阅名称和订阅地址必须成对填写"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:299
-msgid "订阅地址"
+msgid "Subscription URL"
 msgstr "订阅地址"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:417
-msgid "订阅地址不能重复"
+msgid "Subscription URL is already used"
 msgstr "订阅地址不能重复"
 
 #: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/configfile.js
-msgid "配置文件"
-msgstr "配置文件"
-
-msgid "选择配置文件"
+msgid "Select configuration file"
 msgstr "选择配置文件"
 
-msgid "状态"
-msgstr "状态"
-
-msgid "上传配置文件"
+msgid "Upload configuration file"
 msgstr "上传配置文件"
 
-msgid "切换并应用"
+msgid "Switch & Apply"
 msgstr "切换并应用"
 
-msgid "刷新列表"
+msgid "Refresh list"
 msgstr "刷新列表"
 
-msgid "当前配置文件：%s"
+msgid "Current configuration file: %s"
 msgstr "当前配置文件：%s"
 
-msgid "切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
+msgid "The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log."
 msgstr "切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
 
-msgid "配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。"
+msgid "Configuration directory: /etc/config/; the default profile cannot be uploaded; names must match homeproxy-*."
 msgstr "配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。"
 
-msgid "管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。"
+msgid "Manage HomeProxy configuration files. Ordinary settings still use Save & Apply at the bottom right; switching a profile uses Switch & Apply on this page."
 msgstr "管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。"
 
-msgid "未知错误"
+msgid "Unknown error"
 msgstr "未知错误"
 
-msgid "已经是当前配置：%s。"
+msgid "Already the current profile: %s."
 msgstr "已经是当前配置：%s。"
 
-msgid "切换失败：%s（已退回当前配置 %s）"
+msgid "Switch failed: %s (reverted to the current profile %s)"
 msgstr "切换失败：%s（已退回当前配置 %s）"
 
-msgid "已切换配置：%s，服务正在重新加载。"
+msgid "Switched to %s; the service is reloading."
 msgstr "已切换配置：%s，服务正在重新加载。"
 
-msgid "文件名必须是 homeproxy- 前缀，例如 homeproxy-123。"
+msgid "The name must start with homeproxy-, e.g. homeproxy-123."
 msgstr "文件名必须是 homeproxy- 前缀，例如 homeproxy-123。"
 
-msgid "请选择要上传的配置文件。"
+msgid "Select a configuration file to upload."
 msgstr "请选择要上传的配置文件。"
 
-msgid "上传成功：%s。请在列表中选择后点击“切换并应用”。"
+msgid "Uploaded %s. Select it in the list and click Switch & Apply."
 msgstr "上传成功：%s。请在列表中选择后点击“切换并应用”。"
 
-msgid "上传失败：%s"
+msgid "Upload failed: %s"
 msgstr "上传失败：%s"
 
-msgid "已上传的配置文件"
+msgid "The selected file is larger than 1 MB; check that it is a UCI configuration file."
+msgstr "选中的文件超过 1 MB，请确认选的是 UCI 配置文件。"
+
+msgid "Uploaded configuration files"
 msgstr "已上传的配置文件"
 
-msgid "还没有上传过配置文件。"
-msgstr "还没有上传过配置文件。"
+msgid "No additional configuration file has been uploaded yet."
+msgstr "还没有上传过其它配置文件。"
 
-msgid "下载"
+msgid "Download"
 msgstr "下载"
 
-msgid "下载失败：%s"
+msgid "Download failed: %s"
 msgstr "下载失败：%s"
 
-msgid "删除"
+msgid "Delete"
 msgstr "删除"
 
-msgid "（使用中）"
+msgid "(in use)"
 msgstr "（使用中）"
 
-msgid "删除配置文件"
+msgid "Delete configuration file"
 msgstr "删除配置文件"
 
-msgid "确定要删除 %s 吗？删除后只能重新上传。"
+msgid "Delete %s? It can only be brought back by uploading it again."
 msgstr "确定要删除 %s 吗？删除后只能重新上传。"
 
-msgid "取消"
-msgstr "取消"
-
-msgid "已删除：%s"
+msgid "Deleted: %s"
 msgstr "已删除：%s"
 
-msgid "删除失败：%s"
+msgid "Delete failed: %s"
 msgstr "删除失败：%s"
 
 #~ msgid "Log size limit unit"

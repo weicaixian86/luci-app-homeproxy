@@ -2714,13 +2714,22 @@ fi
 # 上传名的输入框不能预填示例（`placeholder: homeproxy-123` 看起来就像已经填好
 # 的文件名，用户点上传会以为名字已定）；命名规则改由说明文字承担。
 if ! grep -q "'placeholder'" "$PROFILE_VIEW" \
-   && grep -q '文件名为 homeproxy-\*' "$PROFILE_VIEW"; then
+   && grep -q 'names must match homeproxy-\*' "$PROFILE_VIEW"; then
 	ok "the upload name field carries no pre-filled example; the hint states the homeproxy-* rule"
 else
 	bad "the upload name field is still pre-filled with an example (or the naming rule is unstated)"
 fi
 
-# 独立的「检查配置」按钮已去掉，校验并进「切换并应用」：脚本先在校验目录里
+# 上传必须挡大小：真实的 UCI 配置几十 KB，不设上限时误选一个镜像/日志就会被
+# 写进 /etc/config（overlay 在 flash 上），写满之后连 uci commit 都会失败。
+if grep -q '1048576' "$PROFILE_SH" \
+   && grep -q 'size > 1048576' "$PROFILE_VIEW"; then
+	ok "uploads are capped at 1 MB on both the page and the script"
+else
+	bad "upload has no size cap (a mis-picked file would land in /etc/config)"
+fi
+
+
 # 跑 uci show，通过才替换激活配置；失败时下拉必须退回当前生效的那个，
 # 否则界面停在一个「看起来已选中、其实没生效」的选项上。
 if ! grep -q '检查配置' "$PROFILE_VIEW" \

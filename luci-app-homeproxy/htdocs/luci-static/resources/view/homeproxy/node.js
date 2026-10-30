@@ -295,8 +295,8 @@ const SubscriptionList = form.Value.extend({
 			'class': 'homeproxy-subscription-header',
 			'style': rowStyle + ' align-items: end; color: var(--text-muted, #6b7280);'
 		}, [
-			E('span', { 'style': 'font-size: 90%;' }, [ _('\u8ba2\u9605\u540d\u79f0') ]),
-			E('span', { 'style': 'font-size: 90%;' }, [ _('\u8ba2\u9605\u5730\u5740') ]),
+			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription name') ]),
+			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription URL') ]),
 			E('span')
 		]));
 
@@ -399,7 +399,7 @@ const SubscriptionList = form.Value.extend({
 		      usedUrls = {};
 
 		if (!names.length || !urls.length)
-			return _('\u8ba2\u9605\u540d\u79f0\u548c\u8ba2\u9605\u5730\u5740\u4e3a\u5fc5\u586b\u9879');
+			return _('Subscription name and URL are required');
 
 		for (let i = 0; i < Math.max(names.length, urls.length); i++) {
 			const name = String(names[i] || '').trim(),
@@ -407,14 +407,14 @@ const SubscriptionList = form.Value.extend({
 			      normalizedUrl = url.replace(/#.*$/, '');
 
 			if (!name || !url)
-				return _('\u8ba2\u9605\u540d\u79f0\u548c\u8ba2\u9605\u5730\u5740\u5fc5\u987b\u6210\u5bf9\u586b\u5199');
+				return _('Subscription name and URL must be filled in together');
 
 			if (usedNames[name])
-				return _('\u8ba2\u9605\u540d\u79f0\u4e0d\u80fd\u91cd\u590d');
+				return _('Subscription name is already used');
 			usedNames[name] = true;
 
 			if (usedUrls[normalizedUrl])
-				return _('\u8ba2\u9605\u5730\u5740\u4e0d\u80fd\u91cd\u590d');
+				return _('Subscription URL is already used');
 			usedUrls[normalizedUrl] = true;
 
 			try {

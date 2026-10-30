@@ -169,6 +169,16 @@ upload)
 	[ "$name" != "homeproxy-default" ] || fail '不能上传或覆盖默认配置文件'
 	[ -f "$UPLOAD_FILE" ] || fail '没有收到上传文件'
 
+	# 真实的 UCI 配置只有几十 KB。没有上限的话，一次误选（镜像、日志、
+	# 归档）就会把几百 MB 写进 /etc/config —— overlay 在 flash 上，写满
+	# 之后连 uci commit 都会失败。
+	size="$(wc -c <"$UPLOAD_FILE" 2>/dev/null | tr -d ' ')"
+	case "$size" in ''|*[!0-9]*) size=0 ;; esac
+	if [ "$size" -gt 1048576 ]; then
+		rm -f "$UPLOAD_FILE"
+		fail '文件超过 1 MB，不是 UCI 配置文件的正常大小'
+	fi
+
 	if ! out="$(validate_file "$UPLOAD_FILE")"; then
 		rm -f "$UPLOAD_FILE"
 		printf '%s\n' "$out"

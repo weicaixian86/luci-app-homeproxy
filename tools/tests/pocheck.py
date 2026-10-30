@@ -47,6 +47,12 @@ MENU_PATTERNS = (
 # _('...') / _("...") — the value may span lines and use escaped quotes.
 STR_RE = re.compile(r"""_\(\s*(['"])(.*?)(?<!\\)\1\s*\)""", re.S)
 
+# §六-14 of the spec: a msgid must be an English source string. A Chinese
+# msgid shows up verbatim in non-Chinese locales, so it is a defect rather
+# than a shortcut -- the whole configuration-file page was written that way
+# once and nothing caught it.
+CJK_RE = re.compile(r'[\u4e00-\u9fa5]')
+
 ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '"': '"', "'": "'", '\\': '\\'}
 
 
@@ -121,6 +127,7 @@ def main():
     missing_js = sorted(key for key in found if key not in msgid_set)
     missing_menu = sorted(key for key in menu if key not in msgid_set)
     missing = missing_js + missing_menu
+    cjk = sorted(key for key in found if CJK_RE.search(key))
     untranslated = [entry for entry in live if not entry.msgstr and not entry.msgstr_plural]
     fuzzy = [entry for entry in live if 'fuzzy' in entry.flags]
     duplicates = sorted({key for key in msgids if msgids.count(key) > 1})
@@ -132,6 +139,7 @@ def main():
     print('menu titles : %d' % len(menu))
     print('po entries  : %d' % len(live))
     print('missing     : %d' % len(missing))
+    print('cjk msgids  : %d' % len(cjk))
     print('untranslated: %d' % len(untranslated))
     print('fuzzy       : %d' % len(fuzzy))
     print('duplicates  : %d' % len(duplicates))
@@ -141,6 +149,8 @@ def main():
         print('  MISSING %r  <- %s' % (key, found[key]))
     for key in missing_menu[:40]:
         print('  MISSING menu title %r  <- %s' % (key, menu[key]))
+    for key in cjk[:20]:
+        print('  CJK MSGID %r  <- %s (msgids must be English)' % (key, found[key]))
     for entry in untranslated[:20]:
         print('  UNTRANSLATED %r' % entry.msgid)
     for key in duplicates[:20]:
@@ -148,7 +158,7 @@ def main():
     for key in padded[:20]:
         print('  PADDED %r' % key)
 
-    problems = len(missing) + len(untranslated) + len(fuzzy) + len(duplicates) + len(padded)
+    problems = len(missing) + len(cjk) + len(untranslated) + len(fuzzy) + len(duplicates) + len(padded)
     if problems:
         print('\npocheck: FAILED (%d problem(s))' % problems)
         return 1
