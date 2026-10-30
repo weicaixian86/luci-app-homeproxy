@@ -885,7 +885,12 @@ log_msg "==== 规则集预下载结束：来源=「${SOURCE}」，共 ${total} �
 # 所以这条路径结束后必须自己补上这一步。
 # 只在 --autostart 时做：cron 路径末尾自己 restart，init.d 路径本就在启动
 # 流程中，重复 start 只会互相打断。
-if [ "$AUTOSTART" = "1" ]; then
+# 有失败项时不要自动启动：缺文件的规则集在生成的配置里是 remote（内核会去下），
+# 而这里再调 start 只会又落回「还缺 N 条 → 转后台下载」这条分支，什么也启动不了。
+# 更要命的是那次 start 会撞上下面 init.d 里的 pgrep 检查命中的**调用者自己**
+#（本脚本），于是判定「已有任务在跑」→ 谁都不再下，服务永久停着（2026-10-30 现场：
+#  geosite-apple / geosite-gfw 遇上 HTTP 000，autostart 报 rc=0 但内核 8 分钟没起来）。
+if [ "$AUTOSTART" = "1" ] && [ "$failed" = "0" ]; then
 	if hp_service_running; then
 		log_msg "自动启动：服务已在运行，跳过启动（本次新下载的规则集需重启服务后才会被内核引用）。"
 	else
@@ -898,6 +903,8 @@ if [ "$AUTOSTART" = "1" ]; then
 			log_msg "自动启动：启动未成功（rc=${rc}）。常见原因：① 未配置主节点且服务端未启用（start_service 判定无事可做）；② sing-box 配置校验失败。详见主日志 $RUN_DIR/homeproxy.log。"
 		fi
 	fi
+elif [ "$AUTOSTART" = "1" ]; then
+	log_msg "自动启动：有 ${failed} 条规则集下载失败，本次不启动服务（缺文件会让内核无法启动）。修好网络后在「规则集」页点「立即更新」重试。"
 fi
 
 # Any unresolved rule-set is a real problem: the core will try to fetch it as

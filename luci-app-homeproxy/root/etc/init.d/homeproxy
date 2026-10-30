@@ -894,8 +894,13 @@ sync_rulesets() {
 	log "规则集检查：共 ${total} 条远程规则集，其中 ${missing} 条本地缺失或无效，已转入后台下载，本次启动就此返回。（规则集是本地文件，缺失会让内核无法启动，所以下完才拉起内核；可在「服务状态」页查看进度。）"
 
 	# 已经在下了就别再起一份：procd 触发器、面板按钮、装包会连着来。
-	if pgrep -f '[f]etch_rulesets.sh' >/dev/null 2>&1; then
-		log "规则集检查：已有规则集下载任务在跑，不再重复启动。"
+	# 但要排除「调用者自己」：fetch_rulesets.sh --autostart 会回调本脚本，那时
+	# pgrep 命中的正是那个在等我们返回的父进程（$PPID）。把它当成「已有任务」
+	# 会让谁都不再下载，服务永久停着（2026-10-30 现场：2 条规则集 HTTP 000，
+	# autostart 报 rc=0 但内核一直没起来，日志只留下「已有下载任务在跑」）。
+	rs_busy="$(pgrep -f '[f]etch_rulesets.sh' 2>/dev/null | grep -vx -e "$$" -e "$PPID" 2>/dev/null)"
+	if [ -n "$rs_busy" ]; then
+		log "规则集检查：已有规则集下载任务在跑（pid ${rs_busy}），不再重复启动。"
 		return 1
 	fi
 

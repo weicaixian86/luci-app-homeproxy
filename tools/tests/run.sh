@@ -2962,6 +2962,19 @@ else
 	bad "a background child inherits the procd lock fd, so later start/reload block ($spawns spawns vs $lock_closers closers)"
 fi
 
+# ── autostart 不能自指 / 不能在失败时启动 ──────────────────────────────
+# fetch_rulesets.sh --autostart 在脚本内部回调 init.d start；而 init.d 用
+# `pgrep -f fetch_rulesets.sh` 判断「是否已有任务在跑」，命中的正是调用者自己
+# → 判定「已有任务在跑」→ 谁都不再下载，服务永久停着（2026-10-30 现场：
+# geosite-apple / geosite-gfw 遇上 HTTP 000，autostart 报 rc=0，内核 8 分钟没起）。
+# 两道闸：autostart 只在 failed=0 时执行；init.d 的 pgrep 排除 $$ 与 $PPID。
+if grep -q 'AUTOSTART" = "1" \] && \[ "$failed" = "0"' "$PKG/root/etc/homeproxy/scripts/fetch_rulesets.sh" \
+   && grep -q 'grep -vx -e "\$\$" -e "\$PPID"' "$INIT"; then
+	ok "the rule-set autostart is skipped on failure and never counts its own caller as a running task"
+else
+	bad "a failed rule-set download still triggers a start that hits its own pgrep and stalls everything"
+fi
+
 # 三个后台 worker（内核 / 规则集 / 面板）收尾都会回调 init.d start 或 stop，所以
 # 它们必须在入口就把继承来的锁 fd 关掉。只看 init.d 里的 `( … ) &` 不够：
 # `start_core_download_in_background` 是**直接**调 update_core_async.sh --detach
