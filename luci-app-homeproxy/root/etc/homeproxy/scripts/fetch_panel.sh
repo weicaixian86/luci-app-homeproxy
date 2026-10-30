@@ -290,19 +290,19 @@ download_with_progress() {
 		# HEAD 探测总大小；部分镜像（如 gh-proxy）可能不支持 HEAD，
 		# 此时 total=0，退化为只显示已下载字节数。
 		if [ -n "$via_proxy" ]; then
-			total="$(curl -sI --connect-timeout 20 --proxy "$via_proxy" "$url" 2>/dev/null \
+			total="$(curl -sI --http1.1 --connect-timeout 20 --proxy "$via_proxy" "$url" 2>/dev/null \
 				| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
 		else
-			total="$(curl -sI --connect-timeout 20 "$url" 2>/dev/null \
+			total="$(curl -sI --http1.1 --connect-timeout 20 "$url" 2>/dev/null \
 				| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
 		fi
 		rm -f "$codefile" "$out"
 		if [ -n "$via_proxy" ]; then
-			curl -fsSL --connect-timeout 20 --proxy "$via_proxy" \
+			curl -fsSL --http1.1 --connect-timeout 20 --proxy "$via_proxy" \
 				--speed-limit 6144 --speed-time 60 --max-time "$max" \
 				-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
 		else
-			curl -fsSL --connect-timeout 20 \
+			curl -fsSL --http1.1 --connect-timeout 20 \
 				--speed-limit 6144 --speed-time 60 --max-time "$max" \
 				-o "$out" -w '%{http_code}' "$url" >"$codefile" 2>/dev/null &
 		fi

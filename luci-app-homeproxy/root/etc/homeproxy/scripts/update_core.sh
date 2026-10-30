@@ -485,20 +485,20 @@ download_file() {
 				# HEAD 探测总大小；部分镜像不支持 HEAD 时 total=0，
 				# 退化为只显示已下载字节数。
 				if [ -n "$via_proxy" ]; then
-					total="$(curl -sI --connect-timeout "$connect_timeout" --proxy "$via_proxy" "$actual_url" 2>/dev/null \
+					total="$(curl -sI --http1.1 --connect-timeout "$connect_timeout" --proxy "$via_proxy" "$actual_url" 2>/dev/null \
 						| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
 				else
-					total="$(curl -sI --connect-timeout "$connect_timeout" "$actual_url" 2>/dev/null \
+					total="$(curl -sI --http1.1 --connect-timeout "$connect_timeout" "$actual_url" 2>/dev/null \
 						| awk '{s=tolower($0)} s ~ /^content-length:/ {gsub(/\r/,"",$2); v=$2} END{print v+0}')"
 				fi
 				rm -f "$codefile" "$out"
 				if [ -n "$via_proxy" ]; then
-					curl -fsSL --connect-timeout "$connect_timeout" \
+					curl -fsSL --http1.1 --connect-timeout "$connect_timeout" \
 						--speed-limit 6144 --speed-time 60 --max-time 7200 \
 						-A "luci-app-homeproxy" --proxy "$via_proxy" \
 						-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &
 				else
-					curl -fsSL --connect-timeout "$connect_timeout" \
+					curl -fsSL --http1.1 --connect-timeout "$connect_timeout" \
 						--speed-limit 6144 --speed-time 60 --max-time 7200 \
 						-A "luci-app-homeproxy" \
 						-o "$out" -w '%{http_code}' "$actual_url" >"$codefile" 2>/dev/null &

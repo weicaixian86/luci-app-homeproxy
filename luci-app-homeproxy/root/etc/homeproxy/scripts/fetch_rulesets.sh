@@ -383,7 +383,7 @@ download_to() {
 		# -w still prints the status code on failure, which is what lets the
 		# caller tell "mirror is down" (000) from "this file does not exist"
 		# (404) — the latter is a config mistake, not a network problem.
-		LAST_HTTP="$(curl -fsSL --connect-timeout 20 --max-time "$max" \
+		LAST_HTTP="$(curl -fsSL --http1.1 --connect-timeout 20 --max-time "$max" \
 			-w '%{http_code}' -o "$out" "$url" 2>/dev/null)"
 		return $?
 	fi

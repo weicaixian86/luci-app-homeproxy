@@ -2962,6 +2962,27 @@ else
 	bad "a background child inherits the procd lock fd, so later start/reload block ($spawns spawns vs $lock_closers closers)"
 fi
 
+# 下载一律走 HTTP/1.1：这些镜像/代理链路里 HTTP/2 会以 rc=92（stream error）
+# 断流 —— 2026-10-30 现场 ghproxy.net 就是这样失败，日志里只写「返回码 92」。
+# 每个 curl -fsSL 都必须带 --http1.1（HEAD 探测也带上，否则进度恒为「已下载 N」）。
+h11_bad=''
+for s in update_core fetch_panel fetch_rulesets; do
+	f="$PKG/root/etc/homeproxy/scripts/$s.sh"
+	# 逐个「curl -fsSL + 续行」块检查，不能只数总数：HEAD 那几条也带 http1.1，
+	# 用「总数 >= GET 数」的话，删掉某一条 GET 的仍会假绿（试过，确实假的）。
+	miss=$(grep -A1 'curl -fsSL' "$f" | awk '
+		BEGIN { blk = "" }
+		/^--$/ { if (blk !~ /--http1\.1/) n++; blk = ""; next }
+		{ blk = blk $0 "\n" }
+		END { if (blk !~ /--http1\.1/) n++; printf "%d", n + 0 }')
+	[ "${miss:-0}" = "0" ] || h11_bad="$h11_bad $s($miss)"
+done
+if [ -z "$h11_bad" ]; then
+	ok "every curl download forces HTTP/1.1 (HTTP/2 mirrors die with rc=92)"
+else
+	bad "a curl download can still negotiate HTTP/2 and fail with rc=92:$h11_bad"
+fi
+
 # ── autostart 不能自指 / 不能在失败时启动 ──────────────────────────────
 # fetch_rulesets.sh --autostart 在脚本内部回调 init.d start；而 init.d 用
 # `pgrep -f fetch_rulesets.sh` 判断「是否已有任务在跑」，命中的正是调用者自己
