@@ -2795,6 +2795,15 @@ else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
+# 删除确认框里的两个按钮也必须用 cbi-button：只写 `btn` 会和页面其它按钮不同高
+# （`btn` 是 LuCI 的 bootstrap 基线，cbi-button 自带 padding 与边框）。
+if [ "$(grep -c "'class': 'cbi-button" "$PROFILE_VIEW")" -ge 5 ] \
+   && ! grep -q "'class': 'btn'" "$PROFILE_VIEW"; then
+	ok "dialog buttons share the cbi-button style used by the page buttons"
+else
+	bad "a dialog button still uses the bare btn class and will not line up"
+fi
+
 # 「上传文件」「刷新列表」「下载」统一成蓝色动作按钮（cbi-button-action）：这一页上
 # 灰色默认按钮看着不像能点，用户明确要求这三个跟「切换并应用」一样是蓝色。
 if [ "$(grep -c "'class': 'cbi-button cbi-button-action'" "$PROFILE_VIEW")" -ge 3 ]; then

@@ -64,7 +64,7 @@ return view.extend({
 		   的「打开」对话框会变成「自定义文件」，那些无后缀的 homeproxy 备份直接
 		   看不见（就算再补一个通配项，浏览器也会把它折叠掉，放不了行）。 */
 		const fileInput = E('input', { 'type': 'file', 'style': 'display: none;' });
-		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked when switching; if it fails, the current profile is kept and the error is written to the log.'));
+		const switchHint = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked when switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile is not uploadable; uploaded files must be named homeproxy-<your-name>; the default profile is /etc/config/homeproxy-default.'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('Switch & Apply'));
 		const uploadFile = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Upload file'));
@@ -135,7 +135,7 @@ return view.extend({
 		const confirmDelete = (name) => ui.showModal(_('Delete configuration file'), [
 			E('p', {}, _('Delete %s? It can only be brought back by uploading it again.').format(name)),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
 				' ',
 				E('button', { 'class': 'cbi-button cbi-button-remove', 'click': () => { ui.hideModal(); deleteProfile(name); } }, _('Delete'))
 			])
@@ -165,7 +165,7 @@ return view.extend({
 				/* 这一行只放那句校验说明：当前配置已经从上面的下拉里看得到，
 				   再写一遍「当前配置文件：xxx」是重复；用户也明确要求去掉「状态」
 				   这个标签，所以标题留空占位，保持与其它行左对齐。 */
-				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, ''), E('div', { 'class': 'cbi-value-field' }, [ checkBox ]) ]),
+				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, ''), E('div', { 'class': 'cbi-value-field' }, [ switchHint ]) ]),
 				/* 上传只留一个按钮：点它选文件，选完就直接传上去，名字取自文件名。
 				   「刷新列表」排在它下面一行。 */
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Upload configuration file')),
