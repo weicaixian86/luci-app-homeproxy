@@ -41,6 +41,10 @@ msgstr "%s ms"
 msgid "%s nodes removed"
 msgstr "移除了 %s 个节点"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:103
+msgid "(in use)"
+msgstr "（使用中）"
+
 #: htdocs/luci-static/resources/homeproxy.js:1801
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr "/etc/homeproxy/certs/...，/etc/acme/...，/etc/ssl/..."
@@ -200,6 +204,10 @@ msgstr "已是最新版本。"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:210
 msgid "Already in updating."
 msgstr "已在更新中。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:132
+msgid "Already the current profile: %s."
+msgstr "已经是当前配置：%s。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1608
 #: htdocs/luci-static/resources/view/homeproxy/server.js:399
@@ -404,6 +412,7 @@ msgstr "CA 颁发机构"
 msgid "CUBIC"
 msgstr "CUBIC"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:93
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
 msgid "Cancel"
 msgstr "关闭"
@@ -533,13 +542,22 @@ msgstr "CloudFlare 公共DNS (DoH)"
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:916
+msgid "Common ports only (bypass P2P traffic)"
+msgstr "仅常用端口（绕过 P2P 流量）"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:111
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:37
 msgid "Configuration File"
 msgstr "配置文件"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:916
-msgid "Common ports only (bypass P2P traffic)"
-msgstr "仅常用端口（绕过 P2P 流量）"
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:60
+msgid ""
+"Configuration directory: /etc/config/; the default profile cannot be "
+"uploaded; names must match homeproxy-*."
+msgstr ""
+"配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-"
+"*。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1564
 #: htdocs/luci-static/resources/view/homeproxy/server.js:362
@@ -582,6 +600,10 @@ msgstr "当前 DNS 解析流程：所有查询 → %s。"
 #: htdocs/luci-static/resources/view/homeproxy/status.js:353
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:59
+msgid "Current configuration file: %s"
+msgstr "当前配置文件：%s"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1254
 msgid "Current node / Latency"
@@ -746,6 +768,28 @@ msgstr "默认包封装格式"
 msgid "Default server name"
 msgstr "默认服务器名称"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:95
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:106
+msgid "Delete"
+msgstr "删除"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:91
+msgid "Delete %s? It can only be brought back by uploading it again."
+msgstr "确定要删除 %s 吗？删除后只能重新上传。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:90
+msgid "Delete configuration file"
+msgstr "删除配置文件"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:84
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:86
+msgid "Delete failed: %s"
+msgstr "删除失败：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:84
+msgid "Deleted: %s"
+msgstr "已删除：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1012
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1287
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1621
@@ -886,6 +930,10 @@ msgstr "不丢弃数据包"
 msgid "Don't drop requests"
 msgstr "不丢弃请求"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:104
+msgid "Download"
+msgstr "下载"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:440
 msgid "Download / update core"
 msgstr "下载 / 更新内核"
@@ -912,6 +960,11 @@ msgstr "下载带宽（单位：Mbps）。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3019
 msgid "Download failed"
 msgstr "下载失败"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:69
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:81
+msgid "Download failed: %s"
+msgstr "下载失败：%s"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3037
 msgid "Download time/size"
@@ -1905,6 +1958,15 @@ msgstr "使规则集中的 IP CIDR 匹配源 IP。"
 msgid "Make IP CIDR in rule-sets accept empty query response."
 msgstr "使规则集中的 IP CIDR 接受空查询响应。"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:112
+msgid ""
+"Manage HomeProxy configuration files. Ordinary settings still use Save & "
+"Apply at the bottom right; switching a profile uses Switch & Apply on this "
+"page."
+msgstr ""
+"管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用"
+"本页“切换并应用”。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1186
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1536
 msgid "Manual select"
@@ -2191,6 +2253,10 @@ msgstr "未配置任何 DNS 规则，所有查询都会交给默认 DNS 服务�
 #: htdocs/luci-static/resources/view/homeproxy/server.js:425
 msgid "No TCP transport, plain HTTP is merged into the HTTP transport."
 msgstr "无 TCP 传输层, 纯 HTTP 已合并到 HTTP 传输层。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:120
+msgid "No additional configuration file has been uploaded yet."
+msgstr "还没有上传过其它配置文件。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1655
 #: htdocs/luci-static/resources/view/homeproxy/server.js:423
@@ -2688,6 +2754,10 @@ msgstr "Redirect TCP + Tun UDP"
 msgid "Refresh every %s seconds."
 msgstr "每 %s 秒刷新。"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:63
+msgid "Refresh list"
+msgstr "刷新列表"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:667
 msgid "Region ID"
 msgstr "区域 ID"
@@ -2858,7 +2928,7 @@ msgstr "运行中"
 msgid "Running: %s"
 msgstr "运行中：%s"
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:45
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:53
 msgid "Runtime Log"
 msgstr "运行日志"
 
@@ -2916,6 +2986,14 @@ msgstr "保存订阅设置"
 msgid "Scheduled update time"
 msgstr "定时更新时间"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:159
+msgid "Select a configuration file to upload."
+msgstr "请选择要上传的配置文件。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:114
+msgid "Select configuration file"
+msgstr "选择配置文件"
+
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2083
 msgid "Self-built nodes"
 msgstr "自建节点"
@@ -2944,7 +3022,7 @@ msgstr "当 ClientHello 的 ServerName 字段为空时，选择证书所使用�
 msgid "Server settings"
 msgstr "服务器设置"
 
-#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:37
+#: root/usr/share/luci/menu.d/luci-app-homeproxy.json:45
 msgid "Service Status"
 msgstr "服务状态"
 
@@ -3072,6 +3150,7 @@ msgid "Starting download…"
 msgstr "正在启动下载…"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:714
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:115
 msgid "Status"
 msgstr "状态"
 
@@ -3092,6 +3171,14 @@ msgstr "订阅"
 msgid "Sub (%s)"
 msgstr "订阅（%s）"
 
+#: htdocs/luci-static/resources/view/homeproxy/node.js:299
+msgid "Subscription URL"
+msgstr "订阅地址"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:417
+msgid "Subscription URL is already used"
+msgstr "订阅地址不能重复"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1198
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1662
 msgid "Subscription airports"
@@ -3100,6 +3187,22 @@ msgstr "订阅机场"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2208
 msgid "Subscription links"
 msgstr "订阅连接"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:298
+msgid "Subscription name"
+msgstr "订阅名称"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:402
+msgid "Subscription name and URL are required"
+msgstr "订阅名称和订阅地址为必填项"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:410
+msgid "Subscription name and URL must be filled in together"
+msgstr "订阅名称和订阅地址必须成对填写"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:413
+msgid "Subscription name is already used"
+msgstr "订阅名称不能重复"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1670
 msgid "Subscription nodes"
@@ -3151,6 +3254,19 @@ msgstr ""
 "Shadowrocket 与 SIP008）、SOCKS（4 / 4a / 5）、Trojan、TUIC、VLESS、VMess 分"
 "享链接，以及 Clash（mihomo）节点列表、sing-box 出站 JSON 和 SIP008 JSON。不支"
 "持 SSR 与 KCP 传输。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:61
+msgid "Switch & Apply"
+msgstr "切换并应用"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:144
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:149
+msgid "Switch failed: %s (reverted to the current profile %s)"
+msgstr "切换失败：%s（已退回当前配置 %s）"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:138
+msgid "Switched to %s; the service is reloading."
+msgstr "已切换配置：%s，服务正在重新加载。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:962
 msgid "System"
@@ -3316,6 +3432,12 @@ msgstr "用于接收数据的 QUIC 连接级流控制窗口。"
 msgid "The QUIC stream-level flow control window for receiving data."
 msgstr "用于接收数据的 QUIC 流级流控制窗口。"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:58
+msgid ""
+"The UCI syntax is checked before switching; if it fails, the current profile "
+"is kept and the error is written to the log."
+msgstr "切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1773
 msgid "The URL to test."
 msgstr "用于测试的 URL。"
@@ -3396,6 +3518,10 @@ msgstr "服务器和客户端之间的最大时间差。"
 msgid "The minimum TLS version that is acceptable."
 msgstr "可接受的最低 TLS 版本。"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:155
+msgid "The name must start with homeproxy-, e.g. homeproxy-123."
+msgstr "文件名必须是 homeproxy- 前缀，例如 homeproxy-123。"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1609
 #: htdocs/luci-static/resources/view/homeproxy/server.js:884
 msgid "The network interface to bind to."
@@ -3431,6 +3557,12 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2835
 msgid "The response code."
 msgstr "响应代码。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:165
+msgid ""
+"The selected file is larger than 1 MB; check that it is a UCI configuration "
+"file."
+msgstr "选中的文件超过 1 MB，请确认选的是 UCI 配置文件。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:784
 msgid "The server private key, in PEM format."
@@ -3647,6 +3779,17 @@ msgstr "URLTest: %s"
 msgid "UUID"
 msgstr "UUID"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:69
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:81
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:84
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:86
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:144
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:149
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:169
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:171
+msgid "Unknown error"
+msgstr "未知错误"
+
 #: htdocs/luci-static/resources/view/homeproxy/status.js:216
 msgid "Unknown error."
 msgstr "未知错误。"
@@ -3739,6 +3882,16 @@ msgstr "上传带宽（单位：Mbps）。"
 msgid "Upload certificate"
 msgstr "上传证书"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:62
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:116
+msgid "Upload configuration file"
+msgstr "上传配置文件"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:169
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:171
+msgid "Upload failed: %s"
+msgstr "上传失败：%s"
+
 #: htdocs/luci-static/resources/view/homeproxy/server.js:794
 msgid "Upload key"
 msgstr "上传密钥"
@@ -3749,6 +3902,14 @@ msgstr "上传密钥"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:797
 msgid "Upload..."
 msgstr "上传..."
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:169
+msgid "Uploaded %s. Select it in the list and click Switch & Apply."
+msgstr "上传成功：%s。请在列表中选择后点击“切换并应用”。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:117
+msgid "Uploaded configuration files"
+msgstr "已上传的配置文件"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3594
 msgid "Use 0.0.0.0:port to open the panel from your browser."
@@ -4142,112 +4303,6 @@ msgstr "有效标签"
 #: htdocs/luci-static/resources/homeproxy.js:1863
 msgid "valid uuid"
 msgstr "有效 uuid"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:298
-msgid "Subscription name"
-msgstr "订阅名称"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:413
-msgid "Subscription name is already used"
-msgstr "订阅名称不能重复"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:402
-msgid "Subscription name and URL are required"
-msgstr "订阅名称和订阅地址为必填项"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:410
-msgid "Subscription name and URL must be filled in together"
-msgstr "订阅名称和订阅地址必须成对填写"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:299
-msgid "Subscription URL"
-msgstr "订阅地址"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:417
-msgid "Subscription URL is already used"
-msgstr "订阅地址不能重复"
-
-#: luci-app-homeproxy/htdocs/luci-static/resources/view/homeproxy/configfile.js
-msgid "Select configuration file"
-msgstr "选择配置文件"
-
-msgid "Upload configuration file"
-msgstr "上传配置文件"
-
-msgid "Switch & Apply"
-msgstr "切换并应用"
-
-msgid "Refresh list"
-msgstr "刷新列表"
-
-msgid "Current configuration file: %s"
-msgstr "当前配置文件：%s"
-
-msgid "The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log."
-msgstr "切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
-
-msgid "Configuration directory: /etc/config/; the default profile cannot be uploaded; names must match homeproxy-*."
-msgstr "配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。"
-
-msgid "Manage HomeProxy configuration files. Ordinary settings still use Save & Apply at the bottom right; switching a profile uses Switch & Apply on this page."
-msgstr "管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。"
-
-msgid "Unknown error"
-msgstr "未知错误"
-
-msgid "Already the current profile: %s."
-msgstr "已经是当前配置：%s。"
-
-msgid "Switch failed: %s (reverted to the current profile %s)"
-msgstr "切换失败：%s（已退回当前配置 %s）"
-
-msgid "Switched to %s; the service is reloading."
-msgstr "已切换配置：%s，服务正在重新加载。"
-
-msgid "The name must start with homeproxy-, e.g. homeproxy-123."
-msgstr "文件名必须是 homeproxy- 前缀，例如 homeproxy-123。"
-
-msgid "Select a configuration file to upload."
-msgstr "请选择要上传的配置文件。"
-
-msgid "Uploaded %s. Select it in the list and click Switch & Apply."
-msgstr "上传成功：%s。请在列表中选择后点击“切换并应用”。"
-
-msgid "Upload failed: %s"
-msgstr "上传失败：%s"
-
-msgid "The selected file is larger than 1 MB; check that it is a UCI configuration file."
-msgstr "选中的文件超过 1 MB，请确认选的是 UCI 配置文件。"
-
-msgid "Uploaded configuration files"
-msgstr "已上传的配置文件"
-
-msgid "No additional configuration file has been uploaded yet."
-msgstr "还没有上传过其它配置文件。"
-
-msgid "Download"
-msgstr "下载"
-
-msgid "Download failed: %s"
-msgstr "下载失败：%s"
-
-msgid "Delete"
-msgstr "删除"
-
-msgid "(in use)"
-msgstr "（使用中）"
-
-msgid "Delete configuration file"
-msgstr "删除配置文件"
-
-msgid "Delete %s? It can only be brought back by uploading it again."
-msgstr "确定要删除 %s 吗？删除后只能重新上传。"
-
-msgid "Deleted: %s"
-msgstr "已删除：%s"
-
-msgid "Delete failed: %s"
-msgstr "删除失败：%s"
 
 #~ msgid "Log size limit unit"
 #~ msgstr "日志大小上限单位"
