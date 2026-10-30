@@ -2475,14 +2475,28 @@ else
 	bad "the panel swap empties external_ui while copying, so the core may start its own 34 MB download"
 fi
 
-# 面板已经装好时，不许把下载地址写进生成的配置：那条路径会阻塞 clash-api。
+# ── 面板：内核既不许自己下载，也不许在缺文件时硬指着 external_ui ────────
+# 2026-10-31 三组最小配置实验（需求书 §十五 33）：只要 external_ui 有值而目录为空，
+# 内核就会自己去下一次 UI（与给不给 download_url 无关），且这次下载在 Clash API
+# 监听之前同步做完 —— 现场卡了 1188 秒。反过来不设 external_ui 时它根本不下载。
 GEN="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
-if grep -q 'function panel_download_url' "$GEN" \
-   && grep -q 'external_ui_download_url: clash_panel_url' "$GEN" \
-   && ! grep -q "external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url')" "$GEN"; then
-	ok "the generator only hands external_ui_download_url to the core when the panel is missing"
+if grep -q 'function panel_installed' "$GEN" \
+   && grep -q 'external_ui: clash_panel_ok ?' "$GEN" \
+   && grep -q 'external_ui_download_url: null,' "$GEN" \
+   && ! grep -q 'external_ui_download_url: clash_panel_url' "$GEN"; then
+	ok "the core only gets external_ui when the panel is really there, and never a download URL"
 else
-	bad "the core still gets an external_ui_download_url even with the panel installed (it blocks the Clash API)"
+	bad "the core is pointed at external_ui (or a download URL) that can block the Clash API for minutes"
+fi
+
+# 面板装好后必须自动重载一次，否则新配置里的 external_ui 不会生效，/ui/ 一直 404。
+FP2="$PKG/root/etc/homeproxy/scripts/fetch_panel.sh"
+if grep -q 'setsid /etc/init.d/homeproxy reload' "$FP2" \
+   && grep -q 'pgrep -f "\[s\]ing-box run"' "$FP2" \
+   && grep -q 'init.d/homeproxy reload' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
+	ok "installing the panel reloads the service so /ui/ starts working without a manual restart"
+else
+	bad "a freshly installed panel stays unreachable until someone restarts the service by hand"
 fi
 
 # ── 下载顺序：原地址走代理优先，代理不可用才用镜像直连 ─────────────────

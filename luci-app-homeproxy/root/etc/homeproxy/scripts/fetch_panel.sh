@@ -626,4 +626,21 @@ if grep -qs '^sing-box:' /etc/passwd; then
 fi
 
 log_msg "安装完成：$panel_dir/index.html（来源 $used_url）"
+
+# 面板就位后必须让内核重新生成一次配置。只有「面板已就位」时生成的配置才会带
+# external_ui（面板缺失时我们故意不下发，否则内核会自己去下载 34 MB 并卡住
+# Clash API —— 见 generate_client.uc 与需求书 §十五 33）。不重载的话，用户会看到
+# 「面板已安装，但 /ui/ 一直 404」，只能自己去点「重载服务」。
+# 只在服务真的在跑时做：服务没跑的话，下一次 start 生成的配置自然就带上了。
+if pgrep -f "[s]ing-box run" >/dev/null 2>&1; then
+	log_msg "面板已就位，重载服务使 /ui/ 生效"
+	if command -v setsid >/dev/null 2>&1; then
+		setsid /etc/init.d/homeproxy reload >>"$LOG_FILE" 2>&1 &
+	elif command -v nohup >/dev/null 2>&1; then
+		nohup /etc/init.d/homeproxy reload >>"$LOG_FILE" 2>&1 &
+	else
+		/etc/init.d/homeproxy reload >>"$LOG_FILE" 2>&1 &
+	fi
+fi
+
 exit 0

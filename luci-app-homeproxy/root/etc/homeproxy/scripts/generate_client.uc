@@ -894,14 +894,17 @@ function build_proxy_providers() {
 	return providers;
 }
 
-/* 面板已经由插件自己装好时，不把下载地址交给内核。
-   内核那条路径是**单源、直连、无镜像、无重试**，而且它在 clash-api 开始监听
-   **之前**同步下载。2026-10-30 现场：fetch_panel.sh 换装面板的几秒空窗正好落在
-   内核检查目录的瞬间，内核看到 run/ui 是空的就自己去下 34 MB，把 clash-api 卡了
-   **1188 秒**，期间面板一律「无法访问」（代理本身是通的，只有面板打不开）。
-   面板已就绪时返回 null，removeBlankAttrs 会把该键从 JSON 里删掉；只有真的缺
-   文件时才把地址交出去，留内核那条路当兜底。 */
-function panel_download_url(external_ui, download_url) {
+/* 面板是否真的就位（目录里有 index.html）。
+   ⚠️ 这个判断决定两件事，二者必须同时成立：
+   1) 只有就位时才下发 `external_ui`；
+   2) `external_ui_download_url` **任何情况都不下发**。
+   2026-10-31 三组最小配置实验（§十五 33）证明：只要 `external_ui` 有值而目录里
+   没有文件，内核就会**自己下一次 UI**（与给不给 download_url 无关），而且这次下载
+   在 clash-api 监听**之前**同步做完 —— 现场就是这样卡了 1188 秒，面板全程打不开。
+   反过来，不设 `external_ui` 时内核根本不下载，API 立刻可用（只是 `/ui/` 返回 404）。
+   所以：面板没装好就不下发 `external_ui`，由 fetch_panel.sh 负责把面板弄好并 reload；
+   装好了才下发，内核直接静态服务，不再碰网络。 */
+function panel_installed(external_ui) {
 	let dir = external_ui;
 
 	/* 与 fetch_panel.sh 的 resolve 规则一致：相对路径/空值一律落到 HP_DIR/run/ui，
@@ -913,25 +916,24 @@ function panel_download_url(external_ui, download_url) {
 	try {
 		fp = open(dir + '/index.html', 'r');
 	} catch (e) {
-		return download_url;
+		return false;
 	}
 
 	if (!fp)
-		return download_url;
+		return false;
 
 	try { fp.close(); } catch (e) {}
 
-	return null;
+	return true;
 }
 
-const clash_panel_url = panel_download_url(uci.get(uciconfig, uciclashapi, 'external_ui'),
-	uci.get(uciconfig, uciclashapi, 'external_ui_download_url'));
+const clash_panel_ok = panel_installed(uci.get(uciconfig, uciclashapi, 'external_ui'));
 
 clash_api = {
 	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
-	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
-	external_ui_download_url: clash_panel_url,
-	external_ui_download_detour: isEmpty(clash_panel_url) ? null : get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
+	external_ui: clash_panel_ok ? uci.get(uciconfig, uciclashapi, 'external_ui') : null,
+	external_ui_download_url: null,
+	external_ui_download_detour: null,
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
 	/* NOTE: selector choice persistence (store_selected) is emitted ONLY under
