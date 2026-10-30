@@ -65,7 +65,12 @@ fi
 # 会被继承：本脚本跑多久，那把锁就被占多久，期间所有 start/stop/reload 都卡在
 # 阻塞的 flock 上（2026-10-30 现场：内核下载 26 MB 期间服务起不来、reload 排队）。
 # 而且本脚本收尾会回调 init.d start —— 持有继承来的锁去等自己，直接自锁。
-exec 1000>&- 2>/dev/null
+# 只在真的被继承时才关：dash（CI 的 /bin/sh）对 fd>9 的重定向会直接报错退出，
+# 而那时本来也没有锁可放 —— 无条件写会让 --check / --only 这些用例在 CI 里
+# 一句输出都没有地以 127 退出（0.3.5 现场：16 项全红）。
+if [ -e "/proc/$$/fd/1000" ]; then
+	exec 1000>&- 2>/dev/null
+fi
 
 HP_DIR="/etc/homeproxy"
 # HP_RULESET_DIR 同 HP_RUN_DIR：显式指定就原样使用，绝不回落到真机目录。
