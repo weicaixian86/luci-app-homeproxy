@@ -2781,6 +2781,15 @@ else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
+# 「状态」标签与「当前配置文件：xxx」都已去掉：当前配置在下面的下拉里就看得到，
+# 再写一行只是重复；那一行只留一句校验说明（用户明确要求）。
+if ! grep -q "_('Status')" "$PROFILE_VIEW" \
+   && ! grep -q 'Current configuration file' "$PROFILE_VIEW"; then
+	ok "the status row no longer repeats what the selector already shows"
+else
+	bad "a separate status row duplicates the active profile the selector shows"
+fi
+
 # 下拉的选中项必须靠 value 设定：把 `selected: false` 交给 E() 会写出
 # selected="false"，而 HTML 里属性存在就算选中 —— 所有 option 都成选中态，
 # 刷新后停下来的那一项不是当前配置（0.3.1 现场：状态写 default、下拉停 0.2.15）。

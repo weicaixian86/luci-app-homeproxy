@@ -598,9 +598,6 @@ msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:59
-msgid "Current configuration file: %s"
-msgstr "当前配置文件：%s"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1254
 msgid "Current node / Latency"
 msgstr "当前节点 / 延迟"
@@ -3146,7 +3143,6 @@ msgid "Starting download…"
 msgstr "正在启动下载…"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:714
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:115
 msgid "Status"
 msgstr "状态"
 
@@ -3428,11 +3424,11 @@ msgstr "用于接收数据的 QUIC 连接级流控制窗口。"
 msgid "The QUIC stream-level flow control window for receiving data."
 msgstr "用于接收数据的 QUIC 流级流控制窗口。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:58
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:80
 msgid ""
-"The UCI syntax is checked before switching; if it fails, the current profile "
-"is kept and the error is written to the log."
-msgstr "切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
+"The UCI syntax is checked when switching; if it fails, the current profile is "
+"kept and the error is written to the log."
+msgstr "配置切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1773
 msgid "The URL to test."

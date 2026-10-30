@@ -77,8 +77,7 @@ return view.extend({
 			if (picked)
 				nameInput.value = picked.name.replace(/\.(conf|uci|bak|txt|cfg|gz|tgz|tar|zip)$/i, '');
 		});
-		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log.'));
-		const currentText = E('div', { 'class': 'cbi-value-description' }, _('Current configuration file: %s').format(current));
+		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked when switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile is not uploadable; uploaded files must be named homeproxy-<your-name>; the default profile is /etc/config/homeproxy-default.'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('Switch & Apply'));
 		const upload = E('button', { 'class': 'cbi-button cbi-button-add' }, _('Upload configuration file'));
@@ -140,7 +139,10 @@ return view.extend({
 			E('div', { 'class': 'cbi-map-descr' }, _('Manage HomeProxy configuration files. Ordinary settings still use Save & Apply at the bottom right; switching a profile uses Switch & Apply on this page.')),
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Select configuration file')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply ]) ]),
-				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Status')), E('div', { 'class': 'cbi-value-field' }, [ currentText, checkBox ]) ]),
+				/* 这一行只放那句校验说明：当前配置已经从上面的下拉里看得到，
+				   再写一遍「当前配置文件：xxx」是重复；用户也明确要求去掉「状态」
+				   这个标签，所以标题留空占位，保持与其它行左对齐。 */
+				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, ''), E('div', { 'class': 'cbi-value-field' }, [ checkBox ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Upload configuration file')), E('div', { 'class': 'cbi-value-field' }, [ nameInput, ' ', fileInput, ' ', upload, ' ', refresh, status ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Uploaded configuration files')),
 					E('div', { 'class': 'cbi-value-field' }, files.length
