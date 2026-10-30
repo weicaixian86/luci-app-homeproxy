@@ -3519,8 +3519,11 @@ msgid "The minimum TLS version that is acceptable."
 msgstr "可接受的最低 TLS 版本。"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:155
-msgid "The name must start with homeproxy-, e.g. homeproxy-123."
-msgstr "文件名必须是 homeproxy- 前缀，例如 homeproxy-123。"
+msgid "Enter a name for the configuration (it must start with homeproxy-)."
+msgstr "请先填写配置文件名（必须以 homeproxy- 开头）。"
+
+msgid "The name must start with homeproxy-, and may only contain letters, digits, dots, underscores and dashes."
+msgstr "文件名必须以 homeproxy- 开头，且只能包含字母、数字、点、下划线和短横线（例如 homeproxy-home、homeproxy-0.2.15）。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1609
 #: htdocs/luci-static/resources/view/homeproxy/server.js:884

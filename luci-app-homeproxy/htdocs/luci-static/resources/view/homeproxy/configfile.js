@@ -58,6 +58,17 @@ return view.extend({
 		   的「打开」对话框会变成「自定义文件」，那些无后缀的 homeproxy 备份直接
 		   看不见（就算再补一个通配项，浏览器也会把它折叠掉，放不了行）。 */
 		const fileInput = E('input', { 'type': 'file' });
+		/* 选完文件就把名字填进名称框。否则「名称」和「选哪个文件」在界面上是两件
+		   互不相干的事，用户看见「选文件」自然以为名字取自文件名，直接点上传只会
+		   撞上「文件名必须是 homeproxy- 前缀」。
+		   只去掉这些常见扩展名：`homeproxy-0.2.15` 里的 `.15` 是名字的一部分，
+		   不能被当成扩展名切掉。 */
+		fileInput.addEventListener('change', () => {
+			const picked = fileInput.files && fileInput.files[0];
+
+			if (picked)
+				nameInput.value = picked.name.replace(/\.(conf|uci|bak|txt|cfg|gz|tgz|tar|zip)$/i, '');
+		});
 		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const currentText = E('div', { 'class': 'cbi-value-description' }, _('Current configuration file: %s').format(current));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile cannot be uploaded; names must match homeproxy-*.'));
@@ -154,8 +165,14 @@ return view.extend({
 		});
 		upload.addEventListener('click', () => {
 			const name = nameInput.value.trim();
+
+			if (!name) {
+				notify(_('Enter a name for the configuration (it must start with homeproxy-).'), 'danger');
+				return;
+			}
+
 			if (!/^homeproxy-[A-Za-z0-9_.-]+$/.test(name) || name === 'homeproxy-back') {
-				notify(_('The name must start with homeproxy-, e.g. homeproxy-123.'), 'danger');
+				notify(_('The name must start with homeproxy-, and may only contain letters, digits, dots, underscores and dashes.'), 'danger');
 				return;
 			}
 			if (!fileInput.files || !fileInput.files[0]) {

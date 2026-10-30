@@ -2730,6 +2730,16 @@ else
 	bad "the upload picker filters by extension, so extension-less UCI configs are invisible"
 fi
 
+# 选完文件必须自动把文件名填进名称框：两者分离时，用户看着「选文件」会以为名字
+# 取自文件名，直接点上传只撞一句「文件名必须是 homeproxy- 前缀」。带点的名字
+# （homeproxy-0.2.15）要原样保留，只切掉 .conf / .uci 这类真扩展名。
+if grep -q "fileInput.addEventListener('change'" "$PROFILE_VIEW" \
+   && grep -q 'nameInput.value = picked.name.replace' "$PROFILE_VIEW"; then
+	ok "picking a file fills the name box (only real extensions are stripped)"
+else
+	bad "the name box stays empty after picking a file, so upload fails with a prefix error"
+fi
+
 # 上传必须挡大小：真实的 UCI 配置几十 KB，不设上限时误选一个镜像/日志就会被
 # 写进 /etc/config（overlay 在 flash 上），写满之后连 uci commit 都会失败。
 if grep -q '1048576' "$PROFILE_SH" \
