@@ -2462,6 +2462,29 @@ else
 	bad "fetch_panel.sh has no --source"
 fi
 
+# ── 面板换装不许留「空目录窗口」，否则内核会自己下 34 MB 并卡死 API ────
+# 内核在 clash-api 开始监听**之前**检查 external_ui；看到空目录就走自带下载
+# （单源、直连、无镜像、无重试）。2026-10-30 现场：fetch_panel.sh 先 mv 走旧
+# 目录、再拷 12 MB，空窗十几秒，正好撞上内核启动 → clash-api 卡 1188 秒，
+# 面板一律「无法访问」（代理本身是通的）。所以必须「先铺新目录、再 rename」。
+if grep -q 'new_dir="$panel_dir.new"' "$FP" \
+   && grep -q 'mv "$new_dir" "$panel_dir"' "$FP" \
+   && ! grep -q 'cp -a "$stage"/. "$panel_dir"/' "$FP"; then
+	ok "the panel swap stages next to the target and renames (no empty-directory window)"
+else
+	bad "the panel swap empties external_ui while copying, so the core may start its own 34 MB download"
+fi
+
+# 面板已经装好时，不许把下载地址写进生成的配置：那条路径会阻塞 clash-api。
+GEN="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+if grep -q 'function panel_download_url' "$GEN" \
+   && grep -q 'external_ui_download_url: clash_panel_url' "$GEN" \
+   && ! grep -q "external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url')" "$GEN"; then
+	ok "the generator only hands external_ui_download_url to the core when the panel is missing"
+else
+	bad "the core still gets an external_ui_download_url even with the panel installed (it blocks the Clash API)"
+fi
+
 # ── 下载顺序：原地址走代理优先，代理不可用才用镜像直连 ─────────────────
 # 两个脚本（面板 fetch_panel.sh / 内核 update_core.sh）必须同一套语义：
 # 候选条目带 P/D 前缀，P 只在第一轮出现，第二轮 dirct 前先停服务撤掉 tproxy。

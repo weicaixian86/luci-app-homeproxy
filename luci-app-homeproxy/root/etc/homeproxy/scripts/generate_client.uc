@@ -894,11 +894,44 @@ function build_proxy_providers() {
 	return providers;
 }
 
+/* 面板已经由插件自己装好时，不把下载地址交给内核。
+   内核那条路径是**单源、直连、无镜像、无重试**，而且它在 clash-api 开始监听
+   **之前**同步下载。2026-10-30 现场：fetch_panel.sh 换装面板的几秒空窗正好落在
+   内核检查目录的瞬间，内核看到 run/ui 是空的就自己去下 34 MB，把 clash-api 卡了
+   **1188 秒**，期间面板一律「无法访问」（代理本身是通的，只有面板打不开）。
+   面板已就绪时返回 null，removeBlankAttrs 会把该键从 JSON 里删掉；只有真的缺
+   文件时才把地址交出去，留内核那条路当兜底。 */
+function panel_download_url(external_ui, download_url) {
+	let dir = external_ui;
+
+	/* 与 fetch_panel.sh 的 resolve 规则一致：相对路径/空值一律落到 HP_DIR/run/ui，
+	   否则这里检查的是生成器自己的 cwd，永远查不到面板。 */
+	if (isEmpty(dir) || !match(dir, /^\//))
+		dir = HP_DIR + '/run/ui';
+
+	let fp = null;
+	try {
+		fp = open(dir + '/index.html', 'r');
+	} catch (e) {
+		return download_url;
+	}
+
+	if (!fp)
+		return download_url;
+
+	try { fp.close(); } catch (e) {}
+
+	return null;
+}
+
+const clash_panel_url = panel_download_url(uci.get(uciconfig, uciclashapi, 'external_ui'),
+	uci.get(uciconfig, uciclashapi, 'external_ui_download_url'));
+
 clash_api = {
 	external_controller: uci.get(uciconfig, uciclashapi, 'external_controller') || '127.0.0.1:9090',
 	external_ui: uci.get(uciconfig, uciclashapi, 'external_ui'),
-	external_ui_download_url: uci.get(uciconfig, uciclashapi, 'external_ui_download_url'),
-	external_ui_download_detour: get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
+	external_ui_download_url: clash_panel_url,
+	external_ui_download_detour: isEmpty(clash_panel_url) ? null : get_outbound(uci.get(uciconfig, uciclashapi, 'external_ui_download_detour')),
 	secret: uci.get(uciconfig, uciclashapi, 'secret'),
 	default_mode: uci.get(uciconfig, uciclashapi, 'default_mode') || 'rule',
 	/* NOTE: selector choice persistence (store_selected) is emitted ONLY under

@@ -583,11 +583,26 @@ fi
 
 # Swap in the new panel only once a complete copy exists, keeping the old one
 # until the move succeeds — a failed install must never leave no panel at all.
+#
+# 换装必须让「面板目录为空」的窗口尽可能短。内核在 clash-api 开始监听**之前**
+# 会检查 external_ui，一旦看到空目录就自己去下载（单源、直连、无镜像），期间
+# 面板一律打不开 —— 2026-10-30 现场就是这样卡了 1188 秒。原来先 mv 走旧目录、
+# 再往 panel_dir 里拷 12 MB，空窗有十几秒，正好能撞上内核启动。
+# 现在先在同级目录把新面板完整铺好（stage 在 /tmp，跨设备，不能直接 rename），
+# 再用两次 mv 完成替换：空窗只剩两次 rename 之间，毫秒级。
+new_dir="$panel_dir.new"
+rm -rf "$new_dir" 2>/dev/null
+mkdir -p "$new_dir" 2>/dev/null
+if ! cp -a "$stage"/. "$new_dir"/ 2>/dev/null || [ ! -f "$new_dir/index.html" ]; then
+	rm -rf "$new_dir" 2>/dev/null
+	log_msg "下载失败：无法写入临时安装目录 $new_dir。"
+	exit 1
+fi
+
 rm -rf "$backup" 2>/dev/null
 [ -d "$panel_dir" ] && mv "$panel_dir" "$backup" 2>/dev/null
-mkdir -p "$panel_dir" 2>/dev/null
-if ! cp -a "$stage"/. "$panel_dir"/ 2>/dev/null || [ ! -f "$panel_dir/index.html" ]; then
-	rm -rf "$panel_dir" 2>/dev/null
+if ! mv "$new_dir" "$panel_dir" 2>/dev/null || [ ! -f "$panel_dir/index.html" ]; then
+	rm -rf "$panel_dir" "$new_dir" 2>/dev/null
 	[ -d "$backup" ] && mv "$backup" "$panel_dir" 2>/dev/null
 	log_msg "下载失败：安装面板到 $panel_dir 失败，已回滚到原有面板。"
 	exit 1
