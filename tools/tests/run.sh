@@ -2962,6 +2962,21 @@ else
 	bad "a background child inherits the procd lock fd, so later start/reload block ($spawns spawns vs $lock_closers closers)"
 fi
 
+# 三个后台 worker（内核 / 规则集 / 面板）收尾都会回调 init.d start 或 stop，所以
+# 它们必须在入口就把继承来的锁 fd 关掉。只看 init.d 里的 `( … ) &` 不够：
+# `start_core_download_in_background` 是**直接**调 update_core_async.sh --detach
+# （不是 `&`），0.3.4 就漏在这条路径上 —— 内核下载 26 MB 期间锁被它占着，reload
+# 全排队，下完回调 start 又等自己继承的锁 → 自锁，服务永远起不来（237 现场）。
+worker_missing=''
+for s in update_core_async fetch_rulesets fetch_panel; do
+	grep -q 'exec 1000>&-' "$PKG/root/etc/homeproxy/scripts/$s.sh" || worker_missing="$worker_missing $s"
+done
+if [ -z "$worker_missing" ]; then
+	ok "every background worker closes the inherited procd lock fd on entry"
+else
+	bad "a worker keeps the inherited procd lock fd:$worker_missing (start/reload block while it runs)"
+fi
+
 # 内核下载失败后 10 分钟内不再自动重试：用户网络不通时，每次「保存并应用」
 # 都等于一次 reload，会把 26–34 MB 重新拉一遍，日志被刷满、流量白耗。
 # 手动「更新内核」按钮不走这条路径（rpcd 直接 --detach），退避挡不住主动重试。

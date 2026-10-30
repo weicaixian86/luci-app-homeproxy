@@ -61,6 +61,12 @@ else
 	UCI_OK=0
 	uci() { return 127; }
 fi
+# procd 锁的 fd 是 1000（rc.common 的 procd_lock），start_service 里派生这个脚本时
+# 会被继承：本脚本跑多久，那把锁就被占多久，期间所有 start/stop/reload 都卡在
+# 阻塞的 flock 上（2026-10-30 现场：内核下载 26 MB 期间服务起不来、reload 排队）。
+# 而且本脚本收尾会回调 init.d start —— 持有继承来的锁去等自己，直接自锁。
+exec 1000>&- 2>/dev/null
+
 HP_DIR="/etc/homeproxy"
 # HP_RULESET_DIR 同 HP_RUN_DIR：显式指定就原样使用，绝不回落到真机目录。
 # 没有它，任何在本机跑过一次真实下载的环境都会在 /etc/homeproxy/ruleset

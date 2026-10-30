@@ -27,6 +27,12 @@
 
 set -u
 
+# procd 锁的 fd 是 1000（rc.common 的 procd_lock），start_service 里派生这个脚本时
+# 会被继承：本脚本跑多久，那把锁就被占多久，期间所有 start/stop/reload 都卡在
+# 阻塞的 flock 上（2026-10-30 现场：内核下载 26 MB 期间服务起不来、reload 排队）。
+# 而且本脚本收尾会回调 init.d start —— 持有继承来的锁去等自己，直接自锁。
+exec 1000>&- 2>/dev/null
+
 HP_DIR='/etc/homeproxy'
 RUN_DIR='/var/run/homeproxy'
 CORE_SCRIPT="${HP_DIR}/scripts/update_core.sh"
