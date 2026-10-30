@@ -459,7 +459,124 @@ function readLogSettings() {
 	return out;
 }
 
+/* ── 配置文件（/etc/config/homeproxy-*）───────────────────────────────────
+ * 名字判定刻意**不用带分组/可选的正则**：rpcd 跑在 musl 上，TRE 对
+ * `(a|b)`、`(...)?` 的支持与 glibc 不一致，一旦 match 抛错，rpcd 会把异常
+ * 折叠成 "Command failed: Unknown error"，前端只剩一句没头没尾的失败。
+ * 这里改成「前缀 + 逐字符白名单」，永不抛异常。 */
+function isProfileName(name, allowDefault) {
+	if (type(name) !== 'string' || !length(name) || length(name) > 64)
+		return false;
+
+	if (name === 'homeproxy-default')
+		return (allowDefault === true);
+
+	/* apk 在文件冲突时会留下 homeproxy-back（包内模板），它不是用户的配置。 */
+	if (name === 'homeproxy-back')
+		return false;
+
+	if (substr(name, 0, 10) !== 'homeproxy-')
+		return false;
+
+	for (let i = 10; i < length(name); i++)
+		if (!match(substr(name, i, 1), /^[A-Za-z0-9_.-]$/))
+			return false;
+
+	return true;
+}
+
+function runProfile(args) {
+	const parts = [];
+
+	for (let a in args)
+		push(parts, shellquote(a));
+
+	const fd = popen(sprintf('/bin/sh %s %s 2>&1',
+		shellquote(HP_DIR + '/scripts/config_profile.sh'), join(' ', parts)));
+
+	return fd ? trim(readProcess(fd) || '') : '';
+}
+
 const methods = {
+	config_profile_list: {		call: function() {
+			const fd = popen(`/bin/sh ${shellquote(HP_DIR + '/scripts/config_profile.sh')} list 2>&1`),
+			      output = fd ? trim(readProcess(fd) || '') : '';
+			let current = '', files = [];
+
+			for (let line in split(output, '\n')) {
+				if (substr(line, 0, 8) === 'current=')
+					current = substr(line, 8);
+				else if (length(line) && line !== 'homeproxy-default')
+					push(files, line);
+			}
+
+			return { result: true, current: current || 'homeproxy-default', files: files, output: output };
+		}
+	},
+	config_profile_check: {
+		args: { name: 'string' },
+		call: function(req) {
+			const name = req.args?.name ?? '';
+
+			if (!isProfileName(name, true))
+				return { result: false, error: '非法配置文件名' };
+
+			const output = runProfile(['check', name]);
+
+			return { result: (output === '配置格式正确'), error: output };
+		}
+	},
+	config_profile_switch: {
+		args: { name: 'string' },
+		call: function(req) {
+			const name = req.args?.name ?? '';
+
+			if (!isProfileName(name, true))
+				return { result: false, error: '非法配置文件名' };
+
+			const output = runProfile(['switch', name]);
+
+			if (output !== `配置已切换：${name}`)
+				return { result: false, error: output || '切换配置文件失败' };
+
+			/* 重载是 stop+start（数秒），必须**脱离** rpcd 的 30 秒上限：
+			   同步等它会把「切换成功但请求超时」变成用户看到的失败。
+			   直接执行文件（shebang 是 `#!/bin/sh /etc/rc.common`），
+			   写成 `sh /etc/init.d/…` 会跳过 shebang、静默什么都不做。 */
+			system('( /etc/init.d/homeproxy reload ) >/dev/null 2>&1 &');
+
+			return { result: true, error: null, switched: name };
+		}
+	},
+	config_profile_upload: {
+		args: { name: 'string' },
+		call: function(req) {
+			const name = req.args?.name ?? '';
+
+			/* 上传只允许 homeproxy- 前缀，且**不允许**写 homeproxy-default：
+			   默认配置是「当前配置从此处来」的最后一道底，不能被他人的
+			   备份文件顶掉。具体校验（UCI 语法）由脚本里的 validate_file 做。 */
+			if (!isProfileName(name, false) || name === 'homeproxy-default')
+				return { result: false, error: '文件名必须是 homeproxy- 前缀，且不能覆盖默认配置' };
+
+			const output = runProfile(['upload', name]);
+
+			return { result: (output === `上传成功：${name}`), error: output };
+		}
+	},
+	config_profile_delete: {
+		args: { name: 'string' },
+		call: function(req) {
+			const name = req.args?.name ?? '';
+
+			if (!isProfileName(name, false) || name === 'homeproxy-default')
+				return { result: false, error: '默认配置文件不能删除' };
+
+			const output = runProfile(['delete', name]);
+
+			return { result: (output === `已删除：${name}`), error: output };
+		}
+	},
 	acllist_read: {
 		args: { type: 'string' },
 		call: function(req) {

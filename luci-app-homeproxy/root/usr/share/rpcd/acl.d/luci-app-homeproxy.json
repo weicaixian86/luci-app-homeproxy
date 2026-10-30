@@ -21,10 +21,11 @@
 		"cgi-io": [ "download" ]
 	},
 		"write": {
-			"file": {
-				"/tmp/homeproxy_certificate.tmp": [ "write" ],
-				"/tmp/homeproxy_panel.tmp": [ "write" ]
-			},
+		"file": {
+			"/tmp/homeproxy_certificate.tmp": [ "write" ],
+			"/tmp/homeproxy_panel.tmp": [ "write" ],
+			"/tmp/homeproxy_profile.tmp": [ "write" ]
+		},
 			"ubus": {
 				"rc": [ "*" ]
 			},

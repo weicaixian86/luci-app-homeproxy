@@ -2622,6 +2622,85 @@ else
 	bad "a shell-wrapped reload would be forced and could storm"
 fi
 
+# ── 配置文件管理：固定目录、白名单文件名、校验后切换 ─────────────────────
+# 需求：/etc/config/ 下只认 homeproxy-* 命名；默认配置改名 homeproxy-default
+# 且不进上传列表；切换前必须校验，格式错误不能覆盖当前配置；普通 LuCI
+# 保存要写回当前选中的配置文件。
+PROFILE_SH="$PKG/root/etc/homeproxy/scripts/config_profile.sh"
+PROFILE_VIEW="$PKG/htdocs/luci-static/resources/view/homeproxy/configfile.js"
+PROFILE_MENU="$PKG/root/usr/share/luci/menu.d/luci-app-homeproxy.json"
+
+if [ -f "$PROFILE_SH" ] && grep -q 'PROFILE_DIR="/etc/config"' "$PROFILE_SH" \
+   && grep -q 'homeproxy-default' "$PROFILE_SH"; then
+	ok "configuration profiles live in /etc/config and the default is homeproxy-default"
+else
+	bad "configuration profiles do not use the fixed /etc/config directory or default name"
+fi
+
+# 文件名白名单必须在，且必须挡掉 homeproxy-back（apk 保留的旧文件）。
+if grep -qF '*[!A-Za-z0-9._-]*' "$PROFILE_SH" \
+   && grep -q 'homeproxy-back' "$PROFILE_SH"; then
+	ok "profile names are whitelisted and apk's homeproxy-back is refused"
+else
+	bad "profile filenames are not whitelisted (path traversal or homeproxy-back would slip through)"
+fi
+
+# 切换/上传前都必须先校验：validate_file 被 switch 与 upload 两个分支调用。
+if grep -q '^validate_file()' "$PROFILE_SH" \
+   && sed -n '/^switch)/,/^;;/p' "$PROFILE_SH" | grep -q 'validate_file' \
+   && sed -n '/^upload)/,/^;;/p' "$PROFILE_SH" | grep -q 'validate_file'; then
+	ok "switching and uploading both validate the UCI file before touching the active config"
+else
+	bad "a broken profile could replace the active configuration without being validated"
+fi
+
+# 写盘必须是「临时文件 + mv」：BusyBox 上直接覆盖被中断会留下半截配置。
+if grep -q 'atomic_copy()' "$PROFILE_SH" \
+   && sed -n '/^atomic_copy()/,/^}/p' "$PROFILE_SH" | grep -q 'mv -f'; then
+	ok "profile writes go through a temp file and rename (no half-written config)"
+else
+	bad "profile writes overwrite the target in place and can be left half-written"
+fi
+
+for method in config_profile_list config_profile_check config_profile_switch \
+              config_profile_upload config_profile_delete; do
+	if ! grep -q "${method}:" "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
+		bad "rpcd is missing ${method}"
+	fi
+done
+if grep -q 'config_profile_list:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'config_profile_switch:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'config_profile_upload:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'config_profile_delete:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
+	ok "rpcd exposes list / check / switch / upload / delete for configuration profiles"
+else
+	bad "rpcd does not expose the full configuration profile API"
+fi
+
+# 上传必须落到固定临时文件（ACL 已授写），名字由 RPC 参数决定而不是路径拼接。
+if grep -q "/tmp/homeproxy_profile.tmp" "$PROFILE_SH" \
+   && grep -q "/tmp/homeproxy_profile.tmp" "$PKG/root/usr/share/rpcd/acl.d/luci-app-homeproxy.json"; then
+	ok "profile uploads land in the ACL-approved fixed temp file"
+else
+	bad "profile uploads use a path that the ACL does not allow (or an unsanitised one)"
+fi
+
+if grep -q 'homeproxy/configfile' "$PROFILE_MENU" \
+   && grep -q '切换并应用' "$PROFILE_VIEW" \
+   && grep -q 'ui.uploadFile' "$PROFILE_VIEW"; then
+	ok "the configuration-file tab exists between Server Settings and Service Status, with its own switch button"
+else
+	bad "the configuration-file tab or its explicit switch/apply button is missing"
+fi
+
+# 普通 LuCI 保存必须写回当前选中的配置文件，否则切过去的配置会被悄悄丢掉。
+if grep -q 'config_profile.sh.*sync' "$INIT" \
+   && grep -q 'current_profile' "$PROFILE_SH"; then
+	ok "ordinary LuCI saves sync the active configuration back to the selected profile"
+else
+	bad "ordinary LuCI saves are not tied to the selected profile (edits would be lost on switch)"
+fi
+
 # ── QUIC 不支持的节点：一次汇总，不再逐节点写两行 ────────────────────────
 # 0.2.12 现场：内核文件不在 /usr/bin → rpcd 的 features 读不到任何 tag →
 # 订阅里 18 个 hysteria2 节点被丢掉，而每个节点写两行日志（36 行噪音），

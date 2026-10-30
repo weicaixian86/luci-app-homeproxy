@@ -1139,6 +1139,9 @@ start_service() {
 	# 都无关（见 scripts/config_guard.sh 的三条不变量）。
 	# 用 sh 显式调用而不是直接执行：脚本的可执行位在某些打包链路上会丢。
 	[ -f "$HP_DIR/scripts/config_guard.sh" ] && sh "$HP_DIR/scripts/config_guard.sh" backup
+	# LuCI 始终写当前激活的 /etc/config/homeproxy。将本次有效配置同步回
+	# 当前配置文件，保证普通页面的「保存并应用」不会只改激活副本而丢失。
+	[ -x "$HP_DIR/scripts/config_profile.sh" ] && sh "$HP_DIR/scripts/config_profile.sh" sync >/dev/null 2>&1 || true
 
 	setup_auto_update_cron
 
