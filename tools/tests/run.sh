@@ -2719,6 +2719,26 @@ else
 	bad "the upload name field is still pre-filled with an example (or the naming rule is unstated)"
 fi
 
+# 独立的「检查配置」按钮已去掉，校验并进「切换并应用」：脚本先在校验目录里
+# 跑 uci show，通过才替换激活配置；失败时下拉必须退回当前生效的那个，
+# 否则界面停在一个「看起来已选中、其实没生效」的选项上。
+if ! grep -q '检查配置' "$PROFILE_VIEW" \
+   && grep -q 'select.value = current' "$PROFILE_VIEW" \
+   && sed -n '/^switch)/,/^;;/p' "$PROFILE_SH" | grep -q 'validate_file'; then
+	ok "switch-and-apply validates first and rolls the selector back when it fails"
+else
+	bad "the check button is gone but apply neither validates nor rolls the selector back"
+fi
+
+# 切换失败必须在主日志里留下原因（uci 的 Parse error 带 line/byte）：只闪一条
+# 通知，页面一刷新就什么都不剩，用户只能反复重试。
+if grep -q 'function profileLog' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && sed -n '/config_profile_switch:/,/^[[:space:]]*},/p' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" | grep -q '配置文件切换失败'; then
+	ok "a failed profile switch writes its reason to the main log, not just a notification"
+else
+	bad "a failed profile switch leaves nothing in the log"
+fi
+
 # ── QUIC 不支持的节点：一次汇总，不再逐节点写两行 ────────────────────────
 # 0.2.12 现场：内核文件不在 /usr/bin → rpcd 的 features 读不到任何 tag →
 # 订阅里 18 个 hysteria2 节点被丢掉，而每个节点写两行日志（36 行噪音），

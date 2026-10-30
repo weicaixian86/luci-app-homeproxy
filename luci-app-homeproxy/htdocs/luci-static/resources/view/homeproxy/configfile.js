@@ -9,12 +9,6 @@ const callList = rpc.declare({
 	method: 'config_profile_list',
 	expect: { '': {} }
 });
-const callCheck = rpc.declare({
-	object: 'luci.homeproxy',
-	method: 'config_profile_check',
-	params: [ 'name' ],
-	expect: { '': {} }
-});
 const callSwitch = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'config_profile_switch',
@@ -55,11 +49,10 @@ return view.extend({
 			'style': 'min-width: 18em;'
 		});
 		const fileInput = E('input', { 'type': 'file', 'accept': '.conf,.uci,*/*' });
-		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('切换前会检查 UCI 配置格式，错误时当前配置不会改变。'));
+		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('切换时会先检查 UCI 配置格式；不通过则退回当前配置，并把错误写入日志。'));
 		const currentText = E('div', { 'class': 'cbi-value-description' }, _('当前配置文件：%s').format(current));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('配置文件目录：/etc/config/，默认配置文件不参与上传列表，文件名为 homeproxy-*。'));
 		const apply = E('button', { 'class': 'cbi-button cbi-button-apply' }, _('切换并应用'));
-		const check = E('button', { 'class': 'cbi-button cbi-button-action' }, _('检查配置'));
 		const upload = E('button', { 'class': 'cbi-button cbi-button-add' }, _('上传配置文件'));
 		const remove = E('button', { 'class': 'cbi-button cbi-button-remove' }, _('删除选中配置'));
 		const refresh = E('button', { 'class': 'cbi-button' }, _('刷新列表'));
@@ -67,7 +60,7 @@ return view.extend({
 			E('h2', {}, _('配置文件')),
 			E('div', { 'class': 'cbi-map-descr' }, _('管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用本页“切换并应用”。')),
 			E('div', { 'class': 'cbi-section' }, [
-				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('选择配置文件')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply, ' ', check, ' ', remove ]) ]),
+				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('选择配置文件')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply, ' ', remove ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('状态')), E('div', { 'class': 'cbi-value-field' }, [ currentText, checkBox ]) ]),
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('上传配置文件')), E('div', { 'class': 'cbi-value-field' }, [ nameInput, ' ', fileInput, ' ', upload, ' ', refresh, status ]) ])
 			])
@@ -79,12 +72,33 @@ return view.extend({
 			window.location.href = url;
 			return next;
 		});
-		check.addEventListener('click', () => callCheck(selected()).then((res) => notify(res.result ? _('配置格式正确。') : _('配置格式错误：%s').format(res.error || _('未知错误')), res.result ? 'info' : 'danger')));
-		apply.addEventListener('click', () => callSwitch(selected()).then((res) => {
-			if (res.result) notify(_('已切换配置：%s，服务正在重新加载。').format(selected()), 'info');
-			else notify(_('切换失败：%s').format(res.error || _('未知错误')), 'danger');
-			if (res.result) window.setTimeout(() => window.location.reload(), 1200);
-		}));
+		/* 「切换并应用」自带校验：脚本先在校验目录里跑一遍 `uci show`，通过才
+		   替换激活配置。失败时下拉必须退回当前生效的那一个 —— 否则界面停在
+		   一个「看起来已选中、其实没生效」的选项上，用户会以为已经切过去了。 */
+		apply.addEventListener('click', () => {
+			const target = selected();
+
+			if (target === current) {
+				notify(_('已经是当前配置：%s。').format(target), 'info');
+				return;
+			}
+
+			callSwitch(target).then((res) => {
+				if (res.result) {
+					notify(_('已切换配置：%s，服务正在重新加载。').format(target), 'info');
+					window.setTimeout(() => window.location.reload(), 1200);
+					return;
+				}
+
+				select.value = current;
+				notify(_('切换失败：%s（已退回当前配置 %s）').format(res.error || _('未知错误'), current), 'danger');
+			}, (err) => {
+				/* 请求本身失败（rpcd 挂掉、超时）也要退回，不能让下拉停在
+				   一个根本没生效的选项上。 */
+				select.value = current;
+				notify(_('切换失败：%s（已退回当前配置 %s）').format(err || _('未知错误'), current), 'danger');
+			});
+		});
 		upload.addEventListener('click', () => {
 			const name = nameInput.value.trim();
 			if (!/^homeproxy-[A-Za-z0-9_.-]+$/.test(name) || name === 'homeproxy-back') {

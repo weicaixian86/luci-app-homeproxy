@@ -129,6 +129,15 @@ function rulesetLog(msg) {
 	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/ruleset_download.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
 }
 
+/* 配置文件切换的审计行，写**主日志**（日志页「主日志」那个 tab 看得见）。
+   切换失败时前端只会闪一条通知，页面一刷新什么都不剩；而「格式不通过」
+   正是需求第 63 条要求把错误写进日志的场景（uci 会给出行号与字节位置）。
+   成功也记一行：只有失败行而没有成功行，会让人怀疑是不是根本没生效。 */
+function profileLog(msg) {
+	const line = sprintf('[DAEMON] %s', msg);
+	system(sprintf('mkdir -p /var/run/homeproxy 2>/dev/null; printf "%%s %%s\\n" "$(date "+%%Y-%%m-%%d %%H:%%M:%%S")" %s >> /var/run/homeproxy/homeproxy.log 2>/dev/null; logger -t homeproxy %s', shellquote(line), shellquote(line)));
+}
+
 /* external_ui 是用户自由输入的路径，随后会被 `rm -rf` / `mv` 直接操作
    （preparePanelBackup / restorePanelBackup / clash_api_install_panel）。
    一旦填成 `/`、`/etc`、`/usr`，安装或更新面板就会搬走/删除系统目录。
@@ -531,13 +540,22 @@ const methods = {
 		call: function(req) {
 			const name = req.args?.name ?? '';
 
-			if (!isProfileName(name, true))
+			if (!isProfileName(name, true)) {
+				profileLog(sprintf('配置文件切换被拒绝：文件名不合法（%s）', name));
 				return { result: false, error: '非法配置文件名' };
+			}
 
 			const output = runProfile(['switch', name]);
 
-			if (output !== `配置已切换：${name}`)
+			if (output !== `配置已切换：${name}`) {
+				/* 校验不通过时脚本什么都不动（当前配置继续跑），这里把 uci
+				   的原始报错（含 line/byte）留在日志页上，前端同时把下拉
+				   退回当前配置。 */
+				profileLog(sprintf('配置文件切换失败（%s）：%s', name, output || '脚本没有任何输出'));
 				return { result: false, error: output || '切换配置文件失败' };
+			}
+
+			profileLog(sprintf('配置文件已切换：%s', name));
 
 			/* 重载是 stop+start（数秒），必须**脱离** rpcd 的 30 秒上限：
 			   同步等它会把「切换成功但请求超时」变成用户看到的失败。
