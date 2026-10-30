@@ -41,11 +41,11 @@ msgstr "%s ms"
 msgid "%s nodes removed"
 msgstr "移除了 %s 个节点"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:150
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:154
 msgid "(in use)"
 msgstr "（使用中）"
 
-#: htdocs/luci-static/resources/homeproxy.js:1801
+#: htdocs/luci-static/resources/homeproxy.js:1844
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr "/etc/homeproxy/certs/...，/etc/acme/...，/etc/ssl/..."
 
@@ -205,7 +205,7 @@ msgstr "已是最新版本。"
 msgid "Already in updating."
 msgstr "已在更新中。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:193
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:197
 msgid "Already the current profile: %s."
 msgstr "已经是当前配置：%s。"
 
@@ -340,7 +340,7 @@ msgstr "BBR"
 msgid "Backend execution failed"
 msgstr "后端执行失败"
 
-#: htdocs/luci-static/resources/homeproxy.js:1761
+#: htdocs/luci-static/resources/homeproxy.js:1801
 #: htdocs/luci-static/resources/view/homeproxy/client.js:205
 #: htdocs/luci-static/resources/view/homeproxy/client.js:249
 msgid "Backup panel failed."
@@ -412,7 +412,7 @@ msgstr "CA 颁发机构"
 msgid "CUBIC"
 msgstr "CUBIC"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:138
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:142
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
 msgid "Cancel"
 msgstr "关闭"
@@ -523,8 +523,8 @@ msgstr "客户端设置"
 msgid "Client version"
 msgstr "客户端版本"
 
-#: htdocs/luci-static/resources/homeproxy.js:1629
-#: htdocs/luci-static/resources/homeproxy.js:1631
+#: htdocs/luci-static/resources/homeproxy.js:1630
+#: htdocs/luci-static/resources/homeproxy.js:1632
 msgid "Close"
 msgstr "关闭"
 
@@ -546,12 +546,12 @@ msgstr "正在收集数据中..."
 msgid "Common ports only (bypass P2P traffic)"
 msgstr "仅常用端口（绕过 P2P 流量）"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:162
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:166
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:37
 msgid "Configuration File"
 msgstr "配置文件"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:68
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:69
 msgid ""
 "Configuration directory: /etc/config/; the default profile is not "
 "uploadable; uploaded files must be named homeproxy-<your-name>; the default "
@@ -683,7 +683,7 @@ msgstr "客户端日常访问域名解析，DNS泄漏要求高选择国外DNS。
 msgid "Debug"
 msgstr "调试"
 
-#: htdocs/luci-static/resources/homeproxy.js:456
+#: htdocs/luci-static/resources/homeproxy.js:457
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1588
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1742
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1895
@@ -765,25 +765,25 @@ msgstr "默认包封装格式"
 msgid "Default server name"
 msgstr "默认服务器名称"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:140
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:156
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:144
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:160
 msgid "Delete"
 msgstr "删除"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:136
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:140
 msgid "Delete %s? It can only be brought back by uploading it again."
 msgstr "确定要删除 %s 吗？删除后只能重新上传。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:135
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:139
 msgid "Delete configuration file"
 msgstr "删除配置文件"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:129
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:131
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:133
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:135
 msgid "Delete failed: %s"
 msgstr "删除失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:129
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:133
 msgid "Deleted: %s"
 msgstr "已删除：%s"
 
@@ -927,7 +927,7 @@ msgstr "不丢弃数据包"
 msgid "Don't drop requests"
 msgstr "不丢弃请求"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:151
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:155
 msgid "Download"
 msgstr "下载"
 
@@ -958,8 +958,8 @@ msgstr "下载带宽（单位：Mbps）。"
 msgid "Download failed"
 msgstr "下载失败"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:114
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:126
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:118
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:130
 msgid "Download failed: %s"
 msgstr "下载失败：%s"
 
@@ -1150,43 +1150,43 @@ msgstr "加密方式"
 msgid "Error"
 msgstr "错误"
 
-#: htdocs/luci-static/resources/homeproxy.js:1613
+#: htdocs/luci-static/resources/homeproxy.js:1614
 msgid "Every %s %s"
 msgstr "每周%s %s"
 
-#: htdocs/luci-static/resources/homeproxy.js:150
+#: htdocs/luci-static/resources/homeproxy.js:151
 msgid "Every Friday"
 msgstr "每周五"
 
-#: htdocs/luci-static/resources/homeproxy.js:146
+#: htdocs/luci-static/resources/homeproxy.js:147
 msgid "Every Monday"
 msgstr "每周一"
 
-#: htdocs/luci-static/resources/homeproxy.js:151
+#: htdocs/luci-static/resources/homeproxy.js:152
 msgid "Every Saturday"
 msgstr "每周六"
 
-#: htdocs/luci-static/resources/homeproxy.js:152
+#: htdocs/luci-static/resources/homeproxy.js:153
 msgid "Every Sunday"
 msgstr "每周日"
 
-#: htdocs/luci-static/resources/homeproxy.js:149
+#: htdocs/luci-static/resources/homeproxy.js:150
 msgid "Every Thursday"
 msgstr "每周四"
 
-#: htdocs/luci-static/resources/homeproxy.js:147
+#: htdocs/luci-static/resources/homeproxy.js:148
 msgid "Every Tuesday"
 msgstr "每周二"
 
-#: htdocs/luci-static/resources/homeproxy.js:148
+#: htdocs/luci-static/resources/homeproxy.js:149
 msgid "Every Wednesday"
 msgstr "每周三"
 
-#: htdocs/luci-static/resources/homeproxy.js:145
+#: htdocs/luci-static/resources/homeproxy.js:146
 msgid "Every day"
 msgstr "每天"
 
-#: htdocs/luci-static/resources/homeproxy.js:1612
+#: htdocs/luci-static/resources/homeproxy.js:1613
 msgid "Every day %s"
 msgstr "每天 %s"
 
@@ -1204,16 +1204,16 @@ msgstr ""
 "若填 IP，须在下方「TLS SNI」填真实域名（如 dns.alidns.com），否则证书校验失"
 "败。"
 
-#: htdocs/luci-static/resources/homeproxy.js:1005
-#: htdocs/luci-static/resources/homeproxy.js:1793
-#: htdocs/luci-static/resources/homeproxy.js:1801
-#: htdocs/luci-static/resources/homeproxy.js:1819
-#: htdocs/luci-static/resources/homeproxy.js:1828
-#: htdocs/luci-static/resources/homeproxy.js:1839
-#: htdocs/luci-static/resources/homeproxy.js:1850
-#: htdocs/luci-static/resources/homeproxy.js:1853
-#: htdocs/luci-static/resources/homeproxy.js:1861
-#: htdocs/luci-static/resources/homeproxy.js:1863
+#: htdocs/luci-static/resources/homeproxy.js:1006
+#: htdocs/luci-static/resources/homeproxy.js:1836
+#: htdocs/luci-static/resources/homeproxy.js:1844
+#: htdocs/luci-static/resources/homeproxy.js:1862
+#: htdocs/luci-static/resources/homeproxy.js:1871
+#: htdocs/luci-static/resources/homeproxy.js:1882
+#: htdocs/luci-static/resources/homeproxy.js:1893
+#: htdocs/luci-static/resources/homeproxy.js:1896
+#: htdocs/luci-static/resources/homeproxy.js:1904
+#: htdocs/luci-static/resources/homeproxy.js:1906
 #: htdocs/luci-static/resources/view/homeproxy/client.js:472
 #: htdocs/luci-static/resources/view/homeproxy/client.js:485
 #: htdocs/luci-static/resources/view/homeproxy/client.js:845
@@ -1290,7 +1290,7 @@ msgstr "读取 %s 失败：%s"
 msgid "Failed to save the log settings: %s"
 msgstr "日志设置保存失败：%s"
 
-#: htdocs/luci-static/resources/homeproxy.js:1712
+#: htdocs/luci-static/resources/homeproxy.js:1713
 msgid "Failed to start rule-set download: %s"
 msgstr "启动规则集下载失败：%s"
 
@@ -1302,8 +1302,8 @@ msgstr "启动订阅更新失败。"
 msgid "Failed to update rule set: %s"
 msgstr "规则集更新失败：%s"
 
-#: htdocs/luci-static/resources/homeproxy.js:1745
-#: htdocs/luci-static/resources/homeproxy.js:1783
+#: htdocs/luci-static/resources/homeproxy.js:1782
+#: htdocs/luci-static/resources/homeproxy.js:1823
 msgid "Failed to upload %s, error: %s."
 msgstr "上传 %s 失败，错误：%s。"
 
@@ -1363,7 +1363,7 @@ msgstr "分片 TLS 握手。由于性能较差，请先尝试 <code>%s</code>。
 msgid "Fragment fallback delay"
 msgstr "分片回退延迟"
 
-#: htdocs/luci-static/resources/homeproxy.js:1609
+#: htdocs/luci-static/resources/homeproxy.js:1610
 msgid "Fri"
 msgstr "五"
 
@@ -1596,7 +1596,7 @@ msgstr "IP 版本"
 msgid "IPv4"
 msgstr "IPv4"
 
-#: htdocs/luci-static/resources/homeproxy.js:459
+#: htdocs/luci-static/resources/homeproxy.js:460
 msgid "IPv4 only"
 msgstr "仅 IPv4"
 
@@ -1605,7 +1605,7 @@ msgstr "仅 IPv4"
 msgid "IPv6"
 msgstr "IPv6"
 
-#: htdocs/luci-static/resources/homeproxy.js:460
+#: htdocs/luci-static/resources/homeproxy.js:461
 msgid "IPv6 only"
 msgstr "仅 IPv6"
 
@@ -1717,7 +1717,7 @@ msgstr "在检查中，关闭空闲时间超过此值的会话（单位：秒）
 msgid "Info"
 msgstr "信息"
 
-#: htdocs/luci-static/resources/homeproxy.js:1771
+#: htdocs/luci-static/resources/homeproxy.js:1811
 msgid "Install panel failed."
 msgstr "安装面板失败。"
 
@@ -1767,7 +1767,7 @@ msgstr "文件无效"
 msgid "Invalid node"
 msgstr "无效节点"
 
-#: htdocs/luci-static/resources/homeproxy.js:1769
+#: htdocs/luci-static/resources/homeproxy.js:1809
 msgid "Invalid panel ZIP file."
 msgstr "面板 ZIP 文件无效。"
 
@@ -2153,7 +2153,7 @@ msgstr "混合<code>系统</code> TCP 栈和 <code>gVisor</code> UDP 栈。"
 msgid "Mode"
 msgstr "模式"
 
-#: htdocs/luci-static/resources/homeproxy.js:1608
+#: htdocs/luci-static/resources/homeproxy.js:1609
 msgid "Mon"
 msgstr "一"
 
@@ -2209,7 +2209,7 @@ msgstr ""
 msgid "NTP time synchronization interval"
 msgstr "NTP 时间同步间隔"
 
-#: htdocs/luci-static/resources/homeproxy.js:1539
+#: htdocs/luci-static/resources/homeproxy.js:1540
 msgid "Name"
 msgstr "名称"
 
@@ -2242,7 +2242,7 @@ msgstr "未配置任何 DNS 规则，所有查询都会交给默认 DNS 服务�
 msgid "No TCP transport, plain HTTP is merged into the HTTP transport."
 msgstr "无 TCP 传输层, 纯 HTTP 已合并到 HTTP 传输层。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:181
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:185
 msgid "No additional configuration file has been uploaded yet."
 msgstr "还没有上传过其它配置文件。"
 
@@ -2422,7 +2422,7 @@ msgstr "填充方案"
 msgid "Panel Settings"
 msgstr "面板设置"
 
-#: htdocs/luci-static/resources/homeproxy.js:1765
+#: htdocs/luci-static/resources/homeproxy.js:1805
 msgid "Panel ZIP file is empty."
 msgstr "面板 ZIP 文件为空。"
 
@@ -2543,11 +2543,11 @@ msgstr "预共享密钥"
 msgid "Predefined"
 msgstr "预定义"
 
-#: htdocs/luci-static/resources/homeproxy.js:457
+#: htdocs/luci-static/resources/homeproxy.js:458
 msgid "Prefer IPv4"
 msgstr "优先 IPv4"
 
-#: htdocs/luci-static/resources/homeproxy.js:458
+#: htdocs/luci-static/resources/homeproxy.js:459
 msgid "Prefer IPv6"
 msgstr "优先 IPv6"
 
@@ -2742,7 +2742,7 @@ msgstr "Redirect TCP + Tun UDP"
 msgid "Refresh every %s seconds."
 msgstr "每 %s 秒刷新。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:71
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:72
 msgid "Refresh list"
 msgstr "刷新列表"
 
@@ -2800,7 +2800,7 @@ msgstr "资源管理"
 msgid "Restore defaults"
 msgstr "恢复默认"
 
-#: htdocs/luci-static/resources/homeproxy.js:1763
+#: htdocs/luci-static/resources/homeproxy.js:1803
 #: htdocs/luci-static/resources/view/homeproxy/client.js:207
 #: htdocs/luci-static/resources/view/homeproxy/client.js:251
 msgid "Restore panel failed."
@@ -2893,7 +2893,7 @@ msgstr "规则集 URL"
 msgid "Rule set updated successfully."
 msgstr "规则集更新成功。"
 
-#: htdocs/luci-static/resources/homeproxy.js:1718
+#: htdocs/luci-static/resources/homeproxy.js:1719
 msgid ""
 "Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/"
 "etc/init.d/rpcd restart\" or reboot the router."
@@ -2948,7 +2948,7 @@ msgstr "Salamander"
 msgid "Same as main node"
 msgstr "保持与主节点一致"
 
-#: htdocs/luci-static/resources/homeproxy.js:1609
+#: htdocs/luci-static/resources/homeproxy.js:1610
 msgid "Sat"
 msgstr "六"
 
@@ -2974,7 +2974,11 @@ msgstr "保存订阅设置"
 msgid "Scheduled update time"
 msgstr "定时更新时间"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:164
+#: htdocs/luci-static/resources/homeproxy.js:1741
+msgid "Select a file to upload first."
+msgstr "请先选择要上传的文件。"
+
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:168
 msgid "Select configuration file"
 msgstr "选择配置文件"
 
@@ -3216,7 +3220,7 @@ msgstr "成功导入 %s 个节点，共 %s 个。"
 msgid "Successfully updated."
 msgstr "更新成功。"
 
-#: htdocs/luci-static/resources/homeproxy.js:1608
+#: htdocs/luci-static/resources/homeproxy.js:1609
 msgid "Sun"
 msgstr "日"
 
@@ -3238,16 +3242,16 @@ msgstr ""
 "享链接，以及 Clash（mihomo）节点列表、sing-box 出站 JSON 和 SIP008 JSON。不支"
 "持 SSR 与 KCP 传输。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:69
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:70
 msgid "Switch & Apply"
 msgstr "切换并应用"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:205
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:210
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:209
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:214
 msgid "Switch failed: %s (reverted to the current profile %s)"
 msgstr "切换失败：%s（已退回当前配置 %s）"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:199
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:203
 msgid "Switched to %s; the service is reloading."
 msgstr "已切换配置：%s，服务正在重新加载。"
 
@@ -3364,7 +3368,7 @@ msgstr "测试当前列表"
 msgid "Test URL"
 msgstr "测试 URL"
 
-#: htdocs/luci-static/resources/homeproxy.js:441
+#: htdocs/luci-static/resources/homeproxy.js:442
 msgid "Test failed, see system log for details."
 msgstr "测试失败，详情见系统日志。"
 
@@ -3415,7 +3419,7 @@ msgstr "用于接收数据的 QUIC 连接级流控制窗口。"
 msgid "The QUIC stream-level flow control window for receiving data."
 msgstr "用于接收数据的 QUIC 流级流控制窗口。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:67
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:68
 msgid ""
 "The UCI syntax is checked when switching; if it fails, the current profile "
 "is kept and the error is written to the log."
@@ -3478,7 +3482,7 @@ msgid ""
 "automatically determine the wait time."
 msgstr "当 TLS 分段无法自动确定等待时间时使用的回退值（单位：毫秒）。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:94
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:98
 msgid ""
 "The file name must start with homeproxy- and may only contain letters, "
 "digits, dots, underscores and dashes."
@@ -3545,7 +3549,7 @@ msgstr ""
 msgid "The response code."
 msgstr "响应代码。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:102
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:106
 msgid ""
 "The selected file is larger than 1 MB; check that it is a UCI configuration "
 "file."
@@ -3600,7 +3604,7 @@ msgstr ""
 "经过一段时间（单位：秒）之后，客户端将执行 keepalive 检查并等待活动。如果没有"
 "检测到任何活动，则会关闭连接。"
 
-#: htdocs/luci-static/resources/homeproxy.js:1767
+#: htdocs/luci-static/resources/homeproxy.js:1807
 msgid "The unzip command is unavailable."
 msgstr "unzip 命令不可用。"
 
@@ -3632,7 +3636,7 @@ msgstr "该节点直接拨出，不经过上游出站。"
 msgid "ThreatBook Public DNS (DoH)"
 msgstr "微步 公共DNS (DoH)"
 
-#: htdocs/luci-static/resources/homeproxy.js:1609
+#: htdocs/luci-static/resources/homeproxy.js:1610
 msgid "Thu"
 msgstr "四"
 
@@ -3678,7 +3682,7 @@ msgstr "传输层"
 msgid "Trojan"
 msgstr "Trojan"
 
-#: htdocs/luci-static/resources/homeproxy.js:1608
+#: htdocs/luci-static/resources/homeproxy.js:1609
 msgid "Tue"
 msgstr "二"
 
@@ -3766,20 +3770,18 @@ msgstr "URLTest: %s"
 msgid "UUID"
 msgstr "UUID"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:74
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:78
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:114
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:126
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:129
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:131
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:205
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:210
-msgid "Select a file to upload first."
-msgstr "请先选择要上传的文件。"
-
+#: htdocs/luci-static/resources/homeproxy.js:1759
 msgid "Unexpected response from the upload service."
 msgstr "上传服务返回了无法识别的内容。"
 
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:78
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:82
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:118
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:130
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:133
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:135
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:209
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:214
 msgid "Unknown error"
 msgstr "未知错误"
 
@@ -3828,7 +3830,7 @@ msgstr "立即更新"
 msgid "Update panel failed."
 msgstr "更新面板失败"
 
-#: htdocs/luci-static/resources/homeproxy.js:75
+#: htdocs/luci-static/resources/homeproxy.js:76
 msgid "Update time (daily)"
 msgstr "更新时间(每天)"
 
@@ -3875,16 +3877,16 @@ msgstr "上传带宽（单位：Mbps）。"
 msgid "Upload certificate"
 msgstr "上传证书"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:171
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:175
 msgid "Upload configuration file"
 msgstr "上传配置文件"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:74
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:78
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:82
 msgid "Upload failed: %s"
 msgstr "上传失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:70
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:71
 msgid "Upload file"
 msgstr "上传文件"
 
@@ -3899,12 +3901,12 @@ msgstr "上传密钥"
 msgid "Upload..."
 msgstr "上传..."
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:74
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:78
 msgid ""
 "Uploaded %s. Choose it in the dropdown above, then click Switch & Apply."
 msgstr "上传成功：%s。请在上方下拉框中选择它，再点击“切换并应用”。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:178
+#: htdocs/luci-static/resources/view/homeproxy/configfile.js:182
 msgid "Uploaded configuration files"
 msgstr "已上传的配置文件"
 
@@ -4014,7 +4016,7 @@ msgstr "警告"
 msgid "WebSocket"
 msgstr "WebSocket"
 
-#: htdocs/luci-static/resources/homeproxy.js:1608
+#: htdocs/luci-static/resources/homeproxy.js:1609
 msgid "Wed"
 msgstr "三"
 
@@ -4079,8 +4081,8 @@ msgstr "Xudp (Xray-core)"
 msgid "YouTube Connection"
 msgstr "YouTube 连接"
 
-#: htdocs/luci-static/resources/homeproxy.js:1743
-#: htdocs/luci-static/resources/homeproxy.js:1781
+#: htdocs/luci-static/resources/homeproxy.js:1780
+#: htdocs/luci-static/resources/homeproxy.js:1821
 msgid "Your %s was successfully uploaded. Size: %sB."
 msgstr "您的 %s 已成功上传。大小：%sB。"
 
@@ -4140,9 +4142,9 @@ msgstr "如果是刚升级完，请先重启 rpcd（/etc/init.d/rpcd restart）"
 msgid "loading..."
 msgstr "加载中..."
 
-#: htdocs/luci-static/resources/homeproxy.js:1828
-#: htdocs/luci-static/resources/homeproxy.js:1850
-#: htdocs/luci-static/resources/homeproxy.js:1861
+#: htdocs/luci-static/resources/homeproxy.js:1871
+#: htdocs/luci-static/resources/homeproxy.js:1893
+#: htdocs/luci-static/resources/homeproxy.js:1904
 #: htdocs/luci-static/resources/view/homeproxy/client.js:845
 #: htdocs/luci-static/resources/view/homeproxy/client.js:879
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1576
@@ -4169,8 +4171,8 @@ msgstr "无"
 msgid "packet addr (v2ray-core v5+)"
 msgstr "packet addr (v2ray-core v5+)"
 
-#: htdocs/luci-static/resources/homeproxy.js:1781
-#: htdocs/luci-static/resources/homeproxy.js:1783
+#: htdocs/luci-static/resources/homeproxy.js:1821
+#: htdocs/luci-static/resources/homeproxy.js:1823
 msgid "panel ZIP package"
 msgstr "面板ZIP压缩包"
 
@@ -4222,14 +4224,14 @@ msgstr "不可用"
 msgid "unchecked"
 msgstr "未检查"
 
-#: htdocs/luci-static/resources/homeproxy.js:1005
-#: htdocs/luci-static/resources/homeproxy.js:1839
+#: htdocs/luci-static/resources/homeproxy.js:1006
+#: htdocs/luci-static/resources/homeproxy.js:1882
 #: htdocs/luci-static/resources/view/homeproxy/client.js:485
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3124
 msgid "unique value"
 msgstr "独立值"
 
-#: htdocs/luci-static/resources/homeproxy.js:1773
+#: htdocs/luci-static/resources/homeproxy.js:1813
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3066
 msgid "unknown error"
 msgstr "未知错误"
@@ -4265,7 +4267,7 @@ msgstr "有效 DNS 服务器地址"
 msgid "valid URL"
 msgstr "有效网址"
 
-#: htdocs/luci-static/resources/homeproxy.js:1793
+#: htdocs/luci-static/resources/homeproxy.js:1836
 msgid "valid base64 key with %d characters"
 msgstr "包含 %d 个字符的有效 base64 密钥"
 
@@ -4283,7 +4285,7 @@ msgstr "有效时间格式"
 msgid "valid hostname"
 msgstr "有效主机名"
 
-#: htdocs/luci-static/resources/homeproxy.js:1819
+#: htdocs/luci-static/resources/homeproxy.js:1862
 msgid "valid port range (port1:port2)"
 msgstr "有效端口范围（port1:port2）"
 
@@ -4291,13 +4293,13 @@ msgstr "有效端口范围（port1:port2）"
 msgid "valid port value"
 msgstr "有效端口值"
 
-#: htdocs/luci-static/resources/homeproxy.js:1853
+#: htdocs/luci-static/resources/homeproxy.js:1896
 #: htdocs/luci-static/resources/view/homeproxy/client.js:472
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3115
 msgid "valid tag"
 msgstr "有效标签"
 
-#: htdocs/luci-static/resources/homeproxy.js:1863
+#: htdocs/luci-static/resources/homeproxy.js:1906
 msgid "valid uuid"
 msgstr "有效 uuid"
 
