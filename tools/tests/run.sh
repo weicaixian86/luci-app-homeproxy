@@ -2711,6 +2711,19 @@ else
 	bad "the profile sync uses -x on a 644 script, so it silently never runs"
 fi
 
+# 手工改坏的配置（段名带 `-`、少引号、同名 option）不会让任何一步报错：uci 只是
+# 静默跳过坏段，生成出来的配置里一个节点都不剩，而空配置对 `sing-box check` 完全
+# 合法 —— 服务照样「已启动」，用户只看到所有节点都连不上，日志一句错误都没有
+# （2026-10-30 现场：`config node 'homeproxy-test'` 让整份配置失效）。生成前必须
+# 先整份解析一遍，把 uci 的行号写进日志。
+if grep -q 'uci show "\$CONF"' "$INIT" \
+   && grep -q 'UCI 语法错误' "$INIT" \
+   && sed -n '/^start_service()/,/^}/p' "$INIT" | grep -q 'uci show "\$CONF"'; then
+	ok "a broken UCI config is reported instead of silently generating an empty one"
+else
+	bad "a UCI parse error still yields a node-less config: no proxy, no log line"
+fi
+
 # 上传名的输入框不能预填示例（`placeholder: homeproxy-123` 看起来就像已经填好
 # 的文件名，用户点上传会以为名字已定）；命名规则改由说明文字承担。
 if ! grep -q "'placeholder'" "$PROFILE_VIEW" \

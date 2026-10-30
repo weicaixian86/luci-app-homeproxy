@@ -1039,6 +1039,20 @@ start_service() {
 	# 否则「保存并应用」永远唤不醒本服务。
 	hp_ucitrack_register
 
+	# 手工改坏的配置（段名带 `-`、少引号、同名 option）不会让任何一步报错：uci
+	# 只是**静默跳过**坏段，生成的配置里一个节点都不剩，而空配置对 `sing-box
+	# check` 完全合法 —— 服务照样「内核已启动」，用户只看到「所有节点都连不上」，
+	# 日志里一句错误都没有（2026-10-30 现场：`config node 'homeproxy-test'` 让整份
+	# 配置失效）。放在 ucitrack 自愈之后、其余早退之前整份解析一遍：否则「未配置
+	# 代理节点」那句会先返回，语法错误根本没机会被说出来。原配置与旧 json 都不动。
+	if [ -f "/etc/config/$CONF" ] &&
+	   ! uci show "$CONF" >/dev/null 2>"$RUN_DIR/.uci-parse.err"; then
+		uci_err="$(head -n 1 "$RUN_DIR/.uci-parse.err" 2>/dev/null)"
+		log "错误：/etc/config/$CONF 有 UCI 语法错误，已放弃启动（原配置与旧配置均未改动）：${uci_err:-未知解析错误}"
+		panel_log "面板未下载：/etc/config/$CONF 解析失败，服务未启动（内核依赖生成的配置）。"
+		return 1
+	fi
+
 	# sing-box 默认以 root 运行即可（iStoreOS 等 busybox 环境无 adduser/
 	# addgroup，创建专用用户必然失败）；不再主动创建用户，也不打印提示。
 	# 若系统已存在 sing-box 用户，下方 ujail 分支（have_sing_box_user 判断）
