@@ -522,6 +522,32 @@ const methods = {
 			return { result: true, current: current || 'homeproxy-default', files: files, output: output };
 		}
 	},
+	config_profile_read: {
+		args: { name: 'string' },
+		call: function(req) {
+			const name = req.args?.name ?? '';
+
+			if (!isProfileName(name, true))
+				return { result: false, error: '非法配置文件名' };
+
+			const path = `/etc/config/${name}`;
+
+			if (!lstat(path))
+				return { result: false, error: '配置文件不存在' };
+
+			/* 内容直接走 ubus 回给前端，不让浏览器去 /etc/config 取：那里
+			   既没有静态服务，也不需要为它开 cgi-io 的下载权限。配置文件
+			   只有几十 KB，一次读回来最省事。
+			   只判 null：ucode 里 `undefined` 是个普通标识符，写它会在
+			   求值时抛错，被 rpcd 折叠成一句 Unknown error。 */
+			const content = readfile(path);
+
+			if (content === null)
+				return { result: false, error: '无法读取配置文件' };
+
+			return { result: true, content: content };
+		}
+	},
 	config_profile_check: {
 		args: { name: 'string' },
 		call: function(req) {

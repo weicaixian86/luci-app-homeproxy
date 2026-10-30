@@ -2662,17 +2662,18 @@ else
 	bad "profile writes overwrite the target in place and can be left half-written"
 fi
 
-for method in config_profile_list config_profile_check config_profile_switch \
-              config_profile_upload config_profile_delete; do
+for method in config_profile_list config_profile_read config_profile_check \
+              config_profile_switch config_profile_upload config_profile_delete; do
 	if ! grep -q "${method}:" "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
 		bad "rpcd is missing ${method}"
 	fi
 done
 if grep -q 'config_profile_list:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'config_profile_read:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
    && grep -q 'config_profile_switch:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
    && grep -q 'config_profile_upload:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
    && grep -q 'config_profile_delete:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"; then
-	ok "rpcd exposes list / check / switch / upload / delete for configuration profiles"
+	ok "rpcd exposes list / read / check / switch / upload / delete for configuration profiles"
 else
 	bad "rpcd does not expose the full configuration profile API"
 fi
@@ -2730,13 +2731,25 @@ else
 	bad "the check button is gone but apply neither validates nor rolls the selector back"
 fi
 
-# 「删除选中配置」按钮也去掉了：删除不可逆（设备上只能 SSH 里 rm），放在
-# 下拉右边极易误点。rpcd 的 config_profile_delete 保留，但界面不该有入口。
-if ! grep -q '删除选中配置' "$PROFILE_VIEW" \
-   && ! grep -q 'config_profile_delete' "$PROFILE_VIEW"; then
-	ok "the profile page has no delete button next to the selector"
+# 删除必须是「按文件行 + 二次确认」，不能再有贴着选下拉的「删除选中配置」：
+# 那种按钮一歪手就把另一份配置删了，而且删掉只能重新上传。
+# 匹配时带上 `_(`：只禁掉那枚按钮本身，注释里提到它的名字不算犯规。
+if ! grep -q "_('删除选中配置')" "$PROFILE_VIEW" \
+   && grep -q 'ui.showModal(' "$PROFILE_VIEW" \
+   && grep -q 'callDelete' "$PROFILE_VIEW"; then
+	ok "delete is a per-file action behind a confirmation dialog"
 else
-	bad "the delete button is back next to the profile selector (easy to hit by accident)"
+	bad "delete is either missing per-file or still a one-click button next to the selector"
+fi
+
+# 每个已上传的配置都要能下载出来（备份/搬机器都用得上）：rpcd 回内容，
+# 前端用 Blob + a[download] 落盘，文件名由界面决定。
+if grep -q 'config_profile_read:' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'callRead' "$PROFILE_VIEW" \
+   && grep -q "download: name" "$PROFILE_VIEW"; then
+	ok "each uploaded profile can be downloaded as a file"
+else
+	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
 # 切换失败必须在主日志里留下原因（uci 的 Parse error 带 line/byte）：只闪一条
