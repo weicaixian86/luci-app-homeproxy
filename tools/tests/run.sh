@@ -2795,6 +2795,14 @@ else
 	bad "uploaded profiles cannot be downloaded (no read RPC or no download link)"
 fi
 
+# 标题下那段「管理 HomeProxy 配置文件…普通设置仍用右下角保存并应用…」用户要求去掉：
+# 它是纯说明，占掉一整行，而下拉与按钮本身已经把用法摆出来了。
+if ! grep -q 'Manage HomeProxy configuration files' "$PROFILE_VIEW"; then
+	ok "no how-to paragraph under the page title"
+else
+	bad "the how-to paragraph under the page title is back"
+fi
+
 # 「状态」标签与「当前配置文件：xxx」都已去掉：当前配置在下面的下拉里就看得到，
 # 再写一行只是重复；那一行只留一句校验说明（用户明确要求）。
 if ! grep -q "_('Status')" "$PROFILE_VIEW" \

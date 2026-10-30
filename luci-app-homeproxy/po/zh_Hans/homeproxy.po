@@ -1956,15 +1956,6 @@ msgstr "使规则集中的 IP CIDR 匹配源 IP。"
 msgid "Make IP CIDR in rule-sets accept empty query response."
 msgstr "使规则集中的 IP CIDR 接受空查询响应。"
 
-#: htdocs/luci-static/resources/view/homeproxy/configfile.js:139
-msgid ""
-"Manage HomeProxy configuration files. Ordinary settings still use Save & "
-"Apply at the bottom right; switching a profile uses Switch & Apply on this "
-"page."
-msgstr ""
-"管理 HomeProxy 配置文件。普通设置仍使用页面右下角的“保存并应用”；切换配置使用"
-"本页“切换并应用”。"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1186
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1536
 msgid "Manual select"

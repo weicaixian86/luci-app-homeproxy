@@ -160,7 +160,6 @@ return view.extend({
 
 		const panel = E('div', { 'class': 'cbi-map' }, [
 			E('h2', {}, _('Configuration File')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Manage HomeProxy configuration files. Ordinary settings still use Save & Apply at the bottom right; switching a profile uses Switch & Apply on this page.')),
 			E('div', { 'class': 'cbi-section' }, [
 				E('div', { 'class': 'cbi-value' }, [ E('div', { 'class': 'cbi-value-title' }, _('Select configuration file')), E('div', { 'class': 'cbi-value-field' }, [ select, ' ', apply ]) ]),
 				/* 这一行只放那句校验说明：当前配置已经从上面的下拉里看得到，
