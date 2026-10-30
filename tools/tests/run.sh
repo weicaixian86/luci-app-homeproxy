@@ -2701,6 +2701,15 @@ else
 	bad "ordinary LuCI saves are not tied to the selected profile (edits would be lost on switch)"
 fi
 
+# 这个脚本与 config_guard.sh 一样是 644、一律用 `sh` 调用。守卫若写成
+# `[ -x ... ]`，整条同步会**永远不执行**而且不留任何痕迹（真机踩过）。
+if grep -q '\[ -f "$HP_DIR/scripts/config_profile.sh" \] && sh' "$INIT" \
+   && ! grep -q '\[ -x "$HP_DIR/scripts/config_profile.sh" \]' "$INIT"; then
+	ok "the start-path profile sync is guarded by -f, not -x (a 644 script would never run)"
+else
+	bad "the profile sync uses -x on a 644 script, so it silently never runs"
+fi
+
 # ── QUIC 不支持的节点：一次汇总，不再逐节点写两行 ────────────────────────
 # 0.2.12 现场：内核文件不在 /usr/bin → rpcd 的 features 读不到任何 tag →
 # 订阅里 18 个 hysteria2 节点被丢掉，而每个节点写两行日志（36 行噪音），

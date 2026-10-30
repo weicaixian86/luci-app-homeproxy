@@ -1141,7 +1141,9 @@ start_service() {
 	[ -f "$HP_DIR/scripts/config_guard.sh" ] && sh "$HP_DIR/scripts/config_guard.sh" backup
 	# LuCI 始终写当前激活的 /etc/config/homeproxy。将本次有效配置同步回
 	# 当前配置文件，保证普通页面的「保存并应用」不会只改激活副本而丢失。
-	[ -x "$HP_DIR/scripts/config_profile.sh" ] && sh "$HP_DIR/scripts/config_profile.sh" sync >/dev/null 2>&1 || true
+	# 用 -f 而不是 -x：这个脚本在仓库里的模式是 644（与 config_guard.sh 一致，
+	# 一律用 `sh` 调用）。用 -x 判断会让整条同步**永远不执行**，而且悄无声息。
+	[ -f "$HP_DIR/scripts/config_profile.sh" ] && sh "$HP_DIR/scripts/config_profile.sh" sync >/dev/null 2>&1 || true
 
 	setup_auto_update_cron
 
