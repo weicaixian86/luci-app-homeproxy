@@ -3899,8 +3899,8 @@ msgid "Upload..."
 msgstr "上传..."
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:169
-msgid "Uploaded %s. Select it in the list and click Switch & Apply."
-msgstr "上传成功：%s。请在列表中选择后点击“切换并应用”。"
+msgid "Uploaded %s. Choose it in the dropdown above, then click Switch & Apply."
+msgstr "上传成功：%s。请在上方下拉框中选择它，再点击“切换并应用”。"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:117
 msgid "Uploaded configuration files"

@@ -202,7 +202,7 @@ return view.extend({
 				return;
 			}
 			ui.uploadFile('/tmp/homeproxy_profile.tmp', fileInput).then(() => callUpload(name)).then((res) => {
-				notify(res.result ? _('Uploaded %s. Select it in the list and click Switch & Apply.').format(name) : _('Upload failed: %s').format(res.error || _('Unknown error')), res.result ? 'info' : 'danger');
+				notify(res.result ? _('Uploaded %s. Choose it in the dropdown above, then click Switch & Apply.').format(name) : _('Upload failed: %s').format(res.error || _('Unknown error')), res.result ? 'info' : 'danger');
 				if (res.result) window.setTimeout(() => window.location.reload(), 500);
 			}, () => notify(_('Upload failed: %s').format(_('Unknown error')), 'danger'));
 		});
