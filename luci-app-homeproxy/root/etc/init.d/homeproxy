@@ -90,9 +90,9 @@ ntp_kick() {
 			ntp_args="$ntp_args -p $s"
 		done
 		# shellcheck disable=SC2086
-		( ntpd -n -q $ntp_args 2>/dev/null ) &
+		( exec 1000>&- 2>/dev/null; ntpd -n -q $ntp_args 2>/dev/null ) &
 	else
-		( ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
+		( exec 1000>&- 2>/dev/null; ntpd -n -q -p time1.aliyun.com -p pool.ntp.org 2>/dev/null ) &
 	fi
 	return 0
 }
@@ -680,8 +680,9 @@ ensure_panel() {
 		return 0
 	fi
 
-	panel_log "面板缺失：已转入后台下载（不占启动锁，也不影响代理上网）。下完后刷新面板页即可；也可在「面板」设置里手动更新。"
+	panel_log "面板缺失：已转入后台下载（子 shell 已关闭 procd 锁 fd，不占启动锁，也不影响代理上网）。下完后刷新面板页即可；也可在「面板」设置里手动更新。"
 	(
+		exec 1000>&- 2>/dev/null
 		trap '' HUP
 		ensure_panel_worker
 	) >/dev/null 2>&1 &
@@ -899,6 +900,7 @@ sync_rulesets() {
 	fi
 
 	(
+		exec 1000>&- 2>/dev/null
 		trap '' HUP
 		/bin/sh "$ruleset_script" --budget 600 \
 			--source "服务启动（规则集缺失，后台下载）" \
@@ -987,7 +989,7 @@ firewall_teardown() {
 # 所以后台下载的进度天然可见，不需要另做一套接口。--start-after 让它
 # 下完后自己把服务拉起来，用户不必再点一次。
 start_core_download_in_background() {
-	local src="$1" launcher holder
+	local src="$1" launcher holder rc_file rc_mtime rc_age
 
 	launcher="$(dirname "$CORE_SCRIPT")/update_core_async.sh"
 	if [ ! -f "$launcher" ]; then
@@ -1003,11 +1005,40 @@ start_core_download_in_background() {
 		*) kill -0 "$holder" 2>/dev/null && return 0 ;;
 	esac
 
+	# 刚失败过就别再来一遍：内核是 26–34 MB，用户网络不通时每次「保存并应用」
+	# （= reload = start）都会重新拉一次，日志被刷满、流量白耗。
+	# 语义：rc 只在一次下载**结束时**写（update_core_async.sh 开头先 rm 掉），
+	# 所以「rc 存在 + 非 0」= 上一次确实失败退出，不是正在下载。
+	# 手动「更新内核」按钮不经过本函数（rpcd 直接 --detach 并自己清 rc），
+	# 因此这条退避挡不住用户主动重试。
+	rc_file="$RUN_DIR/core_update.rc"
+	if [ -f "$rc_file" ] && [ "$(cat "$rc_file" 2>/dev/null)" != "0" ]; then
+		rc_mtime="$(stat -c %Y "$rc_file" 2>/dev/null)"
+		case "$rc_mtime" in
+			''|*[!0-9]*) rc_mtime='' ;;
+		esac
+		if [ -n "$rc_mtime" ]; then
+			rc_age=$(( $(date +%s) - rc_mtime ))
+			if [ "$rc_age" -ge 0 ] && [ "$rc_age" -lt 600 ]; then
+				log "内核下载 $((rc_age / 60)) 分钟前刚失败（rc=$(cat "$rc_file" 2>/dev/null)），本次启动不重试；可在「服务状态」页手动更新内核。"
+				return 0
+			fi
+		fi
+	fi
+
 	/bin/sh "$launcher" --detach --source "$src" --start-after >/dev/null 2>&1
 	return 0
 }
 
 start_service() {
+	# ⚠️ 本函数是**在 procd 锁里**跑的（rc.common 的 start() 先 procd_lock 再调
+	# 它），那把锁的 fd 是 **1000**（/lib/functions/procd.sh 的 procd_lock）。
+	# fd 会被后台子进程继承，父进程退出后锁仍被它握着 → 之后所有 start / stop /
+	# reload 全卡在阻塞的 flock 上（最长十几分钟，表象是「点了没反应、日志一行
+	# 不写」）。更糟的是 update_core_async.sh 下完内核会回调 init.d start，那是
+	# 等自己继承的锁 → 自锁，服务永远起不来。
+	# 因此**本函数里每一处后台派生都必须先 `exec 1000>&-`**；新增派生点时照做，
+	# tools/tests/run.sh 有断言守着。未打开该 fd 时关闭不报错（设备实测 rc=0）。
 	# 上一次停止留的标记必须清掉，否则 core_health_check 会一直以为「正在停止」
 	# 而提前返回，兜底就永远不触发。
 	rm -f "$RUN_DIR/.stopping" 2>"/dev/null"
@@ -1119,7 +1150,7 @@ start_service() {
 
 	# 提前下载面板：本地预下载不依赖服务是否真正启动，放在「无节点/服务端未启用」
 	# 提前返回之前，避免半配置路由器永远下不到面板。后台执行以免拖慢服务启动。
-	( prefetch_panel ) &
+	( exec 1000>&- 2>/dev/null; prefetch_panel ) &
 
 	config_load "$CONF"
 
@@ -1461,13 +1492,13 @@ start_service() {
 	# Auto-install the dashboard panel after the core is up, the same way the
 	# kernel is fetched at start. Run detached so service start is not blocked
 	# while the core boots and the clash API becomes reachable.
-	( ensure_panel ) &
+	( exec 1000>&- 2>/dev/null; ensure_panel ) &
 
 	# 内核没起来就撤劫持，别让局域网失去 DNS（见 scripts/core_guard.sh）。
 	# 必须用 setsid 脱管：init 脚本退出时，`( … ) &` 起的子 shell 会被一起
 	# 杀掉，检查根本活不到 15 秒（0.2.9 实测）。
 	if [ "$outbound_node" != "nil" ] && [ -x "$HP_DIR/scripts/core_guard.sh" ]; then
-		( setsid /bin/sh "$HP_DIR/scripts/core_guard.sh" </dev/null >/dev/null 2>&1 & )
+		( exec 1000>&- 2>/dev/null; setsid /bin/sh "$HP_DIR/scripts/core_guard.sh" </dev/null >/dev/null 2>&1 & )
 	fi
 }
 

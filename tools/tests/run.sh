@@ -2909,6 +2909,34 @@ else
 	bad "there is no local core check, so start must guess or download"
 fi
 
+# ── 后台派生必须关掉 procd 锁的 fd（1000）────────────────────────────
+# init.d 的每个动作都在 procd 锁里跑，那把锁的 fd 是 1000（procd_lock 里 exec）。
+# fd 会被后台子进程继承：父进程退出后锁仍被握着，之后所有 start / stop / reload
+# 都卡在阻塞的 flock 上（最长十几分钟，表象是「点了没反应、日志一行不写」）。
+# 更糟的是 update_core_async.sh 下完内核会回调 init.d start，那是在等自己继承
+# 的那把锁 → 自锁，服务永远起不来（2026-10-30 设备实验证实继承成立）。
+# 所以每处 `… &` 派生都要先 `exec 1000>&-`，两边数量必须一一对上。
+spawns=$(grep -cE '(^|[^&])&[[:space:]]*\)?[[:space:]]*$' "$INIT")
+lock_closers=$(grep 'exec 1000>&-' "$INIT" | grep -vc '^[[:space:]]*#')
+if [ "$spawns" -gt 0 ] && [ "$spawns" -eq "$lock_closers" ] \
+   && grep -q '1000>&- 2>/dev/null; prefetch_panel' "$INIT" \
+   && grep -q '1000>&- 2>/dev/null; setsid' "$INIT"; then
+	ok "every background spawn in init.d closes the procd lock fd (1000) first"
+else
+	bad "a background child inherits the procd lock fd, so later start/reload block ($spawns spawns vs $lock_closers closers)"
+fi
+
+# 内核下载失败后 10 分钟内不再自动重试：用户网络不通时，每次「保存并应用」
+# 都等于一次 reload，会把 26–34 MB 重新拉一遍，日志被刷满、流量白耗。
+# 手动「更新内核」按钮不走这条路径（rpcd 直接 --detach），退避挡不住主动重试。
+if sed -n '/^start_core_download_in_background()/,/^}/p' "$INIT" | grep -q 'core_update.rc' \
+   && sed -n '/^start_core_download_in_background()/,/^}/p' "$INIT" | grep -q 'rc_age' \
+   && sed -n '/^start_core_download_in_background()/,/^}/p' "$INIT" | grep -q 'lt 600'; then
+	ok "a failed core download is not retried on every reload (10 minute backoff)"
+else
+	bad "every save-and-apply retries the 26 MB core download while the network is down"
+fi
+
 # check 必须是纯本地：分支里不许出现下载动作。
 if ! sed -n '/^\t\tcheck)/,/^\t\t\t;;/p' "$PKG/root/etc/homeproxy/scripts/update_core.sh" \
    | grep -qE 'download_file|curl|wget|ensure_core'; then
