@@ -54,7 +54,10 @@ return view.extend({
 			'class': 'cbi-input-text', 'type': 'text',
 			'style': 'min-width: 18em;'
 		});
-		const fileInput = E('input', { 'type': 'file', 'accept': '.conf,.uci,*/*' });
+		/* 不设 accept：UCI 配置本来就没有扩展名，一旦写了 *.conf;*.uci，Windows
+		   的「打开」对话框会变成「自定义文件」，那些无后缀的 homeproxy 备份直接
+		   看不见（就算再补一个通配项，浏览器也会把它折叠掉，放不了行）。 */
+		const fileInput = E('input', { 'type': 'file' });
 		const checkBox = E('div', { 'class': 'cbi-value-description' }, _('The UCI syntax is checked before switching; if it fails, the current profile is kept and the error is written to the log.'));
 		const currentText = E('div', { 'class': 'cbi-value-description' }, _('Current configuration file: %s').format(current));
 		const status = E('div', { 'class': 'cbi-value-description' }, _('Configuration directory: /etc/config/; the default profile cannot be uploaded; names must match homeproxy-*.'));

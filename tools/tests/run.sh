@@ -2720,6 +2720,16 @@ else
 	bad "the upload name field is still pre-filled with an example (or the naming rule is unstated)"
 fi
 
+# UCI 配置没有扩展名：文件选择器一旦设 accept，Windows 上「打开」对话框就只剩
+# 「自定义文件 (*.conf;*.uci)」，无后缀的 homeproxy 备份直接看不见（`*/*` 会被
+# 浏览器折叠掉，放不了行）。所以这里必须不设 accept。
+if ! grep -q "'accept'" "$PROFILE_VIEW" \
+   && grep -q "'type': 'file'" "$PROFILE_VIEW"; then
+	ok "the upload picker accepts every file (UCI configs have no extension)"
+else
+	bad "the upload picker filters by extension, so extension-less UCI configs are invisible"
+fi
+
 # 上传必须挡大小：真实的 UCI 配置几十 KB，不设上限时误选一个镜像/日志就会被
 # 写进 /etc/config（overlay 在 flash 上），写满之后连 uci commit 都会失败。
 if grep -q '1048576' "$PROFILE_SH" \
