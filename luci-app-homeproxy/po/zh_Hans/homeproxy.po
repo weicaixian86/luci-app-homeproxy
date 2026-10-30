@@ -3774,6 +3774,12 @@ msgstr "UUID"
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:131
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:205
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:210
+msgid "Select a file to upload first."
+msgstr "请先选择要上传的文件。"
+
+msgid "Unexpected response from the upload service."
+msgstr "上传服务返回了无法识别的内容。"
+
 msgid "Unknown error"
 msgstr "未知错误"
 

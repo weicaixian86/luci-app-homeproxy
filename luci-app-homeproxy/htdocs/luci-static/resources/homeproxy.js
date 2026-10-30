@@ -9,6 +9,7 @@
 'require form';
 'require fs';
 'require poll';
+'require request';
 'require rpc';
 'require uci';
 'require ui';
@@ -1728,6 +1729,42 @@ return baseclass.extend({
 			.then(() => saved);
 	},
 
+	/* 上传到 /tmp 的公共实现。
+	   **不要用 ui.uploadFile**（它的第二个参数是「进度显示节点」，不是文件名）：
+	   不是文件输入框。把一个 input 传进去不会报错，但函数发现「没有文件」就会
+	   弹出它自带的「正在上传文件…／请选择要上传的文件。」对话框，让用户再选
+	   一次，第一次选的文件被丢掉 —— 0.3.3 现场就是这样：点「上传文件」→ 选好
+	   文件 → 点打开 → 又弹一个选择框。这里直接 POST 到 cgi-upload，参数与
+	   LuCI 内部完全一致（sessionid / filename / filedata）。 */
+	uploadToTemp(path, file) {
+		if (!file)
+			return Promise.reject(new Error(_('Select a file to upload first.')));
+
+		const data = new FormData();
+
+		data.append('sessionid', rpc.getSessionID());
+		data.append('filename', path);
+		data.append('filedata', file);
+
+		return request.post(L.env.cgi_base + '/cgi-upload', data, { timeout: 0 }).then((res) => {
+			let reply = null;
+
+			try {
+				reply = res.json();
+			} catch (e) {
+				reply = null;
+			}
+
+			if (!L.isObject(reply))
+				throw new Error(_('Unexpected response from the upload service.'));
+
+			if (reply.failure)
+				throw new Error(reply.message || reply.failure);
+
+			return reply;
+		});
+	},
+
 	uploadCertificate(_option, type, filename, ev) {
 		const callWriteCertificate = rpc.declare({
 			object: 'luci.homeproxy',
@@ -1736,15 +1773,18 @@ return baseclass.extend({
 			expect: { '': {} }
 		});
 
-		return ui.uploadFile('/tmp/homeproxy_certificate.tmp', ev.target)
-		.then(L.bind((_btn, res) => {
+		return this.uploadToTemp('/tmp/homeproxy_certificate.tmp', ev.target.files && ev.target.files[0])
+		.then((res) => {
 			return L.resolveDefault(callWriteCertificate(filename), {}).then((ret) => {
 				if (ret.result === true)
 					ui.addNotification(null, E('p', _('Your %s was successfully uploaded. Size: %sB.').format(type, res.size)));
 				else
 					ui.addNotification(null, E('p', _('Failed to upload %s, error: %s.').format(type, ret.error)));
+
+				if (ev.target && 'value' in ev.target)
+					ev.target.value = '';
 			});
-		}, this, ev.target))
+		})
 		.catch((e) => { ui.addNotification(null, E('p', e.message)) });
 	},
 
@@ -1774,15 +1814,18 @@ return baseclass.extend({
 			}
 		};
 
-		return ui.uploadFile('/tmp/homeproxy_panel.tmp', ev.target)
-		.then(L.bind((_btn, res) => {
+		return this.uploadToTemp('/tmp/homeproxy_panel.tmp', ev.target.files && ev.target.files[0])
+		.then((res) => {
 			return L.resolveDefault(callInstallPanel(), {}).then((ret) => {
 				if (ret.result === true)
 					ui.addNotification(null, E('p', _('Your %s was successfully uploaded. Size: %sB.').format(_('panel ZIP package'), res.size)), 'info');
 				else
 					ui.addNotification(null, E('p', _('Failed to upload %s, error: %s.').format(_('panel ZIP package'), normalizeMessage(ret.error))), 'danger');
+
+				if (ev.target && 'value' in ev.target)
+					ev.target.value = '';
 			});
-		}, this, ev.target))
+		})
 		.catch((e) => { ui.addNotification(null, E('p', e.message || e), 'danger') });
 	},
 

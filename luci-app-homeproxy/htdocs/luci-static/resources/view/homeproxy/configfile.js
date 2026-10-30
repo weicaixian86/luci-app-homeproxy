@@ -1,5 +1,6 @@
 'use strict';
 'require baseclass';
+'require homeproxy as hp';
 'require rpc';
 'require ui';
 'require view';
@@ -70,12 +71,15 @@ return view.extend({
 		const uploadFile = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Upload file'));
 		const refresh = E('button', { 'class': 'cbi-button cbi-button-action' }, _('Refresh list'));
 
-		const uploadProfile = (name) => ui.uploadFile('/tmp/homeproxy_profile.tmp', fileInput).then(() => callUpload(name)).then((res) => {
+		/* 上传到 /tmp 用 hp.uploadToTemp，**不要**用 ui.uploadFile：后者的第二个参数
+		   是「进度显示节点」，不是文件输入框，传 input 进去会弹出它自带的
+		   「请选择要上传的文件」对话框、逼用户再选一次（0.3.3 现场就是这个 bug）。 */
+		const uploadProfile = (name) => hp.uploadToTemp('/tmp/homeproxy_profile.tmp', fileInput.files && fileInput.files[0]).then(() => callUpload(name)).then((res) => {
 			notify(res.result ? _('Uploaded %s. Choose it in the dropdown above, then click Switch & Apply.').format(name) : _('Upload failed: %s').format(res.error || _('Unknown error')), res.result ? 'info' : 'danger');
 			fileInput.value = '';
 			if (res.result) window.setTimeout(() => window.location.reload(), 500);
-		}, () => {
-			notify(_('Upload failed: %s').format(_('Unknown error')), 'danger');
+		}, (err) => {
+			notify(_('Upload failed: %s').format(err && err.message ? err.message : _('Unknown error')), 'danger');
 			fileInput.value = '';
 		});
 

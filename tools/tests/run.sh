@@ -2711,10 +2711,23 @@ fi
 
 if grep -q 'homeproxy/configfile' "$PROFILE_MENU" \
    && grep -q '切换并应用' "$PROFILE_VIEW" \
-   && grep -q 'ui.uploadFile' "$PROFILE_VIEW"; then
+   && grep -q 'uploadToTemp' "$PROFILE_VIEW"; then
 	ok "the configuration-file tab exists between Server Settings and Service Status, with its own switch button"
 else
 	bad "the configuration-file tab or its explicit switch/apply button is missing"
+fi
+
+# ── 上传不许用 ui.uploadFile(path, node) ───────────────────────────────
+# 它的第二个参数是「进度显示节点」，不是文件输入框。传一个 input 进去不会报错，
+# 但函数发现「没有文件」就弹出自带的「请选择要上传的文件」对话框，逼用户再选
+# 一次，第一次选的文件被丢掉（0.3.3 现场：点上传文件 → 选好 → 点打开 → 又弹框）。
+# 三处上传（配置文件 / 证书 / 面板 ZIP）统一走 hp.uploadToTemp → cgi-upload。
+if ! grep -rq 'ui.uploadFile(' "$PKG/htdocs/luci-static/resources" \
+   && grep -q 'cgi-upload' "$PKG/htdocs/luci-static/resources/homeproxy.js" \
+   && [ "$(grep -c 'this\.uploadToTemp(\|hp\.uploadToTemp(' "$PKG/htdocs/luci-static/resources/homeproxy.js" "$PROFILE_VIEW" 2>/dev/null | awk -F: '{s+=$2} END {print s}')" -ge 3 ]; then
+	ok "all uploads POST to cgi-upload themselves instead of opening a second file dialog"
+else
+	bad "an upload still calls ui.uploadFile, which pops its own 'select the file' dialog and drops the chosen file"
 fi
 
 # 普通 LuCI 保存必须写回当前选中的配置文件，否则切过去的配置会被悄悄丢掉。
