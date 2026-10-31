@@ -55,7 +55,15 @@ const callPackageVersion = rpc.declare({
 const callUpdatePanel = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'clash_api_update_panel',
-	params: ['only_if_missing', 'attempt', 'total'],
+	params: ['only_if_missing', 'attempt', 'total', 'background', 'skip_fetch'],
+	expect: { '': {} }
+});
+
+/* 面板本地下载（fetch_panel.sh）的后台进度。clash_api_update_panel 现在默认
+   只启动（background=true 立即返回 started），结果靠这个轮询。 */
+const callPanelFetchPoll = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'panel_fetch_poll',
 	expect: { '': {} }
 });
 
@@ -82,6 +90,15 @@ const callRulesetUpdate = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'ruleset_update',
 	params: ['section'],
+	expect: { '': {} }
+});
+
+/* 上面那个后台任务的进度。ruleset_update 现在只负责启动（立即返回），
+   真正的结果靠这个轮询：running=false 时 rc 就是 fetch_rulesets.sh 的
+   退出码。不能同步等 —— 那会阻塞整个 rpcd，见 client.js 里按钮处的注释。 */
+const callRulesetUpdatePoll = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'ruleset_update_poll',
 	expect: { '': {} }
 });
 
@@ -343,25 +360,73 @@ function getClashApiInfo() {
 	};
 }
 
-function updateDashboard() {
-	return callUpdatePanel(false, 1, 1).then((res) => {
-		if (!res?.result) {
-			let message = res?.error;
-			if (message === 'update_panel_failed')
-				message = _('Update panel failed.');
-			else if (message === 'clash_api_unavailable')
-				message = _('Clash API unavailable.');
-			else if (message === 'panel_backup_failed')
-				message = _('Backup panel failed.');
-			else if (message === 'panel_restore_failed')
-				message = _('Restore panel failed.');
+/* rpcd 那几个 error 码到用户可读文案的唯一映射。updateDashboard 与
+   ensurePanelInstalled 都要用，抽出来避免两处各写一份（新增一个 error 码时
+   一定会漏掉其中一处）。 */
+function panelErrorText(res) {
+	const message = res?.error;
 
-			throw new Error(message || _('Update failed.'));
+	if (message === 'update_panel_failed') return _('Update panel failed.');
+	if (message === 'clash_api_unavailable') return _('Clash API unavailable.');
+	if (message === 'panel_backup_failed') return _('Backup panel failed.');
+	if (message === 'panel_restore_failed') return _('Restore panel failed.');
+
+	return message || '';
+}
+
+function updateDashboard() {
+	/* 面板下载的预算是 900 秒（fetch_panel.sh），同步等它会把整个 rpcd 堵死
+	   —— uci 也在同一个进程里，下载期间连「运行日志」页都渲染不出来。
+	   所以：① 先 background=true 启动本地多镜像下载，立即返回 started；
+	   ② 轮询 panel_fetch_poll，rc 非 0（本地镜像全挂）时**才**回落到 Clash API
+	      那条同步路径（background=false + skip_fetch=true，跳过已经失败过的
+	      本地那条，避免把 900 秒镜像链再等一遍）。 */
+	const POLL_MS = 1500;
+	const DEADLINE_MS = 950000; /* 900 秒预算 + 50 秒余量 */
+	const started_at = Date.now();
+
+	const fail = function(message) {
+		ui.addNotification(null, E('p', message || _('Update failed.')), 'danger');
+	};
+
+	const toClashApi = function() {
+		return callUpdatePanel(false, 1, 1, false, true).then((res) => {
+			if (!res?.result)
+				throw new Error(panelErrorText(res) || _('Update failed.'));
+
+			ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
+		}).catch((err) => fail(err.message || err));
+	};
+
+	const poll = function() {
+		if (Date.now() - started_at > DEADLINE_MS) {
+			fail(_('Timed out waiting for the update. Please check the log.'));
+			return Promise.resolve();
 		}
+
+		return L.resolveDefault(callPanelFetchPoll(), {}).then((ps) => {
+			if (!ps || ps.running !== false)
+				return new Promise((r) => setTimeout(r, POLL_MS)).then(poll);
+
+			if (ps.rc === 0) {
+				ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
+				return;
+			}
+
+			ui.addNotification(null, E('p', _('Local download failed, asking the core to fetch the panel...')), 'warning');
+			return toClashApi();
+		}).catch(() => toClashApi());
+	};
+
+	return callUpdatePanel(false, 1, 1, true, false).then((res) => {
+		if (res?.started === true)
+			return poll();
+
+		if (!res?.result)
+			throw new Error(panelErrorText(res) || _('Update failed.'));
+
 		ui.addNotification(null, E('p', _('Successfully updated.')), 'info');
-	}).catch((err) => {
-		ui.addNotification(null, E('p', err.message || err), 'danger');
-	});
+	}).catch((err) => fail(err.message || err));
 }
 
 function ensurePanelInstalled() {
@@ -369,13 +434,12 @@ function ensurePanelInstalled() {
 		if (res?.result)
 			return res;
 
-		/* Single backend request already enforces a 120s timeout
-		   (clashAPIRequest(..., 120)): each panel download that exceeds
-		   120s is reported back as 'clash_api_unavailable'. On a download
-		   timeout or a download failure, retry the download. The 2s gap
-		   lets the homeproxy service finish restarting after 'Save & Apply'
-		   before the next attempt. tryUpdate(3) = 3 download attempts in
-		   total (1 initial + 2 retries). */
+		/* 后端现在默认 background=true：一次调用就启动一个自带 900 秒预算的
+		   后台下载（fetch_panel.sh 的镜像链），不会再像以前那样 120 秒就放弃。
+		   所以这里的「3 次重试」只是启动失败（rpcd 报错）时的兜底，
+		   started 一律走上面的 return res，不会重复启动第二次下载。
+		   The 2s gap lets the homeproxy service finish restarting after
+		   'Save & Apply' before the next attempt. */
 		if ((res?.error === 'clash_api_unavailable' || res?.error === 'update_panel_failed') && remaining > 1)
 			return new Promise((resolve) => setTimeout(resolve, 2000))
 				.then(() => tryUpdate(remaining - 1));
@@ -385,7 +449,9 @@ function ensurePanelInstalled() {
 
 	return tryUpdate(3).then((res) => {
 		if (res?.result) {
-			if (!res.skipped)
+			/* started = 后台刚启动、还没下完，此时报「已下载」是假话。
+			   真正结果由状态卡（clash_api_panel_status）在下一次轮询时反映。 */
+			if (!res.skipped && !res.started)
 				ui.addNotification(null, E('p', _('Panel downloaded.')), 'info');
 			return res;
 		}
@@ -3234,27 +3300,67 @@ return view.extend({
 					}, [ _('Update now') ]);
 
 					btn.addEventListener('click', function() {
-						this.disabled = true;
-						this.textContent = _('Updating...');
+						const btnEl = this;
+						const sid = btnEl.getAttribute('data-sid');
 
-						L.resolveDefault(callRulesetUpdate(this.getAttribute('data-sid')), {})
+						/* 后台任务：rpcd 的 ruleset_update 只负责启动，立即返回
+						   {started:true}；真正的结果靠 ruleset_update_poll 轮询。
+						   为什么不直接等一个同步返回值：那个 system() 会阻塞
+						   整个 rpcd（uci 也同进程），下载期间任何页面都渲染不
+						   出来 —— 用户点完「立即更新」再切「运行日志」会看到
+						   一整片空白，最长 90 秒。实测见 luci.homeproxy 里
+						   ruleset_update 的注释。
+						   1.2 秒一轮、最多 130 秒（脚本预算 90 + 换镜像与解压余量）。 */
+						const POLL_MS = 1200;
+						const DEADLINE_MS = 130000;
+						const started_at = Date.now();
+
+						const finish = function(okay, detail) {
+							btnEl.disabled = false;
+							btnEl.textContent = _('Update now');
+
+							if (okay === true)
+								ui.addNotification(null, E('p', _('Rule set updated successfully.')), 'info');
+							else if (okay === false)
+								ui.addNotification(null, E('p', _('Failed to update rule set: %s')
+									.format(detail || _('unknown error'))), 'error');
+							else
+								/* 超时不等于失败：可能仍在下载慢镜像。日志里有进度，
+								   所以让用户去看日志而不是直接报错。 */
+								ui.addNotification(null, E('p', _('Timed out waiting for the update. Please check the log.')), 'warning');
+
+							if (rulesetTableEl)
+								refreshRulesetStatus(rulesetTableEl);
+						};
+
+						const poll = function() {
+							if (Date.now() - started_at > DEADLINE_MS)
+								return finish(null, null);
+
+							return L.resolveDefault(callRulesetUpdatePoll(), {})
+								.then((ps) => {
+									if (ps && ps.running === false)
+										return finish(ps.rc === 0,
+											(ps.rc === 0) ? null : _('exit code %s').format(ps.rc));
+
+									return new Promise((r) => setTimeout(r, POLL_MS)).then(poll);
+								})
+								.catch(() => finish(null, null));
+						};
+
+						btnEl.disabled = true;
+						btnEl.textContent = _('Updating...');
+
+						L.resolveDefault(callRulesetUpdate(sid), {})
 							.then((ret) => {
-								this.disabled = false;
-								this.textContent = _('Update now');
+								if (ret && ret.started === true)
+									return poll();
 
-								if (ret && ret.result === true)
-									ui.addNotification(null, E('p', _('Rule set updated successfully.')), 'info');
-								else
-									ui.addNotification(null, E('p', _('Failed to update rule set: %s')
-										.format((ret && ret.error) || _('unknown error'))), 'error');
-
-								if (rulesetTableEl)
-									refreshRulesetStatus(rulesetTableEl);
+								/* 参数校验类错误（段不存在、不是远程段）当场就回来，
+								   不需要轮询。 */
+								return finish(false, (ret && ret.error) || _('unknown error'));
 							})
-							.catch(() => {
-								this.disabled = false;
-								this.textContent = _('Update now');
-							});
+							.catch(() => finish(false, _('unknown error')));
 					});
 
 					return btn;

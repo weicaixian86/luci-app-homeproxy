@@ -3849,6 +3849,15 @@ msgstr "从订阅更新节点"
 msgid "Update now"
 msgstr "立即更新"
 
+msgid "Timed out waiting for the update. Please check the log."
+msgstr "等待更新超时，请查看运行日志。"
+
+msgid "exit code %s"
+msgstr "退出码 %s"
+
+msgid "Local download failed, asking the core to fetch the panel..."
+msgstr "本地下载失败，改由内核下载面板……"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:350
 msgid "Update panel failed."
 msgstr "更新面板失败"

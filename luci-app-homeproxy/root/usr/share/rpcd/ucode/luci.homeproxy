@@ -1144,7 +1144,7 @@ const methods = {
 	},
 
 	clash_api_update_panel: {
-		args: { only_if_missing: true, attempt: 1, total: 1 },
+		args: { only_if_missing: true, attempt: 1, total: 1, background: true, skip_fetch: false },
 		call: function(request) {
 			const uci = cursor();
 			uci.load('homeproxy');
@@ -1179,8 +1179,38 @@ const methods = {
 			 * Running it before preparePanelBackup() keeps the two backup schemes
 			 * from colliding: the script uses the same `<panel_dir>.backup` name. */
 			const fetcher = `${HP_DIR}/scripts/fetch_panel.sh`;
-			if (system(`test -x ${shellquote(fetcher)}`) === 0) {
-				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900 --source ${shellquote('LuCI「更新面板」按钮')}`) === 0) {
+			/* 用户点「更新面板」= 真的要重新下一份；而「保存并应用」之后的
+			   自动补齐（only_if_missing=true）只在缺文件时才下。
+			   少了这个区分，「更新面板」在面板已存在时是**空操作**：脚本
+			   fetch_panel.sh:210 看到 index.html 在就直接退出（rc=0），
+			   rpcd 一路回报成功，界面弹「成功更新」，而文件一个字节都没变
+			   （2026-10-31 实测：index.html 的 mtime 停在 10-29）。 */
+			const force_flag = (request?.args?.only_if_missing === true) ? '' : ' --force';
+
+			/* skip_fetch：本地那条路刚刚已经跑过并失败了，调用方（前端的
+			   兜底重试）明确要求直接走 Clash API，不要重复等一遍镜像链。 */
+			if (request?.args?.skip_fetch !== true && system(`test -x ${shellquote(fetcher)}`) === 0) {
+				/* background 默认 true：这个脚本自带 900 秒预算，同步等它会
+				   把整个 rpcd 堵死（uci 也同进程），期间任何页面——包括
+				   「运行日志」——都是白屏。和 ruleset_update 同一个坑：
+				   实测 ruleset_update 同步跑 10 秒时 uci get 排队 9.17 秒。
+				   这里后台启动 + 退出码落盘，前端轮询 panel_fetch_poll。
+				   只有 skip 不掉的旧调用方才传 background:false 走同步。 */
+				if (request?.args?.background !== false) {
+					const rc_file = `${RUN_DIR}/panel_fetch.rc`;
+
+					unlink(rc_file);
+					system(sprintf(
+						'{ /bin/sh %s --budget 900%s --source %s; printf "%%s" "$?" > %s; } </dev/null >/dev/null 2>&1 &',
+						shellquote(fetcher),
+						force_flag,
+						shellquote('LuCI「更新面板」按钮'),
+						shellquote(rc_file)));
+
+					return { result: true, started: true };
+				}
+
+				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900${force_flag} --source ${shellquote('LuCI「更新面板」按钮')}`) === 0) {
 					const installed = stat(`${panel_dir}/index.html`);
 					if (installed && installed.type === 'file') {
 						panelLog(sprintf('下载成功（第 %d 次尝试，本地预下载）', attempt));
@@ -2301,8 +2331,23 @@ const methods = {
 		}
 	},
 
-	/* 立即更新单个远程规则集（建议9）：同步执行 fetch_rulesets.sh
-	   --force --only <section>，rc === 0 即成功。单条 90 秒预算。 */
+	/* 立即更新单个远程规则集（建议9）：**后台**执行 fetch_rulesets.sh
+	   --force --only <section>，退出码落盘，前端轮询 ruleset_update_poll。
+	   单条 90 秒预算。
+
+	   ⚠️ 绝不能在这里同步 system()。ucode 的 system() 会阻塞整个 rpcd
+	   进程，而 uci 对象也活在同一个进程里 —— 于是下载期间**任何页面的
+	   render 都排在它后面**（LuCI 的 form.Map 第一件事就是 uci.load）。
+	   实测（0.3.9，237 现场）：点「立即更新」后切「运行日志」，日志页
+	   整片空白 10.3 秒（innerText 长度 0），而对照组只要 311ms；同一时刻
+	   直接 ubus 调用也复现：ruleset_update 跑 10 秒期间
+	   `ubus call uci get` 排队 9.17 秒，procd 的 service list 仍 0.00 秒
+	   （不同进程，所以不是网络或 ubus 本身的问题）。预算 90 秒，最坏
+	   情况就是白屏 90 秒。
+
+	   为什么不用脚本自带的 --detach：它在 fork 后立即 exit 0，真实退出码
+	   留在孙进程里，没有任何人接收 —— 于是「下载失败」与「下载成功」在
+	   rpcd 这一侧完全一样，前端无法给出结论。这里自己 fork 并把 $? 落盘。 */
 	ruleset_update: {
 		args: { section: 'string' },
 		call: function(req) {
@@ -2325,9 +2370,66 @@ const methods = {
 			if (stype !== 'remote')
 				return { result: false, error: 'not a remote rule set' };
 
-			const rc = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/fetch_rulesets.sh')} --force --only ${shellquote(section)} --quiet --budget 90 --source ${shellquote('规则集页面「立即更新」')}`);
+			const rc_file = `${RUN_DIR}/ruleset_update.rc`;
 
-			return { result: rc === 0, rc: rc };
+			/* 旧的 rc 必须先删：前端把「文件不存在」当成「还在跑」，
+			   留着上一轮的结果会让新任务一启动就被判成「已完成」。 */
+			unlink(rc_file);
+
+			/* `{ ...; } &` 让外层 shell 立即退出，system() 随即返回 ——
+			   这就是「不阻塞」的全部要点。
+			   `</dev/null >/dev/null 2>&1` 不能省：不重定向的话子进程会
+			   继承 rpcd 的 ubus socket 与 stdio，rpcd 会一直等在这些 fd
+			   上（项目里 init.d 的 procd 锁被继承是同一个坑的另一种表现）。 */
+			system(sprintf(
+				'{ /bin/sh %s --force --only %s --quiet --budget 90 --source %s; printf "%%s" "$?" > %s; } </dev/null >/dev/null 2>&1 &',
+				shellquote(HP_DIR + '/scripts/fetch_rulesets.sh'),
+				shellquote(section),
+				shellquote('规则集页面「立即更新」'),
+				shellquote(rc_file)));
+
+			return { result: true, started: true };
+		}
+	},
+
+	/* ruleset_update 启动的后台任务状态。
+	   rc 文件不存在 = 还在跑（启动时已 unlink）；存在且是纯数字 = 已结束。
+	   数字校验不能省：文件可能在写入过程中被读到（printf 单次写入通常原子，
+	   但不值得赌），非数字一律按「还在跑」处理，由前端超时兜底。 */
+	ruleset_update_poll: {
+		call: function() {
+			const rc_file = `${RUN_DIR}/ruleset_update.rc`;
+			const st = stat(rc_file);
+
+			if (!st || st.type !== 'file')
+				return { running: true };
+
+			const raw = trim(readfile(rc_file) || '');
+
+			if (!length(raw) || !match(raw, /^[0-9]+$/))
+				return { running: true };
+
+			return { running: false, rc: +raw };
+		}
+	},
+
+	/* clash_api_update_panel 那条后台本地下载（fetch_panel.sh）的状态。
+	   与 ruleset_update_poll 同一套约定，理由也一样：rc 文件不存在 = 还在跑
+	   （启动时已 unlink），非纯数字一律按「还在跑」处理，由前端超时兜底。 */
+	panel_fetch_poll: {
+		call: function() {
+			const rc_file = `${RUN_DIR}/panel_fetch.rc`;
+			const st = stat(rc_file);
+
+			if (!st || st.type !== 'file')
+				return { running: true };
+
+			const raw = trim(readfile(rc_file) || '');
+
+			if (!length(raw) || !match(raw, /^[0-9]+$/))
+				return { running: true };
+
+			return { running: false, rc: +raw };
 		}
 	},
 

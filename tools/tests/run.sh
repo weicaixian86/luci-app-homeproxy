@@ -1710,6 +1710,105 @@ else
 	ok "rpcd ruleset_sync drops --quiet (every step reaches logread)"
 fi
 
+# ------------------------------------------------ 「立即更新」不得同步阻塞 rpcd
+# 2026-10-31 现场：点规则集页的「立即更新」，再切顶部「运行日志」，页面整片
+# 空白十来秒。根因不是日志 —— 是 ruleset_update 用 ucode 的 system() **同步**
+# 跑 fetch_rulesets.sh（预算 90 秒），而 system() 阻塞整个 rpcd 进程，uci 对象
+# 也在同一个进程里；日志页 render() 第一句 form.Map 就是 uci.load()，于是整页
+# 排在下载后面。实测：ruleset_update 跑 10 秒期间 `ubus call uci get` 排队
+# 9.17 秒，而 procd 的 service list 仍 0.00 秒（不同进程，排除网络因素）；
+# 浏览器侧对照组 311ms 渲染、实验组 10321ms 且前 10 秒 innerText 长度为 0。
+#
+# 判据三条，缺一条就会退化成「界面卡死但没人发现」：
+#   ① 后台派生（命令行以 `2>&1 &` 结尾，且 stdio 全部重定向）—— 少了它
+#      system() 会一直等到下载结束；
+#   ② 退出码落盘（ruleset_update.rc）+ ruleset_update_poll —— 少了它前端
+#      无从知道成功还是失败，只能靠 mtime 猜；
+#   ③ 前端真的在轮询（callRulesetUpdatePoll）—— 少了它按钮会永远停在
+#      「更新中…」。
+section "ruleset update must not block rpcd"
+
+ru_body="$(sed -n '/^\truleset_update: {/,/^\truleset_update_poll: {/p' "$RPCD")"
+
+if printf '%s' "$ru_body" | grep -q '2>&1 &'; then
+	ok "rpcd ruleset_update forks the download instead of waiting for it"
+else
+	bad "rpcd ruleset_update runs fetch_rulesets.sh synchronously (blocks rpcd; every page, the log page included, freezes for up to the 90s budget)"
+fi
+
+if printf '%s' "$ru_body" | grep -q 'ruleset_update.rc'; then
+	ok "rpcd ruleset_update records the download exit code for the frontend"
+else
+	bad "rpcd ruleset_update does not persist the exit code (the frontend cannot tell success from failure)"
+fi
+
+if printf '%s' "$ru_body" | grep -q 'started: true'; then
+	ok "rpcd ruleset_update answers with started, not with a download result"
+else
+	bad "rpcd ruleset_update still claims to return the download result (it can only start a background job now)"
+fi
+
+if grep -q 'ruleset_update_poll' "$RPCD" && grep -q 'callRulesetUpdatePoll' "$CJS"; then
+	ok "the frontend polls ruleset_update_poll for the real outcome"
+else
+	bad "the frontend never polls ruleset_update_poll (the Update now button would stay disabled forever)"
+fi
+
+if grep -q 'POLL_MS' "$CJS"; then
+	ok "the frontend re-checks the background job on a timer, with a deadline"
+else
+	bad "the frontend has no polling interval / deadline for the background update"
+fi
+
+# --------------------------------------------------- 「更新面板」不得同步阻塞 rpcd
+# 同一个坑的第二处：clash_api_update_panel 里的 fetch_panel.sh 预算是 **900 秒**，
+# 同步 system() 会把 rpcd 堵上 15 分钟（比规则集那条更久）。判据与上面同构：
+# 后台派生 + 退出码落盘 + 前端轮询；另外 args 必须声明 background/skip_fetch，
+# 否则 rpcd 不会把这两个参数交给 call()，前端传了也白传。
+section "panel update must not block rpcd"
+
+pan_body="$(sed -n '/^\tclash_api_update_panel: {/,/^\tclash_api_install_panel: {/p' "$RPCD")"
+
+if printf '%s' "$pan_body" | grep -q '2>&1 &'; then
+	ok "rpcd clash_api_update_panel forks fetch_panel.sh instead of waiting for it"
+else
+	bad "rpcd clash_api_update_panel runs fetch_panel.sh synchronously (900s budget; rpcd, and every page behind it, freezes)"
+fi
+
+if printf '%s' "$pan_body" | grep -q 'background'; then
+	ok "rpcd clash_api_update_panel takes a background flag (sync path kept for the skip_fetch fallback)"
+else
+	bad "rpcd clash_api_update_panel has no background flag"
+fi
+
+if printf '%s' "$pan_body" | grep -q 'skip_fetch'; then
+	ok "rpcd clash_api_update_panel can skip the local fetch when falling back to the Clash API"
+else
+	bad "rpcd clash_api_update_panel would re-run the 900s local mirror chain before the Clash API fallback"
+fi
+
+if printf '%s' "$pan_body" | grep -q 'panel_fetch.rc'; then
+	ok "rpcd clash_api_update_panel records the fetch exit code for the frontend"
+else
+	bad "rpcd clash_api_update_panel does not persist the exit code (no way to tell success from failure)"
+fi
+
+if grep -q 'panel_fetch_poll' "$RPCD" && grep -q 'callPanelFetchPoll' "$CJS"; then
+	ok "the frontend polls panel_fetch_poll for the real outcome"
+else
+	bad "the frontend never polls panel_fetch_poll (Update panel would report success the moment it starts)"
+fi
+
+# 「更新面板」必须真的重下。fetch_panel.sh:210 在 index.html 存在且没带
+# --force 时直接跳过（rc=0），于是按钮变成空操作却照报成功 —— 2026-10-31
+# 实测 index.html 的 mtime 停在 10-29 就是这么来的。自动补齐（only_if_missing）
+# 才应该保持「有就跳过」。
+if printf '%s' "$pan_body" | grep -qF "only_if_missing === true) ? '' : ' --force'"; then
+	ok "Update panel forces a re-download while the save&apply top-up stays skip-if-present"
+else
+	bad "Update panel never passes --force to fetch_panel.sh (with the panel already installed it is a no-op that still reports success)"
+fi
+
 # 审计行两处都要写：syslog（logread / 系统级排查）+ ruleset_download.log
 # （日志页读的就是它）。0.2.2 把原来裸的 `logger -t homeproxy ruleset_sync`
 # 换成了 rulesetLog()，所以这里判据也跟着改为「rulesetLog 的实现里同时有
