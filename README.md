@@ -78,6 +78,27 @@ rm -rf /tmp/luci-modulecache/*
 - `Update-Geodata.yml`：每周自动/手动更新内置 geodata。
 - `lint.yml`：每次推送跑一次静态检查（秒级，不依赖 SDK），只报状态、不阻塞发布。
 
+### 提交前自检
+
+```sh
+sh tools/tests/run.sh
+```
+
+覆盖：JS/shell 语法、JSON、工作流 YAML、ucode 近似解析、`po` 与 JS 文案一致性、
+`Makefile` 的 `conffiles` 是否真实存在、策略组表格置顶/拖拽的 DOM 行为、界面轮询去重、
+启动路径与 procd 锁相关的行为判据。
+
+Windows（Git Bash）下若 `python3` 不可用：`PY=python sh tools/tests/run.sh`；
+缺少 `jsdom` 时 DOM 测试自动 `SKIP`（`npm install --no-save jsdom` 可启用），
+缺少 `polib`/`PyYAML` 时对应两项同样降级为 `SKIP`——**通过项数会减少但仍报 ALL PASSED，交付前须核对项数**。
+
+CI 的 `/bin/sh` 是 dash，本地是 bash。涉及 shell 的改动必须再用 dash 跑一遍，否则会出现「本地全绿、CI 大批红」：
+
+```sh
+mkdir -p /tmp/dashshim && ln -s /usr/bin/dash /tmp/dashshim/sh
+PATH=/tmp/dashshim:$PATH sh tools/tests/run.sh
+```
+
 ## 四、常见问题
 1. **面板下载失败**
    - 面板设置 → UI 下载地址，下拉选 UI 后点「更新面板」手动触发；
