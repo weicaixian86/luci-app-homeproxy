@@ -666,19 +666,43 @@ for gen in generate_client.uc generate_server.uc; do
 	fi
 done
 
-# 内核日志级别的默认值有四处来源，必须一致，否则会出现「页面显示警告、内核其实按
-# info 写」或反之：两个生成器（uci 为空时的 || 值）、迁移脚本（首装往 uci 里写的值）、
-# logview.js（下拉的兜底）。info 级别把**每条连接**都写进 /var/run（tmpfs）里的内核
-# 日志，实测 30 秒 122 行、约 350 KB/天，小内存设备会被吃掉可观 RAM，所以默认 warn。
+# 内核日志级别的默认值有**五处**来源，必须一致，否则会出现「页面显示警告、内核其实
+# 按 info 写」或反之：两个生成器（uci 为空时的 || 值）、迁移脚本（空值时的默认值 +
+# 旧默认 info 的一次性改写）、logview.js（下拉的兜底）、**包内模板
+# root/etc/config/homeproxy**（首装时 uci-defaults 直接把它拷进 /etc/config）。
+# info 级别把**每条连接**都写进 /var/run（tmpfs）里的内核日志，实测 30 秒 122 行、
+# 约 350 KB/天，小内存设备会被吃掉可观 RAM，所以默认 warn。
+#
+# 模板这一条是 2026-10-31 补上的：e23fc05 只改了另外四处，模板两处仍是 info，
+# 而首装时模板先落地、让 migrate_config 的 isEmpty 判定不成立 —— 结果新装设备
+# 照样按 info 跑，页面显示「信息」（用户现场反馈）。断言缺一条就等于漏改一处。
 lvl_bad=''
 grep -q "log_level') || 'warn'" "$PKG/root/etc/homeproxy/scripts/generate_client.uc" || lvl_bad="$lvl_bad client-default"
 grep -q "log_level') || 'warn'" "$PKG/root/etc/homeproxy/scripts/generate_server.uc" || lvl_bad="$lvl_bad server-default"
 grep -q ": 'warn'" "$PKG/htdocs/luci-static/resources/homeproxy/logview.js" || lvl_bad="$lvl_bad ui-clamp"
-[ "$(grep -c "'log_level', 'warn'" "$PKG/root/etc/homeproxy/scripts/migrate_config.uc")" = "2" ] || lvl_bad="$lvl_bad migrate-default"
+# 迁移脚本里 'warn' 一共出现 4 次：isEmpty 分支 ×2 + 旧默认 info 的一次性改写 ×2。
+[ "$(grep -c "'log_level', 'warn'" "$PKG/root/etc/homeproxy/scripts/migrate_config.uc")" = "4" ] || lvl_bad="$lvl_bad migrate-default"
+# 一次性迁移必须带留痕字段，否则每次升级都会把用户自己选的 info 改回去。
+grep -q "log_level_seeded" "$PKG/root/etc/homeproxy/scripts/migrate_config.uc" || lvl_bad="$lvl_bad migrate-no-seed-flag"
 if [ -z "$lvl_bad" ]; then
 	ok "the core log level defaults to warn in every source (info writes every connection to tmpfs)"
 else
 	bad "the core log level default disagrees across sources:$lvl_bad (the page and the core would not match)"
+fi
+
+# 包内模板单独一条：它是首装时**最先**落地的来源，uci-defaults 把模板拷进
+# /etc/config 之后 migrate_config 的 isEmpty 就不成立了 —— 模板写了 info，后面
+# 所有 warn 默认值全部失效（2026-10-31 用户现场反馈，e23fc05 漏改的就是这里）。
+# 两处都必须是 warn，且一处 info 都不许留。
+tpl_bad=''
+[ "$(grep -c "option log_level 'warn'" "$PKG/root/etc/config/homeproxy")" = "2" ] || tpl_bad="warn-count"
+if grep -q "option log_level 'info'" "$PKG/root/etc/config/homeproxy"; then
+	tpl_bad="$tpl_bad leftover-info"
+fi
+if [ -z "$tpl_bad" ]; then
+	ok "the packaged config template defaults log_level to warn too (it wins over migrate_config on first install)"
+else
+	bad "the packaged config template still carries the old log level:$tpl_bad (a fresh install would run at info)"
 fi
 
 # A source that simply has no file yet (service never started, panel never

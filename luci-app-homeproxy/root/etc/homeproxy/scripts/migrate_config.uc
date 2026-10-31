@@ -212,13 +212,36 @@ if (!migration_crontab) {
 
 /* log_level was introduced.
    默认 warn（原为 info）：info 会记录每条连接，日志写在 tmpfs 上、按天可积累
-   数百 KB 到数十 MB 的 RAM 占用。**只影响没写过的段**（isEmpty 判定），已经手动
-   选过级别的用户配置原样保留。 */
+   数百 KB 到数十 MB 的 RAM 占用。
+
+   ⚠️ 这里有**两个**不同的分支，别合并：
+   1. isEmpty → 段里根本没写过这个选项（手工删过、或从更早的版本升上来）。
+      直接写默认值 warn。
+   2. log_level_seeded 标记不存在 → 段里那个 info 是**旧默认**，不是用户选的。
+      一次性改写为 warn 并打标记，之后永不再动。
+   为什么需要第 2 条：旧版默认值就是 info，而 uci 里 info 是「合法值」，
+   isEmpty 判定不成立 —— 于是从 0.3.6 及更早升上来的设备（以及首装时被
+   uci-defaults 拷入模板的设备）会永远停在 info，改了模板和生成器都不生效
+   （2026-10-31 用户反馈「默认已改警告，页面仍显示信息」）。
+   留痕字段是必须的：没有它就无法区分「旧默认」和「用户自己选的 info」，
+   每次升级都会把用户的选择改回去。标记之后用户再选 info 也不会被覆盖。 */
+const log_level_seeded = uci.get(uciconfig, ucimigration, 'log_level_seeded');
+
 if (isEmpty(uci.get(uciconfig, ucimain, 'log_level')))
 	uci.set(uciconfig, ucimain, 'log_level', 'warn');
 
 if (isEmpty(uci.get(uciconfig, uciserver, 'log_level')))
 	uci.set(uciconfig, uciserver, 'log_level', 'warn');
+
+if (!log_level_seeded) {
+	if (uci.get(uciconfig, ucimain, 'log_level') === 'info')
+		uci.set(uciconfig, ucimain, 'log_level', 'warn');
+
+	if (uci.get(uciconfig, uciserver, 'log_level') === 'info')
+		uci.set(uciconfig, uciserver, 'log_level', 'warn');
+
+	uci.set(uciconfig, ucimigration, 'log_level_seeded', '1');
+}
 
 if (!isEmpty(uci.get(uciconfig, 'subscription', 'auto_update_time')) &&
     !is_update_cron(uci.get(uciconfig, 'subscription', 'auto_update_time')))
