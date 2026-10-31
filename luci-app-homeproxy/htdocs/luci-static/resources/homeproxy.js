@@ -54,50 +54,6 @@ function buildCron(day, hour, minute) {
 	].join(' ');
 }
 
-function alignCronEditorRow(wrap) {
-	let field = wrap?.parentNode;
-
-	while (field && !field.classList?.contains('cbi-value-field'))
-		field = field.parentNode;
-
-	let row = field?.parentNode;
-	while (row && !row.classList?.contains('cbi-value'))
-		row = row.parentNode;
-
-	if (!row || !field)
-		return false;
-
-	if (wrap._dailyRow) {
-		wrap._dailyRow.style.display = row.style.display;
-		return true;
-	}
-
-	let dailyRow = E('div', { 'class': 'cbi-value homeproxy-cron-daily-row' }, [
-		E('div', { 'class': 'cbi-value-title' }, _('Update time (daily)')),
-		E('div', { 'class': 'cbi-value-field' }, [ wrap._dailyField ])
-	]);
-
-	wrap._dailyRow = dailyRow;
-	row.parentNode.insertBefore(dailyRow, row.nextSibling);
-
-	return true;
-}
-
-function watchCronEditorRow(wrap) {
-	const align = () => alignCronEditorRow(wrap);
-	[ 0, 50, 200, 500, 1000, 2000 ].forEach(delay => window.setTimeout(align, delay));
-
-	if (typeof MutationObserver !== 'undefined' && document?.body) {
-		const observer = new MutationObserver(() => {
-			if (align())
-				observer.disconnect();
-		});
-
-		observer.observe(document.body, { childList: true, subtree: true });
-		window.setTimeout(() => observer.disconnect(), 3000);
-	}
-}
-
 function renderCronEditor(input) {
 	if (!input)
 		return null;
@@ -124,17 +80,20 @@ function renderCronEditor(input) {
 	const timeSelectStyle = 'width: 5.2em !important; min-width: 5.2em !important; max-width: 5.2em !important; '
 		+ 'box-sizing: border-box; padding-left: .45em !important; padding-right: 1.7em !important; text-align: left;';
 
+	/* 星期与时:分在**同一行**（wrap 同时容纳三个下拉）。此前时:分被挪到另一行、
+	   带独立标题「更新时间(每天)」，看起来像两个独立字段，且「(每天)」与用户
+	   选中的「每周一」互相矛盾——2026-10-31 按用户要求合并回一行，那套对齐
+	   机制一并删除。分隔符用 · 让两段信息在视觉上成组。 */
 	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
 	    hour = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
 	    minute = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
-	    dailyField = E('div', { 'style': 'display: flex; align-items: center; gap: .3em; width: 12em; flex: 0 0 auto;' }, [
+	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'display: flex; align-items: center; gap: .4em;' }, [
+		day,
+		E('span', { 'style': 'color: #999;' }, '·'),
 		hour,
-		E('span', ':'),
+		E('span', { 'style': 'color: #999;' }, ':'),
 		minute
-	    ]),
-	    wrap = E('div', { 'class': 'homeproxy-cron-editor' }, [ day ]);
-
-	wrap._dailyField = dailyField;
+	    ]);
 
 	for (let i = 0; i < 24; i++)
 		hour.appendChild(E('option', { value: pad2(i) }, pad2(i)));
@@ -170,7 +129,6 @@ function renderCronEditor(input) {
 	hour.addEventListener('change', sync);
 	minute.addEventListener('change', sync);
 	wrap.appendChild(input);
-	window.setTimeout(() => watchCronEditorRow(wrap), 0);
 	return wrap;
 }
 

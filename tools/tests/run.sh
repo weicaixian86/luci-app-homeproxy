@@ -3026,6 +3026,19 @@ else
 	bad "a curl download can still negotiate HTTP/2 and fail with rc=92:$h11_bad"
 fi
 
+# ── cron 选择器必须单行，且字段名是「更新时间」 ──────────────────────────
+# 两行版（星期一行 + 「更新时间(每天)」一行）看起来像两个独立字段，「(每天)」
+# 还会和用户选中的「每周一」互相矛盾——2026-10-31 按用户要求合并回一行。
+# 机制本身（alignCronEditorRow / watchCronEditorRow）随之删除，旧标题串不得回来；
+# 新说明文字把「单条更新 + 2~3 秒重连 + 间隔 1~3 分钟」透给用户。
+if ! grep -q 'alignCronEditorRow\|watchCronEditorRow\|Update time (daily)' "$PKG/htdocs/luci-static/resources/homeproxy.js" \
+   && grep -q "'update_interval', _('Update time')" "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js" \
+   && grep -q 'leave 1-3 minutes between rule-sets' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	ok "the cron selector is one row labelled Update time, with the per-slot description"
+else
+	bad "the cron selector split-row layout or its old labels came back"
+fi
+
 # ── 规则集定时更新必须「单条 + reload」，不许全量 + restart ────────────
 # 21 条各配各的时刻时，每行 cron 若仍全量重下 21 条并 restart（stop+start），
 # 周一凌晨就是 441 次下载 + 21 次断流（2026-10-31 现场）。登记行必须带段名，
