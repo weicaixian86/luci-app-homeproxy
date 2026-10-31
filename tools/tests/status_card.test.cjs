@@ -1,0 +1,208 @@
+/*
+ * Status-card behaviour test for luci-app-homeproxy.
+ *
+ * The status row has five read-only inputs (plugin version / core version /
+ * core status / panel status / rule-set status). Only the last three are
+ * dynamic, and only the last two have an "not applicable" state:
+ *
+ *   - panel status    : the Clash API is generated only in `custom` and
+ *                       `bypass_mainland_china` (generate_client.uc:1709), so in
+ *                       gfwlist / proxy_mainland_china / global there is no
+ *                       panel to download and the card must show "-";
+ *   - rule-set status : the card tracks the *user* rule sets (`config ruleset`
+ *                       sections), which exist only in `custom` mode — the rule
+ *                       set page itself is gated on `routing_mode === 'custom'`
+ *                       (client.js:3040). Other modes use the built-in
+ *                       geoip-cn / geosite-cn / geosite-noncn that the core
+ *                       downloads itself, so the card must show "-".
+ *
+ * Why a real test instead of a grep: the previous behaviour (grey "Not
+ * downloaded" in non-panel modes) was *also* greppable and *also* looked
+ * plausible. Only executing the functions pins what the user actually sees.
+ *
+ * client.js is a LuCI module and cannot be require'd here, so the four status
+ * helpers are sliced out verbatim and evaluated against a fake document.
+ *
+ * Run: node tools/tests/status_card.test.cjs
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+const CLIENT = path.resolve(__dirname, '..', '..', 'luci-app-homeproxy',
+	'htdocs', 'luci-static', 'resources', 'view', 'homeproxy', 'client.js');
+
+const src = fs.readFileSync(CLIENT, 'utf8');
+
+const FROM = 'function updateCoreStatus(isRunning) {';
+const TO = 'function parseControllerPort(';
+
+const start = src.indexOf(FROM);
+const end = src.indexOf(TO);
+
+if (start < 0 || end < 0 || end <= start) {
+	console.error('FAIL status_card: cannot locate the status helpers in client.js '
+		+ '(markers "function updateCoreStatus(isRunning) {" / "function parseControllerPort(" changed)');
+	process.exit(1);
+}
+
+const block = src.slice(start, end);
+
+for (const fn of ['updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus', 'updateDownloadStatus']) {
+	if (!block.includes('function ' + fn + '(')) {
+		console.error('FAIL status_card: ' + fn + '() is no longer inside the sliced block');
+		process.exit(1);
+	}
+}
+
+/* Minimal DOM: getElementById() over a flat registry of { value, style } cells.
+   `_` is gettext; identity is enough, the assertions compare the English
+   msgids (the .po files supply the Chinese at runtime). */
+function makeApi(cells) {
+	const document = {
+		getElementById: (id) => cells[id] || null
+	};
+
+	return new Function('document', '_', block + `
+		return { updateCoreStatus, updatePanelStatus, updateRulesetStatus };`)(document, (s) => s);
+}
+
+function cells() {
+	const c = {};
+
+	for (const id of ['homeproxy_core_status', 'homeproxy_panel_status', 'homeproxy_ruleset_status'])
+		c[id] = { value: 'Collecting data...', style: {} };
+
+	return c;
+}
+
+let failed = 0;
+let passed = 0;
+
+function check(desc, got, want) {
+	const g = JSON.stringify(got);
+	const w = JSON.stringify(want);
+
+	if (g === w) {
+		passed++;
+		console.log('  ok   ' + desc);
+	}
+	else {
+		failed++;
+		console.log('  FAIL ' + desc);
+		console.log('         got  ' + g);
+		console.log('         want ' + w);
+	}
+}
+
+/* ── core status: always applicable, two states only ───────────────────── */
+{
+	const c = cells();
+	const api = makeApi(c);
+
+	api.updateCoreStatus(false);
+	check('core not running is red "Not Running"',
+		[c.homeproxy_core_status.style.color, c.homeproxy_core_status.value], ['red', 'Not Running']);
+
+	api.updateCoreStatus(true);
+	check('core running is green "Running" (no node name appended)',
+		[c.homeproxy_core_status.style.color, c.homeproxy_core_status.value], ['green', 'Running']);
+}
+
+/* ── panel status ─────────────────────────────────────────────────────── */
+{
+	const c = cells();
+	const api = makeApi(c);
+
+	api.updatePanelStatus({ enabled: true, installed: true }, true);
+	check('custom/bypass + panel present → green "Downloaded"',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['green', 'Downloaded']);
+
+	api.updatePanelStatus({ enabled: true, installed: false }, true);
+	check('custom/bypass + panel absent → red "Not downloaded"',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['red', 'Not downloaded']);
+
+	/* The case the user reported: a mode that has no panel at all. The file
+	   may even be present from an earlier custom-mode run — still "-", because
+	   nothing in this mode reads it. */
+	api.updatePanelStatus({ enabled: false, installed: true }, false);
+	check('gfwlist/global + panel file present → grey "-" (not applicable)',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['gray', '-']);
+
+	api.updatePanelStatus({ enabled: false, installed: false }, false);
+	check('gfwlist/global + no panel file → grey "-" (never "Not downloaded")',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['gray', '-']);
+
+	/* rpcd already reports enabled:false for these modes; the frontend must
+	   not depend on it alone (a stale RPC from before the mode change, or an
+	   rpcd that was not restarted after the upgrade, would flip it back). */
+	api.updatePanelStatus({ enabled: false, installed: false }, true);
+	check('applicable by mode but rpcd says disabled → grey "-" as well',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['gray', '-']);
+}
+
+/* ── rule-set status ──────────────────────────────────────────────────── */
+{
+	const c = cells();
+	const api = makeApi(c);
+
+	const ok_status = { rs_a: { valid: true }, rs_b: { valid: true } };
+
+	api.updateRulesetStatus(ok_status, true);
+	check('custom + all enabled rule sets valid → green "Downloaded"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['green', 'Downloaded']);
+
+	api.updateRulesetStatus({ rs_a: { valid: true }, rs_b: { valid: false } }, true);
+	check('custom + one invalid rule set → red "Not downloaded"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['red', 'Not downloaded']);
+
+	/* No enabled rule sets at all: vacuously "Downloaded" — this is what a
+	   fresh custom-mode install looks like, and it must not read as a failure. */
+	api.updateRulesetStatus({}, true);
+	check('custom + no enabled rule sets → green "Downloaded" (nothing to fetch)',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['green', 'Downloaded']);
+
+	/* Non-custom modes: the built-in geo rule sets belong to the generator,
+	   not to this card. */
+	api.updateRulesetStatus({ rs_a: { valid: false } }, false);
+	check('gfwlist/global + stale invalid user rule set → grey "-" (not applicable)',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['gray', '-']);
+
+	api.updateRulesetStatus({}, false);
+	check('gfwlist/global + nothing configured → grey "-"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['gray', '-']);
+}
+
+/* ── the placeholder text must not survive into the "-" state ─────────── */
+{
+	const c = cells();
+	const api = makeApi(c);
+
+	api.updatePanelStatus({}, false);
+	api.updateRulesetStatus({}, false);
+	check('an inapplicable cell never keeps the "Collecting data..." placeholder',
+		[c.homeproxy_panel_status.value, c.homeproxy_ruleset_status.value], ['-', '-']);
+}
+
+/* ── the poll must pass the mode-derived flags, not hardcoded true ────── */
+{
+	const poll = src.slice(src.indexOf("hp.pollAdd('client-status', statusPoll)") - 1400,
+		src.indexOf("hp.pollAdd('client-status', statusPoll)"));
+
+	check('statusPoll derives panelApplies from routing_mode',
+		/panelApplies\s*=\s*\(routingMode === 'custom' \|\| routingMode === 'bypass_mainland_china'\)/.test(poll), true);
+	check('statusPoll derives rulesetApplies from routing_mode (custom only)',
+		/rulesetApplies\s*=\s*\(routingMode === 'custom'\)/.test(poll), true);
+	check('statusPoll passes both flags to the updaters',
+		/updatePanelStatus\(panel, panelApplies\)/.test(poll)
+		&& /updateRulesetStatus\(rulesets, rulesetApplies\)/.test(poll), true);
+}
+
+console.log('');
+console.log(failed === 0
+	? 'status_card: all ' + passed + ' assertions passed'
+	: 'status_card: ' + failed + ' of ' + (passed + failed) + ' assertions FAILED');
+
+process.exit(failed === 0 ? 0 : 1);

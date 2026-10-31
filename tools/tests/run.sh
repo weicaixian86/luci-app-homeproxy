@@ -1427,6 +1427,24 @@ else
 	sed 's/^/       /' "$WORK/poll.out" | tail -20
 fi
 
+# --------------------------------------------------------- status card states
+# 状态行五个框里只有后三个是动态的，其中「面板状态」「规则集状态」还有第三态：
+# 「不适用」。面板只在 custom / bypass_mainland_china 生成（生成器 1709 行），
+# 规则集卡跟的是自定义模式下的用户规则集（规则集页本身只在 custom 出现，
+# client.js:3040），其余模式显示灰色「-」。旧行为是灰字「未下载」——既像故障
+# 又催用户去下一个该模式下根本不会有的东西（2026-10-31 用户反馈）。
+# 这里真跑那几个函数（client.js 是 LuCI 模块，切出纯函数段求值），而不是
+# 只 grep 字符串：灰字「未下载」同样能被 grep 到，只有执行才分得清。
+section "Status card (applicable / not applicable)"
+"$NODE" "$ROOT/tools/tests/status_card.test.cjs" > "$WORK/statuscard.out" 2>&1
+if [ $? -eq 0 ]; then
+	ok "status_card.test.cjs"
+	sed 's/^/       /' "$WORK/statuscard.out" | tail -3
+else
+	bad "status_card.test.cjs"
+	sed 's/^/       /' "$WORK/statuscard.out" | tail -25
+fi
+
 # -------------------------------------------------------------- DOM behaviour
 # The four dropdown levels, exercised against a real log slice: the pure part of
 # log.js is sliced out and evaluated (log.js cannot be require'd).

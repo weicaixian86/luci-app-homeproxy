@@ -184,18 +184,18 @@ function updateCoreStatus(isRunning) {
 	status.value = isRunning ? _('Running') : _('Not Running');
 }
 
-/* 面板状态：只报文件在不在（installed）。enabled=false（非 custom/
-   bypass_mainland_china 模式）时 Clash API 不生成、面板按钮整体隐藏，
-   此时仍如实显示文件状态但用灰色——不误导，也不让没下载过面板的用户
-   看到一个无从下手（按钮都藏了）的红字。 */
-function updatePanelStatus(panel) {
+/* 面板状态：只报文件在不在（installed）。Clash API 只在 custom /
+   bypass_mainland_china 两种模式下生成（generate_client.uc:1709），其余模式
+   面板既不存在也没有按钮可点，此时写「未下载」等于催用户去下载一个该模式下
+   根本不会有的东西——显示「-」表示不适用（2026-10-31 用户定稿）。 */
+function updatePanelStatus(panel, applicable) {
 	let el = document.getElementById('homeproxy_panel_status');
 	if (!el)
 		return;
 
-	if (!panel || panel.enabled !== true) {
+	if (applicable !== true || !panel || panel.enabled !== true) {
 		el.style.color = 'gray';
-		el.value = (panel && panel.installed === true) ? _('Downloaded') : _('Not downloaded');
+		el.value = '-';
 		return;
 	}
 
@@ -205,11 +205,23 @@ function updatePanelStatus(panel) {
 /* 规则集：全部启用的远程规则集都有有效本地副本才算「已下载」；一个缺就红。
    valid 是 rpcd 逐条校验过的（SRS 魔数/JSON 头），比 exists 严格。
    与面板一样只报两态——就绪数是排查信息，日志里有，不上界面
-   （2026-10-31 用户反馈「未下载（已就绪 19 / 21 条）」太长，会顶出卡片）。 */
-function updateRulesetStatus(status) {
+   （2026-10-31 用户反馈「未下载（已就绪 19 / 21 条）」太长，会顶出卡片）。
+
+   applicable：这里的「规则集」指自定义路由模式下的用户规则集（UCI 的
+   `config ruleset` 段），规则集页本身也只在该模式出现（client.js:3040
+   `depends('routing_mode','custom')`）。其余模式用的是生成器内置的
+   geoip-cn / geosite-cn / geosite-noncn，由内核按需自下载，不归这张卡
+   管——显示「-」而不是「未下载」。 */
+function updateRulesetStatus(status, applicable) {
 	let el = document.getElementById('homeproxy_ruleset_status');
 	if (!el)
 		return;
+
+	if (applicable !== true) {
+		el.style.color = 'gray';
+		el.value = '-';
+		return;
+	}
 
 	let ready = true;
 
@@ -606,7 +618,9 @@ return view.extend({
 		let features = data[1],
 		    hosts = data[2]?.hosts,
 		    packageVersion = data[3]?.version || '-',
-		    routingMode = uci.get(data[0], 'config', 'routing_mode');
+		    /* 缺省值与生成器一致（generate_client.uc:66 的 `|| 'bypass_mainland_china'`），
+		       否则一个没写过 routing_mode 的配置会让状态卡把面板/规则集都判成「不适用」。 */
+		    routingMode = uci.get(data[0], 'config', 'routing_mode') || 'bypass_mainland_china';
 
 		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
@@ -710,6 +724,13 @@ return view.extend({
 
 		s = m.section(form.TypedSection);
 		s.render = function () {
+		/* 「适用」取自已保存的 routing_mode（不是表单里的草稿值）：状态卡描述
+		   的是磁盘上这份正在生效的配置。面板只在 custom / bypass_mainland_china
+		   生成（generate_client.uc:1709），规则集页只在 custom 存在
+		   （client.js:3040 的 depends），所以两种模式的适用范围也不同。 */
+		const panelApplies = (routingMode === 'custom' || routingMode === 'bypass_mainland_china'),
+		      rulesetApplies = (routingMode === 'custom');
+
 		const statusPoll = function () {
 			return Promise.all([
 				L.resolveDefault(getServiceStatus(), false),
@@ -720,8 +741,8 @@ return view.extend({
 				    panel = res[1] || {},
 				    rulesets = res[2] || {};
 
-				updatePanelStatus(panel);
-				updateRulesetStatus(rulesets);
+				updatePanelStatus(panel, panelApplies);
+				updateRulesetStatus(rulesets, rulesetApplies);
 				updateCoreStatus(isRunning);
 				});
 		};
@@ -791,7 +812,8 @@ return view.extend({
 							id: 'homeproxy_panel_status',
 							class: 'cbi-input-text homeproxy-panel-status',
 							readonly: '',
-							value: _('Collecting data...')
+							style: panelApplies ? '' : 'color: gray',
+							value: panelApplies ? _('Collecting data...') : '-'
 						})
 					]),
 					E('div', { class: 'homeproxy-status-field homeproxy-ruleset-status-field' }, [
@@ -800,7 +822,8 @@ return view.extend({
 							id: 'homeproxy_ruleset_status',
 							class: 'cbi-input-text homeproxy-ruleset-status',
 							readonly: '',
-							value: _('Collecting data...')
+							style: rulesetApplies ? '' : 'color: gray',
+							value: rulesetApplies ? _('Collecting data...') : '-'
 						})
 					]),
 					E('div', { class: 'homeproxy-status-actions' }, actions)
