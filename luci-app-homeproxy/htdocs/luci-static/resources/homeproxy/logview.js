@@ -168,10 +168,11 @@ const LEVEL_ORDER = {
 /* Only the four levels offered by the dropdown are meaningful here. A value
    hand-edited into uci (or carried over from an older config) would otherwise
    leave the <select> showing its first option while the filter cut at a
-   different weight, so clamp it the same way the generators do. */
+   different weight, so clamp it the same way the generators do — including the
+   default: warn, because info logs every single connection onto a tmpfs. */
 function normalizeLevel(v) {
 	return (v === 'debug' || v === 'info' || v === 'warn' || v === 'error')
-		? v : 'info';
+		? v : 'warn';
 }
 
 /* Shift a "YYYY-MM-DD HH:MM:SS" stamp by N minutes. Pure UTC arithmetic, so

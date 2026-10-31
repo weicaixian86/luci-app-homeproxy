@@ -210,12 +210,15 @@ if (!migration_crontab) {
 	uci.set(uciconfig, ucimigration, 'crontab', '1');
 }
 
-/* log_level was introduced */
+/* log_level was introduced.
+   默认 warn（原为 info）：info 会记录每条连接，日志写在 tmpfs 上、按天可积累
+   数百 KB 到数十 MB 的 RAM 占用。**只影响没写过的段**（isEmpty 判定），已经手动
+   选过级别的用户配置原样保留。 */
 if (isEmpty(uci.get(uciconfig, ucimain, 'log_level')))
-	uci.set(uciconfig, ucimain, 'log_level', 'info');
+	uci.set(uciconfig, ucimain, 'log_level', 'warn');
 
 if (isEmpty(uci.get(uciconfig, uciserver, 'log_level')))
-	uci.set(uciconfig, uciserver, 'log_level', 'info');
+	uci.set(uciconfig, uciserver, 'log_level', 'warn');
 
 if (!isEmpty(uci.get(uciconfig, 'subscription', 'auto_update_time')) &&
     !is_update_cron(uci.get(uciconfig, 'subscription', 'auto_update_time')))

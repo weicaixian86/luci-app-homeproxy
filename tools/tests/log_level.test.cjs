@@ -185,9 +185,11 @@ check('normalizeLevel keeps the four offered values',
 	['debug', 'info', 'warn', 'error'].map(normalizeLevel),
 	['debug', 'info', 'warn', 'error']);
 
-check('normalizeLevel clamps anything else to info',
+/* 兜底是 warn 而不是 info：info 会把每条连接写进 tmpfs 上的内核日志（实测 30 秒
+   122 行），没配过级别的新装设备不该默认吃这个。 */
+check('normalizeLevel clamps anything else to warn (info floods tmpfs)',
 	[normalizeLevel('warning'), normalizeLevel('trace'), normalizeLevel(''), normalizeLevel(undefined)],
-	['info', 'info', 'info', 'info']);
+	['warn', 'warn', 'warn', 'warn']);
 
 /* A UTC-stamped core line has to move on both the sort key and the text. */
 check('shiftTs moves stamps without touching the browser clock', shiftTs('2026-10-23 15:35:11', 480), '2026-10-23 23:35:11');

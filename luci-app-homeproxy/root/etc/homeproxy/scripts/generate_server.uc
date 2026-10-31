@@ -25,12 +25,13 @@ const uciserver = 'server';
 
 /* Only the four levels the UI offers are accepted by sing-box. A hand-edited
    or restored config carrying anything else (e.g. "warning") would make
-   `sing-box check` fail and the whole service refuse to start, so fall back
-   to info instead of trusting UCI verbatim. */
-const log_level_uci = uci.get(uciconfig, uciserver, 'log_level') || 'info';
+   `sing-box check` fail and the whole service refuse to start, so clamp it
+   instead of trusting UCI verbatim. 默认与兜底都是 warn（原因见 generate_client.uc：
+   info 会把每条连接写进 tmpfs 上的日志）。 */
+const log_level_uci = uci.get(uciconfig, uciserver, 'log_level') || 'warn';
 
 const log_level = (log_level_uci == 'debug' || log_level_uci == 'info' ||
-	log_level_uci == 'warn' || log_level_uci == 'error') ? log_level_uci : 'info';
+	log_level_uci == 'warn' || log_level_uci == 'error') ? log_level_uci : 'warn';
 /* UCI config end */
 
 const config = {};

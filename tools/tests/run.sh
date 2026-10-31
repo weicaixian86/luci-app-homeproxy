@@ -659,12 +659,27 @@ for gen in generate_client.uc generate_server.uc; do
 	path="$PKG/root/etc/homeproxy/scripts/$gen"
 	if grep -q "log_level_uci == 'debug'" "$path" \
 	   && grep -q "log_level_uci == 'error'" "$path" \
-	   && grep -q "? log_level_uci : 'info'" "$path"; then
+	   && grep -q "? log_level_uci : 'warn'" "$path"; then
 		ok "$gen whitelists log level before it reaches sing-box"
 	else
 		bad "$gen passes log_level verbatim (a stray value stops the core from starting)"
 	fi
 done
+
+# 内核日志级别的默认值有四处来源，必须一致，否则会出现「页面显示警告、内核其实按
+# info 写」或反之：两个生成器（uci 为空时的 || 值）、迁移脚本（首装往 uci 里写的值）、
+# logview.js（下拉的兜底）。info 级别把**每条连接**都写进 /var/run（tmpfs）里的内核
+# 日志，实测 30 秒 122 行、约 350 KB/天，小内存设备会被吃掉可观 RAM，所以默认 warn。
+lvl_bad=''
+grep -q "log_level') || 'warn'" "$PKG/root/etc/homeproxy/scripts/generate_client.uc" || lvl_bad="$lvl_bad client-default"
+grep -q "log_level') || 'warn'" "$PKG/root/etc/homeproxy/scripts/generate_server.uc" || lvl_bad="$lvl_bad server-default"
+grep -q ": 'warn'" "$PKG/htdocs/luci-static/resources/homeproxy/logview.js" || lvl_bad="$lvl_bad ui-clamp"
+[ "$(grep -c "'log_level', 'warn'" "$PKG/root/etc/homeproxy/scripts/migrate_config.uc")" = "2" ] || lvl_bad="$lvl_bad migrate-default"
+if [ -z "$lvl_bad" ]; then
+	ok "the core log level defaults to warn in every source (info writes every connection to tmpfs)"
+else
+	bad "the core log level default disagrees across sources:$lvl_bad (the page and the core would not match)"
+fi
 
 # A source that simply has no file yet (service never started, panel never
 # updated) is the normal state of half the sources. It used to add one

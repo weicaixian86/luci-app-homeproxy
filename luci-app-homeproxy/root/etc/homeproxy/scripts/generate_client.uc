@@ -247,12 +247,15 @@ if (match(proxy_mode, /tun/)) {
 
 /* Only the four levels the UI offers are accepted by sing-box. A hand-edited
    or restored config carrying anything else (e.g. "warning") would make
-   `sing-box check` fail and the whole service refuse to start, so fall back
-   to info instead of trusting UCI verbatim. */
-const log_level_uci = uci.get(uciconfig, ucimain, 'log_level') || 'info';
+   `sing-box check` fail and the whole service refuse to start, so clamp it
+   instead of trusting UCI verbatim.
+   默认与兜底都是 warn：info 级别会把**每一条**连接写进日志（现场实测 30 秒 122 行、
+   约 350 KB/天），而这个日志落在 tmpfs（/var/run）上，等于直接吃内存；繁忙网络 +
+   小内存路由会明显受影响。要看连接记录，去「运行日志」页把级别临时调成 info。 */
+const log_level_uci = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
 
 const log_level = (log_level_uci == 'debug' || log_level_uci == 'info' ||
-	log_level_uci == 'warn' || log_level_uci == 'error') ? log_level_uci : 'info';
+	log_level_uci == 'warn' || log_level_uci == 'error') ? log_level_uci : 'warn';
 
 cache_file_enabled = uci.get(uciconfig, ucicache, 'enabled');
 cache_file_path = uci.get(uciconfig, ucicache, 'path');

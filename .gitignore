@@ -1,0 +1,3 @@
+
+# 自检中间产物（ucparse.py 把 ucode 转成 js 供 node --check）
+_tmp/
