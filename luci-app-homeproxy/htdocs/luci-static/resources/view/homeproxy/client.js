@@ -118,9 +118,11 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-version-field input {
 	width: 100%;
+	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-core-version-field input {
 	width: 100%;
+	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-core-status-field input {
 	width: 100%;
