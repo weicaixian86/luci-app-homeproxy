@@ -402,6 +402,10 @@ msgstr ""
 msgid "CUBIC"
 msgstr ""
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3583
+msgid "Cache Settings"
+msgstr ""
+
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:142
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
 msgctxt "homeproxy"
@@ -2418,10 +2422,6 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3501
 msgid "Persist DNS cache"
-msgstr ""
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:3476
-msgid "Persistent Cache Settings"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3496

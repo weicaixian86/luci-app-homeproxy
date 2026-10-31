@@ -1710,6 +1710,28 @@ else
 	ok "rpcd ruleset_sync drops --quiet (every step reaches logread)"
 fi
 
+# ---------------------------------------- 缓存设置页签的标题不要改回长名字
+# 2026-10-31 用户现场：页签名「持久化缓存设置」既长，又和页内的「持久化 DNS
+# 缓存」选项撞词，改成「缓存设置 / Cache Settings」。po 侧由 pocheck 兜底
+# （源码里出现而 catalog 缺条目即红），这里再钉一次意图，避免同步上游或
+# 随手重构时被回滚成旧文案。
+if grep -q "s.tab('cache', _('Cache Settings'))" "$CJS"; then
+	ok "the cache tab is titled \"Cache Settings\" (short label, not \"Persistent ...\")"
+else
+	bad "the cache tab title drifted from \"Cache Settings\""
+fi
+
+# ------------------------------ 状态行五个值格的字重必须一致（且为粗体）
+# 2026-10-31 两轮反馈：先是「内核状态一格被强制 700、其余继承主题 400」→ 统一
+# 为不加粗；用户复看后要求整行都用粗体。判据钉在共用选择器上：五格共用的
+# `#homeproxy_status_panel input` 规则必须带 font-weight: 600。删掉它、或者
+# 只给某一格单独加，都会让这一行重新变成「一格粗一格细」。
+if sed -n '/#homeproxy_status_panel input {/,/^}/p' "$CJS" | grep -q 'font-weight: 600'; then
+	ok "the five status values share one bold weight (font-weight: 600)"
+else
+	bad "the status values lost their shared bold weight (row goes back to mixed weights)"
+fi
+
 # ------------------------------------------------ 「立即更新」不得同步阻塞 rpcd
 # 2026-10-31 现场：点规则集页的「立即更新」，再切顶部「运行日志」，页面整片
 # 空白十来秒。根因不是日志 —— 是 ruleset_update 用 ucode 的 system() **同步**

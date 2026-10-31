@@ -422,6 +422,10 @@ msgstr "CA 颁发机构"
 msgid "CUBIC"
 msgstr "CUBIC"
 
+#: htdocs/luci-static/resources/view/homeproxy/client.js:3583
+msgid "Cache Settings"
+msgstr "缓存设置"
+
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:142
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
 msgctxt "homeproxy"
@@ -2490,10 +2494,6 @@ msgstr "对端公钥"
 msgid "Persist DNS cache"
 msgstr "持久化 DNS 缓存"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:3476
-msgid "Persistent Cache Settings"
-msgstr "持久化缓存设置"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3496
 msgid "Persistent cache file path"
 msgstr "持久化缓存文件路径"
@@ -4403,9 +4403,6 @@ msgstr "有效 uuid"
 
 #~ msgid "sing-box server"
 #~ msgstr "sing-box 服务端"
-
-#~ msgid "Cache Settings"
-#~ msgstr "缓存设置"
 
 #~ msgid "Enable cache"
 #~ msgstr "启用缓存"

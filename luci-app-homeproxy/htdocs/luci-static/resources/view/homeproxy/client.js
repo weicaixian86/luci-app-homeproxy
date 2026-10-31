@@ -141,6 +141,7 @@ const statusCss = `
 	width: 100%;
 	min-width: 0;
 	text-align: center;
+	font-weight: 600;
 }
 #homeproxy_status_panel .homeproxy-version-field input {
 	width: 100%;
@@ -154,8 +155,10 @@ const statusCss = `
 /* 状态行五个值格的字重统一：内核状态此前被强制 font-weight: 700，而版本、
    内核版本、面板、规则集四格都走主题基线（cascade.css 里
    input,button,select{font-weight:400}），整行看起来只有内核状态是粗的
-   （2026-10-31 用户反馈）。这里不再给单格设字重，五格统一继承主题基线；
-   状态好坏已由颜色表达（绿=正常 / 红=异常 / 灰=不适用），不叠加粗体。
+   （2026-10-31 用户反馈）。第一次是「统一为不粗」，用户复看后要求整行都
+   用粗体，于是改为五格一律 600 —— 与上方 .homeproxy-status-label 同级，
+   且不再给任何单格单独设字重（避免又变成一格比别的粗）。状态好坏仍由
+   颜色表达（绿=正常 / 红=异常 / 灰=不适用），字重只做视觉对齐。
    注：原先此块还带 font-style: normal（抵 italic）与 border: unset，
    前者随主题 input 本就不是斜体而冗余，后者已在 d54614c 移除。 */
 #homeproxy_status_panel .homeproxy-status-actions {
@@ -3580,7 +3583,7 @@ return view.extend({
 		/* NTP settings end */
 
 		/* Cache settings start */
-		s.tab('cache', _('Persistent Cache Settings'));
+		s.tab('cache', _('Cache Settings'));
 		o = s.taboption('cache', form.SectionValue, '_cache', form.NamedSection, 'cache', 'homeproxy');
 		o.depends('routing_mode', 'custom');
 		ss = o.subsection;
