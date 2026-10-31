@@ -2924,10 +2924,6 @@ msgstr "规则按序号从上到下匹配，命中即停止。"
 msgid "Running"
 msgstr "运行中"
 
-#: htdocs/luci-static/resources/view/homeproxy/client.js:176
-msgid "Running: %s"
-msgstr "运行中：%s"
-
 #: root/usr/share/luci/menu.d/luci-app-homeproxy.json:53
 msgid "Runtime Log"
 msgstr "运行日志"
@@ -3774,10 +3770,6 @@ msgstr "URLTest"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:809
 msgid "URLTest nodes"
 msgstr "URLTest 节点"
-
-#: htdocs/luci-static/resources/view/homeproxy/client.js:667
-msgid "URLTest: %s"
-msgstr "URLTest: %s"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1556
 #: htdocs/luci-static/resources/view/homeproxy/server.js:354

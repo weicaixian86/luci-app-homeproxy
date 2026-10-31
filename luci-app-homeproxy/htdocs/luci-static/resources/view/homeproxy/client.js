@@ -45,12 +45,6 @@ const callWriteDomainList = rpc.declare({
 	expect: { '': {} }
 });
 
-const callCurrentNode = rpc.declare({
-	object: 'luci.homeproxy',
-	method: 'current_node_get',
-	expect: { '': {} }
-});
-
 const callPackageVersion = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'package_get_version',
@@ -175,13 +169,16 @@ function getServiceStatus() {
 	});
 }
 
-function updateCoreStatus(isRunning, currentNode) {
+/* 内核状态只有两态：绿色「运行中」/ 红色「未运行」。此前运行时会拼上当前
+   节点名（「运行中：xxx」），但面板/规则集状态卡都已是纯两态，状态行里
+   唯节点信息反而突兀（2026-10-31 用户要求去掉）；节点归属看「节点设置」。 */
+function updateCoreStatus(isRunning) {
 	let status = document.getElementById('homeproxy_core_status');
 	if (!status)
 		return;
 
 	status.style.color = isRunning ? 'green' : 'red';
-	status.value = currentNode ? _('Running: %s').format(currentNode) : (isRunning ? _('Running') : _('Not Running'));
+	status.value = isRunning ? _('Running') : _('Not Running');
 }
 
 /* 面板状态：三个事实（文件在不在、内核配置引没引用、服务跑没跑）拼成一句人话。
@@ -713,32 +710,21 @@ return view.extend({
 
 		s = m.section(form.TypedSection);
 		s.render = function () {
-			const statusPoll = function () {
-				return Promise.all([
-					L.resolveDefault(getServiceStatus(), false),
-					L.resolveDefault(callCurrentNode(), null),
-					L.resolveDefault(callPanelStatus(), {}),
-					L.resolveDefault(callRulesetStatus(), {})
-				]).then((res) => {
-					let isRunning = res[0],
-					    current = res[1],
-					    panel = res[2] || {},
-					    rulesets = res[3] || {},
-					    current_label = null;
+		const statusPoll = function () {
+			return Promise.all([
+				L.resolveDefault(getServiceStatus(), false),
+				L.resolveDefault(callPanelStatus(), {}),
+				L.resolveDefault(callRulesetStatus(), {})
+			]).then((res) => {
+				let isRunning = res[0],
+				    panel = res[1] || {},
+				    rulesets = res[2] || {};
 
-					updatePanelStatus(panel, isRunning);
-					updateRulesetStatus(rulesets);
-
-					if (current?.mode === 'urltest') {
-						let active = current.active || {};
-						let nodeName = (active?.id && active.id !== 'urltest') ? (proxy_nodes[active.id] || active.label || active.id) : _('Invalid node');
-
-						current_label = _('URLTest: %s').format(nodeName);
-					}
-
-					updateCoreStatus(isRunning, current_label);
-					});
-			};
+				updatePanelStatus(panel, isRunning);
+				updateRulesetStatus(rulesets);
+				updateCoreStatus(isRunning);
+				});
+		};
 
 			/* 重渲染（保存并应用）时由 hp.pollAdd 摘掉上一次注册的回调，
 			   避免同一个轮询被叠加成多份、每周期多发一次 RPC。 */
