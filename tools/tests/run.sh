@@ -3509,6 +3509,47 @@ else
 	bad "the extracted ARGV guard printed '$ARGV_OUT' instead of the --source value (exists()/type() guard broken)"
 fi
 
+# 429 是机场限流，不是「这条路不通」：直连被限流后立刻换代理再打一次，同一个
+# token 在 Retry-After 窗口内照样被拒（2026-11-01 现场：直连 429 → 1 秒后代理
+# 仍 429，响应头 `retry-after: 10`），白花 1~2 秒还把主日志刷成两大段 stderr。
+# 这条同时钉「有判断」和「判断在重试之前」——只钉函数存在，把它挪到重试之后
+# 照样会绿，而那时 429 已经多打了一轮。
+RATE_LINE=$(grep -n 'if (rate_limited(direct))' "$SUB" | cut -d: -f1 | head -1)
+RETRY_LINE=$(grep -n 'Retrying %s via %s' "$SUB" | cut -d: -f1 | head -1)
+
+# 光看文本只能证明「有这么个函数」，证明不了它判得对：第一版把
+# `return exitcode === 22 && match(...)` 写进去，match 命中时返回的是匹配
+# 数组、未命中是 null，函数于是返回 `[ "error: 429" ]` / null 而不是布尔 ——
+# if 上下文能跑，`=== true` 就不成立。这里把函数抽出来喂五个假响应：
+# 429 必须判真，503 / DNS 失败 / 有正文 / 有正文的 429 必须判假。
+RATE_OUT='(no ucode)'
+if command -v ucode >/dev/null 2>&1; then
+	RATE_PROBE="$WORK/rate_probe.uc"
+	{
+		printf '%s\n' 'function isEmpty(v) { return v == null || length(v) == 0; }'
+		sed -n '/^function rate_limited/,/^}$/p' "$SUB"
+		printf '%s\n' 'let bad = 0;'
+		printf '%s\n' 'function chk(name, r, want) { const got = rate_limited(r); if (got !== want) { printf("FAIL %s got=%s want=%s\n", name, got, want); bad++; } }'
+		printf '%s\n' 'chk("429", { body: "", exitcode: 22, headers: "curl: (22) The requested URL returned error: 429" }, true);'
+		printf '%s\n' 'chk("503", { body: "", exitcode: 22, headers: "curl: (22) The requested URL returned error: 503" }, false);'
+		printf '%s\n' 'chk("dns", { body: "", exitcode: 6, headers: "Could not resolve host" }, false);'
+		printf '%s\n' 'chk("body", { body: "dm1lc3M6Ly8=", exitcode: 0, headers: "" }, false);'
+		printf '%s\n' 'chk("429body", { body: "error", exitcode: 22, headers: "curl: (22) err 429" }, false);'
+		printf '%s\n' 'printf("bad=%d\n", bad);'
+	} > "$RATE_PROBE"
+	RATE_OUT=$(ucode "$RATE_PROBE" 2>&1)
+fi
+
+if grep -Fq 'function rate_limited(response)' "$SUB" \
+   && grep -Fq "match(response.headers ?? '', /error: 429/)" "$SUB" \
+   && grep -Fq 'direct failed, proxy retry skipped (429)' "$SUB" \
+   && [ -n "$RATE_LINE" ] && [ -n "$RETRY_LINE" ] && [ "$RATE_LINE" -lt "$RETRY_LINE" ] \
+   && { [ "$RATE_OUT" = 'bad=0' ] || [ "$RATE_OUT" = '(no ucode)' ]; }; then
+	ok "a 429 from the airport skips the proxy retry (throttling is not a broken route)"
+else
+	bad "a throttled subscription still retries through the proxy, or the 429 probe disagreed: $RATE_OUT"
+fi
+
 # 0.2.7 起按钮不再自己 exec 脚本（改成 rpcd 起脱管进程），触发来源的字符串
 # 随之搬进 update_subscriptions_async.sh —— 判据跟着实现走，否则会假红。
 if grep -q 'LuCI「更新全部订阅」按钮' "$PKG/root/etc/homeproxy/scripts/update_subscriptions_async.sh"; then

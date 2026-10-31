@@ -1719,6 +1719,31 @@ function transient_failure(response) {
 	return null;
 }
 
+/* 429 = 机场限流，不是「这条路不通」。
+ *
+ * 直连被限流后立刻换代理再打一次，同一个 token 在 Retry-After 窗口内一样被拒
+ * ——2026-11-01 现场（237）：liangxin 直连 429，1 秒后走 127.0.0.1:5330 仍
+ * 429，响应头明写 `retry-after: 10`。这一跳既不可能成功，又白花 1~2 秒，还把
+ * 主日志刷成两大段 curl stderr（每条 300 字符的 header dump）。结果与「直接
+ * 放弃」完全相同：这个源这一轮失败，旧节点全保留。
+ *
+ * 与 transient_failure() 里排除 429 的区别：那里管的是「原地再打一次」，
+ * 这里管的是「换一条路径再打一次」——两种重试都不该发生。
+ *
+ * headers 是 curl 的 stderr（见 homeproxy.uc 的 wGETResponse）：`-f` 把 4xx
+ * 记成 exit=22，具体状态码只出现在 `curl: (22) … error: 429` 那一行。 */
+function rate_limited(response) {
+	if (!response || !isEmpty(response.body))
+		return false;
+
+	/* 显式收成布尔：ucode 的 match() 命中时返回的是**匹配数组**、未命中是
+	   null，`&&` 又会把最后一个操作数原样交出去 —— 写成
+	   `exitcode === 22 && match(...)` 时函数会返回 `[ "error: 429" ]` 或
+	   null，靠 if 的真值判断能跑，但拿它做 `=== true` 比较就是假的。 */
+	return response.exitcode === 22
+		&& length(match(response.headers ?? '', /error: 429/)) > 0;
+}
+
 function fetch_with_dns_retry(url, ua, proxy) {
 	let response = wGETResponse(url, ua, proxy);
 	const reason = transient_failure(response);
@@ -1758,6 +1783,13 @@ function fetch_subscription(url, ua) {
 	/* 直连失败的原因与「是否真的去重试」分开记：先记原因，再判端口。 */
 	log(sprintf('Direct fetch failed for %s (%s).',
 		url, describe_fetch_failure(direct)));
+
+	/* 限流就别换路径再打一次：见 rate_limited() 的说明。 */
+	if (rate_limited(direct)) {
+		log(sprintf('HTTP 429 for %s: the airport is throttling this token, so a proxy retry would be throttled too; skipped (previous nodes kept).', url));
+
+		return direct;
+	}
 
 	/* 端口没有监听者时这一跳必然 ECONNREFUSED，发出去也只是把
 	   「内核没开」写成「代理不可用」。跳过并说明原因。 */
@@ -1955,11 +1987,18 @@ function main() {
 			/* 两跳各自的失败原因已经在 fetch_subscription() 里逐跳记过，这里
 			   只收口成一行总失败。**不要**在这里重打 exit/stderr：那会让人
 			   以为是第三次尝试，而实际上是同一次的两跳。
-			   开关关闭时保持旧版格式 `(<exit/bytes/stderr>)`，不多出前缀。 */
-			const why = describe_fetch_failure(response);
+			   开关关闭时保持旧版格式 `(<exit/bytes/stderr>)`，不多出前缀。
 
-			log(sprintf('Failed to fetch resources from %s (%s).', url,
-				proxy_url ? sprintf('direct and %s both failed: %s', proxy_url, why) : why));
+			   429 是例外：那条路径连代理都没试（rate_limited 直接返回），
+			   再写「direct and <proxy> both failed」会把人引去查代理，而
+			   实际上一个包都没发出去。 */
+			const why = describe_fetch_failure(response);
+			const hops = rate_limited(response)
+				? 'direct failed, proxy retry skipped (429)'
+				: (proxy_url ? sprintf('direct and %s both failed', proxy_url) : '');
+
+			log(sprintf('Failed to fetch resources from %s (%s%s).', url,
+				length(hops) ? hops + ': ' : '', why));
 			failed_groups[groupHash] = true;
 			failed++;
 			continue;
