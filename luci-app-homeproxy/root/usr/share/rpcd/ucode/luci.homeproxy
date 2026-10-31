@@ -2136,6 +2136,14 @@ const methods = {
 			const result = {};
 
 			uci.foreach('homeproxy', 'ruleset', (sec) => {
+				/* 只统计启用的段：生成器（isSectionEnabled）与 fetch_rulesets.sh
+				   的 section_enabled 都只处理启用的规则集，停用段缺文件不该红。
+				   语义保持一致：未写 enabled 按启用算，'0'/false/no/off/disabled 算关。 */
+				const ev = `${sec.enabled ?? ''}`;
+
+				if (ev in ['0', 'false', 'no', 'off', 'disabled'])
+					return;
+
 				const sid = sec['.name'],
 				      stype = sec.type || 'remote',
 				      fmt = sec.format || 'binary';

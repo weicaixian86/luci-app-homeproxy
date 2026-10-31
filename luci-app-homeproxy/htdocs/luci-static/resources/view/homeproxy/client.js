@@ -184,16 +184,20 @@ function updateCoreStatus(isRunning) {
 	status.value = isRunning ? _('Running') : _('Not Running');
 }
 
-/* 面板状态：三个事实（文件在不在、内核配置引没引用、服务跑没跑）拼成一句人话。
-   「已就位但配置未引用」这一格很重要 —— 它意味着 reload 没发生（自愈漏了），
-   页面上看到这句就能定位，不用去翻日志。 */
-function updatePanelStatus(panel, isRunning) {
+/* 面板状态：只报文件在不在（installed）。enabled=false（非 custom/
+   bypass_mainland_china 模式）时 Clash API 不生成、面板按钮整体隐藏，
+   此时仍如实显示文件状态但用灰色——不误导，也不让没下载过面板的用户
+   看到一个无从下手（按钮都藏了）的红字。 */
+function updatePanelStatus(panel) {
 	let el = document.getElementById('homeproxy_panel_status');
 	if (!el)
 		return;
 
-	if (!panel || panel.enabled !== true)
+	if (!panel || panel.enabled !== true) {
+		el.style.color = 'gray';
+		el.value = (panel && panel.installed === true) ? _('Downloaded') : _('Not downloaded');
 		return;
+	}
 
 	updateDownloadStatus('homeproxy_panel_status', panel.installed === true);
 }
@@ -716,7 +720,7 @@ return view.extend({
 				    panel = res[1] || {},
 				    rulesets = res[2] || {};
 
-				updatePanelStatus(panel, isRunning);
+				updatePanelStatus(panel);
 				updateRulesetStatus(rulesets);
 				updateCoreStatus(isRunning);
 				});
