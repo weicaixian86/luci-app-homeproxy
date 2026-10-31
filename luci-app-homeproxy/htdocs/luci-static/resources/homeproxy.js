@@ -84,7 +84,8 @@ function renderCronEditor(input) {
 	   带独立标题「更新时间(每天)」，看起来像两个独立字段，且「(每天)」与用户
 	   选中的「每周一」互相矛盾——2026-10-31 按用户要求合并回一行，那套对齐
 	   机制一并删除。分隔符用 · 让两段信息在视觉上成组。 */
-	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 12em !important; min-width: 12em !important; max-width: 12em !important; box-sizing: border-box;' }),
+	/* 星期下拉 8em：选项最长「每周一」三字 + 箭头，12em（2026-10-31 用户反馈）太宽。 */
+	let day = E('select', { 'class': 'cbi-input-select', 'style': 'width: 8em !important; min-width: 8em !important; max-width: 8em !important; box-sizing: border-box;' }),
 	    hour = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
 	    minute = E('select', { 'class': 'cbi-input-select', 'style': timeSelectStyle }),
 	    wrap = E('div', { 'class': 'homeproxy-cron-editor', 'style': 'display: flex; align-items: center; gap: .4em;' }, [
