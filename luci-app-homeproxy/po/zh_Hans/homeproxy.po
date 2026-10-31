@@ -578,6 +578,15 @@ msgid "Core Log"
 msgstr "内核日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:725
+msgid "Rule Set Status"
+msgstr "规则集状态"
+
+msgid "Downloaded"
+msgstr "已下载"
+
+msgid "Not downloaded (%d of %d ready)"
+msgstr "未下载（已就绪 %d / %d 条）"
+
 msgid "Core Status"
 msgstr "内核状态"
 
@@ -2421,18 +2430,6 @@ msgstr "填充方案"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3500
 msgid "Panel Status"
 msgstr "面板状态"
-
-msgid "Panel available"
-msgstr "面板可用"
-
-msgid "Panel installed, not applied yet; reloading automatically"
-msgstr "面板已就位但尚未生效，正在自动重载"
-
-msgid "Panel installed, waiting for the core to start"
-msgstr "面板已就位，等待内核启动后生效"
-
-msgid "Panel not downloaded yet (fetching in background)"
-msgstr "面板尚未下载完成（正在后台下载）"
 
 msgid "Panel Settings"
 msgstr "面板设置"

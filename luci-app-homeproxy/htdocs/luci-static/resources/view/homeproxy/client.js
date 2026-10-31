@@ -106,7 +106,7 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-status-grid {
 	display: grid;
-	grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+	grid-template-columns: repeat(5, minmax(0, 1fr)) auto;
 	gap: 10px;
 	align-items: center;
 }
@@ -195,24 +195,47 @@ function updatePanelStatus(panel, isRunning) {
 	if (!panel || panel.enabled !== true)
 		return;
 
-	let text, color;
+	updateDownloadStatus('homeproxy_panel_status', panel.installed === true);
+}
 
-	if (panel.installed === true && panel.referenced === true) {
-		text = _('Panel available');
-		color = 'green';
-	} else if (panel.installed === true && panel.needsreload === true) {
-		text = _('Panel installed, not applied yet; reloading automatically');
-		color = 'orange';
-	} else if (panel.installed === true) {
-		text = _('Panel installed, waiting for the core to start');
-		color = 'orange';
-	} else {
-		text = _('Panel not downloaded yet (fetching in background)');
-		color = isRunning ? 'orange' : 'red';
+/* 规则集：全部启用的远程规则集都有有效本地副本才算「已下载」；一个缺就红。
+   valid 是 rpcd 逐条校验过的（SRS 魔数/JSON 头），比 exists 严格。 */
+function updateRulesetStatus(status) {
+	let el = document.getElementById('homeproxy_ruleset_status');
+	if (!el)
+		return;
+
+	let total = 0, ready = 0;
+
+	for (const sid in (status || {})) {
+		total++;
+		if (status[sid].valid === true)
+			ready++;
 	}
 
-	el.style.color = color;
-	el.value = text;
+	if (total === 0) {
+		/* 没配置远程规则集：无事可报，显示绿色，避免一个与实际无关的红字。 */
+		el.style.color = 'green';
+		el.value = _('Downloaded');
+		return;
+	}
+
+	el.style.color = (ready === total) ? 'green' : 'red';
+	el.value = (ready === total)
+		? _('Downloaded')
+		: _('Not downloaded (%d of %d ready)').format(ready, total);
+}
+
+/* 面板与规则集的状态卡共用：只报两态——「未下载」红 /「已下载」绿。
+   面板的细分（已就位未生效/等内核启动）是自愈链路的内部信号，用户不需要
+   读懂——归入「已下载」；自愈是否生效由 /ui/ 能否打开来验证。 */
+function updateDownloadStatus(id, installed) {
+	let el = document.getElementById(id);
+	if (!el)
+		return;
+
+	el.style.color = installed ? 'green' : 'red';
+	el.value = installed ? _('Downloaded') : _('Not downloaded');
 }
 
 function parseControllerPort(externalController) {
@@ -694,14 +717,17 @@ return view.extend({
 				return Promise.all([
 					L.resolveDefault(getServiceStatus(), false),
 					L.resolveDefault(callCurrentNode(), null),
-					L.resolveDefault(callPanelStatus(), {})
+					L.resolveDefault(callPanelStatus(), {}),
+					L.resolveDefault(callRulesetStatus(), {})
 				]).then((res) => {
 					let isRunning = res[0],
 					    current = res[1],
 					    panel = res[2] || {},
+					    rulesets = res[3] || {},
 					    current_label = null;
 
 					updatePanelStatus(panel, isRunning);
+					updateRulesetStatus(rulesets);
 
 					if (current?.mode === 'urltest') {
 						let active = current.active || {};
@@ -778,6 +804,15 @@ return view.extend({
 						E('input', {
 							id: 'homeproxy_panel_status',
 							class: 'cbi-input-text homeproxy-panel-status',
+							readonly: '',
+							value: _('Collecting data...')
+						})
+					]),
+					E('div', { class: 'homeproxy-status-field homeproxy-ruleset-status-field' }, [
+						E('div', { class: 'homeproxy-status-label' }, _('Rule Set Status')),
+						E('input', {
+							id: 'homeproxy_ruleset_status',
+							class: 'cbi-input-text homeproxy-ruleset-status',
 							readonly: '',
 							value: _('Collecting data...')
 						})
