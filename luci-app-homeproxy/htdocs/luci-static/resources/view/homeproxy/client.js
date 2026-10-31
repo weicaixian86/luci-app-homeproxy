@@ -112,21 +112,21 @@ const statusCss = `
 	text-align: center;
 	margin-bottom: 6px;
 }
+/* 状态行五个输入框统一居中（面板/规则集状态此前漏了 text-align，
+   文字贴左，与相邻框不一致——2026-10-31 用户反馈）。 */
 #homeproxy_status_panel input {
 	width: 100%;
 	min-width: 0;
+	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-version-field input {
 	width: 100%;
-	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-core-version-field input {
 	width: 100%;
-	text-align: center;
 }
 #homeproxy_status_panel .homeproxy-core-status-field input {
 	width: 100%;
-	text-align: center;
 }
 /* 状态卡的边框保持统一：内核状态此前 border: unset（无框），与相邻的
    版本框、面板/规则集状态框不一致，看起来像漏渲染（2026-10-31 用户反馈）。 */
