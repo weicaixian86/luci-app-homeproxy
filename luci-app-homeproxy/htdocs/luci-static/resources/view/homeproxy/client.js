@@ -231,20 +231,24 @@ function updatePanelStatus(panel, applicable) {
 	updateDownloadStatus('homeproxy_panel_status', panel.installed === true);
 }
 
-/* 规则集：全部启用的远程规则集都有有效本地副本才算「已下载」；一个缺就红。
+/* 规则集：全部规则集都有有效本地副本才算「已下载」；一个缺就红。
    valid 是 rpcd 逐条校验过的（SRS 魔数/JSON 头），比 exists 严格。
    与面板一样只报两态——就绪数是排查信息，日志里有，不上界面
    （2026-10-31 用户反馈「未下载（已就绪 19 / 21 条）」太长，会顶出卡片）。
 
-   applicable：这里的「规则集」指自定义路由模式下的用户规则集（UCI 的
-   `config ruleset` 段），规则集页本身也只在该模式出现（client.js:3040
-   `depends('routing_mode','custom')`）。其余模式用的是生成器内置的
-   geoip-cn / geosite-cn / geosite-noncn，由内核按需自下载，不归这张卡
-   管——显示「-」而不是「未下载」。
+   applicable：只有 proxy_mainland_china / global 两模式一条规则集都不生成
+   （2026-10-31 用户定稿：「仅代理中国大陆 / 全局模式是 '-'，其他都会检测」）。
+   其余三种模式各有各的规则集，都由 rpcd 的 ruleset_status 报出来：
+     - custom                → 用户自己配的 `config ruleset` 段；
+     - bypass_mainland_china → 生成器内置 geoip-cn / geosite-cn / geosite-noncn；
+     - gfwlist               → 生成器内置 geosite-noncn。
+   这些内置规则集同样是磁盘文件，缺了内核照样起不来，所以必须检测而不是
+   显示「-」。以前这里只认 custom，其余模式都显示「-」，实际可能一个文件
+   都没有。
 
-   status 为 null = 这次 RPC 失败。这条必须与「空集」分开：空集（custom 模式
-   下一条规则集都没配）是真结论「没东西要下」→ 绿；失败是「不知道」→ 灰 '-'。
-   以前两者都落进 {}，失败被显示成绿「已下载」。 */
+   status 为 null = 这次 RPC 失败。这条必须与「空集」分开：空集是真结论
+   「没东西要下」→ 绿；失败是「不知道」→ 灰 '-'。以前两者都落进 {}，失败被
+   显示成绿「已下载」。 */
 function updateRulesetStatus(status, applicable) {
 	let el = document.getElementById('homeproxy_ruleset_status');
 	if (!el)
@@ -278,6 +282,39 @@ function updateDownloadStatus(id, installed) {
 
 	el.style.color = installed ? 'green' : 'red';
 	el.value = installed ? _('Downloaded') : _('Not downloaded');
+}
+
+/* 某个模式下，状态卡该不该检测面板 / 规则集。抽成纯函数是为了能逐模式真跑
+   （tools/tests/status_card.test.cjs 把这段切出来对五个模式逐一求值）——
+   布尔表达式写在 render() 里只能靠 grep 正则去猜，改一个运算符就漏了。
+
+   面板：Clash API 只在 custom / bypass_mainland_china 生成
+   （generate_client.uc:1709 的 `if (routing_mode in [...])`），其余模式面板
+   既不存在也没有「更新面板」按钮可点。
+
+   规则集：只有 proxy_mainland_china / global 一条都不生成。逐模式对照
+   generate_client.uc：
+     custom                → 用户 config ruleset 段（:1655，在 custom 分支内）
+     bypass_mainland_china → geoip-cn / geosite-cn / geosite-noncn（:1558、:1579）
+     gfwlist               → geosite-noncn（:1579）
+     proxy_mainland_china  → 无
+     global                → 无
+   与 rpcd 的 builtinRuleSets() 是同一张表，改一处必须改另一处
+   （ruleset_status.test.cjs 会断言两边一致）。
+
+   正向枚举而不是「不等于那两个」：手改配置写入拼错的 routing_mode 时生成器
+   一条规则集都不 push，反向写法会把它当成「有规则集要检测」而显示红色
+   「未下载」——那是催用户去修一个并不存在的下载问题。 */
+const PANEL_MODES = ['custom', 'bypass_mainland_china'],
+      RULESET_MODES = ['custom', 'bypass_mainland_china', 'gfwlist'];
+
+function statusApplies(routingMode) {
+	const mode = (routingMode == null || routingMode === '') ? 'bypass_mainland_china' : routingMode;
+
+	return {
+		panel: PANEL_MODES.indexOf(mode) >= 0,
+		ruleset: RULESET_MODES.indexOf(mode) >= 0
+	};
 }
 
 function parseControllerPort(externalController) {
@@ -758,11 +795,11 @@ return view.extend({
 		s = m.section(form.TypedSection);
 		s.render = function () {
 		/* 「适用」取自已保存的 routing_mode（不是表单里的草稿值）：状态卡描述
-		   的是磁盘上这份正在生效的配置。面板只在 custom / bypass_mainland_china
-		   生成（generate_client.uc:1709），规则集页只在 custom 存在
-		   （client.js:3040 的 depends），所以两种模式的适用范围也不同。 */
-		const panelApplies = (routingMode === 'custom' || routingMode === 'bypass_mainland_china'),
-		      rulesetApplies = (routingMode === 'custom');
+		   的是磁盘上这份正在生效的配置。逐模式的对应关系集中在
+		   statusApplies() 里（见该函数注释），这里只取结果。 */
+		const applies = statusApplies(routingMode),
+		      panelApplies = applies.panel,
+		      rulesetApplies = applies.ruleset;
 
 		const statusPoll = function () {
 			/* 三个状态各自独立降级成 null，而不是 L.resolveDefault(..., {})：

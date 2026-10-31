@@ -1,24 +1,34 @@
 /*
  * Rule-set local-file status test for luci-app-homeproxy.
  *
- * `ruleset_status` reports, per enabled `config ruleset` section, whether a
- * usable local copy exists: { exists, valid, size, mtime, unavailable }.
- * The rule-set page turns that into the status column (green dot + time +
- * size / "Download failed" / "Invalid file" / "Not downloaded").
+ * Two things are pinned here:
  *
- * Why a real test instead of a grep: the bug being fixed here is invisible
- * in the source. The code used lstat() for size/mtime and readfile() for the
- * magic-number check. readfile() follows symlinks, lstat() does not, so for a
- * symlinked rule-set file the two halves of the same entry described
+ *   1. `rulesetFileInfo` — per file, { exists, valid, size, mtime, unavailable }.
+ *      The rule-set page turns that into the status column (green dot + time +
+ *      size / "Download failed" / "Invalid file" / "Not downloaded").
+ *   2. `builtinRuleSets` — which rule sets the generator produces per routing
+ *      mode, and therefore which ones `ruleset_status` must probe.
+ *
+ * Why a real test instead of a grep for (1): the bug being fixed there is
+ * invisible in the source. The code used lstat() for size/mtime and readfile()
+ * for the magic-number check. readfile() follows symlinks, lstat() does not,
+ * so for a symlinked rule-set file the two halves of the same entry described
  * *different objects*: valid=true (the 40 MB target is a real SRS archive)
  * next to size=1 B and mtime=<when the link was made> (the link itself).
  * The page then printed "1 B · 3 days ago" for a file the core was happily
  * loading. Both spellings look correct in a diff; only executing the function
  * against a filesystem where stat and lstat disagree pins which one it used.
  *
+ * Why for (2): `ruleset_status` used to walk only the UCI `config ruleset`
+ * sections, so in every non-custom mode it returned {} — and the status card
+ * reads an empty result as "nothing to download" and printed a green
+ * "Downloaded" for geoip-cn / geosite-cn / geosite-noncn files that may not
+ * exist at all, while the core refuses to start without them. Which tags a
+ * mode generates is a table, so it is asserted as a table, per mode.
+ *
  * luci.homeproxy is an rpcd ucode plugin and cannot be require'd here, so the
- * pure helper is sliced out verbatim and evaluated with fakes for the three
- * ucode builtins it uses (stat, readfile, type, substr).
+ * pure helpers are sliced out verbatim and evaluated with fakes for the ucode
+ * builtins they use (stat, readfile, type, substr).
  *
  * Run: node tools/tests/ruleset_status.test.cjs
  */
@@ -30,70 +40,78 @@ const path = require('path');
 
 const PLUGIN = path.resolve(__dirname, '..', '..', 'luci-app-homeproxy',
 	'root', 'usr', 'share', 'rpcd', 'ucode', 'luci.homeproxy');
+const CLIENT = path.resolve(__dirname, '..', '..', 'luci-app-homeproxy',
+	'htdocs', 'luci-static', 'resources', 'view', 'homeproxy', 'client.js');
 
 const src = fs.readFileSync(PLUGIN, 'utf8');
+const client = fs.readFileSync(CLIENT, 'utf8');
 
-const FROM = 'function rulesetFileInfo(path, fmt) {';
-const start = src.indexOf(FROM);
-
-if (start < 0) {
-	console.error('FAIL ruleset_status: cannot locate `' + FROM + '` in luci.homeproxy '
-		+ '(the helper was renamed or inlined again)');
-	process.exit(1);
-}
-
-/* Take the whole function by brace matching, so the slice cannot silently
+/* Take a whole function by brace matching, so the slice cannot silently
    include the next function if the body is reformatted.
 
    Braces inside string literals and comments must not be counted: the helper
    contains `substr(head, 0, 1) === '{'`, and a naive counter never returns to
    depth 0 because of that literal `{`. Skip over quotes and comments first. */
-let depth = 0, end = -1;
-let i = src.indexOf('{', start);
+function sliceFunction(signature, text) {
+	const from = text === undefined ? src : text;
+	const start = from.indexOf(signature);
 
-while (i < src.length) {
-	const ch = src[i];
+	if (start < 0) {
+		console.error('FAIL ruleset_status: cannot locate `' + signature + '` in '
+			+ 'luci.homeproxy / client.js (the helper was renamed or inlined again)');
+		process.exit(1);
+	}
 
-	if (ch === "'" || ch === '"' || ch === '`') {
-		const quote = ch;
-		i++;
-		while (i < src.length && src[i] !== quote) {
-			if (src[i] === '\\') i++;   /* escaped quote */
+	let depth = 0, end = -1;
+	let i = from.indexOf('{', start);
+
+	while (i < from.length) {
+		const ch = from[i];
+
+		if (ch === "'" || ch === '"' || ch === '`') {
+			const quote = ch;
 			i++;
+			while (i < from.length && from[i] !== quote) {
+				if (from[i] === '\\') i++;   /* escaped quote */
+				i++;
+			}
+			i++;
+			continue;
 		}
+
+		if (ch === '/' && from[i + 1] === '*') {
+			const close = from.indexOf('*/', i + 2);
+			i = close < 0 ? from.length : close + 2;
+			continue;
+		}
+
+		if (ch === '/' && from[i + 1] === '/') {
+			const nl = from.indexOf('\n', i + 2);
+			i = nl < 0 ? from.length : nl + 1;
+			continue;
+		}
+
+		if (ch === '{') {
+			depth++;
+		}
+		else if (ch === '}') {
+			depth--;
+			if (depth === 0) { end = i + 1; break; }
+		}
+
 		i++;
-		continue;
 	}
 
-	if (ch === '/' && src[i + 1] === '*') {
-		const close = src.indexOf('*/', i + 2);
-		i = close < 0 ? src.length : close + 2;
-		continue;
+	if (end < 0) {
+		console.error('FAIL ruleset_status: unbalanced braces after ' + signature);
+		process.exit(1);
 	}
 
-	if (ch === '/' && src[i + 1] === '/') {
-		const nl = src.indexOf('\n', i + 2);
-		i = nl < 0 ? src.length : nl + 1;
-		continue;
-	}
-
-	if (ch === '{') {
-		depth++;
-	}
-	else if (ch === '}') {
-		depth--;
-		if (depth === 0) { end = i + 1; break; }
-	}
-
-	i++;
+	return src.slice(start, end);
 }
 
-if (end < 0) {
-	console.error('FAIL ruleset_status: unbalanced braces after ' + FROM);
-	process.exit(1);
-}
-
-const block = src.slice(start, end);
+const FROM = 'function rulesetFileInfo(path, fmt) {';
+const block = sliceFunction(FROM);
 
 /* ucode has no Math/JSON/Object wrappers; the helper only needs these.
    `lstat` is injected as well even though the helper must not call it: the
@@ -263,6 +281,137 @@ function check(desc, got, want) {
 		/stat\(\s*path\s*\)/.test(body) || /lstat\(\s*path\s*\)/.test(body), false);
 	check('the unavailable marker is still gated on a non-empty path',
 		/length\(path\)\s*&&\s*!entry\.exists/.test(body), true);
+}
+
+/* ── which rule sets each routing_mode actually generates ─────────────── */
+/* generate_client.uc:1558-1588 pushes the built-in geo sets conditionally:
+       bypass_mainland_china -> geoip-cn, geosite-cn, geosite-noncn
+       bypass_mainland_china || gfwlist -> geosite-noncn
+       proxy_mainland_china / global -> nothing
+       custom -> the user's `config ruleset` sections (inside the custom
+                 branch at :1592, walker at :1655)
+   `ruleset_status` must probe exactly those files: the core loads them at
+   startup, so a missing one is a real failure the card has to show. The table
+   is a pure function precisely so it can be evaluated per mode here. */
+{
+	const fn = sliceFunction('function builtinRuleSets(routingMode) {');
+	const builtin = new Function(fn + `
+		return builtinRuleSets;`)();
+
+	check('bypass_mainland_china generates three built-in rule sets',
+		builtin('bypass_mainland_china'), ['geoip-cn', 'geosite-cn', 'geosite-noncn']);
+	check('gfwlist generates only geosite-noncn',
+		builtin('gfwlist'), ['geosite-noncn']);
+
+	/* custom is covered by the UCI walker, not by the built-in list; the two
+	   other modes generate no rule set at all. All three must yield []. */
+	for (const mode of ['custom', 'proxy_mainland_china', 'global'])
+		check(mode + ' generates no built-in rule set', builtin(mode), []);
+
+	/* An unwritten or misspelt routing_mode: the generator defaults to
+	   bypass_mainland_china (:66) or produces nothing (misspelt). Either way
+	   there is nothing to probe beyond the default, and the empty list is the
+	   safe answer — it can only make the card show "-", never a false green. */
+	check('an unknown routing_mode yields no built-in rule set',
+		builtin('proxy_mainland'), []);
+}
+
+/* ── rpcd and the frontend must agree on the applicability table ──────── */
+/* builtinRuleSets() (rpcd) and RULESET_MODES (client.js) are two spellings of
+   the same fact: which modes have rule-set files worth checking. They are in
+   different languages in different files, so nothing but an assertion keeps
+   them in step — the failure mode is silent and asymmetric (rpcd reports the
+   files, the card shows "-", or vice versa). */
+{
+	const modes = client.slice(client.indexOf('RULESET_MODES = ['),
+		client.indexOf('];', client.indexOf('RULESET_MODES = [')) + 2);
+	const frontend = [...modes.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+	const fn = sliceFunction('function builtinRuleSets(routingMode) {');
+	const builtin = new Function(fn + `
+		return builtinRuleSets;`)();
+
+	/* custom is in RULESET_MODES but not in builtinRuleSets (it uses the UCI
+	   walker), so the comparison is: the frontend list minus custom is exactly
+	   the set of modes the rpcd table covers. */
+	const KNOWN = ['custom', 'bypass_mainland_china', 'gfwlist',
+		'proxy_mainland_china', 'global'];
+
+	check('RULESET_MODES names only known routing modes',
+		frontend.every((m) => KNOWN.includes(m)), true);
+
+	const checked = frontend.filter((m) => builtin(m).length > 0);
+
+	check('every mode the frontend checks (except custom) has a built-in list',
+		frontend.filter((m) => m !== 'custom').sort(), checked.slice().sort());
+
+	/* And the reverse: no mode that rpcd would report is missing from the
+	   frontend table (that would report files the card then throws away). */
+	const rpcd_modes = KNOWN.filter((m) => builtin(m).length > 0);
+
+	check('every mode rpcd reports is in the frontend table',
+		rpcd_modes.every((m) => frontend.includes(m)), true);
+}
+
+/* ── the walker must probe the built-ins before the custom early return ── */
+/* The order matters: the built-in loop has to run for every mode, and the
+   custom-only UCI walker must sit *after* the `!== 'custom'` early return.
+   Inverting them would either hide the built-ins in bypass/gfwlist (the bug
+   being fixed) or mix user sections into modes that never read them. */
+{
+	const body = src.slice(src.indexOf('ruleset_status: {'),
+		src.indexOf('ruleset_update: {'));
+	const at_builtin = body.indexOf('builtinRuleSets(');
+	const at_return = body.indexOf("routing_mode !== 'custom'");
+	const at_foreach = body.indexOf("uci.foreach('homeproxy', 'ruleset'");
+
+	check('ruleset_status probes the built-in rule sets for every mode',
+		at_builtin >= 0, true);
+	check('the built-in probe runs before the custom early return',
+		at_builtin >= 0 && at_return > at_builtin, true);
+	check('the UCI section walker runs only after the custom early return',
+		at_foreach > at_return, true);
+
+	/* Path spelling must match the generator's RULESET_DIR (HP_DIR + '/ruleset',
+	   generate_client.uc:52) — a literal here would drift on a directory move. */
+	check('the built-in path is built from RULESET_DIR, not a literal',
+		/\$\{RULESET_DIR\}\/\$\{name\}\.srs/.test(body), true);
+	check('RULESET_DIR is derived from HP_DIR like the generator does',
+		/const RULESET_DIR = HP_DIR \+ '\/ruleset';/.test(src), true);
+}
+
+/* ── an unset routing_mode must not collapse to "no rule sets" ────────── */
+/* `ruleset_status` used to read routing_mode with `|| ''`. When the option is
+   absent (fresh install, upgrade from an old version, hand-written
+   /etc/config/homeproxy) that yields '' — a mode nobody recognises —
+   builtinRuleSets('') returns [], the RPC answers {}, and the status card
+   reads the empty set as "nothing to download" and paints a green
+   "Downloaded". The generator disagrees: generate_client.uc:66 defaults to
+   bypass_mainland_china and produces three .srs files the core then loads.
+   So the rpcd default must be that same mode, not ''.
+
+   Asserted at the source level because the value comes from uci; the
+   behavioural half (what builtinRuleSets does with each mode) is above. */
+{
+	const at = src.indexOf('const DEFAULT_ROUTING_MODE');
+	const decl = at < 0 ? '' : src.slice(at, src.indexOf('\n', at));
+
+	check('rpcd defaults routing_mode to bypass_mainland_china, like the generator',
+		/^const DEFAULT_ROUTING_MODE = 'bypass_mainland_china';/.test(decl), true);
+
+	/* No reader may keep the old empty default: it is invisible on any config
+	   that does write routing_mode, and silently wrong on the ones that do not. */
+	const stray = [...src.matchAll(/uci\.get\('homeproxy', 'config', 'routing_mode'\) \|\| ''/g)]
+		.filter((m) => !src.slice(src.lastIndexOf('\n', m.index) + 1, m.index).trim().startsWith('*'));
+
+	check('no rpcd reader falls back to an empty routing_mode',
+		stray.length, 0);
+
+	/* And the default must actually be used: a constant nobody references
+	   would satisfy the two checks above while changing nothing. */
+	check('every rpcd routing_mode reader uses DEFAULT_ROUTING_MODE',
+		[...src.matchAll(/uci\.get\('homeproxy', 'config', 'routing_mode'\) \|\| DEFAULT_ROUTING_MODE\)/g)].length,
+		[...src.matchAll(/uci\.get\('homeproxy', 'config', 'routing_mode'\)/g)].length);
 }
 
 console.log('');

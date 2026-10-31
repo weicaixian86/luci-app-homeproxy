@@ -9,18 +9,23 @@
  *                       `bypass_mainland_china` (generate_client.uc:1709), so in
  *                       gfwlist / proxy_mainland_china / global there is no
  *                       panel to download and the card must show "-";
- *   - rule-set status : the card tracks the *user* rule sets (`config ruleset`
- *                       sections), which exist only in `custom` mode — the rule
- *                       set page itself is gated on `routing_mode === 'custom'`
- *                       (client.js:3040). Other modes use the built-in
- *                       geoip-cn / geosite-cn / geosite-noncn that the core
- *                       downloads itself, so the card must show "-".
+ *   - rule-set status : only `proxy_mainland_china` and `global` generate no
+ *                       rule set at all. custom uses the user's `config ruleset`
+ *                       sections, bypass_mainland_china generates the built-in
+ *                       geoip-cn / geosite-cn / geosite-noncn and gfwlist the
+ *                       built-in geosite-noncn (generate_client.uc:1558-1588) —
+ *                       all of them are files on disk that the core needs, so
+ *                       those three modes must be *checked*, not "-".
+ *
+ * Both tables are pinned per mode: the applicability is a pure function
+ * (statusApplies) precisely so this test can evaluate every routing_mode
+ * instead of grepping a boolean expression out of render().
  *
  * Why a real test instead of a grep: the previous behaviour (grey "Not
  * downloaded" in non-panel modes) was *also* greppable and *also* looked
  * plausible. Only executing the functions pins what the user actually sees.
  *
- * client.js is a LuCI module and cannot be require'd here, so the four status
+ * client.js is a LuCI module and cannot be require'd here, so the status
  * helpers are sliced out verbatim and evaluated against a fake document.
  *
  * Run: node tools/tests/status_card.test.cjs
@@ -50,7 +55,7 @@ if (start < 0 || end < 0 || end <= start) {
 
 const block = src.slice(start, end);
 
-for (const fn of ['getServiceStatus', 'updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus', 'updateDownloadStatus']) {
+for (const fn of ['getServiceStatus', 'updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus', 'updateDownloadStatus', 'statusApplies']) {
 	if (!block.includes('function ' + fn + '(')) {
 		console.error('FAIL status_card: ' + fn + '() is no longer inside the sliced block');
 		process.exit(1);
@@ -77,7 +82,8 @@ function makeApi(cells, callServiceList) {
 	};
 
 	return new Function('document', '_', 'callServiceList', 'L', block + `
-		return { getServiceStatus, updateCoreStatus, updatePanelStatus, updateRulesetStatus };`)(document, (s) => s,
+		return { getServiceStatus, updateCoreStatus, updatePanelStatus, updateRulesetStatus,
+		         statusApplies, PANEL_MODES, RULESET_MODES };`)(document, (s) => s,
 		callServiceList || (() => Promise.resolve({})), L);
 }
 
@@ -176,14 +182,28 @@ function check(desc, got, want) {
 	check('custom + no enabled rule sets → green "Downloaded" (nothing to fetch)',
 		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['green', 'Downloaded']);
 
-	/* Non-custom modes: the built-in geo rule sets belong to the generator,
-	   not to this card. */
+	/* bypass_mainland_china / gfwlist: rpcd now reports the built-in geo rule
+	   sets it finds on disk, so a missing one must read as "Not downloaded".
+	   Before this change the same modes got {} from rpcd and the card printed
+	   a green "Downloaded" for a core that could not start. */
+	api.updateRulesetStatus({ 'geoip-cn': { valid: true }, 'geosite-cn': { valid: true },
+		'geosite-noncn': { valid: true } }, true);
+	check('bypass + all three built-in rule sets present → green "Downloaded"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['green', 'Downloaded']);
+
+	api.updateRulesetStatus({ 'geoip-cn': { valid: true }, 'geosite-cn': { valid: true },
+		'geosite-noncn': { valid: false } }, true);
+	check('bypass + one built-in rule set invalid → red "Not downloaded"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['red', 'Not downloaded']);
+
+	/* proxy_mainland_china / global: nothing is generated, so nothing to
+	   report — the card must show "-" even if a stale entry comes back. */
 	api.updateRulesetStatus({ rs_a: { valid: false } }, false);
-	check('gfwlist/global + stale invalid user rule set → grey "-" (not applicable)',
+	check('proxy_mainland_china/global + stale invalid entry → grey "-" (not applicable)',
 		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['gray', '-']);
 
 	api.updateRulesetStatus({}, false);
-	check('gfwlist/global + nothing configured → grey "-"',
+	check('proxy_mainland_china/global + nothing reported → grey "-"',
 		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['gray', '-']);
 }
 
@@ -228,15 +248,74 @@ function check(desc, got, want) {
 		[c.homeproxy_core_status.style.color, c.homeproxy_core_status.value], ['gray', '-']);
 }
 
+/* ── applicability per routing_mode ──────────────────────────────────── */
+/* This used to grep two boolean expressions out of statusPoll:
+       panelApplies   = (routingMode === 'custom' || routingMode === 'bypass_mainland_china')
+       rulesetApplies = (routingMode === 'custom')
+   The rule-set half was wrong for the user's actual rule set: the built-in
+   geo files exist in bypass_mainland_china (three of them) and gfwlist (one),
+   and the core cannot start without them, so only proxy_mainland_china and
+   global may show "-". A grep can only pin the spelling of the expression,
+   not what it evaluates to for each mode — and the old spelling looked just
+   as plausible. So the table is now a pure function, evaluated here mode by
+   mode, and the poll only passes the result through. */
+{
+	const api = makeApi(cells());
+
+	const PANEL_ON = ['custom', 'bypass_mainland_china'],
+	      PANEL_OFF = ['gfwlist', 'proxy_mainland_china', 'global'],
+	      RULESET_ON = ['custom', 'bypass_mainland_china', 'gfwlist'],
+	      RULESET_OFF = ['proxy_mainland_china', 'global'];
+
+	/* Positive enumeration: an unknown / misspelt routing_mode (a hand-edited
+	   config) generates no rule set at all, so it must not be treated as
+	   "something to download" and painted red. Only the five known modes may
+	   appear in either table. */
+	check('PANEL_MODES lists exactly the two modes that generate a Clash API',
+		api.PANEL_MODES.slice().sort(), PANEL_ON.slice().sort());
+	check('RULESET_MODES lists exactly the three modes that generate a rule set',
+		api.RULESET_MODES.slice().sort(), RULESET_ON.slice().sort());
+
+	for (const mode of PANEL_ON)
+		check(mode + ' → panel status is checked',
+			api.statusApplies(mode).panel, true);
+	for (const mode of PANEL_OFF)
+		check(mode + ' → panel status shows "-"',
+			api.statusApplies(mode).panel, false);
+
+	for (const mode of RULESET_ON)
+		check(mode + ' → rule-set status is checked',
+			api.statusApplies(mode).ruleset, true);
+	for (const mode of RULESET_OFF)
+		check(mode + ' → rule-set status shows "-"',
+			api.statusApplies(mode).ruleset, false);
+
+	/* generate_client.uc:66 defaults routing_mode to bypass_mainland_china when
+	   the option was never written (fresh install / config from an old
+	   version). The status cards must agree with the generator, otherwise a
+	   fresh install shows "-" for a rule set the core is actually loading. */
+	for (const empty of [null, undefined, ''])
+		check('routing_mode ' + JSON.stringify(empty) + ' behaves like bypass_mainland_china',
+			api.statusApplies(empty), { panel: true, ruleset: true });
+
+	/* A misspelt mode is not in either table: both cards show "-". */
+	check('an unknown routing_mode applies to nothing',
+		api.statusApplies('proxy_mainland'), { panel: false, ruleset: false });
+}
+
 /* ── the poll must pass the mode-derived flags, not hardcoded true ────── */
 {
 	const poll = src.slice(src.indexOf("hp.pollAdd('client-status', statusPoll)") - 1400,
 		src.indexOf("hp.pollAdd('client-status', statusPoll)"));
 
-	check('statusPoll derives panelApplies from routing_mode',
-		/panelApplies\s*=\s*\(routingMode === 'custom' \|\| routingMode === 'bypass_mainland_china'\)/.test(poll), true);
-	check('statusPoll derives rulesetApplies from routing_mode (custom only)',
-		/rulesetApplies\s*=\s*\(routingMode === 'custom'\)/.test(poll), true);
+	/* The derivation itself lives in statusApplies(); the poll must not
+	   re-derive it inline (two spellings of the same table drift apart). */
+	check('statusPoll takes both flags from statusApplies()',
+		/panelApplies\s*=\s*applies\.panel/.test(poll)
+		&& /rulesetApplies\s*=\s*applies\.ruleset/.test(poll), true);
+	check('statusPoll does not re-derive the tables inline',
+		/routingMode === 'custom'/.test(poll)
+		|| /routingMode === 'bypass_mainland_china'/.test(poll), false);
 	check('statusPoll passes both flags to the updaters',
 		/updatePanelStatus\(panel, panelApplies\)/.test(poll)
 		&& /updateRulesetStatus\(rulesets, rulesetApplies\)/.test(poll), true);

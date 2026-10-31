@@ -21,6 +21,19 @@ function hasKernelModule(kmod) {
 
 const HP_DIR = '/etc/homeproxy';
 const RUN_DIR = '/var/run/homeproxy';
+/* 生成器的 RULESET_DIR（generate_client.uc:52），内置规则集与用户规则集
+   都落在同一个目录里，路径必须逐字一致。 */
+const RULESET_DIR = HP_DIR + '/ruleset';
+
+/* routing_mode 的缺省值必须与生成器一致：generate_client.uc:66 写的是
+   `uci.get(...) || 'bypass_mainland_china'`。配置里没写过这个选项（全新
+   安装、从旧版本升上来、手写 /etc/config/homeproxy）时，生成器按大陆白名单
+   处理 —— 生成三个内置规则集、生成 clash_api。rpcd 若在这时取空字符串，
+   就会按「一种谁都不认识的模式」回答：规则集返回 {}、面板 enabled=false，
+   前端拿到的是「没有要下的东西」而不是「不知道」，于是显示绿「已下载」/
+   灰「-」，与内核实际在加载的文件正好相反。
+   前端 client.js:693 用同一个缺省值，三处口径一致。 */
+const DEFAULT_ROUTING_MODE = 'bypass_mainland_china';
 
 function getClashAPIConfig(uci) {
 	const external_controller = trim(uci.get('homeproxy', 'clash_api', 'external_controller') || '127.0.0.1:9090');
@@ -243,6 +256,27 @@ function rulesetFileInfo(path, fmt) {
 		entry.valid = (substr(head, 0, 3) === 'SRS');
 
 	return entry;
+}
+
+/* 非 custom 模式下由生成器内置的规则集（generate_client.uc:1558-1588）。
+ * 这两种模式把规则集写死在客户端配置里，用户既看不到也管不到它们，所以
+ * 状态卡必须去查这些文件本身，而不是 UCI 的 `config ruleset` 段 —— 那些
+ * 段只在 custom 模式下被引用（generate_client.uc:1655 位于 custom 分支）。
+ *
+ * proxy_mainland_china / global 一条内置规则集都不生成（同一个函数里没有
+ * 任何分支覆盖它们），返回空数组：状态卡在这两种模式下显示「-」，而不是
+ * 拿一个空结果去说「已下载」。
+ *
+ * 抽成独立函数是为了能真跑（tools/tests/ruleset_status.test.cjs 切出本
+ * 函数，逐模式断言返回的集合），而不是靠 grep 猜。 */
+function builtinRuleSets(routingMode) {
+	if (routingMode === 'bypass_mainland_china')
+		return [ 'geoip-cn', 'geosite-cn', 'geosite-noncn' ];
+
+	if (routingMode === 'gfwlist')
+		return [ 'geosite-noncn' ];
+
+	return [];
 }
 
 function hasDirectoryContent(directory) {
@@ -1089,7 +1123,7 @@ const methods = {
 			const uci = cursor();
 			uci.load('homeproxy');
 
-			const routingMode = trim(uci.get('homeproxy', 'config', 'routing_mode') || '');
+			const routingMode = trim(uci.get('homeproxy', 'config', 'routing_mode') || DEFAULT_ROUTING_MODE);
 			const panelDir = getPanelDir(uci);
 			/* stat() 而不是 lstat()：这里回答的是「内核能不能拿 index.html 当
 			   面板首页」，而内核/生成器都是**跟随链接**打开它的
@@ -1124,7 +1158,7 @@ const methods = {
 			if (request?.args?.only_if_missing) {
 				/* The panel is only enabled in custom and
 				   bypass_mainland_china routing modes */
-				const routing_mode = trim(uci.get('homeproxy', 'config', 'routing_mode') || '');
+				const routing_mode = trim(uci.get('homeproxy', 'config', 'routing_mode') || DEFAULT_ROUTING_MODE);
 				if (routing_mode !== 'custom' && routing_mode !== 'bypass_mainland_china')
 					return { result: true, skipped: true };
 
@@ -2178,11 +2212,44 @@ const methods = {
 
 	/* 规则集本地文件状态（建议7）：路径解析与 fetch_rulesets.sh 的
 	   resolve_path()/ruleset_file_name() 保持一致，魔数校验与
-	   valid_ruleset() 一致（binary→"SRS"，source→"{" 或 "["）。 */
+	   valid_ruleset() 一致（binary→"SRS"，source→"{" 或 "["）。
+
+	   查哪个集合取决于路由模式，两者互斥：
+	     custom                → UCI 的 `config ruleset` 段（用户自己加的）
+	     bypass_mainland_china → 生成器内置的 geoip-cn / geosite-cn / geosite-noncn
+	     gfwlist               → 生成器内置的 geosite-noncn
+	     proxy_mainland_china / global → 一条都没有，返回 {}（状态卡显示「-」）
+	   为什么非 custom 也要查：这些内置规则集同样是磁盘上的文件，缺失时内核
+	   一样起不来（生成器把它们写成 type: remote，内核启动时同步下载，慢镜像
+	   上就是「未运行」）。以前这里只遍历 config ruleset，非 custom 模式返回
+	   空对象，前端把空集读成「没有要下的东西」→ 绿「已下载」，而实际可能
+	   一个文件都没有。 */
 	ruleset_status: {
 		call: function() {
 			const uci = cursor();
-			const result = {};
+			uci.load('homeproxy');
+
+			const result = {},
+			      routing_mode = trim(uci.get('homeproxy', 'config', 'routing_mode') || DEFAULT_ROUTING_MODE);
+
+			/* 内置规则集的 tag 与生成器里的字面量一致（generate_client.uc
+			   的 push({ tag: 'geoip-cn', ... })），路径走同一个
+			   ruleset_file_name() 规则：非字母数字点划线替换成下划线。 */
+			const builtin_entry = (tag) => {
+				const name = replace(tag, /[^A-Za-z0-9_.-]/g, '_') || 'ruleset';
+
+				return rulesetFileInfo(`${RULESET_DIR}/${name}.srs`, 'binary');
+			};
+
+			for (let tag in builtinRuleSets(routing_mode))
+				result[tag] = builtin_entry(tag);
+
+			/* custom 之外的模式到此为止：config ruleset 段在那些模式里根本
+			   不被生成器引用（generate_client.uc:1655 在 custom 分支内），
+			   把它们混进结果会让状态卡因为一条「配了但当前不生效」的规则集
+			   而变红。 */
+			if (routing_mode !== 'custom')
+				return result;
 
 			uci.foreach('homeproxy', 'ruleset', (sec) => {
 				/* 只统计启用的段：生成器（isSectionEnabled）与 fetch_rulesets.sh
@@ -2212,7 +2279,7 @@ const methods = {
 					const fname = name + ((fmt === 'source') ? '.json' : '.srs');
 
 					if (!length(p))
-						path = '/etc/homeproxy/ruleset/' + fname;
+						path = RULESET_DIR + '/' + fname;
 					else if (substr(p, length(p) - 1) === '/')
 						path = p + fname;
 					else

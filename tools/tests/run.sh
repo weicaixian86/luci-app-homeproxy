@@ -1404,6 +1404,50 @@ case "$gc_strict" in
 *) bad "generate_client.uc has no strict enabled gate  <- found $gc_strict" ;;
 esac
 
+# ------------------------------------------------ routing_mode default parity
+# routing_mode 没写过时（全新安装 / 从旧版升上来 / 手写 /etc/config/homeproxy），
+# 生成器 generate_client.uc:66 取 'bypass_mainland_china'：按大陆白名单生成三个
+# 内置规则集、并生成 clash_api（:1709）。三处读这个选项的地方必须用同一个缺省：
+#   · 生成器  :66                 → 'bypass_mainland_china'
+#   · 前端   client.js:693        → 'bypass_mainland_china'
+#   · rpcd   DEFAULT_ROUTING_MODE → 同上（三处 uci.get 都引用它）
+# rpcd 曾写成 `|| ''`，于是配置缺这一项时它按「谁都不认识的模式」回答：规则集
+# 返回 {}、面板 enabled=false。前端拿到空集读成「没有要下的东西」→ 绿「已下载」，
+# 而内核其实正在加载三个 .srs。结论与磁盘实况相反，且只在缺该选项的机器上出现。
+section "routing_mode default parity (generator / frontend / rpcd)"
+RPCD_UC="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+
+case "$(grep -cF "|| 'bypass_mainland_china'" "$GC_UC" 2>/dev/null)" in
+''|0) bad "generate_client.uc no longer defaults routing_mode to bypass_mainland_china" ;;
+*) ok "generate_client.uc defaults routing_mode to bypass_mainland_china" ;;
+esac
+
+case "$(grep -cF "|| 'bypass_mainland_china'" "$CLIENT_JS" 2>/dev/null)" in
+''|0) bad "client.js no longer defaults routing_mode to bypass_mainland_china" ;;
+*) ok "client.js defaults routing_mode to bypass_mainland_china" ;;
+esac
+
+case "$(grep -cF "const DEFAULT_ROUTING_MODE = 'bypass_mainland_china';" "$RPCD_UC" 2>/dev/null)" in
+''|0) bad "rpcd has no DEFAULT_ROUTING_MODE constant" ;;
+*) ok "rpcd declares DEFAULT_ROUTING_MODE = bypass_mainland_china" ;;
+esac
+
+# 所有读 routing_mode 的地方都必须走那个常量：残留的 `|| ''` 会重新引入假绿，
+# 而它在一份「写了 routing_mode」的配置上看不出任何差别。
+stray="$(grep -n "routing_mode') || ''" "$RPCD_UC" 2>/dev/null | grep -v '^[0-9]*:[[:space:]]*\*' || true)"
+if [ -n "$stray" ]; then
+	bad "rpcd still reads routing_mode with an empty-string default: $(printf '%s' "$stray" | head -1)"
+else
+	ok "every rpcd routing_mode read uses DEFAULT_ROUTING_MODE"
+fi
+
+rpcd_sites="$(grep -cF "|| DEFAULT_ROUTING_MODE)" "$RPCD_UC" 2>/dev/null)"
+case "$rpcd_sites" in
+''|0) bad "rpcd never uses DEFAULT_ROUTING_MODE" ;;
+3)   ok "rpcd reads routing_mode through DEFAULT_ROUTING_MODE (3 call sites)" ;;
+*)   bad "rpcd routing_mode call sites changed ($rpcd_sites, expected 3): a new reader must reuse the constant too" ;;
+esac
+
 case "$(grep -c 'section_enabled' "$RS_SH" 2>/dev/null)" in
 ''|0) bad "fetch_rulesets.sh gates on section_enabled" ;;
 *) ok "fetch_rulesets.sh gates on section_enabled" ;;
@@ -1428,11 +1472,21 @@ else
 fi
 
 # --------------------------------------------------------- status card states
-# 状态行五个框里只有后三个是动态的，其中「面板状态」「规则集状态」还有第三态：
-# 「不适用」。面板只在 custom / bypass_mainland_china 生成（生成器 1709 行），
-# 规则集卡跟的是自定义模式下的用户规则集（规则集页本身只在 custom 出现，
-# client.js:3040），其余模式显示灰色「-」。旧行为是灰字「未下载」——既像故障
-# 又催用户去下一个该模式下根本不会有的东西（2026-10-31 用户反馈）。
+# 状态行五个框里只有后三个是动态的，其中「面板状态」「规则集状态」还有第三态
+# 「不适用」。逐模式对照生成器：
+#   面板   只在 custom / bypass_mainland_china 生成（generate_client.uc:1709），
+#          其余三种模式没有面板可下，显示灰色「-」。
+#   规则集 只有 proxy_mainland_china / global 一条都不生成，显示灰色「-」；
+#          custom 查用户 config ruleset 段（:1655），bypass_mainland_china 查
+#          geoip-cn / geosite-cn / geosite-noncn（:1558、:1579），gfwlist 查
+#          geosite-noncn（:1579）—— 这三种都必须真检测，因为那些内置 .srs 缺失
+#          时内核一样起不来（生成器写成 type: remote，启动时同步下载）。
+# 旧行为有两处错：非 custom 模式一律显示灰色「-」（漏掉了 bypass/gfwlist 的内置
+# 规则集，内核缺文件也不报），更早则是灰字「未下载」——既像故障又催用户去下一
+# 个该模式下根本不会有的东西（2026-10-31 用户反馈）。而 rpcd 侧只遍历 config
+# ruleset，非 custom 返回 {}，前端把空集读成「没有要下的东西」→ 绿「已下载」，
+# 结论与磁盘实况相反。所以「适用性」抽成纯函数 statusApplies()（逐模式断言），
+# rpcd 侧对应 builtinRuleSets()（逐模式断言，并交叉校验两边表一致）。
 # 这里真跑那几个函数（client.js 是 LuCI 模块，切出纯函数段求值），而不是
 # 只 grep 字符串：灰字「未下载」同样能被 grep 到，只有执行才分得清。
 section "Status card (applicable / not applicable)"
@@ -1452,6 +1506,10 @@ fi
 # 元数据用 lstat（链接自身，几十字节）、魔数用 readfile（跟随链接读目标）。
 # 两侧描述的是不同对象，页面会给内核正在正常加载的规则集显示
 # 「1 B · 三天前」，同时 valid=true。只有执行才分得清取的是哪一个。
+# 同一份测试还逐模式断言 builtinRuleSets()（bypass→三项、gfwlist→一项、
+# custom/proxy_mainland_china/global→空），并交叉校验它与前端 RULESET_MODES
+# 是同一张表 —— 两边分属不同文件、不同语言，只有断言能防止它们各自漂移
+# （漂移是静默的：一边报文件、另一边显示「-」，或反过来）。
 section "Rule-set local file status (stat vs lstat)"
 "$NODE" "$ROOT/tools/tests/ruleset_status.test.cjs" > "$WORK/rulesetstatus.out" 2>&1
 if [ $? -eq 0 ]; then
