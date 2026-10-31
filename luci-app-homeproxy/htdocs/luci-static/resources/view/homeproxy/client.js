@@ -128,7 +128,7 @@ const statusCss = `
 }
 #homeproxy_status_panel .homeproxy-core-status {
 	border: unset;
-	font-style: italic;
+	font-style: normal;
 	font-weight: 700;
 }
 #homeproxy_status_panel .homeproxy-status-actions {
