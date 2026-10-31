@@ -624,7 +624,7 @@ function renderPage(ctx, o) {
 			'src': L.resource('icons/loading.svg'),
 			'alt': _('Loading'),
 			'style': 'vertical-align:middle'
-		}, _('Collecting data...'))
+		}, _('Collecting data...', 'homeproxy'))
 	);
 
 	/* The log box is a <div> (per-line colouring needs markup, which a

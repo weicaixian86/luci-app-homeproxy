@@ -206,7 +206,15 @@ function updateCoreStatus(isRunning) {
 	}
 
 	status.style.color = isRunning ? 'green' : 'red';
-	status.value = isRunning ? _('Running') : _('Not Running');
+	/* 第二个参数是 gettext context（msgctxt）。'Not Running' 这个 msgid 在
+	   设备上被 ddns.zh-cn.lmo 也用了，而 LuCI 的 /admin/translations 会把
+	   /usr/lib/lua/luci/i18n/ 下全部 lmo 合并成一张按 sfh 哈希索引的表
+	   （cbi.js:18），后写入的同哈希条目覆盖前者 —— ddns 的「未在运行」就这样
+	   盖掉了本包的「未运行」。加 context 后 msgid 变成 "homeproxy\1Not
+	   Running"（po2lmo.c:166），哈希与 ddns 的条目不同，互不覆盖。
+	   i18n-scan.pl:16 的 '_:1,2c' 关键字声明前端 _() 的第 2 个参数就是
+	   context，这是 LuCI 官方支持的写法，不是自创。 */
+	status.value = isRunning ? _('Running') : _('Not Running', 'homeproxy');
 }
 
 /* 面板状态：只报文件在不在（installed）。Clash API 只在 custom /
@@ -623,7 +631,7 @@ function renderRuleSetAdd(section, extra_class) {
 		if (duplicate) {
 			nameEl.value = '';
 			button.disabled = true;
-			hintEl.textContent = _('Expecting: %s').format(_('unique value'));
+			hintEl.textContent = _('Expecting: %s').format(_('unique value', 'homeproxy'));
 			return;
 		}
 
@@ -881,7 +889,7 @@ return view.extend({
 							id: 'homeproxy_core_status',
 							class: 'cbi-input-text homeproxy-core-status',
 							readonly: '',
-							value: _('Collecting data...')
+							value: _('Collecting data...', 'homeproxy')
 						})
 					]),
 					E('div', { class: 'homeproxy-status-field homeproxy-panel-status-field' }, [
@@ -891,7 +899,7 @@ return view.extend({
 							class: 'cbi-input-text homeproxy-panel-status',
 							readonly: '',
 							style: panelApplies ? '' : 'color: gray',
-							value: panelApplies ? _('Collecting data...') : '-'
+							value: panelApplies ? _('Collecting data...', 'homeproxy') : '-'
 						})
 					]),
 					E('div', { class: 'homeproxy-status-field homeproxy-ruleset-status-field' }, [
@@ -901,7 +909,7 @@ return view.extend({
 							class: 'cbi-input-text homeproxy-ruleset-status',
 							readonly: '',
 							style: rulesetApplies ? '' : 'color: gray',
-							value: rulesetApplies ? _('Collecting data...') : '-'
+							value: rulesetApplies ? _('Collecting data...', 'homeproxy') : '-'
 						})
 					]),
 					E('div', { class: 'homeproxy-status-actions' }, actions)
@@ -1016,7 +1024,7 @@ return view.extend({
 		o.validate = function(section_id, value) {
 			if (section_id && !['wan'].includes(value)) {
 				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 				let ipv6_support = this.section.formvalue(section_id, 'ipv6_support');
 				try {
@@ -1050,7 +1058,7 @@ return view.extend({
 		o.validate = function(section_id, value) {
 			if (section_id && !['wan'].includes(value)) {
 				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 				try {
 					let url = new URL(value.replace(/^.*:\/\//, 'http://'));
@@ -1747,7 +1755,7 @@ return view.extend({
 				    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
 
 				if (!groups.length && !subscription_nodes.length && !selected.length && !policy_nodes.length)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			}
 
 			return true;
@@ -3284,7 +3292,7 @@ return view.extend({
 		so.validate = function(section_id, value) {
 			if (section_id) {
 				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 				if (!value.match(/^[A-Za-z0-9_.-]+$/))
 					return _('Expecting: %s').format(_('valid tag'));
 
@@ -3295,7 +3303,7 @@ return view.extend({
 							duplicate = true;
 				});
 				if (duplicate)
-					return _('Expecting: %s').format(_('unique value'));
+					return _('Expecting: %s').format(_('unique value', 'homeproxy'));
 			}
 
 			return true;
@@ -3330,7 +3338,7 @@ return view.extend({
 		so.validate = function(section_id, value) {
 			if (section_id) {
 				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 				try {
 					let url = new URL(value);
@@ -3371,7 +3379,7 @@ return view.extend({
 		so.placeholder = '/etc/homeproxy/ruleset/';
 		so.validate = function(section_id, value) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			if (!value.match(/^\//))
 				return _('Expecting: %s').format(_('absolute path'));
 
@@ -3426,7 +3434,7 @@ return view.extend({
 		so.rmempty = false;
 		so.validate = function(_section_id, value) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 			return stubValidator.apply('hostname', value) ||
 				stubValidator.apply('ip4addr', value) ||
@@ -3441,7 +3449,7 @@ return view.extend({
 		so.rmempty = false;
 		so.validate = function(_section_id, value) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 			return stubValidator.apply('port', value);
 		};
@@ -3455,7 +3463,7 @@ return view.extend({
 		so.rmempty = false;
 		so.validate = function(_section_id, value) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			if (!validateDuration(value))
 				return _('Expecting: %s').format(_('valid duration'));
 

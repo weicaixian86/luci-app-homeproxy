@@ -404,6 +404,7 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:142
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
+msgctxt "homeproxy"
 msgid "Cancel"
 msgstr ""
 
@@ -438,6 +439,7 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:139
 #: htdocs/luci-static/resources/view/homeproxy/status.js:141
+msgctxt "homeproxy"
 msgid "Checking..."
 msgstr ""
 
@@ -527,6 +529,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:794
 #: htdocs/luci-static/resources/view/homeproxy/client.js:803
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
+msgctxt "homeproxy"
 msgid "Collecting data..."
 msgstr ""
 
@@ -1333,6 +1336,7 @@ msgid "Fragment fallback delay"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Fri"
 msgstr ""
 
@@ -1500,6 +1504,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/server.js:445
 #: htdocs/luci-static/resources/view/homeproxy/server.js:450
 #: htdocs/luci-static/resources/view/homeproxy/server.js:481
+msgctxt "homeproxy"
 msgid "Host"
 msgstr ""
 
@@ -2105,6 +2110,7 @@ msgid "Mode"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Mon"
 msgstr ""
 
@@ -2258,6 +2264,7 @@ msgid "None"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:184
+msgctxt "homeproxy"
 msgid "Not Running"
 msgstr ""
 
@@ -2899,6 +2906,7 @@ msgid "Same as main node"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Sat"
 msgstr ""
 
@@ -3158,6 +3166,7 @@ msgid "Successfully updated."
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Sun"
 msgstr ""
 
@@ -3556,6 +3565,7 @@ msgid "ThreatBook Public DNS (DoH)"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Thu"
 msgstr ""
 
@@ -3600,6 +3610,7 @@ msgid "Trojan"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Tue"
 msgstr ""
 
@@ -3926,6 +3937,7 @@ msgid "WebSocket"
 msgstr ""
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Wed"
 msgstr ""
 
@@ -4064,6 +4076,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1359
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1998
 #: htdocs/luci-static/resources/view/homeproxy/server.js:243
+msgctxt "homeproxy"
 msgid "non-empty value"
 msgstr ""
 
@@ -4134,6 +4147,7 @@ msgstr ""
 #: htdocs/luci-static/resources/homeproxy.js:1841
 #: htdocs/luci-static/resources/view/homeproxy/client.js:544
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3197
+msgctxt "homeproxy"
 msgid "unique value"
 msgstr ""
 

@@ -136,9 +136,9 @@ function renderConnCards() {
 			'class': 'homeproxy-connect-result',
 			'title': _('HTTP request latency: time from sending the request to receiving the first byte. DNS, TCP and TLS handshakes are NOT included, so the value is much smaller than ping or node latency. Same metric as Passwall.'),
 			'click': ui.createHandlerFn(this, () => {
-				result.textContent = _('Checking...');
+				result.textContent = _('Checking...', 'homeproxy');
 				result.style.setProperty('color', '#f0ad4e');
-				result.title = _('Checking...');
+				result.title = _('Checking...', 'homeproxy');
 
 				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
 					if (ret.result && ret.latency != null) {

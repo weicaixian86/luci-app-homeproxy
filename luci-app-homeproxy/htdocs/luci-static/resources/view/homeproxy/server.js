@@ -140,7 +140,7 @@ return view.extend({
 			});
 
 			return E('div', { class: 'cbi-section', id: 'status_bar' }, [
-					E('p', { id: 'service_status' }, _('Collecting data...'))
+					E('p', { id: 'service_status' }, _('Collecting data...', 'homeproxy'))
 			]);
 		}
 
@@ -240,7 +240,7 @@ return view.extend({
 					}
 
 					if (!value)
-						return _('Expecting: %s').format(_('non-empty value'));
+						return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 				}
 			}
 
@@ -442,12 +442,12 @@ return view.extend({
 		/* gRPC config end */
 
 		/* HTTP(Upgrade) config start */
-		o = s.option(form.DynamicList, 'http_host', _('Host'));
+		o = s.option(form.DynamicList, 'http_host', _('Host', 'homeproxy'));
 		o.datatype = 'hostname';
 		o.depends('transport', 'http');
 		o.modalonly = true;
 
-		o = s.option(form.Value, 'httpupgrade_host', _('Host'));
+		o = s.option(form.Value, 'httpupgrade_host', _('Host', 'homeproxy'));
 		o.datatype = 'hostname';
 		o.depends('transport', 'httpupgrade');
 		o.modalonly = true;
@@ -478,7 +478,7 @@ return view.extend({
 		/* HTTP config end */
 
 		/* WebSocket config start */
-		o = s.option(form.Value, 'ws_host', _('Host'));
+		o = s.option(form.Value, 'ws_host', _('Host', 'homeproxy'));
 		o.depends('transport', 'ws');
 		o.modalonly = true;
 

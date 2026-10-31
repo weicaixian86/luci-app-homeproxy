@@ -139,7 +139,7 @@ return view.extend({
 		const confirmDelete = (name) => ui.showModal(_('Delete configuration file'), [
 			E('p', {}, _('Delete %s? It can only be brought back by uploading it again.').format(name)),
 			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel')),
+				E('button', { 'class': 'cbi-button', 'click': ui.hideModal }, _('Cancel', 'homeproxy')),
 				' ',
 				E('button', { 'class': 'cbi-button cbi-button-remove', 'click': () => { ui.hideModal(); deleteProfile(name); } }, _('Delete'))
 			])

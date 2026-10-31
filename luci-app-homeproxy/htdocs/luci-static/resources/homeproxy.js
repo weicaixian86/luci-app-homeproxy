@@ -962,7 +962,7 @@ return baseclass.extend({
 			if (duplicate) {
 				nameEl.value = '';
 				button.disabled = true;
-				hintEl.textContent = _('Expecting: %s').format(_('unique value'));
+				hintEl.textContent = _('Expecting: %s').format(_('unique value', 'homeproxy'));
 				return;
 			}
 
@@ -1565,8 +1565,16 @@ return baseclass.extend({
 			return String(value || '');
 
 		const time = parsed.hour + ':' + parsed.minute,
-		      days = [ _('Sun'), _('Mon'), _('Tue'), _('Wed'),
-		               _('Thu'), _('Fri'), _('Sat') ];
+		      /* 星期名必须带 gettext context。这些 msgid（Sun/Mon/...）在设备上
+		         被 oaf.zh-cn.lmo 也用了，译文是「周日/周一/...」，而本包用的是
+		         单字「日/一/...」—— 因为本包把它拼进 _('Every %s %s') =
+		         「每周%s %s」，拼出来是「每周周一 8:00」这种病句。LuCI 把全部
+		         lmo 合并成一张表（cbi.js:18 按 sfh 哈希查），后写入者覆盖前者，
+		         结果 Sun/Mon/Tue/Wed/Fri/Sat 全被 oaf 盖成「周X」，唯独 oaf 没有
+		         Thu，Thu 仍是「四」—— 同一行里「周四」「周五」混杂。加 context
+		         后各包条目哈希互不相同，本包恢复单字译法。 */
+		      days = [ _('Sun', 'homeproxy'), _('Mon', 'homeproxy'), _('Tue', 'homeproxy'), _('Wed', 'homeproxy'),
+		               _('Thu', 'homeproxy'), _('Fri', 'homeproxy'), _('Sat', 'homeproxy') ];
 
 		return (parsed.day === '*')
 			? _('Every day %s').format(time)
@@ -1827,7 +1835,7 @@ return baseclass.extend({
 	validateUniqueValue(uciconfig, ucisection, ucioption, section_id, value) {
 		if (section_id) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			if (ucioption === 'node' && (value === 'urltest' || value === 'selector'))
 				return true;
 
@@ -1838,7 +1846,7 @@ return baseclass.extend({
 						duplicate = true
 			});
 			if (duplicate)
-				return _('Expecting: %s').format(_('unique value'));
+				return _('Expecting: %s').format(_('unique value', 'homeproxy'));
 		}
 
 		return true;
@@ -1849,7 +1857,7 @@ return baseclass.extend({
 		   Chinese labels are supported. Only reject characters that break
 		   tag handling or get rewritten by generate_client.uc. */
 		if (!value)
-			return _('Expecting: %s').format(_('non-empty value'));
+			return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 		if (/[\/\\?#%\r\n\t]/.test(value))
 			return _('Expecting: %s').format(_('valid tag'));
@@ -1860,7 +1868,7 @@ return baseclass.extend({
 	validateUUID(section_id, value) {
 		if (section_id) {
 			if (!value)
-				return _('Expecting: %s').format(_('non-empty value'));
+				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			else if (value.match('^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') === null)
 				return _('Expecting: %s').format(_('valid uuid'));
 		}

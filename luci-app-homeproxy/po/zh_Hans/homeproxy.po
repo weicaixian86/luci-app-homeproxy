@@ -424,6 +424,7 @@ msgstr "CUBIC"
 
 #: htdocs/luci-static/resources/view/homeproxy/configfile.js:142
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2107
+msgctxt "homeproxy"
 msgid "Cancel"
 msgstr "关闭"
 
@@ -460,6 +461,7 @@ msgstr "检查更新"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:139
 #: htdocs/luci-static/resources/view/homeproxy/status.js:141
+msgctxt "homeproxy"
 msgid "Checking..."
 msgstr "检测中..."
 
@@ -551,6 +553,7 @@ msgstr "CloudFlare 公共DNS (DoH)"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:794
 #: htdocs/luci-static/resources/view/homeproxy/client.js:803
 #: htdocs/luci-static/resources/view/homeproxy/server.js:143
+msgctxt "homeproxy"
 msgid "Collecting data..."
 msgstr "正在收集数据中..."
 
@@ -1381,6 +1384,7 @@ msgid "Fragment fallback delay"
 msgstr "分片回退延迟"
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Fri"
 msgstr "五"
 
@@ -1550,6 +1554,7 @@ msgstr "跳跃端口"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:445
 #: htdocs/luci-static/resources/view/homeproxy/server.js:450
 #: htdocs/luci-static/resources/view/homeproxy/server.js:481
+msgctxt "homeproxy"
 msgid "Host"
 msgstr "主机名"
 
@@ -2170,6 +2175,7 @@ msgid "Mode"
 msgstr "模式"
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Mon"
 msgstr "一"
 
@@ -2325,6 +2331,7 @@ msgid "None"
 msgstr "无"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:184
+msgctxt "homeproxy"
 msgid "Not Running"
 msgstr "未运行"
 
@@ -2971,6 +2978,7 @@ msgid "Same as main node"
 msgstr "保持与主节点一致"
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Sat"
 msgstr "六"
 
@@ -3239,6 +3247,7 @@ msgid "Successfully updated."
 msgstr "更新成功。"
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Sun"
 msgstr "日"
 
@@ -3655,6 +3664,7 @@ msgid "ThreatBook Public DNS (DoH)"
 msgstr "微步 公共DNS (DoH)"
 
 #: htdocs/luci-static/resources/homeproxy.js:1569
+msgctxt "homeproxy"
 msgid "Thu"
 msgstr "四"
 
@@ -3701,6 +3711,7 @@ msgid "Trojan"
 msgstr "Trojan"
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Tue"
 msgstr "二"
 
@@ -4031,6 +4042,7 @@ msgid "WebSocket"
 msgstr "WebSocket"
 
 #: htdocs/luci-static/resources/homeproxy.js:1568
+msgctxt "homeproxy"
 msgid "Wed"
 msgstr "三"
 
@@ -4171,6 +4183,7 @@ msgstr "加载中..."
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1359
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1998
 #: htdocs/luci-static/resources/view/homeproxy/server.js:243
+msgctxt "homeproxy"
 msgid "non-empty value"
 msgstr "非空值"
 
@@ -4242,6 +4255,7 @@ msgstr "未检查"
 #: htdocs/luci-static/resources/homeproxy.js:1841
 #: htdocs/luci-static/resources/view/homeproxy/client.js:544
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3197
+msgctxt "homeproxy"
 msgid "unique value"
 msgstr "独立值"
 

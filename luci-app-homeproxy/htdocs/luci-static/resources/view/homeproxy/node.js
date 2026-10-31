@@ -1356,7 +1356,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 						return true;
 				}
 				if (!value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 			}
 		}
 
@@ -1689,12 +1689,12 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	/* gRPC config end */
 
 	/* HTTP(Upgrade) config start */
-	o = s.option(form.DynamicList, 'http_host', _('Host'));
+	o = s.option(form.DynamicList, 'http_host', _('Host', 'homeproxy'));
 	o.datatype = 'hostname';
 	o.depends('transport', 'http');
 	o.modalonly = true;
 
-	o = s.option(form.Value, 'httpupgrade_host', _('Host'));
+	o = s.option(form.Value, 'httpupgrade_host', _('Host', 'homeproxy'));
 	o.datatype = 'hostname';
 	o.depends('transport', 'httpupgrade');
 	o.modalonly = true;
@@ -1728,7 +1728,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 	/* HTTP config end */
 
 	/* WebSocket config start */
-	o = s.option(form.Value, 'ws_host', _('Host'));
+	o = s.option(form.Value, 'ws_host', _('Host', 'homeproxy'));
 	o.depends('transport', 'ws');
 	o.modalonly = true;
 
@@ -1995,7 +1995,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 			if (section_id) {
 				let tls_reality = this.map.findElement('id', 'cbid.homeproxy.%s.tls_reality'.format(section_id)).firstElementChild;
 				if (tls_reality.checked && !value)
-					return _('Expecting: %s').format(_('non-empty value'));
+					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
 
 				let vless_flow = this.map.lookupOption('vless_flow', section_id)[0].formvalue(section_id);
 				if ((tls_reality.checked || vless_flow) && ['360', 'android'].includes(value))
@@ -2104,7 +2104,7 @@ return view.extend({
 					E('button', {
 						class: 'btn',
 						click: ui.hideModal
-					}, [ _('Cancel') ]),
+					}, [ _('Cancel', 'homeproxy') ]),
 					'',
 					E('button', {
 						class: 'btn cbi-button-action',
