@@ -186,6 +186,36 @@ function check(desc, got, want) {
 		[c.homeproxy_panel_status.value, c.homeproxy_ruleset_status.value], ['-', '-']);
 }
 
+/* ── "RPC failed" must never be rendered as a definite state ──────────── */
+/* The poll used to wrap every call in L.resolveDefault(call(), {}). That
+   turns a failure into an *empty result*, and an empty result reads as a
+   verdict: `{}` rule sets => zero iterations => ready stays true => green
+   "Downloaded", while the plugin cannot tell whether the files are there.
+   A stale rpcd after an upgrade (the new method does not exist yet) is
+   exactly that case. Passing null instead makes the cells fall back to the
+   same grey "-" as "not applicable", which claims nothing.
+
+   Panel side: `{}` used to survive only because of a separate `!panel`
+   guard; null covers it explicitly now.
+   Core side: null used to be coerced to false by resolveDefault's default
+   argument, painting a red "Not Running" for a core that may well be up. */
+{
+	const c = cells();
+	const api = makeApi(c);
+
+	api.updateRulesetStatus(null, true);
+	check('rule-set RPC failed (null) → grey "-", never green "Downloaded"',
+		[c.homeproxy_ruleset_status.style.color, c.homeproxy_ruleset_status.value], ['gray', '-']);
+
+	api.updatePanelStatus(null, true);
+	check('panel RPC failed (null) → grey "-"',
+		[c.homeproxy_panel_status.style.color, c.homeproxy_panel_status.value], ['gray', '-']);
+
+	api.updateCoreStatus(null);
+	check('core RPC failed (null) → grey "-", not a red "Not Running"',
+		[c.homeproxy_core_status.style.color, c.homeproxy_core_status.value], ['gray', '-']);
+}
+
 /* ── the poll must pass the mode-derived flags, not hardcoded true ────── */
 {
 	const poll = src.slice(src.indexOf("hp.pollAdd('client-status', statusPoll)") - 1400,
@@ -198,6 +228,32 @@ function check(desc, got, want) {
 	check('statusPoll passes both flags to the updaters',
 		/updatePanelStatus\(panel, panelApplies\)/.test(poll)
 		&& /updateRulesetStatus\(rulesets, rulesetApplies\)/.test(poll), true);
+
+	/* The failure path must reach the updaters as null. L.resolveDefault(fn, {})
+	   would hand them an empty result instead, which they cannot distinguish
+	   from a real "nothing configured" — see the null cases above. */
+	check('statusPoll does not fold failures into {} via L.resolveDefault',
+		!/L\.resolveDefault\s*\(\s*call(?:Panel|Ruleset)Status\(\)/.test(poll), true);
+	check('statusPoll degrades each call to null on its own (Promise.all stays whole)',
+		/callRulesetStatus\(\)\.then\(\s*\(v\)\s*=>\s*v,\s*\(\)\s*=>\s*null\s*\)/.test(poll), true);
+}
+
+/* ── ubus status codes must reject, or "permission denied" reads as data ─ */
+/* rpc.js's `expect` only type-checks the reply and substitutes a default;
+   a non-zero ubus status (6 = permission denied) is silently replaced by
+   `expect['']` unless the declaration sets reject:true. Without it a denied
+   call resolves to {} and lands in the green-"Downloaded" path above. */
+{
+	const decl = (name) => {
+		const at = src.indexOf('const ' + name + ' = rpc.declare({');
+		if (at < 0) return '';
+		return src.slice(at, src.indexOf('});', at));
+	};
+
+	for (const name of ['callPanelStatus', 'callRulesetStatus']) {
+		check(name + ' declares reject:true so ubus error codes surface as failures',
+			/\breject:\s*true/.test(decl(name)), true);
+	}
 }
 
 console.log('');

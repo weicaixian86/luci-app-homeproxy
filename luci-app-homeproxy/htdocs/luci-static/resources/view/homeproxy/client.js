@@ -58,18 +58,23 @@ const callUpdatePanel = rpc.declare({
 	expect: { '': {} }
 });
 
-/* 面板是否「已下载」且「已被运行中的内核引用」——把 /ui/ 打不开的原因摊开说，
-   不再让人以为插件坏了（0.3.6 现场：面板 12 MB 还在下，用户报「面板无法访问」）。 */
+/* 面板是否已下载（installed）、当前模式该不该有面板（enabled）。
+   reject: true 是必须的：rpc.js 的 expect 只做「结构校验 + 类型兜底」，ubus 返回
+   非零状态码（如 6 权限拒绝）时，expect: {'': {}} 会把它悄悄换成 {}，调用照样
+   resolve。只有 reject: true 才让非零 ubus 码也变成 rejection，进而被调用方
+   识别成「查不到」而不是「没有」。 */
 const callPanelStatus = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'clash_api_panel_status',
-	expect: { '': {} }
+	expect: { '': {} },
+	reject: true
 });
 
 const callRulesetStatus = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'ruleset_status',
-	expect: { '': {} }
+	expect: { '': {} },
+	reject: true
 });
 
 const callRulesetUpdate = rpc.declare({
@@ -174,11 +179,21 @@ function getServiceStatus() {
 
 /* 内核状态只有两态：绿色「运行中」/ 红色「未运行」。此前运行时会拼上当前
    节点名（「运行中：xxx」），但面板/规则集状态卡都已是纯两态，状态行里
-   唯节点信息反而突兀（2026-10-31 用户要求去掉）；节点归属看「节点设置」。 */
+   唯节点信息反而突兀（2026-10-31 用户要求去掉）；节点归属看「节点设置」。
+
+   例外只有一个：isRunning 为 null（本次 RPC 失败，拿不到 service.list）。
+   此时既不能说「运行中」也不能说「未运行」，给灰 '-'。旧写法把失败当成
+   false，RPC 一挂就显示红色「未运行」——用户会去排查一个并不存在的问题。 */
 function updateCoreStatus(isRunning) {
 	let status = document.getElementById('homeproxy_core_status');
 	if (!status)
 		return;
+
+	if (isRunning === null) {
+		status.style.color = 'gray';
+		status.value = '-';
+		return;
+	}
 
 	status.style.color = isRunning ? 'green' : 'red';
 	status.value = isRunning ? _('Running') : _('Not Running');
@@ -187,7 +202,11 @@ function updateCoreStatus(isRunning) {
 /* 面板状态：只报文件在不在（installed）。Clash API 只在 custom /
    bypass_mainland_china 两种模式下生成（generate_client.uc:1709），其余模式
    面板既不存在也没有按钮可点，此时写「未下载」等于催用户去下载一个该模式下
-   根本不会有的东西——显示「-」表示不适用（2026-10-31 用户定稿）。 */
+   根本不会有的东西——显示「-」表示不适用（2026-10-31 用户定稿）。
+
+   panel 为 null = 这次 RPC 失败（rpcd 没重启、方法不存在、权限被拒、超时）。
+   「查不到」和「不适用」都显示灰 '-'：两者都不该被读成「已下载」或「未下载」，
+   状态卡只能报它确实知道的事。 */
 function updatePanelStatus(panel, applicable) {
 	let el = document.getElementById('homeproxy_panel_status');
 	if (!el)
@@ -211,13 +230,17 @@ function updatePanelStatus(panel, applicable) {
    `config ruleset` 段），规则集页本身也只在该模式出现（client.js:3040
    `depends('routing_mode','custom')`）。其余模式用的是生成器内置的
    geoip-cn / geosite-cn / geosite-noncn，由内核按需自下载，不归这张卡
-   管——显示「-」而不是「未下载」。 */
+   管——显示「-」而不是「未下载」。
+
+   status 为 null = 这次 RPC 失败。这条必须与「空集」分开：空集（custom 模式
+   下一条规则集都没配）是真结论「没东西要下」→ 绿；失败是「不知道」→ 灰 '-'。
+   以前两者都落进 {}，失败被显示成绿「已下载」。 */
 function updateRulesetStatus(status, applicable) {
 	let el = document.getElementById('homeproxy_ruleset_status');
 	if (!el)
 		return;
 
-	if (applicable !== true) {
+	if (applicable !== true || !status) {
 		el.style.color = 'gray';
 		el.value = '-';
 		return;
@@ -225,7 +248,7 @@ function updateRulesetStatus(status, applicable) {
 
 	let ready = true;
 
-	for (const sid in (status || {})) {
+	for (const sid in status) {
 		if (status[sid].valid !== true) {
 			ready = false;
 			break;
@@ -732,14 +755,22 @@ return view.extend({
 		      rulesetApplies = (routingMode === 'custom');
 
 		const statusPoll = function () {
+			/* 三个状态各自独立降级成 null，而不是 L.resolveDefault(..., {})：
+			   后者把「查不到」变成「空数据」，而空数据在下面会被读成正常状态
+			   ——规则集空对象 = 没有要下的东西 = 绿「已下载」，面板空对象靠
+			   `!panel` 才侥幸降成灰 '-'。既然失败时本来就分不清「没有」和
+			   「不知道」，就统一给 null，由 updater 显示灰 '-'（与「不适用」
+			   同一个视觉：都不是「已下载/未下载」的确定结论）。
+			   写成 .then(v => v, () => null) 而不是 .catch()：Promise.all 里
+			   任何一个 reject 都会让整轮轮询 reject，三张卡一起不更新。 */
 			return Promise.all([
-				L.resolveDefault(getServiceStatus(), false),
-				L.resolveDefault(callPanelStatus(), {}),
-				L.resolveDefault(callRulesetStatus(), {})
+				getServiceStatus().then((v) => v, () => null),
+				callPanelStatus().then((v) => v, () => null),
+				callRulesetStatus().then((v) => v, () => null)
 			]).then((res) => {
 				let isRunning = res[0],
-				    panel = res[1] || {},
-				    rulesets = res[2] || {};
+				    panel = res[1],
+				    rulesets = res[2];
 
 				updatePanelStatus(panel, panelApplies);
 				updateRulesetStatus(rulesets, rulesetApplies);
