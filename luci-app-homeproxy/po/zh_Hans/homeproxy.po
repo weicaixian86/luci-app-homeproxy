@@ -579,11 +579,11 @@ msgstr "内核日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:725
 msgid "Core Status"
-msgstr "核心状态"
+msgstr "内核状态"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:721
 msgid "Core Version"
-msgstr "核心版本"
+msgstr "内核版本"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:408
 msgid "Core log level:"
