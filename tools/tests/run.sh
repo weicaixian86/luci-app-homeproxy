@@ -2510,6 +2510,20 @@ else
 	bad "the backend has no subscription_update method: the button's rpc.declare would 404"
 fi
 
+# 按钮的 disabled 只在轮询收尾时复位。CBI 是在 onclick 返回的 Promise resolve
+# **之后**才把 disabled 清掉的，所以 handler 必须把这个 Promise 一路 return
+# 出去；早返回（返回 null）等于「转圈期间按钮又能点」。0.3.9 现场实测：
+# T+300ms 变灰+转圈，T+1500ms（RPC 刚回来）就恢复成可点，只剩转圈 —— 连点
+# 虽然被后端幂等挡住（10ms 返回 running=true），但防抖形同虚设。
+SUB_POLL=$(sed -n '/^function pollSubscriptionUpdate/,/^}$/p' "$NODE_JS")
+if grep -q 'return pollSubscriptionUpdate(res.started === true)' "$NODE_JS" \
+   && printf '%s\n' "$SUB_POLL" | grep -q 'return new Promise((resolve)' \
+   && printf '%s\n' "$SUB_POLL" | grep -q 'resolve(null)'; then
+	ok "the update button stays disabled until the poll settles (CBI clears disabled on promise resolve)"
+else
+	bad "the update button re-enables as soon as the RPC returns: the busy state never covers the update itself"
+fi
+
 # 改订阅地址必须迁移机场哈希。URL 是分组身份的来源（md5(URL) 写进节点段的
 # grouphash 和每个分组的 subscription_groups），只换地址不换这两处，节点会
 # 照常导入、照常出现在「订阅 (X)」页签里，却永远不进任何 outbound 组 ——
@@ -3462,12 +3476,37 @@ else
 fi
 
 # 订阅：批量按钮、单个机场按钮、定时任务，以前在日志里都只写「手动」。
+#
+# 这条判据原来只 grep `exists(ARGV)`，于是**实现有、行为死**也照样绿：
+# ucode 的 exists 是编译期形式，只认当前作用域声明过的标识符，对运行期
+# 注入的全局 ARGV 恒为 false（237 现场，2026-11-01：同一时刻 exists=false、
+# type=array、length=2）。整段分支被跳过，cli_source 永远是空串，面板按钮
+# 触发的更新在日志里写成「手动（终端/SSH）」，0.3.9 白挂了一个版本。
+# 所以这里把那段守卫原样抽出来、真跑一次：有 ucode 就必须解析出给定的值。
 SUB="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
-if grep -q 'exists(ARGV)' "$SUB" && grep -q "argv\[i\] === '--source'" "$SUB" \
-   && grep -q 'cli_source ||' "$SUB"; then
-	ok "update_subscriptions.uc accepts --source from its caller (ARGV)"
+ARGV_OUT='(no ucode)'
+if command -v ucode >/dev/null 2>&1; then
+	ARGV_PROBE="$WORK/argv_probe.uc"
+	{ sed -n "/^let cli_source = '';/,/^}$/p" "$SUB"
+	  printf '%s\n' 'printf("%s", cli_source);'
+	} > "$ARGV_PROBE"
+	ARGV_OUT=$(ucode "$ARGV_PROBE" --source 'SELFTEST-SOURCE' 2>&1)
+fi
+
+# 只在**代码行**里找：注释里提到 exists(ARGV) 是为了解释它为什么不能用，
+# 不能把注释也算成「还在用」（第一版就因此假红了一次）。
+if grep -vE '^[[:space:]]*(#|\*|/[/*])' "$SUB" | grep -q 'exists(ARGV)'; then
+	bad "update_subscriptions.uc guards ARGV with exists(), a compile-time form that is always false for the runtime global"
+elif ! grep -q "type(ARGV) === 'array'" "$SUB" \
+   || ! grep -q "argv\[i\] === '--source'" "$SUB" \
+   || ! grep -q 'cli_source ||' "$SUB"; then
+	bad "update_subscriptions.uc does not read --source from ARGV: the trigger cannot be told apart"
+elif [ "$ARGV_OUT" = 'SELFTEST-SOURCE' ]; then
+	ok "update_subscriptions.uc reads --source from ARGV (guard executed, not just grepped)"
+elif [ "$ARGV_OUT" = '(no ucode)' ]; then
+	ok "update_subscriptions.uc reads --source from ARGV (text check only: no ucode in this environment)"
 else
-	bad "update_subscriptions.uc ignores argv: the trigger cannot be told apart"
+	bad "the extracted ARGV guard printed '$ARGV_OUT' instead of the --source value (exists()/type() guard broken)"
 fi
 
 # 0.2.7 起按钮不再自己 exec 脚本（改成 rpcd 起脱管进程），触发来源的字符串

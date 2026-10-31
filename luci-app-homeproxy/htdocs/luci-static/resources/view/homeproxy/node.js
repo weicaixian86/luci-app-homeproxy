@@ -89,47 +89,59 @@ function setSubscriptionBusy(busy, ev) {
  * 一次内核，现场 5 条约 21 秒（抓取 13 + 重启 8），已经贴着 rpcd/ubus 约
  * 30 秒的上限。只要有一个机场响应慢一点，请求先超时 —— 界面弹一句错误、
  * 页面刷新，而脚本其实还在后台跑，于是「点了没反应」和「报错但节点后来变了」
- * 都出现过。现在与内核更新同一套（见 update_subscriptions_async.sh）。 */
+ * 都出现过。现在与内核更新同一套（见 update_subscriptions_async.sh）。
+ *
+ * 返回一个在收尾时才 settle 的 Promise：CBI 只在 onclick 返回的 Promise
+ * resolve 之后才把按钮的 disabled 复位，所以早返回等于「转圈期间按钮又能点」。
+ * 0.3.9 现场：T+300ms 变灰，T+1500ms（RPC 刚回来）就恢复成可点，只剩转圈，
+ * 用户仍会连点（连点本身安全，后端 10ms 返回 running=true，但等于没防住）。 */
 function pollSubscriptionUpdate(reloadOnFinish) {
 	let ticks = 0;
 
 	setSubscriptionBusy(true);
 
-	hp.pollAdd('subscription-update', () => {
-		/* 兜底：脚本自身每条订阅有 60 秒上限，但界面不能无限轮询 —— 十分钟
-		   还不停手就提示去看日志，而不是一直转圈。 */
-		if (++ticks > 300) {
-			hp.pollRemove('subscription-update');
-			setSubscriptionBusy(false);
-			ui.addNotification(null, E('p',
-				_('The subscription update is taking unusually long; check the log for progress.')), 'warning');
-			return null;
-		}
-
-		return L.resolveDefault(callSubscriptionProgress(), {}).then((res) => {
-			if (res.running)
-				return null;
-
-			hp.pollRemove('subscription-update');
-			setSubscriptionBusy(false);
-
-			if (res.ok) {
-				ui.addNotification(null, E('p', _('Subscriptions updated.')), 'info');
-
-				/* 只有从本页点下去的更新才刷新页面：如果是打开页面时发现
-				   后台还有一次（例如 cron 起的）在跑，刷新会把用户正在改的
-				   表单冲掉。 */
-				if (reloadOnFinish)
-					return location.reload();
-
+	return new Promise((resolve) => {
+		hp.pollAdd('subscription-update', () => {
+			/* 兜底：脚本自身每条订阅有 60 秒上限，但界面不能无限轮询 —— 十分钟
+			   还不停手就提示去看日志，而不是一直转圈。 */
+			if (++ticks > 300) {
+				hp.pollRemove('subscription-update');
+				setSubscriptionBusy(false);
+				ui.addNotification(null, E('p',
+					_('The subscription update is taking unusually long; check the log for progress.')), 'warning');
+				resolve(null);
 				return null;
 			}
 
-			ui.addNotification(null, E('p',
-				_('Subscription update failed: %s').format(res.log || _('see the log for details'))), 'danger');
-			return null;
-		});
-	}, 2);
+			return L.resolveDefault(callSubscriptionProgress(), {}).then((res) => {
+				if (res.running)
+					return null;
+
+				hp.pollRemove('subscription-update');
+				setSubscriptionBusy(false);
+
+				if (res.ok) {
+					ui.addNotification(null, E('p', _('Subscriptions updated.')), 'info');
+
+					resolve(null);
+
+					/* 只有从本页点下去的更新才刷新页面：如果是打开页面时发现
+					   后台还有一次（例如 cron 起的）在跑，刷新会把用户正在改的
+					   表单冲掉。 */
+					if (reloadOnFinish)
+						return location.reload();
+
+					return null;
+				}
+
+				resolve(null);
+
+				ui.addNotification(null, E('p',
+					_('Subscription update failed: %s').format(res.log || _('see the log for details'))), 'danger');
+				return null;
+			});
+		}, 2);
+	});
 }
 
 function normalizeList(value) {
@@ -2323,8 +2335,10 @@ return view.extend({
 				if (res.running || res.started) {
 					ui.addNotification(null, E('p',
 						_('Updating subscriptions in the background. You can leave this page.')), 'info');
-					pollSubscriptionUpdate(res.started === true);
-					return null;
+
+					/* 把轮询的 Promise 交给 CBI：它在 resolve 之前不会复位按钮的
+					   disabled，这正是「整个更新期间按钮保持灰色转圈」所需的语义。 */
+					return pollSubscriptionUpdate(res.started === true);
 				}
 
 				/* 任务没起来（脚本缺失、rc 立刻非 0）：按钮必须复原，否则会一直

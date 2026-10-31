@@ -70,10 +70,16 @@ const provider_update_id = trim(readfile(RUN_DIR + '/provider-update-id') || '')
 /* 触发来源：命令行 `--source` 优先（调用方最清楚自己是谁），其次才沿用标记
  * 文件那套判定（schedule-run / provider-update-id）。ucode 把多余的命令行
  * 参数放进全局 ARGV（见 ucode 文档 "Script arguments"），没有参数时是空数组。
- * exists() 是编译期的特殊形式，用它守卫一层：万一某个 ucode 版本没定义这个
- * 全局，也不能让订阅更新整个崩掉。 */
+ *
+ * 守卫只能用 type()，不能用 exists()：exists 是**编译期**特殊形式，只认当前
+ * 作用域里声明过的标识符，对运行期注入的 ARGV 一律返回 false。0.3.9 现场
+ * （2026-11-01，237）同一时刻实测：`exists(ARGV)` = false，而 `type(ARGV)` =
+ * 'array'、`length(ARGV)` = 2 —— 于是整个分支被跳过、cli_source 恒为空，
+ * 面板按钮与 cron 触发的更新在日志里全写成「手动（终端/SSH）」，这个功能
+ * 等于从未生效过。type() 对未定义的名字返回 null 而不抛错，既能探测，
+ * 某个 ucode 版本真没有这个全局时也不会把订阅更新整个带崩。 */
 let cli_source = '';
-if (exists(ARGV)) {
+if (type(ARGV) === 'array') {
 	const argv = ARGV || [];
 	for (let i = 0; i < length(argv) - 1; i++) {
 		if (argv[i] === '--source') {
