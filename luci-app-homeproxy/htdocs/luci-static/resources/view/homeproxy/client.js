@@ -21,7 +21,8 @@ const callServiceList = rpc.declare({
 	object: 'service',
 	method: 'list',
 	params: ['name'],
-	expect: { '': {} }
+	expect: { '': {} },
+	reject: true
 });
 
 const callRCInit = rpc.declare({
@@ -167,14 +168,23 @@ const statusCss = `
 	}
 }`;
 
+/* 内核是否在跑。三态：true / false / null（查不到）。
+   不能写成 L.resolveDefault(callServiceList('homeproxy'), {})：失败会被折成
+   空对象，try 里 res['homeproxy']['instances'] 抛 TypeError 被 catch 吞掉，
+   返回 false —— 于是 RPC 一挂，状态卡就显示红色「未运行」，而调用方
+   根本拿不到「查不到」这个信息（updateCoreStatus 的 null 分支永远走不到）。
+   reject: true 与 expect 一起用：expect 只做结构校验和类型兜底，ubus 的
+   正数码（如 6 = Permission denied）不声明 reject 就会被 expect[''] 悄悄
+   换成 {}，调用照样 resolve。 */
 function getServiceStatus() {
-	return L.resolveDefault(callServiceList('homeproxy'), {}).then((res) => {
-		let isRunning = false;
+	return callServiceList('homeproxy').then((res) => {
 		try {
-			isRunning = res['homeproxy']['instances']['sing-box-c']['running'];
-		} catch (e) { }
-		return isRunning;
-	});
+			return res['homeproxy']['instances']['sing-box-c']['running'] === true;
+		} catch (e) {
+			/* 服务存在但实例没注册：确实是「没在跑」，不是「查不到」。 */
+			return false;
+		}
+	}, () => null);
 }
 
 /* 内核状态只有两态：绿色「运行中」/ 红色「未运行」。此前运行时会拼上当前

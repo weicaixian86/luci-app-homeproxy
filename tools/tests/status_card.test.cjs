@@ -36,7 +36,7 @@ const CLIENT = path.resolve(__dirname, '..', '..', 'luci-app-homeproxy',
 
 const src = fs.readFileSync(CLIENT, 'utf8');
 
-const FROM = 'function updateCoreStatus(isRunning) {';
+const FROM = 'function getServiceStatus() {';
 const TO = 'function parseControllerPort(';
 
 const start = src.indexOf(FROM);
@@ -50,7 +50,7 @@ if (start < 0 || end < 0 || end <= start) {
 
 const block = src.slice(start, end);
 
-for (const fn of ['updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus', 'updateDownloadStatus']) {
+for (const fn of ['getServiceStatus', 'updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus', 'updateDownloadStatus']) {
 	if (!block.includes('function ' + fn + '(')) {
 		console.error('FAIL status_card: ' + fn + '() is no longer inside the sliced block');
 		process.exit(1);
@@ -59,14 +59,26 @@ for (const fn of ['updateCoreStatus', 'updatePanelStatus', 'updateRulesetStatus'
 
 /* Minimal DOM: getElementById() over a flat registry of { value, style } cells.
    `_` is gettext; identity is enough, the assertions compare the English
-   msgids (the .po files supply the Chinese at runtime). */
-function makeApi(cells) {
+   msgids (the .po files supply the Chinese at runtime).
+   `callServiceList` is the only RPC getServiceStatus() reaches; it is
+   injected so the three states (running / not running / unknown) can be
+   driven without a live rpcd.
+   `L` carries LuCI's resolveDefault (Promise.resolve(v).catch(() => def)).
+   The fixed helper must not call it, but the reverse experiment (putting the
+   old helper back) has to fail on an assertion rather than on
+   `L is not defined`, so it is wired up here. */
+function makeApi(cells, callServiceList) {
 	const document = {
 		getElementById: (id) => cells[id] || null
 	};
 
-	return new Function('document', '_', block + `
-		return { updateCoreStatus, updatePanelStatus, updateRulesetStatus };`)(document, (s) => s);
+	const L = {
+		resolveDefault: (p, def) => Promise.resolve(p).catch(() => def)
+	};
+
+	return new Function('document', '_', 'callServiceList', 'L', block + `
+		return { getServiceStatus, updateCoreStatus, updatePanelStatus, updateRulesetStatus };`)(document, (s) => s,
+		callServiceList || (() => Promise.resolve({})), L);
 }
 
 function cells() {
@@ -256,9 +268,64 @@ function check(desc, got, want) {
 	}
 }
 
-console.log('');
-console.log(failed === 0
-	? 'status_card: all ' + passed + ' assertions passed'
-	: 'status_card: ' + failed + ' of ' + (passed + failed) + ' assertions FAILED');
+/* The declaration must reject on non-zero ubus codes, otherwise a denied
+   service.list resolves to {} and lands in the false branch below. */
+{
+	const decl = (name) => {
+		const at = src.indexOf('const ' + name + ' = rpc.declare({');
+		if (at < 0) return '';
+		return src.slice(at, src.indexOf('});', at));
+	};
 
-process.exit(failed === 0 ? 0 : 1);
+	check('callServiceList declares reject:true so ubus error codes surface as failures',
+		/\breject:\s*true/.test(decl('callServiceList')), true);
+}
+
+/* ── getServiceStatus must yield three states, not two ─────────────────── */
+/* updateCoreStatus(null) rendering grey "-" (asserted above) is only half
+   the fix: the value reaching it comes from getServiceStatus(), which used
+   L.resolveDefault(callServiceList('homeproxy'), {}). On failure that yields
+   `{}`, the `res['homeproxy']['instances']` lookup throws a TypeError, the
+   empty catch swallows it, and the function returns false — a *definite*
+   "not running". So the poll painted a red "Not Running" for a core that
+   may well be up, and the null branch was unreachable in practice.
+   Here the RPC is injected and driven through all three outcomes. */
+const asyncDone = (async () => {
+	const run = (callServiceList) => makeApi(cells(), callServiceList).getServiceStatus();
+
+	check('service.list reports the instance running → true',
+		await run(() => Promise.resolve({ homeproxy: { instances: { 'sing-box-c': { running: true } } } })), true);
+
+	check('service.list reports the instance stopped → false',
+		await run(() => Promise.resolve({ homeproxy: { instances: { 'sing-box-c': { running: false } } } })), false);
+
+	/* Registered service without the client instance: genuinely not running. */
+	check('a registered service without the client instance → false',
+		await run(() => Promise.resolve({ homeproxy: { instances: {} } })), false);
+
+	/* The RPC itself failed (reject:true + ubus error / stale rpcd after an
+	   upgrade). Must be "unknown" (null), never false. */
+	check('a failed service.list → null, not a definite "not running"',
+		await run(() => Promise.reject(new Error('Access denied'))), null);
+
+	/* Source-level: the inner L.resolveDefault is what made this unreachable. */
+	const fn = src.slice(src.indexOf('function getServiceStatus() {'),
+		src.indexOf('function updateCoreStatus('));
+
+	check('getServiceStatus does not fold a failed call into {} via L.resolveDefault',
+		!/L\.resolveDefault/.test(fn), true);
+	check('getServiceStatus returns null on rejection',
+		/\}, \(\) => null\)/.test(fn), true);
+})();
+
+(async () => {
+	if (asyncDone)
+		await asyncDone;
+
+	console.log('');
+	console.log(failed === 0
+		? 'status_card: all ' + passed + ' assertions passed'
+		: 'status_card: ' + failed + ' of ' + (passed + failed) + ' assertions FAILED');
+
+	process.exit(failed === 0 ? 0 : 1);
+})();
