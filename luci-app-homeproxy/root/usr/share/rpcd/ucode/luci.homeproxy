@@ -1036,6 +1036,14 @@ const methods = {
 	},
 	
 
+	/* 面板是否已下载（installed）+ 当前模式该不该有面板（enabled）。
+	   只查一个文件的元数据，不 fork 任何进程。
+	   这里**故意不调** panelNeedsReloadForUi()：它要 pgrep 一次 + grep 一次，
+	   而本方法被前端每 5 秒轮询一次（LuCI 默认 pollinterval）。它返回的
+	   referenced / running / needsreload 三个字段没有任何消费者（前端只读
+	   enabled / installed），纯粹每 5 秒白烧 2~3 次 fork。
+	   自愈判定该在哪里用就在哪里用：安装/更新完面板时（clash_api_update_panel
+	   的收尾，见下方 1239 行附近），那是低频路径。 */
 	clash_api_panel_status: {
 		args: {},
 		call: function(request) {
@@ -1046,19 +1054,12 @@ const methods = {
 			const panelDir = getPanelDir(uci);
 			const idx = lstat(`${panelDir}/index.html`);
 			const installed = (idx && idx.type === 'file') ? true : false;
-			const needsReload = panelNeedsReloadForUi(panelDir);
-			const running = (!needsReload
-				&& system('pgrep -f "[s]ing-box run" >/dev/null 2>&1') === 0);
 
-			/* 面板只在生成 clash API 的两种模式下有意义；enabled=false 时前端不显示状态。
-			   referenced = 内核当前配置确实指向本面板（/ui/ 可用的前提）。 */
+			/* 面板只在生成 clash API 的两种模式下有意义；enabled=false 时前端显示 "-"。 */
 			return {
 				result: true,
 				enabled: (routingMode === 'custom' || routingMode === 'bypass_mainland_china'),
-				installed: installed,
-				referenced: (!needsReload && installed && running),
-				running: running,
-				needsreload: needsReload
+				installed: installed
 			};
 		}
 	},

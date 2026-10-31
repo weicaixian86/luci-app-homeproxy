@@ -2498,15 +2498,26 @@ fi
 # ── 面板自愈 reload 必须是「三条件」判定，不能是「服务在跑就 reload」 ──
 # 条件：① index.html 在 ② 运行配置还没引用本面板（grep -F panel_dir 落空）
 # ③ 服务在跑。只有 ③ 时，配置早就带 external_ui 的设备会被白重启一次内核。
-# rpcd 侧必须共用同一判定（panelNeedsReloadForUi），并且要有一个 panel_status
-# RPC 把「已装好但配置未引用」摊到页面上（自愈漏了时用户能看见，不用翻日志）。
+# rpcd 侧必须共用同一判定（panelNeedsReloadForUi），用在「装完面板」那条
+# 低频路径上（clash_api_update_panel 的收尾）。
+#
+# 但状态方法 clash_api_panel_status **不许**调它：本方法被前端按
+# pollinterval（默认 5 秒）轮询，而 panelNeedsReloadForUi 每次要 pgrep 一次
+# + grep 一次，另加一次 pgrep 判 running —— 三个返回值（referenced /
+# running / needsreload）全仓没有任何消费者。删掉前实测每轮 2~3 次 fork 纯白烧。
+# 所以这里正反两面都断言：判定函数还在、状态方法里不再引用它。
 if grep -q '! grep -F -- "$panel_dir" "$RUN_DIR/sing-box-c.json"' "$PKG/root/etc/homeproxy/scripts/fetch_panel.sh" \
-   && grep -q 'panelNeedsReloadForUi' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
-   && grep -q 'clash_api_panel_status' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'function panelNeedsReloadForUi' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && sed -n '/clash_api_panel_status: {/,/^[[:space:]]*},$/p' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" | grep -q 'panelNeedsReloadForUi' \
    && grep -q 'homeproxy_panel_status' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
-	ok "the panel self-heal reload fires only when the running config lacks the panel, and the page shows it"
+	bad "the polled panel_status RPC still runs the pgrep/grep self-heal probe on every poll"
+elif grep -q '! grep -F -- "$panel_dir" "$RUN_DIR/sing-box-c.json"' "$PKG/root/etc/homeproxy/scripts/fetch_panel.sh" \
+   && grep -q 'function panelNeedsReloadForUi' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'if (panelNeedsReloadForUi(panel_dir))' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'homeproxy_panel_status' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	ok "the panel self-heal reload fires only when the running config lacks the panel, and the polled status RPC stays fork-free"
 else
-	bad "the panel reload still triggers on every install (or the page cannot show 'installed but not applied')"
+	bad "the panel reload still triggers on every install (or the self-heal probe left the install path)"
 fi
 
 # ── 面板换装不许留「空目录窗口」，否则内核会自己下 34 MB 并卡死 API ────
