@@ -3358,6 +3358,40 @@ else
 	bad "the crontab entry does not pass the expression: the log cannot say which schedule fired"
 fi
 
+# 用户规则集只在 custom 模式下被内核引用（generate_client.uc 的 ruleset
+# foreach 整段在 `else if (!isEmpty(default_outbound))` 分支里，而
+# default_outbound 只在 custom 分支被赋值）。其它模式仍登记 cron 的话，
+# 每小时会全量重下全部规则集、再 reload 一次内核：白烧流量 + 一个断流窗口。
+#
+# 三面都要断言，少一面就等于没钉住：
+#   ① 判断存在，且比较的是 custom；
+#   ② 判断**排在 enabled/auto_update/type 之前** —— 顺序反了不影响功能，
+#      但会让「模式不对」这条早退被前面几个条件挡住，读代码的人会以为
+#      模式判断只是对已启用规则集的额外过滤；
+#   ③ 非 custom 时留一行总账：setup_auto_update_cron 的 sed 已经把旧的
+#      _autosetup 行全删了，不留痕就分不清「按设计没登记」和「登记失败」。
+if grep -q 'routing_mode" = "custom" \] || return' "$INIT" \
+   && grep -q '用户规则集只在 custom 模式下被内核引用' "$INIT"; then
+	ok "rule-set cron is registered only in custom mode (the only mode that references them)"
+else
+	bad "rule-set cron is still registered in modes that never reference the rule-sets"
+fi
+
+# 顺序：模式判断必须出现在 add_ruleset_cron 内的第一个 enabled 取值之前。
+cron_mode_line=$(sed -n '/^add_ruleset_cron() {/,/^}/p' "$INIT" | grep -n 'routing_mode" = "custom"' | head -1 | cut -d: -f1)
+cron_enabled_line=$(sed -n '/^add_ruleset_cron() {/,/^}/p' "$INIT" | grep -n 'config_get_bool enabled' | head -1 | cut -d: -f1)
+if [ -n "$cron_mode_line" ] && [ -n "$cron_enabled_line" ] && [ "$cron_mode_line" -lt "$cron_enabled_line" ]; then
+	ok "the mode gate precedes every per-section condition in add_ruleset_cron"
+else
+	bad "the mode gate sits after the per-section conditions (found mode=$cron_mode_line enabled=$cron_enabled_line)"
+fi
+
+if grep -q '规则集定时更新未登记：routing_mode=' "$INIT"; then
+	ok "skipping the rule-set cron in non-custom mode is logged (not silently dropped)"
+else
+	bad "the cron skip is silent: it looks identical to a failed registration"
+fi
+
 # 界面上曾并排放着「重载服务」和「重启服务」：本插件的 reload_service() 就是
 # stop + start，rc.common 的 restart 也是 stop + start，两者等价（sing-box 不
 # 支持热重载配置），留两个只是让人纠结该点哪个 —— 去掉 restart。

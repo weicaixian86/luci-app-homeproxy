@@ -742,7 +742,16 @@ has_ruleset_cron() {
 
 add_ruleset_cron() {
 	local section="$1"
-	local enabled auto_update type update_time
+	local enabled auto_update type update_time routing_mode
+
+	# 用户规则集只在 custom 模式下被内核引用：generate_client.uc 的 ruleset
+	# foreach（1655 行）整段位于 `else if (!isEmpty(default_outbound))` 分支
+	# （1592 行），而 default_outbound 只在 custom 模式下才有值。其它模式的
+	# 生成结果里根本没有这些 rule_set，仍然登记定时任务只会每小时全量重下
+	# 21 条、再 reload 一次内核 —— 纯白烧流量，还每次制造一个断流窗口。
+	# 这条判断必须排在所有其它条件之前：模式不对时，其余条件根本没有意义。
+	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
+	[ "$routing_mode" = "custom" ] || return
 
 	config_get_bool enabled "$section" "enabled" "0"
 	config_get_bool auto_update "$section" "auto_update" "1"
@@ -795,6 +804,16 @@ setup_auto_update_cron() {
 	fi
 
 	local ruleset_cron_list=""
+	# 用户规则集只在 custom 模式下被内核引用，所以非 custom 模式不登记它们
+	# 的定时任务（判断在 add_ruleset_cron 内部，每条规则集都要过一遍）。
+	# 这里先记一行总账：上面的 sed 已经把旧的 _autosetup 行全删了，如果不留
+	# 痕，用户从 custom 切到别的模式后只会看到「规则集定时更新再也没跑」，
+	# 完全无法与「cron 登记失败」区分开。
+	local routing_mode_now
+	config_get routing_mode_now "config" "routing_mode" "bypass_mainland_china"
+	if [ "$routing_mode_now" != "custom" ]; then
+		log "规则集定时更新未登记：routing_mode='${routing_mode_now:-空}'（用户规则集只在 custom 模式下被内核引用）。旧任务已清理。"
+	fi
 	config_foreach add_ruleset_cron "ruleset"
 	[ "$cron_reload" = "1" ] && /etc/init.d/cron restart
 }
