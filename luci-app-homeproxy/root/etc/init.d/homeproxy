@@ -759,10 +759,12 @@ add_ruleset_cron() {
 	valid_update_cron "$update_time" || return
 	has_ruleset_cron "$update_time" && return
 
-	# 把 cron 表达式作为参数传给脚本：日志里就能写明「是哪一条定时规则触发
-	# 的」，而不是笼统一句「定时更新」。表达式已过 valid_update_cron()，不含
-	# shell 元字符，单引号只为让它作为一个整体参数（它本身含空格）。
-	echo -e "$update_time sh $HP_DIR/scripts/update_rulesets.sh '$update_time' #${CONF}_autosetup" >> "/etc/crontabs/root"
+	# 把 cron 表达式和规则集段名一起传给脚本：表达式用于日志留痕，段名让
+	# update_rulesets.sh 只下载这一条（--only）并只 reload 一次 —— 21 条各配各的
+	# 时刻时，否则每行 cron 都会全量重下全部 21 条并 restart 21 次（2026-10-31
+	# 现场：周一 03:10-03:59 共 441 次下载、21 次断流）。表达式已过
+	# valid_update_cron()；段名来自 uci section 名，字符集受限，无注入面。
+	echo -e "$update_time sh $HP_DIR/scripts/update_rulesets.sh '$update_time' '$section' #${CONF}_autosetup" >> "/etc/crontabs/root"
 	ruleset_cron_list="${ruleset_cron_list}
 ${update_time}"
 	cron_reload="1"

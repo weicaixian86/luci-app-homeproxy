@@ -3026,6 +3026,23 @@ else
 	bad "a curl download can still negotiate HTTP/2 and fail with rc=92:$h11_bad"
 fi
 
+# ── 规则集定时更新必须「单条 + reload」，不许全量 + restart ────────────
+# 21 条各配各的时刻时，每行 cron 若仍全量重下 21 条并 restart（stop+start），
+# 周一凌晨就是 441 次下载 + 21 次断流（2026-10-31 现场）。登记行必须带段名，
+# 脚本单条模式必须走 --only 与 reload；reload 前必须 touch 配置文件，否则
+# 「重载风暴」判定（cfg_mtime <= last-start 且 caller=crond 不在 force 名单）
+# 会把这次 reload 静默跳过。旧格式（不带段名）保留全量 + restart 兼容行为。
+URS="$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"
+if grep -q "'\$update_time' '\$section'" "$INIT" \
+   && grep -q '\--only "\$RULESET_SECTION"' "$URS" \
+   && grep -q 'touch /etc/config/homeproxy' "$URS" \
+   && grep -q 'reload </dev/null' "$URS" \
+   && grep -q 'restart' "$URS"; then
+	ok "the rule-set cron updates one rule-set per slot and applies it with a reload"
+else
+	bad "the rule-set cron still re-downloads everything and restarts the service on every slot"
+fi
+
 # ── autostart 不能自指 / 不能在失败时启动 ──────────────────────────────
 # fetch_rulesets.sh --autostart 在脚本内部回调 init.d start；而 init.d 用
 # `pgrep -f fetch_rulesets.sh` 判断「是否已有任务在跑」，命中的正是调用者自己
