@@ -195,7 +195,9 @@ function getPanelDir(uci) {
 	   写进 external_ui，所以「配置里出现这个路径」等价于「内核会静态服务它」）。
 	   两者任一不成立就不该 reload —— 否则用户每更新一次面板就白重启一次内核。 */
 	function panelNeedsReloadForUi(panelDir) {
-		if (isEmpty(panelDir))
+		/* 不用 isEmpty()：那在 homeproxy.uc 里，rpcd 插件没有 import 它，
+		   引用未声明标识符在 ucode 里是 Reference error（真机 rpcd 前台抓到）。 */
+		if (panelDir == null || panelDir === '')
 			return false;
 
 		if (system('pgrep -f "[s]ing-box run" >/dev/null 2>&1') !== 0)
