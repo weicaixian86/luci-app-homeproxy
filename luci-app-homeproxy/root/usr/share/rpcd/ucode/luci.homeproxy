@@ -7,7 +7,7 @@
 
 'use strict';
 
-import { access, lstat, open, popen, readfile, unlink, writefile } from 'fs';
+import { access, lstat, open, popen, readfile, stat, unlink, writefile } from 'fs';
 import { cursor } from 'uci';
 
 /* Kanged from ucode/luci */
@@ -205,6 +205,45 @@ function getPanelDir(uci) {
 
 		return system(`grep -F -- ${shellquote(panelDir)} ${RUN_DIR}/sing-box-c.json >/dev/null 2>&1`) !== 0;
 	}
+
+	/* 单个规则集文件的本地状态：存在性、大小、mtime、魔数校验。
+	   抽成独立函数有两个原因：
+	   ① 判据要能真跑（tools/tests/ruleset_status.test.cjs 切出本函数求值，
+	      用一份「stat 与 lstat 结论不同」的假 fs 验它取的是哪一个）；
+	   ② stat / readfile 必须看**同一个对象**。readfile 跟随符号链接，
+	      所以若元数据取 lstat（链接自身，size 只有几十字节、mtime 是建链时间），
+	      就会出现「valid=true」配「1 B · 很久以前」，而内核读的是链接目标那个
+	      几十 MB 的新文件——规则集页显示的信息是错的。
+	   魔数与 fetch_rulesets.sh 的 valid_ruleset() 一致（binary→"SRS"，
+	   source→"{" 或 "["）。 */
+function rulesetFileInfo(path, fmt) {
+	const entry = { exists: false, valid: false, size: 0, mtime: 0, unavailable: false };
+
+	if (path == null || path === '')
+		return entry;
+
+	const st = stat(path);
+
+	if (!st)
+		return entry;
+
+	entry.exists = true;
+	entry.size = st.size || 0;
+
+	let mt = st.mtime;
+	if (type(mt) === 'object')
+		mt = mt?.sec ?? 0;
+	entry.mtime = mt || 0;
+
+	const head = readfile(path, 4) || '';
+
+	if (fmt === 'source')
+		entry.valid = (substr(head, 0, 1) === '{' || substr(head, 0, 1) === '[');
+	else
+		entry.valid = (substr(head, 0, 3) === 'SRS');
+
+	return entry;
+}
 
 function hasDirectoryContent(directory) {
 	return (system(`[ -d ${shellquote(directory)} ] && [ -n "$(ls -A ${shellquote(directory)} 2>/dev/null)" ]`) === 0);
@@ -1052,7 +1091,13 @@ const methods = {
 
 			const routingMode = trim(uci.get('homeproxy', 'config', 'routing_mode') || '');
 			const panelDir = getPanelDir(uci);
-			const idx = lstat(`${panelDir}/index.html`);
+			/* stat() 而不是 lstat()：这里回答的是「内核能不能拿 index.html 当
+			   面板首页」，而内核/生成器都是**跟随链接**打开它的
+			   （generate_client.uc 的 panel_installed() 直接 open()）。
+			   lstat 不跟随链接，type 会是 'link' → installed 判 false，而内核
+			   其实照样能服务 /ui/，两侧结论正好相反。stat 解析到目标实体，
+			   与 open() 的语义一致（目标不是常规文件就不算已装）。 */
+			const idx = stat(`${panelDir}/index.html`);
 			const installed = (idx && idx.type === 'file') ? true : false;
 
 			/* 面板只在生成 clash API 的两种模式下有意义；enabled=false 时前端显示 "-"。 */
@@ -1083,7 +1128,10 @@ const methods = {
 				if (routing_mode !== 'custom' && routing_mode !== 'bypass_mainland_china')
 					return { result: true, skipped: true };
 
-				const panel_index = lstat(`${panel_dir}/index.html`);
+				/* 与 clash_api_panel_status 同一口径（stat，跟随链接）：
+				   「已就位」的判据必须和内核能不能打开它一致，否则软链场景下
+				   状态卡说没有、这里说也没有、内核却照常服务 /ui/。 */
+				const panel_index = stat(`${panel_dir}/index.html`);
 				if (panel_index && panel_index.type === 'file')
 					return { result: true, skipped: true };
 			}
@@ -1099,7 +1147,7 @@ const methods = {
 			const fetcher = `${HP_DIR}/scripts/fetch_panel.sh`;
 			if (system(`test -x ${shellquote(fetcher)}`) === 0) {
 				if (system(`/bin/sh ${shellquote(fetcher)} --budget 900 --source ${shellquote('LuCI「更新面板」按钮')}`) === 0) {
-					const installed = lstat(`${panel_dir}/index.html`);
+					const installed = stat(`${panel_dir}/index.html`);
 					if (installed && installed.type === 'file') {
 						panelLog(sprintf('下载成功（第 %d 次尝试，本地预下载）', attempt));
 						return { result: true };
@@ -2171,31 +2219,13 @@ const methods = {
 						path = p;
 				}
 
-				const entry = { exists: false, valid: false, size: 0, mtime: 0, unavailable: false };
+				const entry = rulesetFileInfo(path, fmt);
 
-				if (length(path)) {
-					const st = lstat(path);
-
-					if (st) {
-						entry.exists = true;
-						entry.size = st.size || 0;
-
-						let mt = st.mtime;
-						if (type(mt) === 'object')
-							mt = mt?.sec ?? 0;
-						entry.mtime = mt || 0;
-
-						const head = readfile(path, 4) || '';
-
-						if (fmt === 'source')
-							entry.valid = (substr(head, 0, 1) === '{' || substr(head, 0, 1) === '[');
-						else
-							entry.valid = (substr(head, 0, 3) === 'SRS');
-					}
-
-					if (!entry.exists && stype === 'remote' && access(path + '.unavailable'))
-						entry.unavailable = true;
-				}
+				/* 守卫不能省：path 为空时 access('.unavailable') 会去查当前
+				   工作目录，与这条规则集无关。 */
+				if (length(path) && !entry.exists && stype === 'remote'
+				    && access(path + '.unavailable'))
+					entry.unavailable = true;
 
 				result[sid] = entry;
 			});

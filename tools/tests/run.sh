@@ -1445,6 +1445,23 @@ else
 	sed 's/^/       /' "$WORK/statuscard.out" | tail -25
 fi
 
+# ------------------------------------------------------- rule-set file status
+# 规则集页的「状态」列由 ruleset_status 的 exists/valid/size/mtime 拼出来。
+# 这里真跑那个纯函数（luci.homeproxy 是 rpcd 插件不能 require，切段求值），
+# 并注入一份「stat 与 lstat 结论不同」的假 fs —— 因为原缺陷在 diff 里看不出来：
+# 元数据用 lstat（链接自身，几十字节）、魔数用 readfile（跟随链接读目标）。
+# 两侧描述的是不同对象，页面会给内核正在正常加载的规则集显示
+# 「1 B · 三天前」，同时 valid=true。只有执行才分得清取的是哪一个。
+section "Rule-set local file status (stat vs lstat)"
+"$NODE" "$ROOT/tools/tests/ruleset_status.test.cjs" > "$WORK/rulesetstatus.out" 2>&1
+if [ $? -eq 0 ]; then
+	ok "ruleset_status.test.cjs"
+	sed 's/^/       /' "$WORK/rulesetstatus.out" | tail -3
+else
+	bad "ruleset_status.test.cjs"
+	sed 's/^/       /' "$WORK/rulesetstatus.out" | tail -25
+fi
+
 # -------------------------------------------------------------- DOM behaviour
 # The four dropdown levels, exercised against a real log slice: the pure part of
 # log.js is sliced out and evaluated (log.js cannot be require'd).
