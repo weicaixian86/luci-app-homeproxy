@@ -196,31 +196,24 @@ function updatePanelStatus(panel, isRunning) {
 }
 
 /* 规则集：全部启用的远程规则集都有有效本地副本才算「已下载」；一个缺就红。
-   valid 是 rpcd 逐条校验过的（SRS 魔数/JSON 头），比 exists 严格。 */
+   valid 是 rpcd 逐条校验过的（SRS 魔数/JSON 头），比 exists 严格。
+   与面板一样只报两态——就绪数是排查信息，日志里有，不上界面
+   （2026-10-31 用户反馈「未下载（已就绪 19 / 21 条）」太长，会顶出卡片）。 */
 function updateRulesetStatus(status) {
 	let el = document.getElementById('homeproxy_ruleset_status');
 	if (!el)
 		return;
 
-	let total = 0, ready = 0;
+	let ready = true;
 
 	for (const sid in (status || {})) {
-		total++;
-		if (status[sid].valid === true)
-			ready++;
+		if (status[sid].valid !== true) {
+			ready = false;
+			break;
+		}
 	}
 
-	if (total === 0) {
-		/* 没配置远程规则集：无事可报，显示绿色，避免一个与实际无关的红字。 */
-		el.style.color = 'green';
-		el.value = _('Downloaded');
-		return;
-	}
-
-	el.style.color = (ready === total) ? 'green' : 'red';
-	el.value = (ready === total)
-		? _('Downloaded')
-		: _('Not downloaded (%d of %d ready)').format(ready, total);
+	updateDownloadStatus('homeproxy_ruleset_status', ready);
 }
 
 /* 面板与规则集的状态卡共用：只报两态——「未下载」红 /「已下载」绿。

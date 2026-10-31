@@ -584,9 +584,6 @@ msgstr "规则集状态"
 msgid "Downloaded"
 msgstr "已下载"
 
-msgid "Not downloaded (%d of %d ready)"
-msgstr "未下载（已就绪 %d / %d 条）"
-
 msgid "Core Status"
 msgstr "内核状态"
 
