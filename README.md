@@ -2,11 +2,23 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面（基于 immortalwrt/homeproxy 修改）。
 
 ## 版本说明
-支持架构：amd64 / arm64 / armv7 / mipsle
+支持架构：amd64 / arm64 / armv7 / mipsle  
 luci-app-homeproxy_<版本>-all.ipk Openwrt 24.10版本LUCI安装包  
 luci-app-homeproxy_<版本>-all.apk Openwrt 25.12版本LUCI安装包  
 sing-box-1.14.3-refind_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核  
 homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁内核）
+
+## 界面截图
+
+| 服务状态：内核未安装时的提示与「下载 / 更新内核」入口 | 节点设置：节点列表与订阅导入 |
+| --- | --- |
+| ![服务状态](png/1.png) | ![节点设置](png/2.png) |
+| 配置文件：多份 `homeproxy-*` 的上传 / 切换 / 下载 / 删除 | 客户端设置：规则集与定时更新 |
+| ![配置文件](png/3.png) | ![客户端设置](png/4.png) |
+| 节点与策略组管理 | 运行日志：主日志与下载日志 |
+| ![节点列表](png/5.png) | ![运行日志](png/6.png) |
+
+> 截图中的地址、节点与订阅信息均为示例环境。
 
 ## 一、安装
 ### 方式一：安装 IPK / APK，内核自动下载（推荐，在线）
@@ -66,19 +78,6 @@ rm -rf /tmp/luci-modulecache/*
 - `Update-Geodata.yml`：每周自动/手动更新内置 geodata。
 - `lint.yml`：每次推送跑一次静态检查（秒级，不依赖 SDK），只报状态、不阻塞发布。
 
-### 提交前自检
-
-```sh
-sh tools/tests/run.sh
-```
-
-覆盖：JS/shell 语法、JSON、工作流 YAML、ucode 近似解析、`po` 与 JS 文案一致性、
-`Makefile` 的 `conffiles` 是否真实存在、策略组表格置顶/拖拽的 DOM 行为、界面轮询去重。
-
-Windows（Git Bash）下若 `python3` 不可用：`PY=python sh tools/tests/run.sh`；
-缺少 `jsdom` 时 DOM 测试自动 `SKIP`（`npm install --no-save jsdom` 可启用），
-缺少 `polib`/`PyYAML` 时对应两项同样降级为 `SKIP`。
-
 ## 四、常见问题
 1. **面板下载失败**
    - 面板设置 → UI 下载地址，下拉选 UI 后点「更新面板」手动触发；
@@ -101,6 +100,4 @@ Windows（Git Bash）下若 `python3` 不可用：`PY=python sh tools/tests/run.
 
 ## 五、感谢作者
 - immortalwrt：https://github.com/immortalwrt/homeproxy
-- VIKINGYFY：https://github.com/VIKINGYFY/homeproxy
 - reF1nd（sing-box 内核基础源码）：https://github.com/reF1nd/sing-box （v1.14.3-reF1nd）
-- 本仓库 Release（打补丁后的 sing-box 内核二进制）：https://github.com/weicaixian86/luci-app-homeproxy/releases
