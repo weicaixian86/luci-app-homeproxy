@@ -72,40 +72,13 @@ rm -rf /tmp/luci-modulecache/*
 /etc/init.d/uhttpd restart
 ```
 
-## 三、维护工作流
-- `build-deploy.yml`（Build & Release All-in-One）：手动触发，输入版本号（如 `0.1.1`）后云端编译打补丁 reF1nd 内核（amd64/arm64/armv7/mipsle）+ luci 包（24.10 IPK 与 25.12 APK）。只发**一个** Release，标签即该版本号，包含：每架构一体化 zip、`luci-app-homeproxy_<版本>-all.ipk/.apk`、以及 `sing-box-1.14.3-refind_<版本>-linux-*-musl.tar.gz`（供「更新内核」自动下载）。
-- `Rescan-Translation.yml`：代码变更后自动/手动更新翻译。
-- `Update-Geodata.yml`：每周自动/手动更新内置 geodata。
-- `lint.yml`：每次推送跑一次静态检查（秒级，不依赖 SDK），只报状态、不阻塞发布。
-
-### 提交前自检
-
-```sh
-sh tools/tests/run.sh
-```
-
-覆盖：JS/shell 语法、JSON、工作流 YAML、ucode 近似解析、`po` 与 JS 文案一致性、
-`Makefile` 的 `conffiles` 是否真实存在、策略组表格置顶/拖拽的 DOM 行为、界面轮询去重、
-启动路径与 procd 锁相关的行为判据。
-
-Windows（Git Bash）下若 `python3` 不可用：`PY=python sh tools/tests/run.sh`；
-缺少 `jsdom` 时 DOM 测试自动 `SKIP`（`npm install --no-save jsdom` 可启用），
-缺少 `polib`/`PyYAML` 时对应两项同样降级为 `SKIP`——**通过项数会减少但仍报 ALL PASSED，交付前须核对项数**。
-
-CI 的 `/bin/sh` 是 dash，本地是 bash。涉及 shell 的改动必须再用 dash 跑一遍，否则会出现「本地全绿、CI 大批红」：
-
-```sh
-mkdir -p /tmp/dashshim && ln -s /usr/bin/dash /tmp/dashshim/sh
-PATH=/tmp/dashshim:$PATH sh tools/tests/run.sh
-```
-
-## 四、常见问题
+## 三 、常见问题
 1. **面板下载失败**
    - 面板设置 → UI 下载地址，下拉选 UI 后点「更新面板」手动触发；
    - 或手动下载 ZIP 上传：`https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip`（可加 `https://gh-proxy.com/` 前缀走镜像）。
 
 2. **远程规则集是否下载成功**
-   SSH 查看 `/etc/homeproxy/ruleset/` 是否有文件：有即成功，否则检查规则集远程连接。
+   面板查看，有即成功或者SSH 查看 `/etc/homeproxy/ruleset/`，否则检查规则集远程连接。
 
 3. **sing-box 内核未安装或下载失败**
    LuCI 状态页「sing-box 内核管理」查看架构与目标版本；显示"未安装"则点「下载 / 更新内核」。日志：`/var/run/homeproxy/core_download.log`。若当前架构 reF1nd 暂未发布，请等作者更新。
