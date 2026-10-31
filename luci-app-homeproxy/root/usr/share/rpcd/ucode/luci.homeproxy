@@ -189,6 +189,21 @@ function getPanelDir(uci) {
 	return dir;
 }
 
+	/* 是否需要一个「为了让面板出现在 /ui/」的重载。
+	   条件与 fetch_panel.sh 的自愈判定完全一致：服务在跑，**且**它这份已生成的
+	   配置里没有引用本面板目录（generate_client.uc 只在 index.html 就位时才把目录
+	   写进 external_ui，所以「配置里出现这个路径」等价于「内核会静态服务它」）。
+	   两者任一不成立就不该 reload —— 否则用户每更新一次面板就白重启一次内核。 */
+	function panelNeedsReloadForUi(panelDir) {
+		if (isEmpty(panelDir))
+			return false;
+
+		if (system('pgrep -f "[s]ing-box run" >/dev/null 2>&1') !== 0)
+			return false;
+
+		return system(`grep -F -- ${shellquote(panelDir)} ${RUN_DIR}/sing-box-c.json >/dev/null 2>&1`) !== 0;
+	}
+
 function hasDirectoryContent(directory) {
 	return (system(`[ -d ${shellquote(directory)} ] && [ -n "$(ls -A ${shellquote(directory)} 2>/dev/null)" ]`) === 0);
 }
@@ -1019,6 +1034,33 @@ const methods = {
 	},
 	
 
+	clash_api_panel_status: {
+		args: {},
+		call: function(request) {
+			const uci = cursor();
+			uci.load('homeproxy');
+
+			const routingMode = trim(uci.get('homeproxy', 'config', 'routing_mode') || '');
+			const panelDir = getPanelDir(uci);
+			const idx = lstat(`${panelDir}/index.html`);
+			const installed = (idx && idx.type === 'file') ? true : false;
+			const needsReload = panelNeedsReloadForUi(panelDir);
+			const running = (!needsReload
+				&& system('pgrep -f "[s]ing-box run" >/dev/null 2>&1') === 0);
+
+			/* 面板只在生成 clash API 的两种模式下有意义；enabled=false 时前端不显示状态。
+			   referenced = 内核当前配置确实指向本面板（/ui/ 可用的前提）。 */
+			return {
+				result: true,
+				enabled: (routingMode === 'custom' || routingMode === 'bypass_mainland_china'),
+				installed: installed,
+				referenced: (!needsReload && installed && running),
+				running: running,
+				needsreload: needsReload
+			};
+		}
+	},
+
 	clash_api_update_panel: {
 		args: { only_if_missing: true, attempt: 1, total: 1 },
 		call: function(request) {
@@ -1189,8 +1231,13 @@ const methods = {
 
 				/* 面板已就位：让内核重新生成配置并重启一次，否则它拿不到
 				   external_ui（面板缺失时我们故意不下发，见 generate_client.uc），
-				   /ui/ 会一直 404。脱离 rpcd 的 30 秒上限，与切换配置同一套写法。 */
-				system('( /etc/init.d/homeproxy reload ) >/dev/null 2>&1 &');
+				   /ui/ 会一直 404。脱离 rpcd 的 30 秒上限，与切换配置同一套写法。
+				   条件与 fetch_panel.sh 一致：运行中的配置已经引用本面板就别重载
+				   （白重启一次内核），服务没跑也不用（下次 start 自然带上）。 */
+				if (panelNeedsReloadForUi(panel_dir)) {
+					panelLog('面板已就位但运行中的配置未引用它，自动重载服务使 /ui/ 生效');
+					system('( /etc/init.d/homeproxy reload ) >/dev/null 2>&1 &');
+				}
 			}
 
 			system(`rm -f ${shellquote(tmpzip)}`);

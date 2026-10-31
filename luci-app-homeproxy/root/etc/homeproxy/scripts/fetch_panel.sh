@@ -627,13 +627,21 @@ fi
 
 log_msg "安装完成：$panel_dir/index.html（来源 $used_url）"
 
-# 面板就位后必须让内核重新生成一次配置。只有「面板已就位」时生成的配置才会带
-# external_ui（面板缺失时我们故意不下发，否则内核会自己去下载 34 MB 并卡住
-# Clash API —— 见 generate_client.uc 与需求书 §十五 33）。不重载的话，用户会看到
-# 「面板已安装，但 /ui/ 一直 404」，只能自己去点「重载服务」。
-# 只在服务真的在跑时做：服务没跑的话，下一次 start 生成的配置自然就带上了。
-if pgrep -f "[s]ing-box run" >/dev/null 2>&1; then
-	log_msg "面板已就位，重载服务使 /ui/ 生效"
+# 面板就位后要让内核重新生成一次配置：只有「面板已就位」时生成的配置才带
+# external_ui（面板缺失时故意不下发，否则内核会自己去下 34 MB 并把 Clash API 卡住
+# —— 见 generate_client.uc 与需求书 §十五 33）。
+# 判定用**三个条件同时成立**，而不是「服务在跑就 reload」：
+#   ① 面板 index.html 已就位      —— 上面刚装完，必然成立，留着做防御；
+#   ② 当前运行配置里还没有本面板路径 —— **不满足就不该 reload**（配置早就带着
+#      external_ui 时 reload 只会白白重启内核、给用户造成一次无谓断流）；
+#   ③ 服务在跑                    —— 没跑的话下一次 start 生成的配置自然带上。
+# ② 是这条链路的自愈开关：内核已启动但配置生成于面板就位之前时，它必然为真。
+# 判据用「配置里是否写着 panel_dir」，与 generate_client.uc 下发 external_ui 的条件
+# 完全一致（那里也是把解析后的目录原样写进 external_ui）。
+if [ -f "$panel_dir/index.html" ] \
+   && ! grep -F -- "$panel_dir" "$RUN_DIR/sing-box-c.json" >/dev/null 2>&1 \
+   && pgrep -f "[s]ing-box run" >/dev/null 2>&1; then
+	log_msg "面板已就位但运行中的配置未引用它，自动重载服务使 /ui/ 生效"
 	if command -v setsid >/dev/null 2>&1; then
 		setsid /etc/init.d/homeproxy reload >>"$LOG_FILE" 2>&1 &
 	elif command -v nohup >/dev/null 2>&1; then

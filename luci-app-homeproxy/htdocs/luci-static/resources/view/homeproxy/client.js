@@ -64,6 +64,14 @@ const callUpdatePanel = rpc.declare({
 	expect: { '': {} }
 });
 
+/* 面板是否「已下载」且「已被运行中的内核引用」——把 /ui/ 打不开的原因摊开说，
+   不再让人以为插件坏了（0.3.6 现场：面板 12 MB 还在下，用户报「面板无法访问」）。 */
+const callPanelStatus = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'clash_api_panel_status',
+	expect: { '': {} }
+});
+
 const callRulesetStatus = rpc.declare({
 	object: 'luci.homeproxy',
 	method: 'ruleset_status',
@@ -174,6 +182,37 @@ function updateCoreStatus(isRunning, currentNode) {
 
 	status.style.color = isRunning ? 'green' : 'red';
 	status.value = currentNode ? _('Running: %s').format(currentNode) : (isRunning ? _('Running') : _('Not Running'));
+}
+
+/* 面板状态：三个事实（文件在不在、内核配置引没引用、服务跑没跑）拼成一句人话。
+   「已就位但配置未引用」这一格很重要 —— 它意味着 reload 没发生（自愈漏了），
+   页面上看到这句就能定位，不用去翻日志。 */
+function updatePanelStatus(panel, isRunning) {
+	let el = document.getElementById('homeproxy_panel_status');
+	if (!el)
+		return;
+
+	if (!panel || panel.enabled !== true)
+		return;
+
+	let text, color;
+
+	if (panel.installed === true && panel.referenced === true) {
+		text = _('Panel available');
+		color = 'green';
+	} else if (panel.installed === true && panel.needsreload === true) {
+		text = _('Panel installed, not applied yet; reloading automatically');
+		color = 'orange';
+	} else if (panel.installed === true) {
+		text = _('Panel installed, waiting for the core to start');
+		color = 'orange';
+	} else {
+		text = _('Panel not downloaded yet (fetching in background)');
+		color = isRunning ? 'orange' : 'red';
+	}
+
+	el.style.color = color;
+	el.value = text;
 }
 
 function parseControllerPort(externalController) {
@@ -654,11 +693,15 @@ return view.extend({
 			const statusPoll = function () {
 				return Promise.all([
 					L.resolveDefault(getServiceStatus(), false),
-					L.resolveDefault(callCurrentNode(), null)
+					L.resolveDefault(callCurrentNode(), null),
+					L.resolveDefault(callPanelStatus(), {})
 				]).then((res) => {
 					let isRunning = res[0],
 					    current = res[1],
+					    panel = res[2] || {},
 					    current_label = null;
+
+					updatePanelStatus(panel, isRunning);
 
 					if (current?.mode === 'urltest') {
 						let active = current.active || {};
@@ -726,6 +769,15 @@ return view.extend({
 						E('input', {
 							id: 'homeproxy_core_status',
 							class: 'cbi-input-text homeproxy-core-status',
+							readonly: '',
+							value: _('Collecting data...')
+						})
+					]),
+					E('div', { class: 'homeproxy-status-field homeproxy-panel-status-field' }, [
+						E('div', { class: 'homeproxy-status-label' }, _('Panel Status')),
+						E('input', {
+							id: 'homeproxy_panel_status',
+							class: 'cbi-input-text homeproxy-panel-status',
 							readonly: '',
 							value: _('Collecting data...')
 						})

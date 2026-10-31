@@ -2477,6 +2477,20 @@ else
 	bad "fetch_panel.sh has no --source"
 fi
 
+# ── 面板自愈 reload 必须是「三条件」判定，不能是「服务在跑就 reload」 ──
+# 条件：① index.html 在 ② 运行配置还没引用本面板（grep -F panel_dir 落空）
+# ③ 服务在跑。只有 ③ 时，配置早就带 external_ui 的设备会被白重启一次内核。
+# rpcd 侧必须共用同一判定（panelNeedsReloadForUi），并且要有一个 panel_status
+# RPC 把「已装好但配置未引用」摊到页面上（自愈漏了时用户能看见，不用翻日志）。
+if grep -q '! grep -F -- "$panel_dir" "$RUN_DIR/sing-box-c.json"' "$PKG/root/etc/homeproxy/scripts/fetch_panel.sh" \
+   && grep -q 'panelNeedsReloadForUi' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'clash_api_panel_status' "$PKG/root/usr/share/rpcd/ucode/luci.homeproxy" \
+   && grep -q 'homeproxy_panel_status' "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	ok "the panel self-heal reload fires only when the running config lacks the panel, and the page shows it"
+else
+	bad "the panel reload still triggers on every install (or the page cannot show 'installed but not applied')"
+fi
+
 # ── 面板换装不许留「空目录窗口」，否则内核会自己下 34 MB 并卡死 API ────
 # 内核在 clash-api 开始监听**之前**检查 external_ui；看到空目录就走自带下载
 # （单源、直连、无镜像、无重试）。2026-10-30 现场：fetch_panel.sh 先 mv 走旧
