@@ -4376,9 +4376,6 @@ msgstr "有效 uuid"
 #~ msgid "can't convert null to object"
 #~ msgstr "无法将 null 转换为对象"
 
-#~ msgid "Update time"
-#~ msgstr "更新时间"
-
 #~ msgid "sing-box client"
 #~ msgstr "sing-box 客户端"
 

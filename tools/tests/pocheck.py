@@ -121,6 +121,14 @@ def main():
     msgids = [entry.msgid for entry in live]
     msgid_set = set(msgids)
 
+    # Obsolete (#~) entries whose msgid collides with a live entry: msgmerge
+    # counts both as definitions and dies with "duplicate message
+    # definition" -- an error only CI's i18n-update.pl shows, polib parses
+    # the file happily. Catch it here so it never reaches CI again
+    # (2026-10-31: an obsolete "Update time" blocked the whole build after a
+    # live "Update time" was reintroduced).
+    stale_collisions = sorted({e.msgid for e in catalog if e.obsolete and e.msgid in msgid_set})
+
     files, found = js_strings()
     menu = menu_titles()
 
@@ -158,7 +166,10 @@ def main():
     for key in padded[:20]:
         print('  PADDED %r' % key)
 
-    problems = len(missing) + len(cjk) + len(untranslated) + len(fuzzy) + len(duplicates) + len(padded)
+    problems = (len(missing) + len(cjk) + len(untranslated) + len(fuzzy)
+                + len(duplicates) + len(padded) + len(stale_collisions))
+    for key in stale_collisions[:20]:
+        print('  STALE #~ entry collides with live msgid %r -- msgmerge will refuse this file' % key)
     if problems:
         print('\npocheck: FAILED (%d problem(s))' % problems)
         return 1
