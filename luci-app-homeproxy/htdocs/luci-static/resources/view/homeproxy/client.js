@@ -126,8 +126,9 @@ const statusCss = `
 	width: 100%;
 	text-align: center;
 }
+/* 状态卡的边框保持统一：内核状态此前 border: unset（无框），与相邻的
+   版本框、面板/规则集状态框不一致，看起来像漏渲染（2026-10-31 用户反馈）。 */
 #homeproxy_status_panel .homeproxy-core-status {
-	border: unset;
 	font-style: normal;
 	font-weight: 700;
 }
