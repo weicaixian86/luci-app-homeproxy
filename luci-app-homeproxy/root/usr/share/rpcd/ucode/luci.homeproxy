@@ -596,6 +596,45 @@ function runProfile(args) {
 	return fd ? trim(readProcess(fd) || '') : '';
 }
 
+/* ── 内置资源更新（后台执行）─────────────────────────────────────────────
+   resources_update 派生 update_resources.sh 之后，判断「这次任务结束没有」
+   只能靠**进程是否还活着**，不能只看 rc 文件在不在。原来只用了 rc 文件：
+   启动时 unlink 掉旧的、退出时写新的，于是「文件不存在 = 还在跑」。
+   这个约定在**单次**调用下成立，一旦连点两次就崩：
+
+     现场（237，0.3.10，china_list 约 4 秒）：
+       T+0.0  第一次 resources_update → started:true
+       T+1.0  第二次 resources_update → started:true（它先 unlink 了 rc）
+       T+1.2  poll#1 running=true  rc=null  进程存活=30366
+       T+2.4  poll#2 running=false rc=2     进程存活=30366   ← 已判「结束」
+       T+3.6  poll#3 running=false rc=2     进程存活=30366
+       T+4.8  poll#4 running=false rc=0     进程存活=否
+     第二个实例抢锁失败、立刻 exit 2 并写了自己的 rc；poll 读到那个 2 就
+     报「已结束」，而第一个实例还要再跑两秒 —— 界面提前解锁、显示
+     「Already in updating.」，随后第一个实例的 0 才姗姗来迟地覆盖它。
+
+   所以改成与内核更新 / 订阅更新同一套：**pid 文件 + kill -0**。rc 文件
+   仍然保留，它承载「怎么结束的」（0/1/2/3），但「结束没结束」由 pid 判。
+   pid 先于 rc 消失（子 shell 先写 rc 再退出），所以 pid 死掉时 rc 一定
+   已经在盘上；两者都判一次即可，不需要额外等待。 */
+
+function resourcesUpdateRunning(type) {
+	let pid = '';
+
+	try {
+		pid = trim(readfile(`${RUN_DIR}/resources_update_${type}.pid`) || '');
+	} catch (e) {
+		return false;
+	}
+
+	/* 只允许纯数字进 shell。进程已消失（被杀、重启、上次异常退出）时报
+	   「未运行」，界面才不会对着一个陈旧 pid 永远等下去。 */
+	if (!length(pid) || !match(pid, /^[0-9]+$/))
+		return false;
+
+	return (system(`kill -0 ${pid} 2>/dev/null`) === 0);
+}
+
 const methods = {
 	config_profile_list: {		call: function() {
 			const fd = popen(`/bin/sh ${shellquote(HP_DIR + '/scripts/config_profile.sh')} list 2>&1`),
@@ -2718,6 +2757,7 @@ const methods = {
 				return { result: false, error: '资源更新脚本缺失' };
 
 			const rc_file = `${RUN_DIR}/resources_update_${type}.rc`;
+			const pid_file = `${RUN_DIR}/resources_update_${type}.pid`;
 			const logfile = `${RUN_DIR}/homeproxy.log`;
 			const before = lstat(logfile)?.size ?? 0;
 
@@ -2728,9 +2768,27 @@ const methods = {
 			   不构成阻塞。 */
 			system(`mkdir -p ${shellquote(RUN_DIR)}`);
 
-			/* 旧的 rc 必须先删：前端把「文件不存在」当成「还在跑」，
-			   留着上一轮的结果会让新任务一启动就被判成「已完成」。 */
+			/* ⚠️ 已有任务在跑时**不能**再往下走，尤其不能 unlink 旧 rc。
+			   原来没有这一步：每调用一次就无条件 `unlink(rc_file)` 再派生，
+			   于是连点两次时第二次把第一次的运行状态清掉 —— poll 读到第二
+			   个实例写下的 rc=2（抢锁失败）就判「已结束」，而第一个还在下
+			   载。现场证据见 resourcesUpdateRunning 上方注释里的时间线。
+			   这里直接回报现状（started:false + running:true），前端据此
+			   继续轮询同一个任务，不新建、不覆盖。 */
+			if (resourcesUpdateRunning(type))
+				return {
+					result: true,
+					started: false,
+					running: true,
+					log: ''
+				};
+
+			/* 旧的 rc / pid 必须先删：留着上一轮的 pid 会让
+			   resourcesUpdateRunning() 误判（虽然进程早就不在了，但
+			   kill -0 要等一次 system() 才给结论，没必要绕），留着上一轮的
+			   rc 则会让前端把「上一轮的结果」当成「这一轮的结论」。 */
 			unlink(rc_file);
+			unlink(pid_file);
 
 			/* 记下调用前的日志长度，供 resources_update_poll 只读**本次**
 			   新增的行 —— 脚本每次至少写一行 [CHINA_IP4] 之类的前缀行，
@@ -2740,12 +2798,20 @@ const methods = {
 			/* `{ ...; } &` 让外层 shell 立即退出，system() 随即返回 ——
 			   这就是「不阻塞」的全部要点。`</dev/null >/dev/null 2>&1`
 			   不能省：不重定向的话子进程会继承 rpcd 的 ubus socket 与
-			   stdio，rpcd 会一直等在这些 fd 上。 */
+			   stdio，rpcd 会一直等在这些 fd 上。
+
+			   `printf "%s" "$!" > pid_file` 必须写在 `&` **之后**：`$!`
+			   是刚派生那个子 shell 的 pid，实测（237，BusyBox ash）
+			   `{ cmd; } </dev/null >/dev/null 2>&1 & printf "%s" "$!"` 拿到的
+			   pid 就是子 shell 本身，`kill -0` 在它跑完前一直为真、跑完后
+			   为假 —— 这正是 resourcesUpdateRunning() 需要的语义。
+			   pid 先落盘、再写 rc（子 shell 内），所以 pid 消失时 rc 必已在盘。 */
 			system(sprintf(
-				'{ /bin/sh %s %s; printf "%%s" "$?" > %s; } </dev/null >/dev/null 2>&1 &',
+				'{ /bin/sh %s %s; printf "%%s" "$?" > %s; } </dev/null >/dev/null 2>&1 & printf "%%s" "$!" > %s',
 				shellquote(script),
 				shellquote(type),
-				shellquote(rc_file)));
+				shellquote(rc_file),
+				shellquote(pid_file)));
 
 			return { result: true, started: true };
 		}
@@ -2796,6 +2862,16 @@ const methods = {
 			const raw = trim(readfile(rc_file) || '');
 
 			if (!length(raw) || !match(raw, /^[0-9]+$/))
+				return { running: true, rc: null, log: detail };
+
+			/* rc 已经是纯数字，但**进程还活着**时不报「已结束」。
+			   连点两次的场景：第二个实例抢锁失败、立刻 exit 2 并写了 rc，
+			   而第一个实例还在下载。只看 rc 的话这里会回 running=false
+			   rc=2，前端随即解锁按钮、显示「Already in updating.」，两秒
+			   之后第一个实例的 0 才覆盖它 —— 现场（237，0.3.10）的
+			   `poll#2 running=false rc=2 进程存活=30366` 就是这一行。
+			   pid 是唯一能区分「谁写的 rc」的信息，所以以它为准。 */
+			if (resourcesUpdateRunning(type))
 				return { running: true, rc: null, log: detail };
 
 			return { running: false, rc: +raw, log: detail };

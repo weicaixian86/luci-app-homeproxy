@@ -36,12 +36,24 @@ to_upper() {
 }
 
 # 锁目录（本脚本一次只处理一份列表，所以一个就够）。
+#
+# ⚠️ 必须区分「我持有的锁」和「别人的锁」。原来的 cleanup 只看 `LOCK_DIR` 非空
+# 就 `rm -rf`，而 `LOCK_DIR` 在**抢锁之前**就已经赋值了 —— 于是抢锁失败的那一方
+# 在 `return 2` / `exit` 时走 EXIT trap，把**持有者**的锁目录删掉。互斥因此形同
+# 虚设：A 持有锁 → B 抢锁失败并删掉 A 的锁 → C 长驱直入，三个进程同时写同一份
+# 临时文件。现场（237，0.3.10）连点两次「Check update」即复现：
+#   [CHINA_LIST] Local version: …   ← 两条，两个实例都进了下载流程
+#   [CHINA_LIST] Successfully updated.
+#   [CHINA_LIST] Update failed.     ← 后一个把前一个的临时文件 mv 走了
+# 所以用 LOCK_HELD 显式记录「本次是否真的建成了锁」，只有建成的那一方才清理。
 LOCK_DIR=""
+LOCK_HELD=""
 cleanup() {
-	if [ -n "$LOCK_DIR" ]; then
+	if [ -n "$LOCK_HELD" ]; then
 		rm -rf "$LOCK_DIR" 2>"/dev/null"
-		LOCK_DIR=""
+		LOCK_HELD=""
 	fi
+	LOCK_DIR=""
 	return 0
 }
 trap cleanup EXIT
@@ -89,12 +101,14 @@ check_list_update() {
 		holder="$(cat "$LOCK_DIR/pid" 2>"/dev/null")"
 		if [ -n "$holder" ] && [ ! -d "/proc/$holder" ]; then
 			rm -rf "$LOCK_DIR" 2>"/dev/null"
-			mkdir "$LOCK_DIR" 2>"/dev/null"
+			mkdir "$LOCK_DIR" 2>"/dev/null" && LOCK_HELD=1
 		fi
-		if [ ! -d "$LOCK_DIR" ]; then
+		if [ -z "$LOCK_HELD" ]; then
 			log "[$(to_upper "$LIST_FILE")] A task is already running."
 			return 2
 		fi
+	else
+		LOCK_HELD=1
 	fi
 	printf '%s\n' "$$" > "$LOCK_DIR/pid" 2>"/dev/null"
 
@@ -145,18 +159,34 @@ check_list_update() {
 		log "[$(to_upper "$LIST_FILE")] Local version: $OLD_VER, latest version: $NEW_VER."
 	fi
 
+	# ⚠️ 临时文件必须按 **LIST_FILE** 命名，不能直接用 `$REPO_FILE`。
+	# china_ip4 与 china_ip6 下载的是**同一个** `cncidr.txt`，而锁是按
+	# LIST_FILE 分的（两者互不排斥），于是并发时它们往同一个
+	# `/var/run/homeproxy/cncidr.txt` 里写：后写完的那个把文件 mv 走，前一个
+	# 的 `mv` 就找不到文件 —— 现场（237，0.3.10）两个并发跑，ip4 直接
+	# 「Update failed.」（rc=1），ip6 成功，而 ip4 的 .ver 停在旧值。
+	# 用 `<list>.<repo_file>` 做前缀，四个 type 各自独立，互不干扰。
+	local TMP_FILE="$RUN_DIR/$LIST_FILE.${REPO_FILE}"
+
 	if ! curl -sL --http1.1 --connect-timeout 20 --max-time 120 \
 			--speed-limit 6144 --speed-time 60 \
-			-o "$RUN_DIR/$REPO_FILE" "https://cdn.jsdelivr.net/gh/$REPO_NAME@$REPO_BRANCH/$REPO_FILE" \
-		|| [ ! -s "$RUN_DIR/$REPO_FILE" ]; then
-		rm -f "$RUN_DIR/$REPO_FILE"
+			-o "$TMP_FILE" "https://cdn.jsdelivr.net/gh/$REPO_NAME@$REPO_BRANCH/$REPO_FILE" \
+		|| [ ! -s "$TMP_FILE" ]; then
+		rm -f "$TMP_FILE"
 		log "[$(to_upper "$LIST_FILE")] Update failed."
 
 		return 1
 	fi
 
-	mv -f "$RUN_DIR/$REPO_FILE" "$RESOURCES_DIR/$LIST_FILE.${REPO_FILE##*.}"
+	mv -f "$TMP_FILE" "$RESOURCES_DIR/$LIST_FILE.${REPO_FILE##*.}"
 	echo -e "$NEW_VER" > "$RESOURCES_DIR/$LIST_FILE.ver"
+	# 权限必须显式归一到 644。rpcd 的 umask 是 0077（/proc/<rpcd pid>/status
+	# 实测 `Umask: 0077`），它派生的 shell 里 curl 建出来的临时文件是 0600，
+	# `mv` 之后这个模式就跟着落到了 resources/*.txt 上；而安装基线（包内
+	# 落地的文件、以及 cron 的 umask 0022 写出来的）都是 0644。同一份资源
+	# 两种权限，取决于「谁触发更新」，这会让后续按权限判断的逻辑和排障都
+	# 失去意义。这里统一成 0644，与安装基线一致。
+	chmod 644 "$RESOURCES_DIR/$LIST_FILE.${REPO_FILE##*.}" "$RESOURCES_DIR/$LIST_FILE.ver" 2>"/dev/null"
 	log "[$(to_upper "$LIST_FILE")] Successfully updated."
 
 	return 0

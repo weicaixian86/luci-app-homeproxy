@@ -189,9 +189,13 @@ function getResVersion(o, type) {
 	});
 
 	/* 上面那个后台任务的进度。resources_update 现在只负责启动（立即返回
-	   {started:true}），真正的结果靠这个轮询：running=false 时 rc 就是
-	   update_resources.sh 的退出码（0 成功 / 1 失败 / 2 已有任务在跑 /
-	   3 已是最新），log 是本次运行新写入的日志行。 */
+	   {started:true}，已有任务在跑时返回 {started:false, running:true}），
+	   真正的结果靠这个轮询：running=false 时 rc 就是 update_resources.sh 的
+	   退出码（0 成功 / 1 失败 / 2 已有任务在跑 / 3 已是最新），log 是本次
+	   运行新写入的日志行。
+	   ⚠️ running 由**进程是否存活**决定，不只看 rc 文件在不在：连点两次时
+	   第二个实例会立刻写下 rc=2（抢锁失败）而第一个还在下载，只看 rc 会让
+	   界面提前两秒解锁并显示「Already in updating.」。 */
 	const callResUpdatePoll = rpc.declare({
 		object: 'luci.homeproxy',
 		method: 'resources_update_poll',
@@ -279,7 +283,12 @@ function getResVersion(o, type) {
 				   Promise resolve 之后才处理按钮状态的，早返回（返回 null）
 				   等于「轮询期间按钮又能点」。 */
 				return L.resolveDefault(callResUpdate(type), {}).then((ret) => {
-					if (ret && ret.started === true)
+					/* started=true  → 这次真的派生了新任务；
+					   running=true  → 已有任务在跑，rpcd 没起第二个，回报现状。
+					   两种情况都要转去轮询**同一个**任务：后者若不轮询，界面
+					   会显示「更新失败」，而下载其实正在进行（多标签页 / 刷新后
+					   再点就是这个场景）。 */
+					if (ret && (ret.started === true || ret.running === true))
 						return poll();
 
 					/* 参数校验类错误（type 非法、脚本缺失）当场就回来，

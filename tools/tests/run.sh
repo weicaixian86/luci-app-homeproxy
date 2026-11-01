@@ -1909,6 +1909,125 @@ else
 	bad "update_resources.sh has a curl without --max-time ($RES_MAXT caps for $RES_CURLS curls): the request can hang for as long as the server wants"
 fi
 
+# 互斥的清理必须只动「自己建成的锁」。原来的 cleanup 只看 `LOCK_DIR` 非空就
+# `rm -rf`，而 `LOCK_DIR` 在抢锁**之前**就赋值了 —— 抢锁失败的一方在 return 2
+# 时走 EXIT trap，把**持有者**的锁目录删掉，互斥形同虚设。现场（237，0.3.10）
+# 连点两次「Check update」：日志里出现两条 `Local version:`，两个实例都进了
+# 下载流程，后一个把前一个的临时文件 mv 走 → `[CHINA_LIST] Update failed.`。
+# 判据：cleanup 里判的是 LOCK_HELD，而不是 LOCK_DIR 是否非空。
+# ⚠️ 这里必须用 grep -F：`if [ -n "$LOCK_HELD" ]` 里的 `[` 在 BRE 里是**字符类
+# 开头**，`grep -q 'if [ -n "$LOCK_HELD" ]'` 实际只匹配「`if ` + 集合里任一字
+# 符」，于是把 LOCK_HELD 换成 LOCK_DIR 也照样命中 —— 恒真断言。反向实验当场
+# 抓到（exp1 改成 LOCK_DIR 后仍然 ALL PASSED）。
+RES_CLEANUP=$(sed -n '/^cleanup() {/,/^}/p' "$RES_SH")
+if printf '%s\n' "$RES_CLEANUP" | grep -qF 'if [ -n "$LOCK_HELD" ]' \
+   && ! printf '%s\n' "$RES_CLEANUP" | grep -qF '-n "$LOCK_DIR"'; then
+	ok "the resource update lock is only released by the process that actually took it"
+else
+	bad "the losing side of the resource lock deletes the winner's lock on exit (mutual exclusion collapses: two updates run at once and one reports 'Update failed.')"
+fi
+
+if grep -q 'LOCK_HELD=1' "$RES_SH"; then
+	ok "taking the resource lock is recorded in LOCK_HELD (fresh and stale-lock paths both set it)"
+else
+	bad "nothing records whether this run owns the lock, so cleanup cannot tell its own lock from someone else's"
+fi
+
+# 临时文件必须按 LIST_FILE 命名。china_ip4 与 china_ip6 下载的是**同一个**
+# cncidr.txt，而锁按 LIST_FILE 分（两者互不排斥）→ 并发时往同一个
+# /var/run/homeproxy/cncidr.txt 里写，后写完的把文件 mv 走，前一个的 mv 落空。
+# 现场（237，0.3.10）并发跑：ip4 rc=1「Update failed.」，ip6 rc=0，ip4 的 .ver
+# 停在旧值 —— 看起来像「这台机器下不了 ip4 列表」。
+if grep -q 'local TMP_FILE="\$RUN_DIR/\$LIST_FILE\.\${REPO_FILE}"' "$RES_SH" \
+   && ! grep -q -- '-o "\$RUN_DIR/\$REPO_FILE"' "$RES_SH"; then
+	ok "each list downloads into its own temp file (china_ip4 / china_ip6 no longer share cncidr.txt)"
+else
+	bad "china_ip4 and china_ip6 still download into the same temp file: running them together makes one report 'Update failed.' and leaves its .ver stale"
+fi
+
+# 权限必须归一成 644。rpcd 的 umask 是 0077（实测 /proc/<rpcd pid>/status），
+# 它派生的 shell 里 curl 建的临时文件是 0600，mv 之后这个模式就落到
+# resources/*.txt 上；而安装基线与 cron（umask 0022）写出来的是 0644。
+# 同一份资源两种权限，取决于谁触发更新 —— 排查时会被误读成「文件被人动过」。
+if grep -qE 'chmod 644 .*RESOURCES_DIR' "$RES_SH"; then
+	ok "updated resource files are normalised to 0644 whatever umask rpcd runs with"
+else
+	bad "resource files keep rpcd's umask 0077 (0600) after an update, diverging from the 0644 install baseline"
+fi
+
+# ------------------------------------------------- 连点两次不得提前判「已结束」
+# 缺陷 D：resources_update 每次调用都无条件 `unlink(rc_file)` 再派生，而
+# resources_update_poll 把「rc 文件不存在」当成「还在跑」。单次调用时这个约定
+# 成立，连点两次就崩 —— 第二个实例抢锁失败、立刻 exit 2 并写了自己的 rc，
+# poll 读到那个 2 就报「已结束」，而第一个实例还在下载。
+# 现场（237，0.3.10，china_list 约 4 秒）的时间线：
+#   T+1.2  poll#1 running=true  rc=null  进程存活=30366
+#   T+2.4  poll#2 running=false rc=2     进程存活=30366   ← 已判「结束」
+#   T+4.8  poll#4 running=false rc=0     进程存活=否     ← 才是真实结果
+# 修法：与内核更新 / 订阅更新同构 —— 落 pid 文件、用 kill -0 判存活，rc 只
+# 回答「怎么结束的」。修后实测同一场景 poll#1~#7 全 running=true，到
+# poll#8（进程存活=否）才 running=false rc=0。
+section "a second resource update click must not end the first one early"
+
+# ① 「谁在跑」必须由 pid 决定，所以必须真的写了 pid 文件。
+if printf '%s' "$res_body" | grep -q 'resources_update_${type}.pid'; then
+	ok "rpcd resources_update records the pid of the job it spawned"
+else
+	bad "rpcd resources_update spawns a job but records no pid: 'is it still running' can only be guessed from the rc file"
+fi
+
+# ② 判存活的辅助函数必须存在，且用的是 kill -0（不是「文件在不在」）。
+RES_RUNNING_FN=$(sed -n '/^function resourcesUpdateRunning/,/^}/p' "$RPCD")
+if printf '%s\n' "$RES_RUNNING_FN" | grep -q 'kill -0' \
+   && printf '%s\n' "$RES_RUNNING_FN" | grep -q 'resources_update_${type}.pid'; then
+	ok "rpcd tells 'still running' from the pid (kill -0), not from the presence of the rc file"
+else
+	bad "rpcd decides 'still running' from the rc file alone: a second click writes its own rc=2 immediately and the first job is reported finished two seconds before it is"
+fi
+
+# ③ 启动前必须先判「已有任务在跑」，否则第二次调用照样会 unlink 掉第一个的状态。
+#    判据取的是 resourcesUpdateRunning(type) 出现在 unlink 之前 —— 顺序是本质，
+#    只判「函数被调用过」会让「先 unlink 再判」的写法混过去。
+#    ⚠️ 必须匹配**带分号的完整语句**、不能用 `grep -n 'unlink(rc_file)'`：
+#    上面那段解释缺陷的注释里就写着 `unlink(rc_file)`（无反引号外还有别的
+#    字符），第一次写成 grep 时它命中了注释所在的第 30 行，而 guard 在第 36
+#    行，于是断言把「正确的顺序」判成了反的 —— 反向实验没做，先撞上的是
+#    正例误报。注释行不是代码，行号必须只在代码行之间比较。
+RES_UPDATE_BODY=$(sed -n '/^\tresources_update: {/,/^\tresources_update_poll: {/p' "$RPCD")
+RES_GUARD_LINE=$(printf '%s\n' "$RES_UPDATE_BODY" | awk 'index($0, "if (resourcesUpdateRunning(type))") { print NR; exit }')
+RES_UNLINK_LINE=$(printf '%s\n' "$RES_UPDATE_BODY" | awk 'index($0, "unlink(rc_file);") { print NR; exit }')
+if [ -n "$RES_GUARD_LINE" ] && [ -n "$RES_UNLINK_LINE" ] && [ "$RES_GUARD_LINE" -lt "$RES_UNLINK_LINE" ]; then
+	ok "rpcd resources_update checks for a running job before it touches the previous run's state"
+else
+	bad "rpcd resources_update clears the previous run's rc before checking whether a job is still running: the second click wipes the first one's state and poll reports it finished early"
+fi
+
+# ④ 已有任务在跑时必须回报 running，不能报「启动失败」。
+if printf '%s' "$RES_UPDATE_BODY" | grep -q 'started: false' \
+   && printf '%s' "$RES_UPDATE_BODY" | grep -q 'running: true'; then
+	ok "rpcd resources_update answers {started:false, running:true} when a job is already in flight"
+else
+	bad "rpcd resources_update cannot report 'already running': the second click either spawns a duplicate or looks like a failed start"
+fi
+
+# ⑤ poll 里 rc 是纯数字但进程还活着时，不得回 running=false。
+#    这是缺陷 D 的**直接**症状所在的那一行，必须单独判。
+RES_POLL_BODY=$(sed -n '/^\tresources_update_poll: {/,/^\t},/p' "$RPCD")
+if printf '%s' "$RES_POLL_BODY" | grep -q 'if (resourcesUpdateRunning(type))' \
+   && printf '%s' "$RES_POLL_BODY" | grep -q 'running: true, rc: null'; then
+	ok "rpcd resources_update_poll keeps reporting running while the job's pid is alive (rc alone is not the verdict)"
+else
+	bad "rpcd resources_update_poll trusts a numeric rc even when the pid is still alive: a losing second instance's rc=2 ends the first job early in the UI"
+fi
+
+# ⑥ 前端必须把 running=true 也当成「继续轮询」。只认 started=true 的话，
+#    第二个标签页 / 刷新后再点会显示「Update failed.」，而下载其实在跑。
+if grep -qF 'ret.started === true || ret.running === true' "$RES_STATUS_JS"; then
+	ok "the status page keeps polling when rpcd answers 'already running' instead of 'started'"
+else
+	bad "the status page only polls on started=true: clicking Check update again while a job runs shows 'Update failed.' even though the download is in progress"
+fi
+
 # 审计行两处都要写：syslog（logread / 系统级排查）+ ruleset_download.log
 # （日志页读的就是它）。0.2.2 把原来裸的 `logger -t homeproxy ruleset_sync`
 # 换成了 rulesetLog()，所以这里判据也跟着改为「rulesetLog 的实现里同时有
