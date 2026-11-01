@@ -2662,6 +2662,7 @@ const methods = {
 		}
 	},
 
+	/* 内置资源（china_ip4 / china_ip6 / gfw_list / china_list）的版本号。 */
 	resources_get_version: {
 		args: { type: 'string' },
 		call: function(req) {
@@ -2676,37 +2677,128 @@ const methods = {
 			return { version: version, error: length(version) ? null : 'not found' };
 		}
 	},
+
+	/* 「检查更新」按钮（status.js 的 4 个 Check update）**后台**执行
+	   update_resources.sh <type>，退出码落盘，前端轮询 resources_update_poll。
+
+	   ⚠️ 这里原本是同步 `system()` —— 同一个坑在本文件里已经踩过两次
+	   （ruleset_update :2338、clash_api_update_panel :1199 都写了红线注释），
+	   唯独资源更新漏了。2026-11-01 在 237（0.3.10 正式包）实测：
+	     · 空闲时 `ubus call uci get` 20 次最大 0.010 秒；
+	     · resources_update 运行期间同一条 uci get 要 0.540 秒（54 倍）；
+	     · 直接墙钟：gfw_list 0.54 秒、china_ip4 0.45 秒，而
+	       package_get_version 0.000 秒（对照组）。
+	   上面这 0.54 秒还只是「GitHub API 限流」的快速失败分支（该设备
+	   github_token 为空，连续点几次就撞 429）。成功分支要下 1.4 MB
+	   （cncidr.txt 实测 0.78 秒 / 242839 字节），慢镜像下更久；而脚本里
+	   两个 curl 原先**一个超时参数都没有**，持续时间完全由对端决定
+	   （对照：--connect-timeout 3 打 httpbin.org/delay/5 仍跑 6.01 秒，
+	   只有 --max-time 3 才 3.01 秒截断）。叠加 /etc/config/rpcd 的
+	   `option timeout 30`，最坏就是 30 秒内所有 LuCI 页面排队
+	   （form.Map 第一件事是 uci.load()，uci 对象与 rpcd 同进程）。
+
+	   为什么必须自己 fork 并把 $? 落盘：脚本没有 --detach，同步等它才能
+	   拿到退出码；而后台派生之后没有人接收 $?。前端要区分 0/1/2/3
+	   （成功 / 失败 / 已有任务在跑 / 已是最新）四种结论，少一个就只剩
+	   「更新失败」一句话。 */
 	resources_update: {
 		args: { type: 'string' },
 		call: function(req) {
-			if (!req.args?.type)
-				return { status: 255, error: 'illegal type' };
+			/* 白名单放在 rpcd 侧，不只依赖脚本的 `case "$1"`：脚本走 `*)`
+			   分支时是「打印 Usage + exit 1」，前端会把它翻译成「更新失败」，
+			   而真正的原因是参数非法 —— 两件事不该共用一句话。 */
+			const type = trim(req.args?.type || '');
 
-			const type = shellquote(req.args?.type);
+			if (index(['china_ip4', 'china_ip6', 'gfw_list', 'china_list'], type) === -1)
+				return { result: false, error: 'illegal type' };
+
+			const script = HP_DIR + '/scripts/update_resources.sh';
+
+			if (!access(script))
+				return { result: false, error: '资源更新脚本缺失' };
+
+			const rc_file = `${RUN_DIR}/resources_update_${type}.rc`;
 			const logfile = `${RUN_DIR}/homeproxy.log`;
 			const before = lstat(logfile)?.size ?? 0;
 
-			/* 显式走 /bin/sh：脚本的执行位万一丢了（644），直接调用会
-			 * "Permission denied"，而按钮只会回一个含糊的失败码。 */
-			const exit_code = system(`/bin/sh ${shellquote(HP_DIR + '/scripts/update_resources.sh')} ${type}`);
+			/* /var/run 是内存盘，重启后 RUN_DIR 可能还不存在（首次点击就
+			   发生在内核启动前、日志一行都没写过的时候）。少了这一步
+			   writefile 会静默失败，poll 拿不到偏移就只剩一个 rc，
+			   界面上「更新失败」后面没有原因。mkdir 本身是毫秒级的，
+			   不构成阻塞。 */
+			system(`mkdir -p ${shellquote(RUN_DIR)}`);
 
-			/* 只回一个数字，界面上就是一句「更新失败」；真正的原因（GitHub API
-			   限流 / 网络不通 / CDN 404）只写进主日志，用户看不到，排查还得重新
-			   登设备捞。把这一次**新写入**的日志行一并返回（按调用前的文件大小
-			   偏移读增量，不去猜日志格式）。 */
+			/* 旧的 rc 必须先删：前端把「文件不存在」当成「还在跑」，
+			   留着上一轮的结果会让新任务一启动就被判成「已完成」。 */
+			unlink(rc_file);
+
+			/* 记下调用前的日志长度，供 resources_update_poll 只读**本次**
+			   新增的行 —— 脚本每次至少写一行 [CHINA_IP4] 之类的前缀行，
+			   所以「增量里有内容」本身就是「脚本真的跑起来了」的证据。 */
+			writefile(`${RUN_DIR}/resources_update_${type}.offset`, sprintf('%d', before));
+
+			/* `{ ...; } &` 让外层 shell 立即退出，system() 随即返回 ——
+			   这就是「不阻塞」的全部要点。`</dev/null >/dev/null 2>&1`
+			   不能省：不重定向的话子进程会继承 rpcd 的 ubus socket 与
+			   stdio，rpcd 会一直等在这些 fd 上。 */
+			system(sprintf(
+				'{ /bin/sh %s %s; printf "%%s" "$?" > %s; } </dev/null >/dev/null 2>&1 &',
+				shellquote(script),
+				shellquote(type),
+				shellquote(rc_file)));
+
+			return { result: true, started: true };
+		}
+	},
+
+	/* resources_update 启动的后台任务状态。
+	   与 ruleset_update_poll / panel_fetch_poll 同一套约定：rc 文件不存在
+	   = 还在跑（启动时已 unlink）；存在且是纯数字 = 已结束。非纯数字一律
+	   按「还在跑」处理（printf 单次写入通常原子，但不值得赌），由前端
+	   超时兜底。`log` 只回本次调用新增的日志行 —— 界面上「更新失败」
+	   后面得能跟一句真实原因（限流 / 网络不通 / CDN 404），否则用户只能
+	   登设备翻日志。 */
+	resources_update_poll: {
+		args: { type: 'string' },
+		call: function(req) {
+			const type = trim(req.args?.type || '');
+
+			if (index(['china_ip4', 'china_ip6', 'gfw_list', 'china_list'], type) === -1)
+				return { running: false, rc: null, log: '', error: 'illegal type' };
+
+			const rc_file = `${RUN_DIR}/resources_update_${type}.rc`;
+			const st = stat(rc_file);
+
 			let detail = '';
-			const after = lstat(logfile)?.size ?? 0;
+			const offset_raw = trim(readfile(`${RUN_DIR}/resources_update_${type}.offset`) || '');
+			const logfile = `${RUN_DIR}/homeproxy.log`;
 
-			if (after > before) {
-				const fh = open(logfile, 'r');
-				if (fh) {
-					fh.seek(before);
-					detail = trim(fh.read('all') ?? '');
-					fh.close();
+			/* 偏移文件缺失或不是纯数字时**不**回退成 0：那会把整个历史日志
+			   （可能上百 KB）当成本次结果塞进界面。宁可只回 rc，让用户去
+			   日志页看 —— 偏移文件是本方法自己写的，读不到属异常路径。 */
+			if (length(offset_raw) && match(offset_raw, /^[0-9]+$/)) {
+				const before = +offset_raw;
+				const after = lstat(logfile)?.size ?? 0;
+
+				if (after > before) {
+					const fh = open(logfile, 'r');
+					if (fh) {
+						fh.seek(before);
+						detail = trim(fh.read('all') ?? '');
+						fh.close();
+					}
 				}
 			}
 
-			return { status: exit_code, log: detail };
+			if (!st || st.type !== 'file')
+				return { running: true, rc: null, log: detail };
+
+			const raw = trim(readfile(rc_file) || '');
+
+			if (!length(raw) || !match(raw, /^[0-9]+$/))
+				return { running: true, rc: null, log: detail };
+
+			return { running: false, rc: +raw, log: detail };
 		}
 	},
 

@@ -1831,6 +1831,84 @@ else
 	bad "Update panel never passes --force to fetch_panel.sh (with the panel already installed it is a no-op that still reports success)"
 fi
 
+# --------------------------------------------------- 「检查更新」不得同步阻塞 rpcd
+# 同一个坑的第三处，也是最晚被发现的一处：resources_update 一直同步跑
+# update_resources.sh，而**它调起的脚本两个 curl 原先一个超时参数都没有**。
+# 2026-11-01 在 237（0.3.10 正式包）实测：
+#   · 空闲 `ubus call uci get` 20 次最大 0.010 秒；
+#   · resources_update 运行期间同一条 uci get 要 0.540 秒（54 倍），
+#     对照组 package_get_version 0.000 秒；
+#   · 那还只是 GitHub API 限流的快速失败分支（该设备 github_token 为空，
+#     连点几次就撞 429）；成功分支要下 1.4 MB（cncidr.txt 实测 0.78 秒）；
+#   · 无超时的后果已对照证明：`--connect-timeout 3` 打 httpbin.org/delay/5
+#     仍跑 6.01 秒，只有 `--max-time 3` 才 3.01 秒截断 —— 持续时间由对端
+#     决定。叠加 /etc/config/rpcd 的 `option timeout 30`，最坏是 30 秒内
+#     所有 LuCI 页面排队（form.Map 第一件事是 uci.load，uci 与 rpcd 同进程）。
+# 判据与 ruleset_update / clash_api_update_panel 同构，缺一条就会退化：
+#   ① 后台派生（`2>&1 &`）② 退出码落盘 + resources_update_poll
+#   ③ 前端真的在轮询 ④ 脚本里每个 curl 都带 --max-time
+section "resource list update must not block rpcd"
+
+# STATUS_JS 在后面的「真机全功能走查」小节才定义（:24xx），这里自己取一次：
+# 本段在它之前执行，直接引用会 unbound（run.sh 开了 set -u）。
+RES_STATUS_JS="$PKG/htdocs/luci-static/resources/view/homeproxy/status.js"
+res_body="$(sed -n '/^\tresources_update: {/,/^\tresources_update_poll: {/p' "$RPCD")"
+
+if printf '%s' "$res_body" | grep -q '2>&1 &'; then
+	ok "rpcd resources_update forks update_resources.sh instead of waiting for it"
+else
+	bad "rpcd resources_update runs update_resources.sh synchronously (blocks rpcd: 0.540s vs 0.010s idle, up to the rpcd 30s ceiling on a slow mirror)"
+fi
+
+if printf '%s' "$res_body" | grep -q 'resources_update_\${type}.rc'; then
+	ok "rpcd resources_update records the exit code per list for the frontend"
+else
+	bad "rpcd resources_update does not persist the exit code (success / failure / already-running / up-to-date become indistinguishable)"
+fi
+
+if printf '%s' "$res_body" | grep -q 'started: true'; then
+	ok "rpcd resources_update answers with started, not with a download result"
+else
+	bad "rpcd resources_update still claims to return the download result (it can only start a background job now)"
+fi
+
+if grep -q 'resources_update_poll' "$RPCD" && grep -q 'callResUpdatePoll' "$RES_STATUS_JS"; then
+	ok "the status page polls resources_update_poll for the real outcome"
+else
+	bad "the status page never polls resources_update_poll (the Check update button would report success the moment it starts)"
+fi
+
+if grep -q 'DEADLINE_MS' "$RES_STATUS_JS" && grep -q 'POLL_MS' "$RES_STATUS_JS"; then
+	ok "the status page re-checks the background job on a timer, with a deadline"
+else
+	bad "the status page has no polling interval / deadline for the background resource update"
+fi
+
+# 白名单必须在 rpcd 侧，不能只靠脚本的 `case "$1"`：脚本走 `*)` 分支时是
+# 「打印 Usage + exit 1」，前端会把 exit 1 翻译成「更新失败」，而真正的原因
+# 是参数非法 —— 两件事不该共用一句话（0.3.10 巡检时 `type:"bogus"` 就是这样
+# 回了一个 status:1 + 空 log）。
+if printf '%s' "$res_body" | grep -qF "index(['china_ip4', 'china_ip6', 'gfw_list', 'china_list'], type)"; then
+	ok "rpcd resources_update rejects unknown list names before shelling out"
+else
+	bad "rpcd resources_update only checks for an empty type: a bogus name reaches the script and surfaces as a plain 'Update failed.'"
+fi
+
+# 脚本里**每个** curl 都要有 --max-time。只判「存在 max-time」会漏掉新加的
+# 请求；这里数 curl 调用数与 --max-time 出现次数，要求一一对应。
+# 注释行必须先剔掉：本文件里解释这条坑的注释本身就写着
+# `curl --connect-timeout 3 …` / `curl --max-time 3 …`，不剔会把注释当成调用
+# （0.3.10 第一次跑就撞上：3 caps for 6 curls）。
+RES_SH="$PKG/root/etc/homeproxy/scripts/update_resources.sh"
+RES_CODE=$(grep -vE '^[[:space:]]*#' "$RES_SH")
+RES_CURLS=$(printf '%s\n' "$RES_CODE" | grep -c 'curl ')
+RES_MAXT=$(printf '%s\n' "$RES_CODE" | grep -c -- '--max-time')
+if [ "$RES_CURLS" -gt 0 ] && [ "$RES_MAXT" -ge "$RES_CURLS" ]; then
+	ok "every curl in update_resources.sh has a hard --max-time ($RES_MAXT/$RES_CURLS)"
+else
+	bad "update_resources.sh has a curl without --max-time ($RES_MAXT caps for $RES_CURLS curls): the request can hang for as long as the server wants"
+fi
+
 # 审计行两处都要写：syslog（logread / 系统级排查）+ ruleset_download.log
 # （日志页读的就是它）。0.2.2 把原来裸的 `logger -t homeproxy ruleset_sync`
 # 换成了 rulesetLog()，所以这里判据也跟着改为「rulesetLog 的实现里同时有

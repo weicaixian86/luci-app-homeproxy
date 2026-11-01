@@ -104,8 +104,20 @@ check_list_update() {
 	#   ② 网络/DNS 不通；③ 仓库或 release 不存在；④ 返回体结构变了。
 	# 现场（0.1.25）：连跑四次内置资源就撞上 ①，日志却只说「请稍后重试」，只能
 	# 手工 curl 才知道是限流。所以把 API 的 message 与响应片段一起写进日志。
+	# ⚠️ 两个 curl 都必须带超时。原来这里一个超时参数都没有，于是「这个请求
+	# 要跑多久」完全由对端决定 —— 现场对照（237，0.3.10 巡检）：
+	#   `curl --connect-timeout 3 https://httpbin.org/delay/5` → 6.01 秒返回
+	#   `curl --max-time 3        https://httpbin.org/delay/10` → 3.01 秒截断
+	# 即 --connect-timeout 只管「连上」，对端不发数据就一直等。本脚本是被
+	# LuCI 的「Check update」按钮调起的（rpcd 的 resources_update），没有上限
+	# 就会一直占着 rpcd（uci 同进程）→ 所有页面排队，直到 rpcd 的
+	# /etc/config/rpcd `option timeout 30` 把整个调用掐掉。
+	# API 是小 JSON（几 KB），30 秒足够；下载那份 1.4 MB 的列表给 120 秒，
+	# 并加 --speed-limit 防「连上了但几乎不动」—— 与 fetch_panel.sh 同一口径
+	# （--connect-timeout 20 / --speed-limit 6144 --speed-time 60）。
+	# --http1.1 同 fetch_rulesets.sh：musl 上 HTTP/2 偶发握手失败。
 	local API_RESP API_REASON API_SNIP
-	API_RESP=$(curl -sL ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$REPO_NAME/releases/latest" 2>"/dev/null")
+	API_RESP=$(curl -sL --http1.1 --connect-timeout 10 --max-time 30 ${GITHUB_TOKEN:+-H "Authorization: Bearer $GITHUB_TOKEN"} "https://api.github.com/repos/$REPO_NAME/releases/latest" 2>"/dev/null")
 	local NEW_VER=$(printf '%s' "$API_RESP" | jsonfilter -e "@.tag_name")
 	if [ -z "$NEW_VER" ]; then
 		API_REASON=$(printf '%s' "$API_RESP" | jsonfilter -e "@.message" 2>"/dev/null")
@@ -133,7 +145,10 @@ check_list_update() {
 		log "[$(to_upper "$LIST_FILE")] Local version: $OLD_VER, latest version: $NEW_VER."
 	fi
 
-	if ! curl -sL -o "$RUN_DIR/$REPO_FILE" "https://cdn.jsdelivr.net/gh/$REPO_NAME@$REPO_BRANCH/$REPO_FILE" || [ ! -s "$RUN_DIR/$REPO_FILE" ]; then
+	if ! curl -sL --http1.1 --connect-timeout 20 --max-time 120 \
+			--speed-limit 6144 --speed-time 60 \
+			-o "$RUN_DIR/$REPO_FILE" "https://cdn.jsdelivr.net/gh/$REPO_NAME@$REPO_BRANCH/$REPO_FILE" \
+		|| [ ! -s "$RUN_DIR/$REPO_FILE" ]; then
 		rm -f "$RUN_DIR/$REPO_FILE"
 		log "[$(to_upper "$LIST_FILE")] Update failed."
 

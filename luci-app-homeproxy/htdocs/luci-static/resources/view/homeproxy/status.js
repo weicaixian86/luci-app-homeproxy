@@ -188,39 +188,117 @@ function getResVersion(o, type) {
 		expect: { '': {} }
 	});
 
+	/* 上面那个后台任务的进度。resources_update 现在只负责启动（立即返回
+	   {started:true}），真正的结果靠这个轮询：running=false 时 rc 就是
+	   update_resources.sh 的退出码（0 成功 / 1 失败 / 2 已有任务在跑 /
+	   3 已是最新），log 是本次运行新写入的日志行。 */
+	const callResUpdatePoll = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'resources_update_poll',
+		params: ['type'],
+		expect: { '': {} }
+	});
+
+	/* 只把**本次**新写入的日志行拼在错误后面：脚本每次至少写一行
+	   `[CHINA_IP4] …`，所以「增量有内容」本身就是「脚本真的跑起来了」的
+	   证据。多行压成一行 —— 这个位置是 cbi-value-field 里的一小段文字，
+	   换行会被压没、还会把相邻字段挤下去。 */
+	const resReason = function(res) {
+		return (res && res.log) ? ' ' + res.log.replace(/\s+/g, ' ').trim() : '';
+	};
+
+	const resOutcome = function(o, rc, res) {
+		const reason = resReason(res);
+
+		switch (rc) {
+		case 0:
+			o.description = _('Successfully updated.');
+			break;
+		case 1:
+			o.description = _('Update failed.') + reason;
+			break;
+		case 2:
+			o.description = _('Already in updating.');
+			break;
+		case 3:
+			o.description = _('Already at the latest version.');
+			break;
+		default:
+			/* 拿不到 rc（超时 / 轮询本身出错）时说「未知错误」是误导：脚本
+			   可能还在跑。让用户去看日志，日志里有真实进度。 */
+			o.description = _('Timed out waiting for the update. Please check the log.') + reason;
+			break;
+		}
+
+		return o.map.reset();
+	};
+
 	return L.resolveDefault(callResVersion(type), {}).then((res) => {
+		/* 按钮先建出来再挂 handler：handler 里的 `this` 是
+		   ui.createHandlerFn 传进来的 ctx（LuCI 是 `fn.call(ctx, ev)`），
+		   不是按钮元素 —— 用 `this` 当 btnEl 会拿到 undefined。 */
+		const btnEl = E('button', {
+			'class': 'btn cbi-button cbi-button-action',
+			'click': ui.createHandlerFn(this, function() {
+				/* 后台任务：rpcd 的 resources_update 只负责启动，立即返回
+				   {started:true}；结果靠 resources_update_poll 轮询。
+				   为什么不直接等一个同步返回值：那个 system() 会阻塞整个
+				   rpcd（uci 也同进程），下载期间任何页面都渲染不出来。
+				   实测见 luci.homeproxy 里 resources_update 的注释。
+				   1.2 秒一轮、最多 150 秒（脚本两个 curl 的上限是
+				   30 + 120 秒，再留一点收尾余量）。 */
+				const POLL_MS = 1200;
+				const DEADLINE_MS = 150000;
+				const started_at = Date.now();
+
+				const finish = function(rc, pres) {
+					btnEl.disabled = false;
+					btnEl.textContent = _('Check update');
+
+					return resOutcome(o, rc, pres);
+				};
+
+				const poll = function() {
+					if (Date.now() - started_at > DEADLINE_MS)
+						return finish(null, null);
+
+					return L.resolveDefault(callResUpdatePoll(type), {})
+						.then((ps) => {
+							if (ps && ps.running === false)
+								return finish(ps.rc, ps);
+
+							return new Promise((r) => setTimeout(r, POLL_MS)).then(poll);
+						})
+						.catch(() => finish(null, null));
+				};
+
+				btnEl.disabled = true;
+				btnEl.textContent = _('Updating...');
+
+				/* 必须把这个 Promise 一路 return 出去：CBI 是在 handler 返回的
+				   Promise resolve 之后才处理按钮状态的，早返回（返回 null）
+				   等于「轮询期间按钮又能点」。 */
+				return L.resolveDefault(callResUpdate(type), {}).then((ret) => {
+					if (ret && ret.started === true)
+						return poll();
+
+					/* 参数校验类错误（type 非法、脚本缺失）当场就回来，
+					   不需要轮询。 */
+					btnEl.disabled = false;
+					btnEl.textContent = _('Check update');
+					o.description = _('Update failed.') + (ret && ret.error ? ' ' + ret.error : '');
+					return o.map.reset();
+				}).catch(() => {
+					btnEl.disabled = false;
+					btnEl.textContent = _('Check update');
+					o.description = _('Update failed.');
+					return o.map.reset();
+				});
+			})
+		}, [ _('Check update') ]);
+
 		let spanTemp = E('div', { 'style': 'cbi-value-field' }, [
-			E('button', {
-				'class': 'btn cbi-button cbi-button-action',
-				'click': ui.createHandlerFn(this, () => {
-					return L.resolveDefault(callResUpdate(type), {}).then((res) => {
-						/* 失败时把后端新写的日志行一起显示出来：只回一个 status
-						   时，界面上一句「更新失败」，真正的原因（GitHub API 限流、
-						   网络不通、CDN 404）只能登设备翻日志才知道。 */
-						const reason = (res.log ? ' ' + res.log.replace(/\s+/g, ' ').trim() : '');
-
-						switch (res.status) {
-						case 0:
-							o.description = _('Successfully updated.');
-							break;
-						case 1:
-							o.description = _('Update failed.') + reason;
-							break;
-						case 2:
-							o.description = _('Already in updating.');
-							break;
-						case 3:
-							o.description = _('Already at the latest version.');
-							break;
-						default:
-							o.description = _('Unknown error.');
-							break;
-						}
-
-						return o.map.reset();
-					});
-				})
-			}, [ _('Check update') ]),
+			btnEl,
 			' ',
 			E('strong', { 'style': (res.error ? 'color:red' : 'color:green') },
 				[ res.error ? 'not found' : res.version ]
