@@ -197,11 +197,11 @@ msgstr "从订阅获取节点时，默认允许不安全连接。"
 msgid "Allowed payload size is in the request."
 msgstr "请求中允许的载荷大小。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:213
+#: htdocs/luci-static/resources/view/homeproxy/status.js:228
 msgid "Already at the latest version."
 msgstr "已是最新版本。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:210
+#: htdocs/luci-static/resources/view/homeproxy/status.js:225
 msgid "Already in updating."
 msgstr "已在更新中。"
 
@@ -276,7 +276,7 @@ msgstr ""
 msgid "Apply"
 msgstr "应用"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:459
+#: htdocs/luci-static/resources/view/homeproxy/status.js:546
 msgid "Arch: %s"
 msgstr "架构：%s"
 
@@ -459,7 +459,10 @@ msgstr "证书路径"
 msgid "Check"
 msgstr "检查"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:223
+#: htdocs/luci-static/resources/view/homeproxy/status.js:260
+#: htdocs/luci-static/resources/view/homeproxy/status.js:297
+#: htdocs/luci-static/resources/view/homeproxy/status.js:302
+#: htdocs/luci-static/resources/view/homeproxy/status.js:307
 msgid "Check update"
 msgstr "检查更新"
 
@@ -473,15 +476,15 @@ msgstr "检测中..."
 msgid "China DNS server"
 msgstr "国内 DNS 服务器"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:261
+#: htdocs/luci-static/resources/view/homeproxy/status.js:348
 msgid "China IPv4 list version"
 msgstr "国内 IPv4 库版本"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:265
+#: htdocs/luci-static/resources/view/homeproxy/status.js:352
 msgid "China IPv6 list version"
 msgstr "国内 IPv6 库版本"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:269
+#: htdocs/luci-static/resources/view/homeproxy/status.js:356
 msgid "China list version"
 msgstr "国内域名列表版本"
 
@@ -584,7 +587,7 @@ msgstr ""
 msgid "Congestion control algorithm"
 msgstr "拥塞控制算法"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:251
+#: htdocs/luci-static/resources/view/homeproxy/status.js:338
 msgid "Connection check"
 msgstr "连接检查"
 
@@ -617,7 +620,7 @@ msgstr "当前 DNS 解析流程：%s → %s；其余域名 → 默认服务器 %
 msgid "Current DNS resolution flow: all queries → %s."
 msgstr "当前 DNS 解析流程：所有查询 → %s。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:353
+#: htdocs/luci-static/resources/view/homeproxy/status.js:440
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr "当前架构 reF1nd 暂未支持。"
 
@@ -950,16 +953,16 @@ msgstr "不丢弃请求"
 msgid "Download"
 msgstr "下载"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:440
+#: htdocs/luci-static/resources/view/homeproxy/status.js:527
 msgid "Download / update core"
 msgstr "下载 / 更新内核"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:361
-#: htdocs/luci-static/resources/view/homeproxy/status.js:434
+#: htdocs/luci-static/resources/view/homeproxy/status.js:448
+#: htdocs/luci-static/resources/view/homeproxy/status.js:521
 msgid "Download / update failed. See log for details."
 msgstr "下载 / 更新失败，请查看日志。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:349
+#: htdocs/luci-static/resources/view/homeproxy/status.js:436
 msgid "Download / update succeeded."
 msgstr "下载 / 更新成功。"
 
@@ -990,7 +993,7 @@ msgstr "下载时间/大小"
 msgid "Downloaded"
 msgstr "已下载"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:381
+#: htdocs/luci-static/resources/view/homeproxy/status.js:468
 msgid "Downloading sing-box core…"
 msgstr "正在下载 sing-box 内核…"
 
@@ -1395,7 +1398,7 @@ msgstr "五"
 msgid "GET"
 msgstr "GET"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:273
+#: htdocs/luci-static/resources/view/homeproxy/status.js:360
 msgid "GFW list version"
 msgstr "GFW 域名列表版本"
 
@@ -1425,7 +1428,7 @@ msgstr "生成"
 msgid "GitHub Connection"
 msgstr "GitHub 连接"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:277
+#: htdocs/luci-static/resources/view/homeproxy/status.js:364
 msgid "GitHub token"
 msgstr "GitHub 令牌"
 
@@ -1746,7 +1749,7 @@ msgstr "信息"
 msgid "Install panel failed."
 msgstr "安装面板失败。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:455
+#: htdocs/luci-static/resources/view/homeproxy/status.js:542
 msgid "Installed: %s"
 msgstr "已安装：%s"
 
@@ -2280,11 +2283,11 @@ msgstr "还没有上传过其它配置文件。"
 msgid "No additional encryption support: It's basically duplicate encryption."
 msgstr "无额外加密支持：它基本上是重复加密。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:467
+#: htdocs/luci-static/resources/view/homeproxy/status.js:554
 msgid "No binary for this arch yet"
 msgstr "该架构暂无可用二进制"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:357
+#: htdocs/luci-static/resources/view/homeproxy/status.js:444
 msgid "No matching binary for this architecture yet."
 msgstr "当前架构暂无可匹配的二进制。"
 
@@ -2352,7 +2355,7 @@ msgstr "未测试"
 msgid "Not downloaded"
 msgstr "未下载"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:457
+#: htdocs/luci-static/resources/view/homeproxy/status.js:544
 msgid "Not installed"
 msgstr "未安装"
 
@@ -2388,7 +2391,7 @@ msgid ""
 "disable Dnsmasq DNS redirection."
 msgstr "Openwrt设计的Sing-box代理管理平台，建议Dnsmasq的DNS重定向去勾。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:279
+#: htdocs/luci-static/resources/view/homeproxy/status.js:366
 msgid ""
 "Optional. It is only used when checking resource updates, to raise the "
 "GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty "
@@ -2823,7 +2826,7 @@ msgstr "解析"
 msgid "Resolve strategy"
 msgstr "解析策略"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:258
+#: htdocs/luci-static/resources/view/homeproxy/status.js:345
 msgid "Resources management"
 msgstr "资源管理"
 
@@ -2985,8 +2988,8 @@ msgid "Sat"
 msgstr "六"
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:266
-#: htdocs/luci-static/resources/view/homeproxy/status.js:285
-#: htdocs/luci-static/resources/view/homeproxy/status.js:291
+#: htdocs/luci-static/resources/view/homeproxy/status.js:372
+#: htdocs/luci-static/resources/view/homeproxy/status.js:378
 msgid "Save"
 msgstr "保存"
 
@@ -3161,7 +3164,7 @@ msgid ""
 "commas."
 msgstr "指定需要被代理的目标端口。多个端口必须用逗号隔开。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:421
+#: htdocs/luci-static/resources/view/homeproxy/status.js:508
 msgid "Starting download…"
 msgstr "正在启动下载…"
 
@@ -3246,7 +3249,7 @@ msgstr "成功导入 %s 个节点，共 %s 个。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:400
 #: htdocs/luci-static/resources/view/homeproxy/client.js:415
 #: htdocs/luci-static/resources/view/homeproxy/client.js:431
-#: htdocs/luci-static/resources/view/homeproxy/status.js:204
+#: htdocs/luci-static/resources/view/homeproxy/status.js:219
 msgid "Successfully updated."
 msgstr "更新成功。"
 
@@ -3369,7 +3372,7 @@ msgstr "目标 DNS 服务器标签。"
 msgid "Tag of the target outbound."
 msgstr "目标出站标签。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:465
+#: htdocs/luci-static/resources/view/homeproxy/status.js:552
 msgid "Target: %s"
 msgstr "目标版本：%s"
 
@@ -3682,6 +3685,7 @@ msgstr "首字节时间：%s 毫秒"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:406
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3333
+#: htdocs/luci-static/resources/view/homeproxy/status.js:233
 msgid "Timed out waiting for the update. Please check the log."
 msgstr "等待更新超时，请查看运行日志。"
 
@@ -3819,10 +3823,6 @@ msgstr "上传服务返回了无法识别的内容。"
 msgid "Unknown error"
 msgstr "未知错误"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:216
-msgid "Unknown error."
-msgstr "未知错误。"
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1492
 msgid "Unknown policy node"
 msgstr "未知策略节点"
@@ -3848,7 +3848,9 @@ msgstr "更新面板"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:429
 #: htdocs/luci-static/resources/view/homeproxy/client.js:472
 #: htdocs/luci-static/resources/view/homeproxy/client.js:474
-#: htdocs/luci-static/resources/view/homeproxy/status.js:207
+#: htdocs/luci-static/resources/view/homeproxy/status.js:222
+#: htdocs/luci-static/resources/view/homeproxy/status.js:298
+#: htdocs/luci-static/resources/view/homeproxy/status.js:303
 msgid "Update failed."
 msgstr "更新失败。"
 
@@ -3886,6 +3888,7 @@ msgid "Updating subscriptions…"
 msgstr "正在更新订阅…"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3355
+#: htdocs/luci-static/resources/view/homeproxy/status.js:280
 msgid "Updating..."
 msgstr "更新中…"
 
@@ -4178,7 +4181,7 @@ msgid ""
 "if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
 msgstr "如果是刚升级完，请先重启 rpcd（/etc/init.d/rpcd restart）"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:341
+#: htdocs/luci-static/resources/view/homeproxy/status.js:428
 msgid "loading..."
 msgstr "加载中..."
 
@@ -4229,7 +4232,7 @@ msgstr "私钥"
 msgid "quic-go / uquic chrome"
 msgstr "quic-go / uquic chrome"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:335
+#: htdocs/luci-static/resources/view/homeproxy/status.js:422
 msgid "reF1nd sing-box core"
 msgstr "reF1nd sing-box 内核"
 
@@ -4241,7 +4244,7 @@ msgstr "秒"
 msgid "see the log for details"
 msgstr "详见日志"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:296
+#: htdocs/luci-static/resources/view/homeproxy/status.js:383
 msgid "sing-box core management"
 msgstr "sing-box 内核管理"
 
@@ -4256,8 +4259,8 @@ msgid ""
 msgstr ""
 "uTLS 是 \"crypto/tls\" 的一个分支，拥有抵抗 ClientHello 指纹识别的能力。"
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:433
-#: htdocs/luci-static/resources/view/homeproxy/status.js:472
+#: htdocs/luci-static/resources/view/homeproxy/status.js:520
+#: htdocs/luci-static/resources/view/homeproxy/status.js:559
 msgid "unavailable"
 msgstr "不可用"
 
@@ -4346,6 +4349,9 @@ msgstr "有效标签"
 #: htdocs/luci-static/resources/homeproxy.js:1873
 msgid "valid uuid"
 msgstr "有效 uuid"
+
+#~ msgid "Unknown error."
+#~ msgstr "未知错误。"
 
 #~ msgid "Log size limit unit"
 #~ msgstr "日志大小上限单位"

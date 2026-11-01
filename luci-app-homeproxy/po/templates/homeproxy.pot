@@ -187,11 +187,11 @@ msgstr ""
 msgid "Allowed payload size is in the request."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:213
+#: htdocs/luci-static/resources/view/homeproxy/status.js:228
 msgid "Already at the latest version."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:210
+#: htdocs/luci-static/resources/view/homeproxy/status.js:225
 msgid "Already in updating."
 msgstr ""
 
@@ -260,7 +260,7 @@ msgstr ""
 msgid "Apply"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:459
+#: htdocs/luci-static/resources/view/homeproxy/status.js:546
 msgid "Arch: %s"
 msgstr ""
 
@@ -437,7 +437,10 @@ msgstr ""
 msgid "Check"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:223
+#: htdocs/luci-static/resources/view/homeproxy/status.js:260
+#: htdocs/luci-static/resources/view/homeproxy/status.js:297
+#: htdocs/luci-static/resources/view/homeproxy/status.js:302
+#: htdocs/luci-static/resources/view/homeproxy/status.js:307
 msgid "Check update"
 msgstr ""
 
@@ -451,15 +454,15 @@ msgstr ""
 msgid "China DNS server"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:261
+#: htdocs/luci-static/resources/view/homeproxy/status.js:348
 msgid "China IPv4 list version"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:265
+#: htdocs/luci-static/resources/view/homeproxy/status.js:352
 msgid "China IPv6 list version"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:269
+#: htdocs/luci-static/resources/view/homeproxy/status.js:356
 msgid "China list version"
 msgstr ""
 
@@ -558,7 +561,7 @@ msgstr ""
 msgid "Congestion control algorithm"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:251
+#: htdocs/luci-static/resources/view/homeproxy/status.js:338
 msgid "Connection check"
 msgstr ""
 
@@ -591,7 +594,7 @@ msgstr ""
 msgid "Current DNS resolution flow: all queries → %s."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:353
+#: htdocs/luci-static/resources/view/homeproxy/status.js:440
 msgid "Current architecture is not supported by reF1nd yet."
 msgstr ""
 
@@ -917,16 +920,16 @@ msgstr ""
 msgid "Download"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:440
+#: htdocs/luci-static/resources/view/homeproxy/status.js:527
 msgid "Download / update core"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:361
-#: htdocs/luci-static/resources/view/homeproxy/status.js:434
+#: htdocs/luci-static/resources/view/homeproxy/status.js:448
+#: htdocs/luci-static/resources/view/homeproxy/status.js:521
 msgid "Download / update failed. See log for details."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:349
+#: htdocs/luci-static/resources/view/homeproxy/status.js:436
 msgid "Download / update succeeded."
 msgstr ""
 
@@ -957,7 +960,7 @@ msgstr ""
 msgid "Downloaded"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:381
+#: htdocs/luci-static/resources/view/homeproxy/status.js:468
 msgid "Downloading sing-box core…"
 msgstr ""
 
@@ -1347,7 +1350,7 @@ msgstr ""
 msgid "GET"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:273
+#: htdocs/luci-static/resources/view/homeproxy/status.js:360
 msgid "GFW list version"
 msgstr ""
 
@@ -1377,7 +1380,7 @@ msgstr ""
 msgid "GitHub Connection"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:277
+#: htdocs/luci-static/resources/view/homeproxy/status.js:364
 msgid "GitHub token"
 msgstr ""
 
@@ -1689,7 +1692,7 @@ msgstr ""
 msgid "Install panel failed."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:455
+#: htdocs/luci-static/resources/view/homeproxy/status.js:542
 msgid "Installed: %s"
 msgstr ""
 
@@ -2213,11 +2216,11 @@ msgstr ""
 msgid "No additional encryption support: It's basically duplicate encryption."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:467
+#: htdocs/luci-static/resources/view/homeproxy/status.js:554
 msgid "No binary for this arch yet"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:357
+#: htdocs/luci-static/resources/view/homeproxy/status.js:444
 msgid "No matching binary for this architecture yet."
 msgstr ""
 
@@ -2285,7 +2288,7 @@ msgstr ""
 msgid "Not downloaded"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:457
+#: htdocs/luci-static/resources/view/homeproxy/status.js:544
 msgid "Not installed"
 msgstr ""
 
@@ -2321,7 +2324,7 @@ msgid ""
 "disable Dnsmasq DNS redirection."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:279
+#: htdocs/luci-static/resources/view/homeproxy/status.js:366
 msgid ""
 "Optional. It is only used when checking resource updates, to raise the "
 "GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty "
@@ -2753,7 +2756,7 @@ msgstr ""
 msgid "Resolve strategy"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:258
+#: htdocs/luci-static/resources/view/homeproxy/status.js:345
 msgid "Resources management"
 msgstr ""
 
@@ -2913,8 +2916,8 @@ msgid "Sat"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/log.js:266
-#: htdocs/luci-static/resources/view/homeproxy/status.js:285
-#: htdocs/luci-static/resources/view/homeproxy/status.js:291
+#: htdocs/luci-static/resources/view/homeproxy/status.js:372
+#: htdocs/luci-static/resources/view/homeproxy/status.js:378
 msgid "Save"
 msgstr ""
 
@@ -3080,7 +3083,7 @@ msgid ""
 "commas."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:421
+#: htdocs/luci-static/resources/view/homeproxy/status.js:508
 msgid "Starting download…"
 msgstr ""
 
@@ -3165,7 +3168,7 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:400
 #: htdocs/luci-static/resources/view/homeproxy/client.js:415
 #: htdocs/luci-static/resources/view/homeproxy/client.js:431
-#: htdocs/luci-static/resources/view/homeproxy/status.js:204
+#: htdocs/luci-static/resources/view/homeproxy/status.js:219
 msgid "Successfully updated."
 msgstr ""
 
@@ -3284,7 +3287,7 @@ msgstr ""
 msgid "Tag of the target outbound."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:465
+#: htdocs/luci-static/resources/view/homeproxy/status.js:552
 msgid "Target: %s"
 msgstr ""
 
@@ -3583,6 +3586,7 @@ msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:406
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3333
+#: htdocs/luci-static/resources/view/homeproxy/status.js:233
 msgid "Timed out waiting for the update. Please check the log."
 msgstr ""
 
@@ -3718,10 +3722,6 @@ msgstr ""
 msgid "Unknown error"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:216
-msgid "Unknown error."
-msgstr ""
-
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1492
 msgid "Unknown policy node"
 msgstr ""
@@ -3747,7 +3747,9 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:429
 #: htdocs/luci-static/resources/view/homeproxy/client.js:472
 #: htdocs/luci-static/resources/view/homeproxy/client.js:474
-#: htdocs/luci-static/resources/view/homeproxy/status.js:207
+#: htdocs/luci-static/resources/view/homeproxy/status.js:222
+#: htdocs/luci-static/resources/view/homeproxy/status.js:298
+#: htdocs/luci-static/resources/view/homeproxy/status.js:303
 msgid "Update failed."
 msgstr ""
 
@@ -3785,6 +3787,7 @@ msgid "Updating subscriptions…"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3355
+#: htdocs/luci-static/resources/view/homeproxy/status.js:280
 msgid "Updating..."
 msgstr ""
 
@@ -4071,7 +4074,7 @@ msgid ""
 "if this is a fresh upgrade, restart rpcd first (/etc/init.d/rpcd restart)"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:341
+#: htdocs/luci-static/resources/view/homeproxy/status.js:428
 msgid "loading..."
 msgstr ""
 
@@ -4122,7 +4125,7 @@ msgstr ""
 msgid "quic-go / uquic chrome"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:335
+#: htdocs/luci-static/resources/view/homeproxy/status.js:422
 msgid "reF1nd sing-box core"
 msgstr ""
 
@@ -4134,7 +4137,7 @@ msgstr ""
 msgid "see the log for details"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:296
+#: htdocs/luci-static/resources/view/homeproxy/status.js:383
 msgid "sing-box core management"
 msgstr ""
 
@@ -4148,8 +4151,8 @@ msgid ""
 "resistance."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/homeproxy/status.js:433
-#: htdocs/luci-static/resources/view/homeproxy/status.js:472
+#: htdocs/luci-static/resources/view/homeproxy/status.js:520
+#: htdocs/luci-static/resources/view/homeproxy/status.js:559
 msgid "unavailable"
 msgstr ""
 
