@@ -1,5 +1,5 @@
 # HomeProxy for OpenWrt
-适用于 OpenWrt 的 HomeProxy LuCI 管理界面（基于 immortalwrt/homeproxy 修改）。
+适用于 OpenWrt 的 HomeProxy LuCI 管理界面，完美适配Clash API面板（基于 immortalwrt/homeproxy 修改）。
 
 ## 版本说明
 支持架构：amd64 / arm64 / armv7 / mipsle  
