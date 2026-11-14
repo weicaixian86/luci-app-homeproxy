@@ -412,6 +412,7 @@ prod.databe.floonet.goog
 publicassets.cdn-apple.com
 qiao-cn.com
 qpx.googleflights.net
+radio.itunes.apple.com
 recaptcha-cn.net
 recaptcha.net
 redirector.bdn.dev
@@ -17415,6 +17416,7 @@ bsdfyyls.com
 bsdongxin.com
 bsdt1688.com
 bsehk.com
+bseinfo.net
 bseqp.com
 bserc.com
 bsgcnc.com
@@ -17656,6 +17658,7 @@ busnc.com
 bustoprint.com
 bustruckexpo.com
 busuanzi.cc
+busyming.com
 but7.com
 butair.com
 butao.com
@@ -22319,7 +22322,6 @@ chuxinhudong.com
 chuxinvip.com
 chuxueyun.com
 chuyaer.com
-chuyu.me
 chuzhaobiao.com
 chvacuum.com
 chvoice.com
@@ -29664,6 +29666,7 @@ doubaninfo.com
 doubanio.com
 doubao-dev.com
 doubao.com
+doubaoapps.com
 doubaocdn.com
 doubaozhidao.com
 doubean.com
@@ -36009,14 +36012,12 @@ gamegocenter.net
 gamehaopu.com
 gamehome.tv
 gameinns.com
-gameitop.com
 gamejym.com
 gamekee.com
 gamekezhan.com
 gamekuaishou.com
 gamelet.games
 gameley.com
-gameloop.com
 gameloop.fun
 gamemale.com
 gamemcu.com
@@ -50252,7 +50253,6 @@ in-tencentclb.cloud
 in-tencentclb.com
 in-tencentclb.net
 in-tencentclb.work
-in.th
 in001.com
 in66.com
 in800.com
@@ -62074,6 +62074,7 @@ luyecanyin.com
 luyinla.com
 luyinzhushou.com
 luyitong.com
+luyong.com
 luyor.net
 luyouqi.com
 luyouwang.com
@@ -62872,9 +62873,6 @@ magook.com
 magpiepharma.com
 magtechjournal.com
 magvision.com
-mahjongai.net
-mahjongcup.com
-mahjongcup.net
 mahoupao.com
 mahua.com
 mai.com
@@ -72318,7 +72316,6 @@ protontechcn.com
 proup.club
 providence-chemicals.com
 prowine-shanghai.com
-proximabeta.com
 proya-group.com
 proya.com
 proyy.com
@@ -78727,6 +78724,7 @@ senpian.com
 senra.me
 sense-hk.com
 senseagro.com
+senseavatar.com
 senselock.com
 senseluxury.com
 senser.group
@@ -80979,6 +80977,7 @@ shutonginfo.com
 shutu.cc
 shutwin.com
 shuwangxing.com
+shuwen.com
 shuwenxianyun.com
 shuwulou.com
 shuxiangmuye.com
@@ -87035,8 +87034,6 @@ tetrisone.com
 tetuijiudian.com
 tevachem.com
 tex68.com
-texasholdemcup.com
-texasholdemcup.net
 texpage.com
 texpageusercontent.com
 texpro-group.com
@@ -87642,6 +87639,7 @@ tidejd.com
 tidemedia.com
 tidepharm.com
 tidesec.com
+tidesight.com
 tideswing.fun
 tidi.mobi
 tiduyun.com
@@ -90697,6 +90695,7 @@ ups88.net
 upsapp.com
 upseller.com
 upskyshanghai.com
+upsort.com
 upst86.com
 uptom.com
 uptougu.com
@@ -104502,6 +104501,7 @@ yundongfang.com
 yundonghao.com
 yundongit.com
 yundousoft.com
+yundouxueyuan.com
 yundui.cc
 yunduimedia.com
 yundun.com
@@ -105151,6 +105151,7 @@ yy845.com
 yy960.com
 yyaotec.com
 yyarea.com
+yybip.com
 yyblly.com
 yybnet.net
 yybox.cc
@@ -109913,6 +109914,7 @@ zylianto.com
 zymc1.com
 zymkcdn.com
 zymkshop.com
+zymls.com
 zyoffice.com
 zyoo.net
 zyoogame.com
