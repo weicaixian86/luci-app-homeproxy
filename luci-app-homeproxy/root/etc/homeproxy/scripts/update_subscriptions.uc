@@ -2175,15 +2175,39 @@ function main() {
 		return null;
 	});
 
+	/* 当前配置里**所有**订阅 URL 的 grouphash 集合。注意用 all_subscription_urls
+	 * （含本轮抓取失败、节点被 kept 的订阅），而不是只含本轮更新成功者的
+	 * subscription_urls —— 否则失败订阅的现存节点会被当成孤儿误删。
+	 *
+	 * ⚠️ grouphash 的算法必须与写入节点时逐字一致：md5(去掉 #fragment 的 url)，
+	 * 见本函数开头 `url = replace(url, /#.*$/, ''); groupHash = md5(url);`。
+	 * 两处一旦不一致，这里算出的“合法集合”就和节点上存的 grouphash 对不上，
+	 * 会把好节点全当孤儿删光。 */
+	const valid_group_hashes = {};
+	for (let u in all_subscription_urls)
+		valid_group_hashes[md5(replace(u, /#.*$/, ''))] = true;
+
 	let added = 0, removed = 0;
 	uci.foreach(uciconfig, ucinode, (cfg) => {
 		/* Nodes created by the user */
 		if (!cfg.grouphash)
 			return null;
 
-		/* A provider update must not touch nodes from other subscriptions. */
-		if (!(cfg.grouphash in node_cache))
+		/* 订阅 URL 被改过（换 token / 删了重加 / 换镜像）时，旧 URL 的 md5
+		 * 会失效，落在旧 grouphash 下的节点既不在本轮 node_cache、也不在
+		 * valid_group_hashes —— 它们就是“孤儿节点”。旧逻辑只在
+		 * `cfg.grouphash in node_cache` 时处理，孤儿从此永远留在 uci 里：
+		 * 面板上显示为无主节点、归属订阅卡片算成 0 个可用（0/xx）、整片变灰。
+		 * 这里把这类孤儿直接删除，避免 URL 变更后越攒越多。
+		 * 判据二选一都满足才算孤儿：不在本轮缓存、且不在任何现存订阅的合法集合里 */
+		if (!(cfg.grouphash in node_cache)) {
+			if (!(cfg.grouphash in valid_group_hashes)) {
+				uci.delete(uciconfig, cfg['.name']);
+				removed++;
+				log(sprintf('Removing orphan node: %s.', cfg.label || cfg['.name']));
+			}
 			return null;
+		}
 
 		/* Empty object - failed to fetch nodes */
 		if (length(node_cache[cfg.grouphash]) === 0)
@@ -2216,6 +2240,35 @@ function main() {
 			added++;
 			log(sprintf('Adding node: %s.', node.label));
 		});
+
+	/* 清掉所有 routing_node 分组里指向“已失效订阅”的 grouphash 引用。
+	 * subscription_groups 存的是 md5(订阅URL)；URL 一改（换 token / 删了
+	 * 重加 / 换镜像），旧 hash 就成了幽灵：分组仍把它列在“从哪些机场导入”
+	 * 里，但那个机场已不存在 → 分组导入节点数变 0、面板整片变灰。这里把
+	 * 不在 valid_group_hashes 里的 hash 从每个分组的 subscription_groups
+	 * 里剔除。保留 subscription_nodes/selected_nodes（它们存的是节点段名，
+	 * 孤儿节点已在上面删除，generate_client 会对不存在的节点自然跳过）。 */
+	uci.foreach(uciconfig, 'routing_node', (cfg) => {
+		const groups = uci.get(uciconfig, cfg['.name'], 'subscription_groups');
+		if (type(groups) !== 'array' || !length(groups))
+			return null;
+
+		const kept = filter(groups, (h) => (h in valid_group_hashes));
+		if (length(kept) === length(groups))
+			return null;
+
+		for (let h in groups)
+			if (!(h in valid_group_hashes))
+				log(sprintf('Removing stale airport hash %s from group %s.', substr(h, 0, 8), cfg.label || cfg['.name']));
+
+		if (length(kept))
+			uci.set(uciconfig, cfg['.name'], 'subscription_groups', kept);
+		else
+			uci.delete(uciconfig, cfg['.name'], 'subscription_groups');
+
+		return null;
+	});
+
 	uci.commit(uciconfig);
 
 	/* 成功才重启：到这里 uci 已 commit，stop+start 让新节点进内核。服务在

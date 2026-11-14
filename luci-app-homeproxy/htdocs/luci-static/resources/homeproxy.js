@@ -846,6 +846,9 @@ return baseclass.extend({
 			'class': nameEl.className
 		}),
 		hintEl = E('div', { 'class': 'cbi-value-description' }, baseHint);
+		/* 提示文字与输入行左缘对齐（同 row 的内距）。 */
+		hintEl.style.paddingLeft = '1em';
+		hintEl.style.paddingRight = '1em';
 
 		nameEl.style.display = 'none';
 
@@ -855,6 +858,13 @@ return baseclass.extend({
 		   the hint sits on its own line below. Otherwise the button is rendered
 		   below the input, which looks misaligned. */
 		el.style.display = 'block';
+		/* 让“添加”行的左边缘与上方表格「名称」表头对齐：
+		   GridSection 的 cbi-section-create 默认左右内边距与表头首格不一致，
+		   表现为输入框/按钮比表头更靠左（用户反馈三行不齐）。这里把容器
+		   内边距清零，改由内层 row 统一提供一致的左右内距，使 输入框、按钮、
+		   下方提示文字与表头左缘对齐。 */
+		el.style.paddingLeft = '0';
+		el.style.paddingRight = '0';
 
 		const wrapper = nameEl.parentNode;
 		const row = E('div', { 'class': 'cbi-section-create-row' });
@@ -862,6 +872,9 @@ return baseclass.extend({
 		row.style.alignItems = 'center';
 		row.style.gap = '.4em';
 		row.style.flexWrap = 'wrap';
+		row.style.paddingLeft = '1em';
+		row.style.paddingRight = '1em';
+		row.style.boxSizing = 'border-box';
 
 		row.appendChild(labelEl);   /* visible label input */
 		row.appendChild(nameEl);    /* hidden original, still used by handleAdd() */
