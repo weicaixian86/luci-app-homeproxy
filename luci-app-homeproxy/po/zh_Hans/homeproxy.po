@@ -258,14 +258,6 @@ msgstr "追加自签名证书"
 msgid "Applied"
 msgstr "已应用"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2242
-msgid ""
-"Off: update over a direct connection only. On: update only through the "
-"default outbound (fallback) proxy, never direct."
-msgstr ""
-"不勾选：仅通过直连更新订阅。勾选：仅通过「默认出站（漏网之鱼）」代理更新，"
-"不再走直连。"
-
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1240
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1250
 msgid "Apply"
@@ -2367,6 +2359,14 @@ msgstr "混淆密码"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:296
 msgid "Obfuscate type"
 msgstr "混淆类型"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2242
+msgid ""
+"Off: update over a direct connection only. On: update only through the "
+"default outbound (fallback) proxy, never direct."
+msgstr ""
+"不勾选：仅通过直连更新订阅。勾选：仅通过「默认出站（漏网之鱼）」代理更新，不"
+"再走直连。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3651
 msgid "Only process traffic from specific interfaces. Leave empty for all."
