@@ -129,16 +129,8 @@ rm -rf /tmp/luci-modulecache/* 2>/dev/null
 ```
 
 > 说明：
-> - 两组的唯一区别是删包命令：24.10 用 `opkg remove`，25.12 用 `apk del`。
-> - **默认保留规则集（`/etc/homeproxy/ruleset/`）与面板（`/etc/homeproxy/run/ui/`），
->   重装后无需重新下载，直接可用。** 上面只删了 `/etc/homeproxy/scripts`、
->   `/etc/homeproxy/resources` 等程序文件，未整体删除 `/etc/homeproxy`。
-> - 若要连规则集/面板也一并清掉，再执行 `rm -rf /etc/homeproxy` 即可。
-> - `deluser/delgroup sing-box` 用于清除本插件安装时创建的 sing-box 专用账号；
->   若你另有独立 sing-box 包在用同一账号，请不要执行这两行。
-> - 若还想连代理内核运行期数据一起清干净，可再执行 `rm -rf /var/run/homeproxy`（重启自动重建）。
-> - 卸载后建议到 LuCI「系统 → 重启」或断电重启一次，确保 nftables 中由本插件下发的
->   `homeproxy_*` 规则随重启彻底清空（服务已停时规则应已撤销，重启是双保险）。
+> - 卸载时忽略面板、规则集、配置文件。
+
 
 ## 三 、常见问题
 1. **面板下载失败**
