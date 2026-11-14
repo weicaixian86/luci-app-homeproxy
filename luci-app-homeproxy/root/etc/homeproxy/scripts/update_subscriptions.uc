@@ -1960,18 +1960,13 @@ function main() {
 		let res = response?.body;
 
 		if (isEmpty(res)) {
-			/* 两跳各自的失败原因已经在 fetch_subscription() 里逐跳记过，这里
-			   只收口成一行总失败。**不要**在这里重打 exit/stderr：那会让人
-			   以为是第三次尝试，而实际上是同一次的两跳。
-			   开关关闭时保持旧版格式 `(<exit/bytes/stderr>)`，不多出前缀。
-
-			   429 是例外：那条路径连代理都没试（rate_limited 直接返回），
-			   再写「direct and <proxy> both failed」会把人引去查代理，而
-			   实际上一个包都没发出去。 */
+			/* fetch_subscription() 已按模式逐跳记过原因，这里只收口成一行总失败。
+			   新模式：勾选=只走代理、不勾=只走直连，二者互斥，没有「两跳」。
+			   429 是例外：机场限流，单独标出来，别让人误以为是路由不通。 */
 			const why = describe_fetch_failure(response);
 			const hops = rate_limited(response)
-				? 'direct failed, proxy retry skipped (429)'
-				: (proxy_url ? sprintf('direct and %s both failed', proxy_url) : '');
+				? (proxy_url ? 'throttled by airport (429)' : 'direct-only, throttled by airport (429)')
+				: (proxy_url ? 'proxy-only mode' : 'direct-only mode');
 
 			log(sprintf('Failed to fetch resources from %s (%s%s).', url,
 				length(hops) ? hops + ': ' : '', why));

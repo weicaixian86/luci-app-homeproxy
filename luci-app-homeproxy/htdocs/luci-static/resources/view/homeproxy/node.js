@@ -2239,7 +2239,7 @@ return view.extend({
 		};
 
 		o = s.taboption('subscription', form.Flag, 'update_via_proxy', _('Update via proxy'),
-			_('Off: update over a direct connection only. On: update only through the default outbound (fallback/漏网之鱼) proxy, never direct.'));
+			_('Off: update over a direct connection only. On: update only through the default outbound (fallback) proxy, never direct.'));
 		o.rmempty = false;
 		o.default = '0';
 

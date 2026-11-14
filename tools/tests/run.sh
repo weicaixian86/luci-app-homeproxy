@@ -2546,27 +2546,34 @@ fi
 #       ③ 两跳都失败时，失败原因要能分别看见，不能只剩一行 `Failed to fetch`；
 #       ④ 开关关闭（proxy_url 为 null）时抓取路径与旧版逐字相同（默认路径
 #          不许有任何变化，否则连 vless 的验证都会被污染）。
+#
+# 0.4 起语义改为**互斥**（用户定稿）：勾选 = 只走代理（默认出站/漏网之鱼），
+# 不再尝试直连；不勾 = 只走直连。这里断言「两条支路都在、且以 proxy_url 分流」，
+# 而不再要求「直连先于代理」（那是旧的两跳回退模型）。
 HP_LIB="$PKG/root/etc/homeproxy/scripts/homeproxy.uc"
-DIRECT_LINE=$(grep -n 'const direct = fetch_with_dns_retry(url, ua);' "$SUB_UC" | cut -d: -f1)
-PROXY_LINE=$(grep -n 'const proxied = fetch_with_dns_retry(url, ua, proxy_url);' "$SUB_UC" | cut -d: -f1)
 if grep -q 'function httpFetch(url, ua, timeout, proxy)' "$HP_LIB" \
    && grep -q -e "--proxy', proxy" "$HP_LIB" \
    && grep -q "proxy_url = (via_proxy === '1')" "$SUB_UC" \
    && grep -q "uci.get(uciconfig, 'infra', 'mixed_port')" "$SUB_UC" \
-   && [ -n "$DIRECT_LINE" ] && [ -n "$PROXY_LINE" ] && [ "$DIRECT_LINE" -lt "$PROXY_LINE" ]; then
-	ok "update_via_proxy is wired to the local mixed inbound, direct hop first"
+   && grep -q 'Proxy-only mode: local proxy %s is not listening' "$SUB_UC" \
+   && grep -q 'const direct = fetch_with_dns_retry(url, ua);' "$SUB_UC" \
+   && grep -q 'const proxied = fetch_with_dns_retry(url, ua, proxy_url);' "$SUB_UC"; then
+	ok "update_via_proxy is wired to the local mixed inbound (proxy-only when on, direct-only when off)"
 else
-	bad "update_via_proxy is still a dead switch, or the proxy hop goes before the direct one"
+	bad "update_via_proxy is still a dead switch, or the proxy hop is not wired as proxy-only/direct-only"
 fi
 
-if grep -q 'Direct fetch failed for %s (%s).' "$SUB_UC" \
-   && grep -q 'Retrying %s via %s.' "$SUB_UC" \
+# 勾选=只走代理、不勾=只走直连：两条分支必须按 proxy_url 分流，且**不允许**
+# 出现「直连失败再回退代理」的旧串（Direct fetch failed … Retrying via …）。
+if grep -q 'Fetched %s via %s.' "$SUB_UC" \
    && grep -q 'Proxy fetch failed for %s (%s).' "$SUB_UC" \
    && grep -q 'response.via_proxy === true ? proxy_url : null' "$SUB_UC" \
-   && grep -q 'Fetch mode: %s.' "$SUB_UC"; then
-	ok "a failed direct fetch falls back to the proxy, and both hops are logged"
+   && grep -q 'Fetch mode: %s.' "$SUB_UC" \
+   && ! grep -q 'Direct fetch failed for %s' "$SUB_UC" \
+   && ! grep -q 'Retrying %s via %s.' "$SUB_UC"; then
+	ok "the two fetch modes are mutually exclusive (checked=proxy-only, unchecked=direct-only)"
 else
-	bad "no proxy fallback when the direct hop fails: the 4 overseas airports can never be updated"
+	bad "fetch modes are not mutually exclusive, or the old direct-then-proxy fallback is still present"
 fi
 
 # 临时性失败要重试一次，且只重试**这一秒的事**：
@@ -2660,12 +2667,12 @@ fi
 # 读 /proc/net/tcp(6) 的 LISTEN 项（不起子进程、不发包），跳过时留一行原因。
 # ⚠️ 同时挡住另一种退化：`--max-time` 必须是整条请求的上限，不是 300 秒。
 if grep -q 'function local_proxy_listening' "$SUB_UC" \
-   && grep -q 'proxy retry skipped' "$SUB_UC" \
+   && grep -q 'Proxy-only mode: local proxy %s is not listening' "$SUB_UC" \
    && grep -q '/proc/net/tcp6' "$SUB_UC" \
    && grep -q 'fields\[3\] !== .0A.' "$SUB_UC"; then
-	ok "a dead local proxy port is detected and the blind retry is skipped"
+	ok "a dead local proxy port is detected and the request is skipped"
 else
-	bad "the proxy retry is fired at a port nobody listens on: 'kernel is off' is logged as 'proxy is broken'"
+	bad "the local proxy port check is broken: 'kernel is off' could be logged as 'proxy is broken'"
 fi
 
 if grep -q 'httpFetch(url, ua, 60, proxy)' "$HP_LIB"; then
@@ -3706,19 +3713,10 @@ else
 	bad "the extracted ARGV guard printed '$ARGV_OUT' instead of the --source value (exists()/type() guard broken)"
 fi
 
-# 429 是机场限流，不是「这条路不通」：直连被限流后立刻换代理再打一次，同一个
-# token 在 Retry-After 窗口内照样被拒（2026-11-01 现场：直连 429 → 1 秒后代理
-# 仍 429，响应头 `retry-after: 10`），白花 1~2 秒还把主日志刷成两大段 stderr。
-# 这条同时钉「有判断」和「判断在重试之前」——只钉函数存在，把它挪到重试之后
-# 照样会绿，而那时 429 已经多打了一轮。
-RATE_LINE=$(grep -n 'if (rate_limited(direct))' "$SUB" | cut -d: -f1 | head -1)
-RETRY_LINE=$(grep -n 'Retrying %s via %s' "$SUB" | cut -d: -f1 | head -1)
-
-# 光看文本只能证明「有这么个函数」，证明不了它判得对：第一版把
-# `return exitcode === 22 && match(...)` 写进去，match 命中时返回的是匹配
-# 数组、未命中是 null，函数于是返回 `[ "error: 429" ]` / null 而不是布尔 ——
-# if 上下文能跑，`=== true` 就不成立。这里把函数抽出来喂五个假响应：
-# 429 必须判真，503 / DNS 失败 / 有正文 / 有正文的 429 必须判假。
+# 429 是机场限流，不是「这条路不通」：旧版「直连被限流后立刻换代理再打一次」
+# 已在 0.4 的互斥模型里移除（勾选=只代理、不勾=只直连，没有跨模式重试）。
+# 这里仍要钉住 rate_limited() 本身判得对，且失败汇总行仍据此区分「限流」与
+# 「路由不通」，否则限流会被误报为代理/直连故障，引导用户去查错方向。
 RATE_OUT='(no ucode)'
 if command -v ucode >/dev/null 2>&1; then
 	RATE_PROBE="$WORK/rate_probe.uc"
@@ -3739,12 +3737,11 @@ fi
 
 if grep -Fq 'function rate_limited(response)' "$SUB" \
    && grep -Fq "match(response.headers ?? '', /error: 429/)" "$SUB" \
-   && grep -Fq 'direct failed, proxy retry skipped (429)' "$SUB" \
-   && [ -n "$RATE_LINE" ] && [ -n "$RETRY_LINE" ] && [ "$RATE_LINE" -lt "$RETRY_LINE" ] \
+   && grep -Fq 'rate_limited(response)' "$SUB" \
    && { [ "$RATE_OUT" = 'bad=0' ] || [ "$RATE_OUT" = '(no ucode)' ]; }; then
-	ok "a 429 from the airport skips the proxy retry (throttling is not a broken route)"
+	ok "429 is still classified by rate_limited() and surfaces in the failure summary"
 else
-	bad "a throttled subscription still retries through the proxy, or the 429 probe disagreed: $RATE_OUT"
+	bad "the 429 classification regressed, or the rate_limited probe disagreed: $RATE_OUT"
 fi
 
 # 0.2.7 起按钮不再自己 exec 脚本（改成 rpcd 起脱管进程），触发来源的字符串

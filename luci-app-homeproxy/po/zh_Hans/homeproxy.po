@@ -261,7 +261,7 @@ msgstr "已应用"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2242
 msgid ""
 "Off: update over a direct connection only. On: update only through the "
-"default outbound (fallback/漏网之鱼) proxy, never direct."
+"default outbound (fallback) proxy, never direct."
 msgstr ""
 "不勾选：仅通过直连更新订阅。勾选：仅通过「默认出站（漏网之鱼）」代理更新，"
 "不再走直连。"
