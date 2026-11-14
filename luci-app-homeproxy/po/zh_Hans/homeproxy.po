@@ -37,7 +37,7 @@ msgstr "有 %s 条链接无法解析，已跳过。"
 msgid "%s ms"
 msgstr "%s ms"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2396
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2397
 msgid "%s nodes removed"
 msgstr "移除了 %s 个节点"
 
@@ -180,7 +180,7 @@ msgid "Allow access from the Internet."
 msgstr "允许来自互联网的访问。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1919
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2286
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2287
 msgid "Allow insecure"
 msgstr "允许不安全连接"
 
@@ -188,7 +188,7 @@ msgstr "允许不安全连接"
 msgid "Allow insecure connection at TLS client."
 msgstr "允许 TLS 客户端侧的不安全连接。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2287
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2288
 msgid "Allow insecure connection by default when add nodes from subscriptions."
 msgstr "从订阅获取节点时，默认允许不安全连接。"
 
@@ -222,7 +222,7 @@ msgstr "替代 HTTP 端口"
 msgid "Alternative TLS port"
 msgstr "替代 HTTPS 端口"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2352
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2353
 msgid "An error occurred during updating subscriptions: %s"
 msgstr "更新订阅时发生错误：%s"
 
@@ -257,14 +257,6 @@ msgstr "追加自签名证书"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1247
 msgid "Applied"
 msgstr "已应用"
-
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2242
-msgid ""
-"Off: update over a direct connection only. On: update only through the "
-"default outbound (fallback/漏网之鱼) proxy, never direct."
-msgstr ""
-"不勾选：仅通过直连更新订阅。勾选：仅通过「默认出站（漏网之鱼）」代理更新，"
-"不再走直连。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1240
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1250
@@ -333,7 +325,7 @@ msgstr "自动更新"
 msgid "Auto update subscriptions and geodata."
 msgstr "自动更新订阅和地理数据。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2258
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2259
 msgid "Auto-append sing-box parameters"
 msgstr "自动附加 sing-box 参数"
 
@@ -381,7 +373,7 @@ msgid "BitTorrent"
 msgstr "BitTorrent"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1946
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2272
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2273
 msgid "Blacklist mode"
 msgstr "黑名单模式"
 
@@ -483,7 +475,7 @@ msgstr "国内 IPv6 库版本"
 msgid "China list version"
 msgstr "国内域名列表版本"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2246
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2247
 msgid "Choose which method node latency tests use."
 msgstr "选择节点延迟测试使用的方法。"
 
@@ -774,7 +766,7 @@ msgstr ""
 "用于未被任何路由规则匹配的连接的默认出站。选「停止插件」会停掉整个服务——插件"
 "不再运行、所有路由规则一并失效；只想让未匹配的流量直接出网，请选「直连」。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2293
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2294
 msgid "Default packet encoding"
 msgstr "默认包封装格式"
 
@@ -844,7 +836,7 @@ msgstr "直连 MAC 地址"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1433
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1446
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1994
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2271
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2272
 #: htdocs/luci-static/resources/view/homeproxy/server.js:284
 #: htdocs/luci-static/resources/view/homeproxy/server.js:297
 msgid "Disable"
@@ -1009,7 +1001,7 @@ msgid "Drop requests"
 msgstr "丢弃请求"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1955
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2278
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2279
 msgid ""
 "Drop/keep nodes that contain the specific keywords. <a target=\"_blank\" "
 "href=\"https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/"
@@ -1023,7 +1015,7 @@ msgstr ""
 msgid "Drop/keep specific nodes from outbounds."
 msgstr "从出站中 丢弃/保留 指定节点"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2270
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2271
 msgid "Drop/keep specific nodes from subscriptions."
 msgstr "从订阅中 丢弃/保留 指定节点"
 
@@ -1315,7 +1307,7 @@ msgstr "日志设置保存失败：%s"
 msgid "Failed to start rule-set download: %s"
 msgstr "启动规则集下载失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2348
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2349
 msgid "Failed to start the subscription update."
 msgstr "启动订阅更新失败。"
 
@@ -1341,12 +1333,12 @@ msgid "File missing"
 msgstr "文件缺失"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1954
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2277
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2278
 msgid "Filter keywords"
 msgstr "过滤关键词"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1943
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2269
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2270
 msgid "Filter nodes"
 msgstr "过滤节点"
 
@@ -1588,7 +1580,7 @@ msgstr "Hysteria"
 msgid "Hysteria2"
 msgstr "Hysteria2"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2247
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2248
 msgid "ICMP"
 msgstr "ICMP"
 
@@ -1831,7 +1823,7 @@ msgstr "卷标"
 msgid "Latency"
 msgstr "延迟"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2245
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2246
 msgid "Latency test mode"
 msgstr "延迟测试模式"
 
@@ -2202,7 +2194,7 @@ msgstr "多路复用协议。"
 msgid "NOT RUNNING"
 msgstr "未运行"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2299
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2300
 msgid "NOTE: Save current settings before updating subscriptions."
 msgstr "注意：更新订阅前先保存当前配置。"
 
@@ -2303,11 +2295,11 @@ msgstr "未引用规则集。"
 msgid "No subscription airport is selected."
 msgstr "未选择订阅机场。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2324
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2325
 msgid "No subscription available"
 msgstr "无可用订阅"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2377
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2378
 msgid "No subscription node"
 msgstr "无订阅节点"
 
@@ -2367,6 +2359,14 @@ msgstr "混淆密码"
 #: htdocs/luci-static/resources/view/homeproxy/server.js:296
 msgid "Obfuscate type"
 msgstr "混淆类型"
+
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2242
+msgid ""
+"Off: update over a direct connection only. On: update only through the "
+"default outbound (fallback/漏网之鱼) proxy, never direct."
+msgstr ""
+"不勾选：仅通过直连更新订阅。勾选：仅通过「默认出站（漏网之鱼）」代理更新，不"
+"再走直连。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3651
 msgid "Only process traffic from specific interfaces. Leave empty for all."
@@ -2729,7 +2729,7 @@ msgstr "REALITY 公钥"
 msgid "REALITY short ID"
 msgstr "REALITY 标识符"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2248
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2249
 msgid "RP"
 msgstr "RP"
 
@@ -2793,11 +2793,11 @@ msgstr "重载服务"
 msgid "Remote"
 msgstr "远程"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2374
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2375
 msgid "Remove %s nodes"
 msgstr "移除 %s 个节点"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2364
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2365
 msgid "Remove all nodes from subscriptions"
 msgstr "移除所有订阅节点"
 
@@ -2992,11 +2992,11 @@ msgstr "保存"
 msgid "Save Proxy Selection"
 msgstr "保存代理选择"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2301
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2302
 msgid "Save current settings"
 msgstr "保存当前设置"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2298
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2299
 msgid "Save subscriptions settings"
 msgstr "保存订阅设置"
 
@@ -3225,7 +3225,7 @@ msgstr "订阅节点"
 msgid "Subscription update failed: %s"
 msgstr "订阅更新失败：%s"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2265
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2266
 msgid "Subscriptions"
 msgstr "订阅"
 
@@ -3259,7 +3259,7 @@ msgid ""
 msgstr "支持 UDP、TCP、DoH、DoQ、DoT。如未指定则使用 TCP 协议。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:2113
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2266
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2267
 msgid ""
 "Supports AnyTLS, HTTP/HTTPS, Hysteria, Hysteria2, Shadowsocks (SIP002, "
 "Shadowrocket and SIP008), SOCKS (4 / 4a / 5), Trojan, TUIC, VLESS and VMess "
@@ -3388,8 +3388,8 @@ msgstr "腾讯 公共DNS (DoH)"
 msgid "Test"
 msgstr "测试"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2424
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2428
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2425
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2429
 msgid "Test Current List"
 msgstr "测试当前列表"
 
@@ -3422,7 +3422,7 @@ msgstr "测试容差"
 msgid "Testing"
 msgstr "测试中"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2417
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2418
 msgid "Testing Current List..."
 msgstr "当前列表测试中..."
 
@@ -3642,7 +3642,7 @@ msgid "There are six log files in total."
 msgstr "一共 6 个日志文件。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1922
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2289
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2290
 msgid ""
 "This is <strong>DANGEROUS</strong>, your traffic is almost like "
 "<strong>PLAIN TEXT</strong>! Use at your own risk!"
@@ -3830,7 +3830,7 @@ msgstr "未命名机场"
 msgid "Unsupported fingerprint!"
 msgstr "不支持的指纹！"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2321
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2322
 msgid "Update %s subscriptions"
 msgstr "更新 %s 个订阅"
 
@@ -3849,7 +3849,7 @@ msgstr "更新面板"
 msgid "Update failed."
 msgstr "更新失败。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2316
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2317
 msgid "Update nodes from subscriptions"
 msgstr "从订阅更新节点"
 
@@ -3874,7 +3874,7 @@ msgstr "更新时间(每周)"
 msgid "Update via proxy"
 msgstr "使用代理更新"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2337
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2338
 msgid "Updating subscriptions in the background. You can leave this page."
 msgstr "正在后台更新订阅，可以离开本页面。"
 
@@ -4006,7 +4006,7 @@ msgstr "用于验证返回证书上的主机名。"
 msgid "User"
 msgstr "用户"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2282
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2283
 msgid "User-Agent"
 msgstr "用户代理"
 
@@ -4064,14 +4064,14 @@ msgstr ""
 "日志文件达到上限时先另存为 .1（保留一代）再清空，被丢弃的是最早的行。日志页面"
 "不再按固定条数截断显示：文件里有多少行就显示多少行。"
 
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2259
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2260
 msgid ""
 "When needed, ?flag=singbox is appended to fetch the complete node list. The "
 "address you entered is never modified."
 msgstr "需要时会自动附加 ?flag=singbox 以拉取完整节点，你填的地址不会被改动。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1947
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2273
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2274
 msgid "Whitelist mode"
 msgstr "白名单模式"
 
@@ -4107,7 +4107,7 @@ msgid "Working mode"
 msgstr "工作模式"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1767
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2296
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2297
 msgid "Xudp (Xray-core)"
 msgstr "Xudp (Xray-core)"
 
@@ -4201,12 +4201,12 @@ msgstr "非空值"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1509
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1765
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2294
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2295
 msgid "none"
 msgstr "无"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1766
-#: htdocs/luci-static/resources/view/homeproxy/node.js:2295
+#: htdocs/luci-static/resources/view/homeproxy/node.js:2296
 msgid "packet addr (v2ray-core v5+)"
 msgstr "packet addr (v2ray-core v5+)"
 
