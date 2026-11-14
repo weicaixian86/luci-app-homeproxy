@@ -51,26 +51,86 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
 3. `install.sh` 会自动执行：停服务 → 安装 luci（opkg/apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
 > 两种方式下内核版本都钉死为 `1.14.3-reF1nd`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
 
-## 二、卸载
+## 二、卸载（干净卸载）
+先停服务、删包，再清理包管理器不会自动删除的残留（配置、规则库、内核、缓存、
+定时任务、sing-box 专用用户/组等）。**请按你的固件版本选择对应一组命令**，两组
+都会在最后刷新 LuCI 缓存并重启 rpcd/uhttpd 让界面立即消失。
+
+### OpenWrt 24.10（`opkg`）
 ```sh
+# 1) 停用并移除软件包（会卸载 menu/acl/rpcd/脚本等已登记文件）
 /etc/init.d/homeproxy stop 2>/dev/null || true
 /etc/init.d/homeproxy disable 2>/dev/null || true
 opkg remove luci-app-homeproxy 2>/dev/null || true
-# OpenWrt 25.12 使用 apk remove luci-app-homeproxy
+
+# 2) 清理 opkg 不会删的残留
 rm -rf /etc/config/homeproxy
 rm -rf /etc/homeproxy
-rm -rf /usr/share/homeproxy
+rm -rf /etc/capabilities/homeproxy.json
+rm -f  /etc/uci-defaults/luci-homeproxy
+rm -f  /etc/uci-defaults/luci-homeproxy-migration
+rm -f  /www/luci-static/resources/homeproxy.js
 rm -rf /www/luci-static/resources/view/homeproxy
-rm -f /www/luci-static/resources/homeproxy.js
-rm -f /usr/share/luci/menu.d/luci-app-homeproxy.json
-rm -f /usr/share/rpcd/acl.d/luci-app-homeproxy.json
-rm -f /usr/share/rpcd/ucode/luci.homeproxy
-rm -f /usr/bin/sing-box
-rm -f /tmp/luci-indexcache
-rm -rf /tmp/luci-modulecache/*
+rm -f  /usr/share/luci/menu.d/luci-app-homeproxy.json
+rm -f  /usr/share/rpcd/acl.d/luci-app-homeproxy.json
+rm -f  /usr/share/rpcd/ucode/luci.homeproxy
+rm -f  /usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
+rm -f  /usr/bin/sing-box
+
+# 3) 删除 homeproxy 下发的定时任务行，并移除 sing-box 专用用户/组
+sed -i '/homeproxy/d' /etc/crontabs/root 2>/dev/null
+/etc/init.d/cron restart 2>/dev/null || true
+deluser sing-box 2>/dev/null || true
+delgroup sing-box 2>/dev/null || true
+
+# 4) 清 LuCI 缓存并重启 Web 服务
+rm -f  /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/rpcd restart
 /etc/init.d/uhttpd restart
 ```
+
+### OpenWrt 25.12（`apk`）
+```sh
+# 1) 停用并移除软件包
+/etc/init.d/homeproxy stop 2>/dev/null || true
+/etc/init.d/homeproxy disable 2>/dev/null || true
+apk del luci-app-homeproxy 2>/dev/null || true
+
+# 2) 清理 apk 不会删的残留
+rm -rf /etc/config/homeproxy
+rm -rf /etc/homeproxy
+rm -rf /etc/capabilities/homeproxy.json
+rm -f  /etc/uci-defaults/luci-homeproxy
+rm -f  /etc/uci-defaults/luci-homeproxy-migration
+rm -f  /www/luci-static/resources/homeproxy.js
+rm -rf /www/luci-static/resources/view/homeproxy
+rm -f  /usr/share/luci/menu.d/luci-app-homeproxy.json
+rm -f  /usr/share/rpcd/acl.d/luci-app-homeproxy.json
+rm -f  /usr/share/rpcd/ucode/luci.homeproxy
+rm -f  /usr/lib/lua/luci/i18n/homeproxy.zh-cn.lmo
+rm -f  /usr/bin/sing-box
+
+# 3) 删除定时任务行，并移除 sing-box 专用用户/组
+sed -i '/homeproxy/d' /etc/crontabs/root 2>/dev/null
+/etc/init.d/cron restart 2>/dev/null || true
+deluser sing-box 2>/dev/null || true
+delgroup sing-box 2>/dev/null || true
+
+# 4) 清 LuCI 缓存并重启 Web 服务
+rm -f  /tmp/luci-indexcache
+rm -rf /tmp/luci-modulecache/* 2>/dev/null
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+```
+
+> 说明：
+> - 两组的唯一区别是删包命令：24.10 用 `opkg remove`，25.12 用 `apk del`。
+> - `deluser/delgroup sing-box` 用于清除本插件安装时创建的 sing-box 专用账号；
+>   若你另有独立 sing-box 包在用同一账号，请不要执行这两行。
+> - 若还想连代理内核数据一起清干净，可再执行 `rm -rf /var/run/homeproxy`（运行期目录，重启自动重建）。
+> - 卸载后建议到 LuCI「系统 → 重启」或断电重启一次，确保 nftables 中由本插件下发的
+>   `homeproxy_*` 规则随重启彻底清空（服务已停时规则应已撤销，重启是双保险）。
 
 ## 三 、常见问题
 1. **面板下载失败**
