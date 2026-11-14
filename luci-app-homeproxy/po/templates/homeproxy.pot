@@ -37,7 +37,7 @@ msgstr ""
 msgid "(in use)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1811
+#: htdocs/luci-static/resources/homeproxy.js:1824
 msgid "/etc/homeproxy/certs/..., /etc/acme/..., /etc/ssl/..."
 msgstr ""
 
@@ -330,7 +330,7 @@ msgstr ""
 msgid "Backend execution failed"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1768
+#: htdocs/luci-static/resources/homeproxy.js:1781
 #: htdocs/luci-static/resources/view/homeproxy/client.js:374
 #: htdocs/luci-static/resources/view/homeproxy/client.js:468
 msgid "Backup panel failed."
@@ -518,8 +518,8 @@ msgstr ""
 msgid "Client version"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1597
-#: htdocs/luci-static/resources/homeproxy.js:1599
+#: htdocs/luci-static/resources/homeproxy.js:1610
+#: htdocs/luci-static/resources/homeproxy.js:1612
 msgid "Close"
 msgstr ""
 
@@ -1133,7 +1133,7 @@ msgstr ""
 msgid "Error"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1581
+#: htdocs/luci-static/resources/homeproxy.js:1594
 msgid "Every %s %s"
 msgstr ""
 
@@ -1169,7 +1169,7 @@ msgstr ""
 msgid "Every day"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1580
+#: htdocs/luci-static/resources/homeproxy.js:1593
 msgid "Every day %s"
 msgstr ""
 
@@ -1182,16 +1182,16 @@ msgid ""
 "be set in \"TLS SNI\" below, otherwise certificate verification fails."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:965
-#: htdocs/luci-static/resources/homeproxy.js:1803
-#: htdocs/luci-static/resources/homeproxy.js:1811
-#: htdocs/luci-static/resources/homeproxy.js:1829
-#: htdocs/luci-static/resources/homeproxy.js:1838
-#: htdocs/luci-static/resources/homeproxy.js:1849
-#: htdocs/luci-static/resources/homeproxy.js:1860
-#: htdocs/luci-static/resources/homeproxy.js:1863
-#: htdocs/luci-static/resources/homeproxy.js:1871
+#: htdocs/luci-static/resources/homeproxy.js:978
+#: htdocs/luci-static/resources/homeproxy.js:1816
+#: htdocs/luci-static/resources/homeproxy.js:1824
+#: htdocs/luci-static/resources/homeproxy.js:1842
+#: htdocs/luci-static/resources/homeproxy.js:1851
+#: htdocs/luci-static/resources/homeproxy.js:1862
 #: htdocs/luci-static/resources/homeproxy.js:1873
+#: htdocs/luci-static/resources/homeproxy.js:1876
+#: htdocs/luci-static/resources/homeproxy.js:1884
+#: htdocs/luci-static/resources/homeproxy.js:1886
 #: htdocs/luci-static/resources/view/homeproxy/client.js:691
 #: htdocs/luci-static/resources/view/homeproxy/client.js:704
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1097
@@ -1268,7 +1268,7 @@ msgstr ""
 msgid "Failed to save the log settings: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1680
+#: htdocs/luci-static/resources/homeproxy.js:1693
 msgid "Failed to start rule-set download: %s"
 msgstr ""
 
@@ -1280,8 +1280,8 @@ msgstr ""
 msgid "Failed to update rule set: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1749
-#: htdocs/luci-static/resources/homeproxy.js:1790
+#: htdocs/luci-static/resources/homeproxy.js:1762
+#: htdocs/luci-static/resources/homeproxy.js:1803
 msgid "Failed to upload %s, error: %s."
 msgstr ""
 
@@ -1341,7 +1341,7 @@ msgstr ""
 msgid "Fragment fallback delay"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1577
+#: htdocs/luci-static/resources/homeproxy.js:1590
 msgctxt "homeproxy"
 msgid "Fri"
 msgstr ""
@@ -1688,7 +1688,7 @@ msgstr ""
 msgid "Info"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1778
+#: htdocs/luci-static/resources/homeproxy.js:1791
 msgid "Install panel failed."
 msgstr ""
 
@@ -1736,7 +1736,7 @@ msgstr ""
 msgid "Invalid node"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1776
+#: htdocs/luci-static/resources/homeproxy.js:1789
 msgid "Invalid panel ZIP file."
 msgstr ""
 
@@ -2119,7 +2119,7 @@ msgstr ""
 msgid "Mode"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1576
+#: htdocs/luci-static/resources/homeproxy.js:1589
 msgctxt "homeproxy"
 msgid "Mon"
 msgstr ""
@@ -2174,7 +2174,7 @@ msgstr ""
 msgid "NTP time synchronization interval"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1499
+#: htdocs/luci-static/resources/homeproxy.js:1512
 msgid "Name"
 msgstr ""
 
@@ -2390,7 +2390,7 @@ msgstr ""
 msgid "Panel Status"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1772
+#: htdocs/luci-static/resources/homeproxy.js:1785
 msgid "Panel ZIP file is empty."
 msgstr ""
 
@@ -2764,7 +2764,7 @@ msgstr ""
 msgid "Restore defaults"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1770
+#: htdocs/luci-static/resources/homeproxy.js:1783
 #: htdocs/luci-static/resources/view/homeproxy/client.js:375
 #: htdocs/luci-static/resources/view/homeproxy/client.js:470
 msgid "Restore panel failed."
@@ -2861,7 +2861,7 @@ msgstr ""
 msgid "Rule set updated successfully."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1686
+#: htdocs/luci-static/resources/homeproxy.js:1699
 msgid ""
 "Rule-set sync request failed: %s. If the plugin was just upgraded, run \"/"
 "etc/init.d/rpcd restart\" or reboot the router."
@@ -2910,7 +2910,7 @@ msgstr ""
 msgid "Same as main node"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1577
+#: htdocs/luci-static/resources/homeproxy.js:1590
 msgctxt "homeproxy"
 msgid "Sat"
 msgstr ""
@@ -2933,7 +2933,7 @@ msgstr ""
 msgid "Save subscriptions settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1708
+#: htdocs/luci-static/resources/homeproxy.js:1721
 msgid "Select a file to upload first."
 msgstr ""
 
@@ -3172,7 +3172,7 @@ msgstr ""
 msgid "Successfully updated."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1576
+#: htdocs/luci-static/resources/homeproxy.js:1589
 msgctxt "homeproxy"
 msgid "Sun"
 msgstr ""
@@ -3542,7 +3542,7 @@ msgid ""
 "closed."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1774
+#: htdocs/luci-static/resources/homeproxy.js:1787
 msgid "The unzip command is unavailable."
 msgstr ""
 
@@ -3571,7 +3571,7 @@ msgstr ""
 msgid "ThreatBook Public DNS (DoH)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1577
+#: htdocs/luci-static/resources/homeproxy.js:1590
 msgctxt "homeproxy"
 msgid "Thu"
 msgstr ""
@@ -3622,7 +3622,7 @@ msgstr ""
 msgid "Trojan"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1576
+#: htdocs/luci-static/resources/homeproxy.js:1589
 msgctxt "homeproxy"
 msgid "Tue"
 msgstr ""
@@ -3707,7 +3707,7 @@ msgstr ""
 msgid "UUID"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1726
+#: htdocs/luci-static/resources/homeproxy.js:1739
 msgid "Unexpected response from the upload service."
 msgstr ""
 
@@ -3949,7 +3949,7 @@ msgstr ""
 msgid "WebSocket"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1576
+#: htdocs/luci-static/resources/homeproxy.js:1589
 msgctxt "homeproxy"
 msgid "Wed"
 msgstr ""
@@ -4013,8 +4013,8 @@ msgstr ""
 msgid "YouTube Connection"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1747
-#: htdocs/luci-static/resources/homeproxy.js:1788
+#: htdocs/luci-static/resources/homeproxy.js:1760
+#: htdocs/luci-static/resources/homeproxy.js:1801
 msgid "Your %s was successfully uploaded. Size: %sB."
 msgstr ""
 
@@ -4078,9 +4078,9 @@ msgstr ""
 msgid "loading..."
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1838
-#: htdocs/luci-static/resources/homeproxy.js:1860
-#: htdocs/luci-static/resources/homeproxy.js:1871
+#: htdocs/luci-static/resources/homeproxy.js:1851
+#: htdocs/luci-static/resources/homeproxy.js:1873
+#: htdocs/luci-static/resources/homeproxy.js:1884
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1097
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1131
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1828
@@ -4108,8 +4108,8 @@ msgstr ""
 msgid "packet addr (v2ray-core v5+)"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1788
-#: htdocs/luci-static/resources/homeproxy.js:1790
+#: htdocs/luci-static/resources/homeproxy.js:1801
+#: htdocs/luci-static/resources/homeproxy.js:1803
 msgid "panel ZIP package"
 msgstr ""
 
@@ -4160,15 +4160,15 @@ msgstr ""
 msgid "unchecked"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:965
-#: htdocs/luci-static/resources/homeproxy.js:1849
+#: htdocs/luci-static/resources/homeproxy.js:978
+#: htdocs/luci-static/resources/homeproxy.js:1862
 #: htdocs/luci-static/resources/view/homeproxy/client.js:704
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3416
 msgctxt "homeproxy"
 msgid "unique value"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1780
+#: htdocs/luci-static/resources/homeproxy.js:1793
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3329
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3364
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3366
@@ -4206,7 +4206,7 @@ msgstr ""
 msgid "valid URL"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1803
+#: htdocs/luci-static/resources/homeproxy.js:1816
 msgid "valid base64 key with %d characters"
 msgstr ""
 
@@ -4224,7 +4224,7 @@ msgstr ""
 msgid "valid hostname"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1829
+#: htdocs/luci-static/resources/homeproxy.js:1842
 msgid "valid port range (port1:port2)"
 msgstr ""
 
@@ -4232,12 +4232,12 @@ msgstr ""
 msgid "valid port value"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1863
+#: htdocs/luci-static/resources/homeproxy.js:1876
 #: htdocs/luci-static/resources/view/homeproxy/client.js:691
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3407
 msgid "valid tag"
 msgstr ""
 
-#: htdocs/luci-static/resources/homeproxy.js:1873
+#: htdocs/luci-static/resources/homeproxy.js:1886
 msgid "valid uuid"
 msgstr ""
