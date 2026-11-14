@@ -2239,8 +2239,9 @@ return view.extend({
 		};
 
 		o = s.taboption('subscription', form.Flag, 'update_via_proxy', _('Update via proxy'),
-			_('Applies to all three update paths: Update N subscriptions, the per-provider Update button in the panel, and the cron job. Unchecked: direct only; a subscription that fails is skipped and keeps its existing nodes. Checked: direct first (10s connect limit), then one retry through the local proxy entry if it fails — routed by your rules, otherwise the Default outbound.'));
+			_('Off: update over a direct connection only. On: update only through the default outbound (fallback/漏网之鱼) proxy, never direct.'));
 		o.rmempty = false;
+		o.default = '0';
 
 		o = s.taboption('subscription', form.ListValue, 'latency_test_mode', _('Latency test mode'),
 			_('Choose which method node latency tests use.'));

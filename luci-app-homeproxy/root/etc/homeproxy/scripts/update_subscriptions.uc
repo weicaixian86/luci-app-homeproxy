@@ -42,25 +42,16 @@ const allow_insecure = uci.get(uciconfig, ucisubscription, 'allow_insecure') || 
 	  auto_flag_option = uci.get(uciconfig, ucisubscription, 'auto_flag'),
 	  via_proxy = uci.get(uciconfig, ucisubscription, 'update_via_proxy') || '0';
 
-/* 「通过代理更新订阅」在 0.2.4 之前是**死开关**：界面上有这一项，但脚本里
- * 只把它拼进日志文案（`手动（经代理）`），全项目从来没有为它设过
- * `http_proxy` 或传 `-x`。于是勾上它和不勾完全一样——而用户现场正是
- * 「5 个订阅里 4 个要海外网络才能拉」，这条需求一直没有被满足。
- *
- * 顺序：**直连优先，直连拿不到正文才用代理重试**（开发中先做过「先代理、
- * 失败回退直连」，0.2.4 首发前订正）。理由是可恢复性：nft 的
- * `homeproxy_output_redir` 会劫持路由器自身出站（firewall_post.ut:372），
- * 节点全坏时「先代理」等于每条订阅都先撞一次坏节点（现场约 5 秒/条），而
- * 节点坏掉恰恰是最需要重新拉订阅的时候——先代理会把这个场景锁死。直连不通
- * （那 4 个海外机场就是这样）再走代理，同一个开关把「国内能拉的别绕路」和
- * 「海外必须绕路」都覆盖。
+/* 「通过代理更新订阅」(update_via_proxy) 的语义（当前版本）：
+ *   - 不勾选（默认，proxy_url = null）：**只走直连**。直连拿不到即失败并保留旧节点。
+ *   - 勾选（proxy_url 非空）：**只走代理（默认出站 / 漏网之鱼）**，不再尝试直连。
+ * 二者互斥，没有「直连优先 → 失败回退代理」这种混用（该旧行为已按用户要求移除）。
  *
  * 代理这一跳走本地 mixed 入口：`infra.mixed_port`（现场 5330），sing-box 的
  * `mixed-in` inbound 是**无条件创建**的（generate_client.uc:1112），无认证。
  * 走它的额外好处是把域名解析交给 sing-box（只发 CONNECT host:443），不再受
- * dnsmasq → 内核 5333 这条链路的当前状态影响。
- * 默认 `update_via_proxy=0` 时 proxy_url 为 null：直连失败即止，抓取路径与
- * 旧版逐字相同（只是多了一层判空）。 */
+ * dnsmasq → 内核 5333 这条链路的当前状态影响——这正是「直连会撞 DNS 污染、
+ * 但代理更新能拿到正确节点」的关键。 */
 const proxy_url = (via_proxy === '1')
 	? sprintf('http://127.0.0.1:%s', uci.get(uciconfig, 'infra', 'mixed_port') || '5330')
 	: null;
@@ -1768,53 +1759,37 @@ function fetch_with_dns_retry(url, ua, proxy) {
 }
 
 function fetch_subscription(url, ua) {
+	/* 勾选「使用代理更新」(proxy_url 非空) → **只走代理（默认出站/漏网之鱼）**，
+	   不再尝试直连。未勾选 → 只走直连。二者互斥，不再有「直连优先→失败回退」。 */
+	if (proxy_url) {
+		/* 端口没有监听者（内核没起/未就绪）时这一跳必然失败。不退回直连，
+		   否则就违背了「只走代理」的语义；明确记一行并返回失败（保留旧节点）。 */
+		if (!local_proxy_listening(proxy_url)) {
+			log(sprintf('Proxy-only mode: local proxy %s is not listening; skipped (kept previous nodes).', proxy_url));
+
+			return null;
+		}
+
+		const proxied = fetch_with_dns_retry(url, ua, proxy_url);
+
+		if (proxied)
+			proxied.via_proxy = true;
+
+		if (isEmpty(proxied?.body))
+			log(sprintf('Proxy fetch failed for %s (%s).', url, describe_fetch_failure(proxied)));
+		else
+			log(sprintf('Fetched %s via %s.', url, proxy_url));
+
+		return proxied;
+	}
+
+	/* 未勾选：仅直连。 */
 	const direct = fetch_with_dns_retry(url, ua);
 
-	if (!isEmpty(direct?.body)) {
-		if (direct)
-			direct.via_proxy = false;
+	if (direct)
+		direct.via_proxy = false;
 
-		return direct;
-	}
-
-	if (!proxy_url)
-		return direct;
-
-	/* 直连失败的原因与「是否真的去重试」分开记：先记原因，再判端口。 */
-	log(sprintf('Direct fetch failed for %s (%s).',
-		url, describe_fetch_failure(direct)));
-
-	/* 限流就别换路径再打一次：见 rate_limited() 的说明。 */
-	if (rate_limited(direct)) {
-		log(sprintf('HTTP 429 for %s: the airport is throttling this token, so a proxy retry would be throttled too; skipped (previous nodes kept).', url));
-
-		return direct;
-	}
-
-	/* 端口没有监听者时这一跳必然 ECONNREFUSED，发出去也只是把
-	   「内核没开」写成「代理不可用」。跳过并说明原因。 */
-	if (!local_proxy_listening(proxy_url)) {
-		log(sprintf('Local proxy %s is not listening, proxy retry skipped.', proxy_url));
-
-		return direct;
-	}
-
-	log(sprintf('Retrying %s via %s.', url, proxy_url));
-
-	const proxied = fetch_with_dns_retry(url, ua, proxy_url);
-
-	if (proxied)
-		proxied.via_proxy = true;
-
-	/* 走代理是异常路径（默认直连），成功也要留一行：否则「这条到底是直连
-	   拉的还是代理拉的」在日志上看不出来，又得回设备重试才知道。 */
-	if (isEmpty(proxied?.body))
-		log(sprintf('Proxy fetch failed for %s (%s).',
-			url, describe_fetch_failure(proxied)));
-	else
-		log(sprintf('Fetched %s via %s.', url, proxy_url));
-
-	return proxied;
+	return direct;
 }
 
 /* ==== 自动附加 ?flag=singbox ==== */
@@ -1958,10 +1933,11 @@ function main() {
 	log(sprintf('==== 订阅更新开始：来源=%s，共 %d 个订阅 ====', trigger, length(subscription_urls)));
 
 	/* 抓取方式必须在日志开头就能对上：这个开关在 0.2.4 之前是死的，
-	   日志里骂「到底走没走代理」根本无从判断。 */
+	   日志里骂「到底走没走代理」根本无从判断。
+	   现语义：勾选=只走代理（默认出站/漏网之鱼），不勾=只走直连，二者互斥。 */
 	log(sprintf('Fetch mode: %s.', proxy_url
-		? sprintf('direct, fallback to proxy %s', proxy_url)
-		: 'direct'));
+		? sprintf('proxy only (%s, default outbound)', proxy_url)
+		: 'direct only'));
 
 	/* 全程**不停服务**（用户 0.2.2 定稿）：下载、解析、写 uci 全部成功才在
 	 * main() 末尾 stop+start 一次让新节点生效；任何一步失败都在不动服务的
