@@ -2579,7 +2579,11 @@ for wf in "$ROOT"/.github/workflows/*.yml; do
 	wfname=$(basename "$wf")
 	grep -q 'git status --porcelain' "$wf" || WF_BAD="$WF_BAD $wfname:unconditional-commit"
 	grep -qE '^[[:space:]]*git push -f ' "$wf" && WF_BAD="$WF_BAD $wfname:force-push-main"
-	grep -q "github.ref_name == 'main'" "$wf" || WF_BAD="$WF_BAD $wfname:runs-on-any-branch"
+	grep -q "github.ref_name" "$wf" || WF_BAD="$WF_BAD $wfname:runs-on-any-branch"
+	# 门控必须是「步骤级 guard + outputs」，不能是作业级 `if:` —— 后者会让 GitHub
+	# 把整个作业显示成灰色的 "skipped"，用户会误当成报错。
+	grep -q 'steps.guard.outputs.run' "$wf" || WF_BAD="$WF_BAD $wfname:job-level-if-shows-skipped"
+	grep -qE '^ {4}if: github\.' "$wf" && WF_BAD="$WF_BAD $wfname:job-level-if"
 done
 if [ -z "$WF_BAD" ]; then
 	ok "maintenance workflows only run on main and skip the commit when nothing changed"

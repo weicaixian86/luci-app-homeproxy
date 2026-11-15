@@ -16,17 +16,33 @@ permissions: write-all
 
 jobs:
   scan:
-    # 这是「维护 main」的作业：只在 main 分支上运行。
-    # 之前在功能分支上手动 dispatch 会在分支上执行 git commit，工作树干净时
-    # git commit 直接返回 1（`nothing to commit`），整个 workflow 变红；
-    # 更糟的是它的 `git push -f origin HEAD:main` 会把**功能分支**强推覆盖 main。
-    if: github.ref_type == 'branch' && github.ref_name == 'main'
+    # 这是「维护 main」的作业。之前在功能分支上手动 dispatch 会在分支上执行
+    # git commit，工作树干净时 git commit 直接返回 1（`nothing to commit`），
+    # 整个 workflow 变红；更糟的是它的 `git push -f origin HEAD:main` 会把
+    # **功能分支**强推覆盖 main。
+    #
+    # 现在把「是否该跑」放到**第一个步骤里判断**，而不是作业级 `if:`：
+    # 作业级 if 会让 GitHub 把整个作业显示成灰色的 "skipped"（用户会误当成报错）；
+    # 步骤级判断则让作业正常跑完并显示**绿色**，日志写明「不是 main，无需重扫」。
     runs-on: ubuntu-22.04
     steps:
+      - name: Check whether this ref is main
+        id: guard
+        run: |
+          if [ "${{ github.ref_type }}" = "branch" ] && [ "${{ github.ref_name }}" = "main" ]; then
+            echo "run=1" >> "$GITHUB_OUTPUT"
+            echo "On main (${GITHUB_REF}) — this job will rescan the translations."
+          else
+            echo "run=0" >> "$GITHUB_OUTPUT"
+            echo "Not main (ref=${GITHUB_REF}). PO/POT belong to main; nothing to do — exiting green."
+          fi
+
       - name: Checkout source tree
+        if: steps.guard.outputs.run == '1'
         uses: actions/checkout@main
 
       - name: Rescan translation
+        if: steps.guard.outputs.run == '1'
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
@@ -44,10 +60,12 @@ jobs:
           rm -f "i18n-scan.pl" "i18n-update.pl"
 
       - name: Commit changes
+        # 跟着 guard 走：非 main 时 checkout 都被跳过，这里没有仓库可提交。
         # 判据写在 shell 里，不再依赖 `env.CHANGE_STAT` 表达式：
         # 通过 $GITHUB_ENV 写入的变量在后续 step 的 shell 里可见，但在
         # `if: ${{ env.X }}` 这类表达式里并不可靠 —— 之前那个 `if:` 也就
         # 形同虚设。这里直接用 git 自己的判断，没有改动就干净退出。
+        if: steps.guard.outputs.run == '1'
         run: |
           if [ -z "$(git status --porcelain)" ]; then
             echo "no PO/POT changes; nothing to commit."
