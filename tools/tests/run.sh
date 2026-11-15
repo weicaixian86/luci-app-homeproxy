@@ -2568,6 +2568,25 @@ else
 	bad "experimental is still gated by routing_mode: the panel is dead in some routing modes"
 fi
 
+# ── 维护型 workflow 必须「只在 main 上跑 + 有改动才提交」────────────────────
+# 现场（2026-11-15）：在功能分支 v1.14.4-reF1nd-clashapi-eBPF 上手动 dispatch
+# 维护作业，checkout 到该分支后无条件 `git commit`，工作树干净 → 返回 1 →
+# `nothing to commit, working tree clean` → 整个 workflow 报红；更严重的是
+# 成功后 `git push -f origin HEAD:main` 会把**功能分支**强推覆盖 main。
+WF_BAD=""
+for wf in "$ROOT"/.github/workflows/*.yml; do
+	grep -q 'git commit' "$wf" || continue
+	wfname=$(basename "$wf")
+	grep -q 'git status --porcelain' "$wf" || WF_BAD="$WF_BAD $wfname:unconditional-commit"
+	grep -qE '^[[:space:]]*git push -f ' "$wf" && WF_BAD="$WF_BAD $wfname:force-push-main"
+	grep -q "github.ref_name == 'main'" "$wf" || WF_BAD="$WF_BAD $wfname:runs-on-any-branch"
+done
+if [ -z "$WF_BAD" ]; then
+	ok "maintenance workflows only run on main and skip the commit when nothing changed"
+else
+	bad "maintenance workflow risk:$WF_BAD"
+fi
+
 # ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
 # 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
 # （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测

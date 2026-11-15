@@ -12,6 +12,11 @@ permissions: write-all
 
 jobs:
   update:
+    # 这是「维护 main」的作业：只在 main 分支上运行。
+    # 之前在功能分支上手动 dispatch 会 checkout 该分支，随后无条件
+    # `git commit`（工作树干净时返回 1 → 整个 workflow 变红），
+    # 且成功时 `git push -f origin HEAD:main` 会把功能分支强推覆盖 main。
+    if: github.ref_type == 'branch' && github.ref_name == 'main'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout Projects
@@ -70,9 +75,19 @@ jobs:
           cd .. && rm -rf ./$RES_RULE/ && echo "homeproxy date has been updated!"
 
       - name: Commit Changes
+        # 没有改动就干净退出：`git commit` 在工作树干净时返回 1，会把整个
+        # 作业判红（历史上多次出现 `nothing to commit, working tree clean`）。
+        # 版本号用 shell 变量 ${RES_VER}（上一步写入 $GITHUB_ENV，后续 step 的
+        # shell 能读到），不要用 `${{ env.RES_VER }}` —— 表达式里并不可靠。
         run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "geodata unchanged; nothing to commit."
+            exit 0
+          fi
           git config --local user.name "github-actions[bot]"
           git config --local user.email "<github-actions[bot]@users.noreply.github.com>"
           git add .
-          git commit -m "chore(resources): update geodata to ${{env.RES_VER}}"
-          git push -f origin HEAD:main
+          git commit -m "chore(resources): update geodata to ${RES_VER}"
+          # 不用 -f：作业只在 main 上跑，普通 push 即快进；万一远端已被推进，
+          # 宁可报红也不要覆盖别人的提交。
+          git push origin HEAD:main
