@@ -868,12 +868,126 @@ function get_subscription_info(group_hash) {
 	}
 }
 
-/* Build the `proxy_providers` list for the (patched) reF1nd kernel's native
-   Clash API `/providers/proxies` endpoint. The patched kernel synthesises the
-   provider objects from this config and resolves each member to a real
-   outbound by its tag, so `proxies` is an array of outbound tags (strings),
-   not proxy objects. Keys follow sing-box's snake_case Clash API options:
-   `vehicle_type`, `updated_at`, `update_id`, `subscription_info`. */
+/* 内核 remote provider 的「种子」文件路径。update_subscriptions.uc 在每次
+   成功更新订阅后把**原始正文**写到这里；reF1nd 的 provider/remote 在
+   没有 bbolt 缓存时会读 initial_path（remote.go: `loadInitialPath()`），
+   因此内核启动**不需要联网拉订阅** —— 这点很关键：源码 `StartContext()`
+   只有在「既没缓存也没 initial_path」时才同步 `fetch()`，一旦 fetch 失败
+   就直接返回错误，整个 sing-box 起不来（实测：`start provider/...: no
+   servers found` → FATAL）。 */
+function provider_seed_path(group_hash) {
+	return sprintf('%s/providers/%s.sub', HP_DIR, group_hash);
+}
+
+function provider_seed_exists(group_hash) {
+	let fp = null;
+	try {
+		fp = open(provider_seed_path(group_hash), 'r');
+	} catch (e) {
+		return false;
+	}
+	if (!fp)
+		return false;
+	try { fp.close(); } catch (e) {}
+	return true;
+}
+
+/* 全局面板测速地址：取第一个配了 urltest_url 的分组，兜底 google
+   generate_204（与 urltest 出站的默认值保持同一口径，别用 gstatic ——
+   它在 china_list 里且实测会把可用节点判成不可用）。 */
+function provider_probe_url() {
+	let url = null;
+	uci.foreach(uciconfig, uciroutingsetting, (cfg) => {
+		if (url !== null)
+			return;
+		const candidate = trim(cfg.urltest_url ?? '');
+		if (!isEmpty(candidate))
+			url = candidate;
+	});
+	return url ?? 'https://www.google.com/generate_204';
+}
+
+/* 原生 `providers`（reF1nd 1.14.4 的顶层字段）——恢复面板「代理供应商」页。
+   与已归档的 002 补丁（`clash_api.proxy_providers`，tags-only）不同，
+   原生 provider 的 outbounds 由内核自己解析订阅正文生成，因此：
+
+   · `initial_path` 指向插件写好的种子 → 启动不联网、不会因机场挂掉而
+     拖垮整个服务；内核随后按 `update_interval` 后台更新并自行填充
+     `subscriptionInfo`（已用/总量/到期）。
+   · provider 的节点会**同时**出现在 `/proxies` 里（名字形如 `机场名/节点名`），
+     这是原生设计的固有行为。
+   · 以下三种情况一律**不下发** provider（都会让内核起不来）：
+     1) `cache_file` 关闭 —— 内核报 `provider initial_path requires cache_file`；
+     2) 该机场一个节点都没有 —— 内核报 `no servers found`；
+     3) 种子文件还不存在（全新安装尚未成功更新过订阅）—— 会退化成启动时
+        同步拉取，机场不可达即 FATAL。等第一次订阅更新写入种子后自然出现。 */
+function build_native_providers() {
+	if (cache_file_enabled === '0')
+		return [];
+
+	let providers = [],
+	    used_names = {},
+	    subscription_names = normalize_list(uci.get(uciconfig, 'subscription', 'subscription_name')),
+	    probe_url = provider_probe_url(),
+	    sub_index = 0;
+
+	for (let suburl in normalize_list(uci.get(uciconfig, 'subscription', 'subscription_url'))) {
+		const subscription_name = subscription_names[sub_index];
+		sub_index++;
+
+		if (isEmpty(suburl) || isEmpty(trim(subscription_name ?? '')))
+			continue;
+
+		const url = replace(suburl, /#.*$/, ''),
+		      group_hash = md5(url);
+
+		let has_nodes = false;
+		uci.foreach(uciconfig, ucinode, (cfg) => {
+			if (cfg.grouphash === group_hash)
+				has_nodes = true;
+		});
+		if (!has_nodes)
+			continue;
+
+		if (!provider_seed_exists(group_hash))
+			continue;
+
+		push(providers, {
+			type: 'remote',
+			tag: unique_provider_name(subscription_provider_name(subscription_name), used_names),
+			url: url,
+			initial_path: provider_seed_path(group_hash),
+			/* 24h：与常见的机场流量刷新节奏相当；间隔过长会让面板的
+			   已用/到期长期不动，过短则等于每次重启都多下一遍订阅。 */
+			update_interval: '24h',
+			/* 不指定 `http_client`：内核会用「默认出站」下载（并打印一条
+			   1.14 的 deprecated 警告，功能到 1.16 前都有效）。
+			   试过 `http_client: {detour: 'direct-out'}` —— 实测被内核拒绝：
+			   `detour to an empty direct outbound makes no sense`
+			   （common/dialer/detour.go:64：显式 detour 指向「空 direct」即报错，
+			   只有 `defaultOutbound` 走的隐式路径才跳过该检查，而本项目的
+			   `direct-out` 正是空 direct）。 */
+			health_check: {
+				enabled: true,
+				url: probe_url,
+				interval: '10m',
+				timeout: '6s'
+			}
+		});
+	}
+
+	return providers;
+}
+
+/* 【当前不再被调用，保留作参考/后续重做原生 providers 的蓝本】
+   这是旧 002 补丁（已归档到 tools/sing-box-patches/archive-1.14.3/）的
+   `clash_api.proxy_providers` 数据结构：补丁内核会据此合成
+   `/providers/proxies`，`proxies` 里放的是 outbound tag 字符串而不是 proxy 对象，
+   键名沿用 Clash API 的 snake_case（`vehicle_type`/`updated_at`/`update_id`/
+   `subscription_info`）。
+   reF1nd 1.14.4 内核不再接受该字段，且其原生 providers 是顶层 `providers`
+   （内核自行拉订阅、自行生成 outbound），与本插件「订阅解析后展开成 outbound」
+   的模型重复，因此这里暂不下发。若日后改用原生 providers，可基于本函数改造。 */
 function build_proxy_providers() {
 	let providers = [],
 	    used_names = {},
@@ -988,9 +1102,11 @@ clash_api = {
 	   adds it back, so the patched kernel accepts cache_file.store_selected and persists
 	   the selected outbound across restarts. Outdated stock kernels without that patch
 	   would reject it as an unknown field. */
-	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
-	   /providers/proxies from this list; empty in non-subscription modes. */
-	proxy_providers: build_proxy_providers()
+	/* 不再下发 `proxy_providers`：它是旧 002 补丁的自定义字段，reF1nd 1.14.4 内核
+	   不认识（`unknown field "proxy_providers"` → 服务拒绝启动）。1.14.4 原生
+	   providers 是顶层字段且会自行拉订阅生成 outbound，与本插件模型重复，故不用。
+	   影响：面板的「代理供应商」页不再有数据（需要旧补丁内核才有该页），
+	   代理/分流/节点测速等功能不受影响。 */
 };
 /* Config helper end */
 
@@ -1774,25 +1890,36 @@ if (!isEmpty(config.route) && !isEmpty(config.route.rule_set)) {
 }
 
 /* Experimental start */
-if (routing_mode in ['bypass_mainland_china', 'custom']) {
-	/* `proxy_providers` now lives inside `clash_api` (not at the top level):
-	   it is consumed by the patched reF1nd kernel, which synthesises the
-	   /providers/proxies objects from it. A stock (unpatched) sing-box would
-	   reject the unknown field, so this branch is only correct together with
-	   the kernel patch. All subscription nodes are still expanded into
-	   `outbounds`; the list above only teaches the panel about providers. */
+/* 必须**无条件**生成：`clash_api` 是面板（zashboard 等）唯一的入口，
+   `cache_file` 负责选中节点/FakeIP/DNS 缓存。
+   0.4.0 之前这段被 `if (routing_mode in ['bypass_mainland_china', 'custom'])`
+   包住，导致 gfwlist / proxy_mainland_china / global 三种路由模式下**根本没有
+   clash_api**（9095 不监听、面板连不上）也没有 cache_file —— 既有缺陷，随本次
+   一并修正（面板与路由模式无关）。
 
-	config.experimental = {
-		clash_api,
-		cache_file: {
-			enabled: cache_file_enabled !== '0',
-			path: cache_file_path || (HP_DIR + '/cache.db'),
-			store_dns: strToBool(cache_store_dns),
-			store_selected: cache_store_selected !== '0'
-		}
-	};
-}
+   关于 `proxy_providers`：它是旧 002 补丁（已归档）的自定义字段，reF1nd 1.14.4
+   内核不认识它，`sing-box check` 直接报
+   `experimental.clash_api.proxy_providers: json: unknown field "proxy_providers"`
+   并拒绝启动；而 1.14.4 原生的 providers 是**顶层**字段、由内核自己拉订阅并生成
+   outbound，与本插件「订阅解析后展开成 outbound」的模型重复（会多出一批无人引用
+   的 outbound 并重复下载订阅），因此不再下发该字段。 */
+config.experimental = {
+	clash_api,
+	cache_file: {
+		enabled: cache_file_enabled !== '0',
+		path: cache_file_path || (HP_DIR + '/cache.db'),
+		store_dns: strToBool(cache_store_dns),
+		store_selected: cache_store_selected !== '0'
+	}
+};
 /* Experimental end */
+
+/* Native providers（reF1nd 1.14.4 顶层字段）——面板「代理供应商」页的数据源。
+   条件不满足时返回空数组，removeBlankAttrs 会把空字段删掉，等于不下发。 */
+const native_providers = build_native_providers();
+if (length(native_providers) > 0)
+	config.providers = native_providers;
+/* Native providers end */
 
 /* 出站引用完整性 ------------------------------------------------------------
  * 0 节点（或删掉某个出站）之后，配置里会残留指向「选不出节点的分组」的引用。

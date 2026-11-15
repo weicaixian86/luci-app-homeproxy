@@ -1205,7 +1205,18 @@ return view.extend({
 		} else {
 			o.description = _('To enable Tun support, you need to install <code>ip-full</code> and <code>kmod-tun</code>');
 		}
-		o.default = 'ebpf_cgroup_shared_socket_assign';
+		/* 默认值必须按内核能力决定：只有内核带 `with_ebpf`（`sing-box version`
+		   的 `Tags:` 行里出现它）时才默认 eBPF。旧内核（如 1.14.3-reF1nd_0.3.13）
+		   缺这个 build tag，选中 eBPF 后内核会以
+		   `FATAL initialize inbound[N]: eBPF inbound is not included in this build`
+		   拒绝启动 —— 整个服务起不来、全屋断网（0.4.0 开发期实测踩过）。
+		   内核支持时 eBPF 仍是默认项，符合「eBPF 优先」的产品意图。 */
+		if (features.with_ebpf) {
+			o.default = 'ebpf_cgroup_shared_socket_assign';
+		} else {
+			o.default = 'redirect_tproxy';
+			o.description = _('eBPF modes need a sing-box core built with <code>with_ebpf</code>. The current core lacks it, so selecting an eBPF mode makes the service fail to start.');
+		}
 		o.rmempty = false;
 
 		/* eBPF 的 local/shared 数据面已由上面所选模式决定，不再单独提供开关。

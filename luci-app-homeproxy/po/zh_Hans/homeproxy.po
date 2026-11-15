@@ -4434,3 +4434,6 @@ msgstr "eBPF 本机(socket_assign) + 局域网(socket_assign)"
 
 msgid "eBPF local(socket_assign) + shared(packet_rewrite)"
 msgstr "eBPF 本机(socket_assign) + 局域网(packet_rewrite)"
+
+msgid "eBPF modes need a sing-box core built with <code>with_ebpf</code>. The current core lacks it, so selecting an eBPF mode makes the service fail to start."
+msgstr "eBPF 模式需要带 <code>with_ebpf</code> 的 sing-box 内核；当前内核没有该能力，选择 eBPF 会导致服务无法启动。"

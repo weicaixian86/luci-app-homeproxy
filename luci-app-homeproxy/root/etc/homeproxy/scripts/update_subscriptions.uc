@@ -8,7 +8,7 @@
 'use strict';
 
 import { md5 } from 'digest';
-import { open, readfile } from 'fs';
+import { open, readfile, writefile } from 'fs';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
 
@@ -1920,6 +1920,36 @@ function choose_subscription_body(url, body) {
 	return { body: alternative, nodes: alternative_nodes };
 }
 
+/* 把本次成功解析的订阅正文写一份给内核的 remote provider 当「种子」
+   （initial_path）。路径必须与 generate_client.uc 的 provider_seed_path()
+   逐字一致：`<HP_DIR>/providers/<md5(去掉 # 的 url)>.sub`，两处一旦分叉，
+   内核就找不到种子 —— 而没有种子时它会在启动阶段**同步**拉订阅，机场不可达
+   就直接 FATAL，整个 sing-box 起不来（provider/remote.go: StartContext）。
+   写失败只记日志、不影响订阅更新本身。 */
+function write_provider_seed(group_hash, body) {
+	if (isEmpty(group_hash) || isEmpty(body))
+		return;
+
+	const dir = HP_DIR + '/providers',
+	      path = sprintf('%s/%s.sub', dir, group_hash);
+
+	system(`mkdir -p ${dir}`);
+
+	try {
+		writefile(path, body);
+	} catch (e) {
+		log(sprintf('Failed to write provider seed %s: %s', path, trim(sprintf('%s', e))));
+		return;
+	}
+
+	/* 回读校验：写了一半/被磁盘写满时，内核会拿这份残缺正文去解析，
+	   表现为 provider 0 节点 → 「no servers found」→ 服务起不来。 */
+	const check = readfile(path);
+	if (isEmpty(check) || length(check) !== length(body))
+		log(sprintf('Provider seed %s looks truncated (%d/%d bytes); the kernel may fall back to fetching on start.',
+			path, length(check ?? ''), length(body)));
+}
+
 function main() {
 	cleanup_subscription_info();
 
@@ -2074,6 +2104,11 @@ function main() {
 			failed++;
 		}
 		else {
+			/* 先把正文种给内核 provider（initial_path），再继续写 uci：
+			   即便后面某一步失败，种子也是可用的，内核启动不会因为
+			   「既无缓存又无种子」去同步拉订阅。 */
+			write_provider_seed(groupHash, res);
+
 			const info_option = subscription_info_option(url),
 			      display_name = subscription_display_name(url);
 			const previous_info = previous_subscription_info(info_option);

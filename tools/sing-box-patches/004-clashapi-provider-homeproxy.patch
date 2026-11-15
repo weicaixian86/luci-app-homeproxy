@@ -1,0 +1,150 @@
+diff --git a/experimental/clashapi/provider.go b/experimental/clashapi/provider.go
+index e2c7713..4b5c6f4 100644
+--- a/experimental/clashapi/provider.go
++++ b/experimental/clashapi/provider.go
+@@ -3,6 +3,10 @@ package clashapi
+ import (
+ 	"context"
+ 	"net/http"
++	"net/url"
++	"os"
++	"os/exec"
++	"strings"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
+ 	C "github.com/sagernet/sing-box/constant"
+@@ -21,10 +25,12 @@ func proxyProviderRouter(server *Server) http.Handler {
+ 		r.Get("/", getProvider(server))
+ 		r.Put("/", updateProvider)
+ 		r.Get("/healthcheck", healthCheckProvider)
+-		r.Route("/{proxyName}", func(r chi.Router) {
+-			r.Use(parseProviderProxyName, findProviderProxyByName)
+-			r.Get("/healthcheck", getProxyDelay(server))
+-		})
++		/* Provider proxy tags carry the provider tag as a prefix and in practice
++		   contain a "/" inside the node name ("LX/香港01"), so a single
++		   "{proxyName}" segment can never match: chi would split it into two
++		   segments and the request 404s. Capture the whole tail instead and strip
++		   the trailing "/healthcheck" ourselves. */
++		r.Get("/*", getProviderProxyDelay(server))
+ 	})
+ 	return r
+ }
+@@ -65,8 +71,27 @@ func providerInfo(server *Server, p adapter.Provider) *badjson.JSONObject {
+ 	return &info
+ }
+ 
++// homeProxyProviderUpdater is implemented by the remote provider type of
++// reF1nd sing-box; HomeProxyUpdateID returns md5(subscription url), the key
++// luci-app-homeproxy uses to own its nodes.
++type homeProxyProviderUpdater interface {
++	HomeProxyUpdateID() string
++}
++
+ func updateProvider(w http.ResponseWriter, r *http.Request) {
+ 	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
++	/* A panel "update this airport" click must refresh the plugin's own node
++	   list (outbounds and groups), not just the kernel's provider copy: routing
++	   uses the nodes stored in /etc/config/homeproxy. The plugin's
++	   update_provider.sh consumes provider-update-id, refreshes that
++	   subscription and reloads the service, which in turn rewrites the provider
++	   seed. Fire it in the background and answer 204 immediately — the script
++	   restarts sing-box, so waiting for it would drop this response. */
++	if homeProxyProvider, isHomeProxy := provider.(homeProxyProviderUpdater); isHomeProxy {
++		go runHomeProxyProviderUpdate(homeProxyProvider.HomeProxyUpdateID())
++		render.NoContent(w, r)
++		return
++	}
+ 	if provider, isUpdater := provider.(adapter.ProviderUpdater); isUpdater {
+ 		if err := provider.Update(); err != nil {
+ 			render.Status(r, http.StatusServiceUnavailable)
+@@ -77,6 +102,54 @@ func updateProvider(w http.ResponseWriter, r *http.Request) {
+ 	render.NoContent(w, r)
+ }
+ 
++func runHomeProxyProviderUpdate(updateID string) {
++	/* RUN_DIR of luci-app-homeproxy is /var/run/homeproxy; the script path is
++	   fixed by the package layout. Failures are silent on purpose: the panel
++	   already got its 204 and the plugin writes the real diagnostics to its own
++	   log (update_provider.sh logs both outcomes). */
++	err := os.WriteFile("/var/run/homeproxy/provider-update-id", []byte(updateID+"\n"), 0o600)
++	if err != nil {
++		return
++	}
++	cmd := exec.Command("/etc/homeproxy/scripts/update_provider.sh")
++	if err = cmd.Start(); err != nil {
++		return
++	}
++	_ = cmd.Process.Release()
++}
++
++func getProviderProxyDelay(server *Server) func(w http.ResponseWriter, r *http.Request) {
++	delayHandler := getProxyDelay(server)
++	return func(w http.ResponseWriter, r *http.Request) {
++		tail := chi.URLParam(r, "*")
++		const suffix = "/healthcheck"
++		if !strings.HasSuffix(tail, suffix) {
++			render.Status(r, http.StatusNotFound)
++			render.JSON(w, r, ErrNotFound)
++			return
++		}
++		proxyName := strings.TrimPrefix(strings.TrimSuffix(tail, suffix), "/")
++		if decoded, err := url.PathUnescape(proxyName); err == nil {
++			proxyName = decoded
++		}
++		provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
++		/* Clients (zashboard and friends) address a provider proxy by the name
++		   they saw in /proxies, which is already prefixed with the provider tag
++		   ("AIR/n1"). Accept the bare node name too, so both spellings work. */
++		proxy, exist := provider.Outbound(proxyName)
++		if !exist {
++			proxy, exist = provider.Outbound(provider.Tag() + "/" + proxyName)
++		}
++		if !exist {
++			render.Status(r, http.StatusNotFound)
++			render.JSON(w, r, ErrNotFound)
++			return
++		}
++		ctx := context.WithValue(r.Context(), CtxKeyProxy, proxy)
++		delayHandler(w, r.WithContext(ctx))
++	}
++}
++
+ func healthCheckProvider(w http.ResponseWriter, r *http.Request) {
+ 	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
+ 	provider.HealthCheck(r.Context())
+diff --git a/provider/remote/remote.go b/provider/remote/remote.go
+index 2a34362..e4c4b37 100644
+--- a/provider/remote/remote.go
++++ b/provider/remote/remote.go
+@@ -3,7 +3,9 @@ package remote
+ import (
+ 	"bytes"
+ 	"context"
++	"crypto/md5"
+ 	"crypto/sha256"
++	"encoding/hex"
+ 	"errors"
+ 	"fmt"
+ 	"io"
+@@ -220,6 +222,20 @@ func (s *ProviderRemote) SubscriptionInfo() adapter.SubscriptionInfo {
+ 	return s.subscriptionInfo
+ }
+ 
++// HomeProxyUpdateID reports the subscription key used by luci-app-homeproxy to
++// own its nodes: md5 of the subscription URL (the plugin's "grouphash"). The
++// Clash API hands a panel "update this airport" request over to the plugin's
++// update_provider.sh using this key, instead of only letting the kernel
++// re-download the provider (which would leave the plugin's own outbounds and
++// groups stale).
++func (s *ProviderRemote) HomeProxyUpdateID() string {
++	if s.url == "" {
++		return ""
++	}
++	sum := md5.Sum([]byte(s.url))
++	return hex.EncodeToString(sum[:])
++}
++
+ func (s *ProviderRemote) Close() error {
+ 	s.cancel()
+ 	s.workers.Wait()

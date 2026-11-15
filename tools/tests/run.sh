@@ -2406,13 +2406,31 @@ fi
 # reF1nd 1.14.4 官方内置（实测 `sing-box check` 一个 providers 配置 rc=0），
 # 因此本项目不再携带 002 providers 补丁参与构建；该补丁文件已归档到
 # tools/sing-box-patches/archive-1.14.3/ 仅作历史保留。
-# 本段断言随之改为「构建目录里只剩 1.14.4 的 003 补丁，且 002 不参与」。
+# 本段断言随之改为「构建目录里只剩 1.14.4 的两个补丁（003 存储选中节点、
+# 004 Clash API provider 适配），且 002 不参与」。
 PATCHDIR="$ROOT/tools/sing-box-patches"
-ACTIVE_PATCHES="$(ls "$PATCHDIR"/*.patch 2>/dev/null | xargs -n1 basename 2>/dev/null | sort)"
-if [ "$ACTIVE_PATCHES" = "003-add-cache-file-store-selected-1.14.4.patch" ]; then
-	ok "only the 1.14.4 store_selected patch is active (providers ship with reF1nd 1.14.4)"
+ACTIVE_PATCHES="$(ls "$PATCHDIR"/*.patch 2>/dev/null | xargs -n1 basename 2>/dev/null | sort | tr '\n' ' ' | sed 's/ *$//')"
+EXPECTED_PATCHES="003-add-cache-file-store-selected-1.14.4.patch 004-clashapi-provider-homeproxy.patch"
+if [ "$ACTIVE_PATCHES" = "$EXPECTED_PATCHES" ]; then
+	ok "exactly the two 1.14.4 patches are active (store_selected + Clash API provider)"
 else
-	bad "active patch set is not the expected single 003-1.14.4 patch: [${ACTIVE_PATCHES}]"
+	bad "active patch set is not the expected [${EXPECTED_PATCHES}]: [${ACTIVE_PATCHES}]"
+fi
+
+# 004 补丁必须同时解决两件事：① 面板「更新机场」回调插件的 update_provider.sh
+# （否则只刷新内核 provider，实际路由用的节点不变）；② 单节点测速支持名字里
+# 含 "/" 的 provider 节点（否则 `/{proxyName}` 一段永远匹配不到 → 404）。
+PATCH4="$PATCHDIR/004-clashapi-provider-homeproxy.patch"
+if [ -f "$PATCH4" ] \
+   && grep -q 'func runHomeProxyProviderUpdate' "$PATCH4" \
+   && grep -q '/etc/homeproxy/scripts/update_provider.sh' "$PATCH4" \
+   && grep -q 'provider-update-id' "$PATCH4" \
+   && grep -q 'func getProviderProxyDelay' "$PATCH4" \
+   && grep -q 'r.Get("/\*", getProviderProxyDelay(server))' "$PATCH4" \
+   && grep -q 'func (s \*ProviderRemote) HomeProxyUpdateID' "$PATCH4"; then
+	ok "patch 004 wires the panel provider update to update_provider.sh and fixes slash-named delays"
+else
+	bad "patch 004 no longer provides the provider update hook and/or the slash-tolerant delay route"
 fi
 
 if [ -f "$PATCHDIR/archive-1.14.3/002-support-clash-proxy-providers-1.14.3-reF1nd.patch" ]; then
@@ -2455,10 +2473,15 @@ else
 	bad "eBPF proxy modes missing from the dropdown:$missing_mode"
 fi
 
-if grep -q "o.default = 'ebpf_cgroup_shared_socket_assign'" "$CLIENTJS"; then
-	ok "the default proxy mode is eBPF local(cgroup) + shared(socket_assign)"
+# 默认值必须挂在 `features.with_ebpf` 能力判断后面：旧内核（无该 build tag）
+# 选 eBPF 会 `eBPF inbound is not included in this build` → 服务起不来、全屋断网。
+# 0.4.0 开发期在 238 上实测踩过（当时内核仍是 1.14.3-reF1nd_0.3.13）。
+if grep -q 'if (features.with_ebpf)' "$CLIENTJS" \
+   && grep -q "o.default = 'ebpf_cgroup_shared_socket_assign'" "$CLIENTJS" \
+   && grep -q "o.default = 'redirect_tproxy'" "$CLIENTJS"; then
+	ok "the eBPF default is gated on the core advertising with_ebpf (falls back to redirect_tproxy)"
 else
-	bad "the default proxy mode is not the expected eBPF combination"
+	bad "the eBPF default is unconditional: an old core would fail to start after selecting eBPF"
 fi
 
 # 4 个 eBPF 项必须排在 Redirect TCP 之前（用户明确要求的顺序）。
@@ -2495,11 +2518,13 @@ else
 	bad "cgroup_path can leak into a socket_assign config (kernel refuses to start)"
 fi
 
-# 出厂配置的默认值必须与 UI 默认一致，否则新装设备 UI 显示 eBPF 而实际跑 redirect。
-if grep -q "option proxy_mode 'ebpf_cgroup_shared_socket_assign'" "$PKG/root/etc/config/homeproxy"; then
-	ok "the shipped default config uses the same eBPF default as the UI"
+# 出厂配置**不得**默认 eBPF：插件可能先于内核升级落地（或内核下载失败），
+# 此时默认 eBPF 会让新装/重置配置的设备一起起不来。出厂用 redirect_tproxy，
+# 内核带 with_ebpf 时由 UI 的 o.default 把新选项默认成 eBPF（见上一条断言）。
+if grep -q "option proxy_mode 'redirect_tproxy'" "$PKG/root/etc/config/homeproxy"; then
+	ok "the shipped default config stays on redirect_tproxy (safe for cores without with_ebpf)"
 else
-	bad "shipped default proxy_mode and the UI default disagree"
+	bad "shipped default proxy_mode is not redirect_tproxy: a core without with_ebpf would fail to start"
 fi
 
 # 三处 `|| 'redirect_tproxy'` 兜底必须保持一致：若生成侧回落 eBPF 而防火墙侧回落
@@ -2512,6 +2537,83 @@ if [ -z "$fb" ]; then
 	ok "generator and both firewall scripts share the same redirect_tproxy fallback"
 else
 	bad "proxy_mode fallback diverged:$fb (ebpf inbound and redirect rules would both apply)"
+fi
+
+# ── reF1nd 1.14.4 配置兼容：proxy_providers 与 experimental 无条件生成 ──────
+# 现场依据（238，官方 reF1nd 1.14.4 内核）：生成的配置里若带
+# `experimental.clash_api.proxy_providers`，`sing-box check` 直接报
+# `unknown field "proxy_providers"`，服务拒绝启动。该字段是已归档的 002 补丁
+# 的自定义字段；1.14.4 原生 providers 在顶层且会自行拉订阅，与本插件模型重复。
+if ! grep -qE '^[[:space:]]*proxy_providers[[:space:]]*:' "$GC"; then
+	ok "the generator no longer emits the 1.14.3-only clash_api.proxy_providers field"
+else
+	bad "clash_api.proxy_providers is still emitted; reF1nd 1.14.4 rejects it and the service will not start"
+fi
+
+# 旧数据结构保留作参考（供后续改用原生 providers 时改造），但不得被调用。
+if grep -q '^function build_proxy_providers' "$GC"; then
+	ok "the old provider builder is kept as a reference blueprint"
+else
+	bad "build_proxy_providers was dropped without a replacement plan"
+fi
+
+# experimental（clash_api + cache_file）必须**无条件**生成：历史上它被
+# `if (routing_mode in ['bypass_mainland_china','custom'])` 包住，导致
+# gfwlist / proxy_mainland_china / global 三种路由模式下根本没有 clash_api
+# （面板连不上 9095）也没有 cache_file。
+if grep -q '^config\.experimental = {' "$GC" \
+   && ! grep -qE "^if \(routing_mode in \[" "$GC"; then
+	ok "experimental (clash_api + cache_file) is emitted for every routing mode"
+else
+	bad "experimental is still gated by routing_mode: the panel is dead in some routing modes"
+fi
+
+# ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
+# 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
+# （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测
+# 200/200/204/204），且 `subscriptionInfo` 只有 `remote` 类型会填。
+# 但 provider 启动失败会**拖垮整个服务**（实测 `no servers found` / `initial_path
+# requires cache_file` 均为 FATAL），所以生成侧必须带三重护栏。
+UPD="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+
+if grep -q "type: 'remote'" "$GC" && grep -q 'initial_path: provider_seed_path(group_hash)' "$GC"; then
+	ok "native providers are emitted as remote with an initial_path seed"
+else
+	bad "native providers are missing or not using a seed (a start-up fetch could kill the service)"
+fi
+
+# 三重护栏：cache_file 关 / 机场无节点 / 种子不存在 —— 任一情况都不下发。
+if grep -q "if (cache_file_enabled === '0')" "$GC" \
+   && grep -q 'if (!has_nodes)' "$GC" \
+   && grep -q 'if (!provider_seed_exists(group_hash))' "$GC"; then
+	ok "providers are skipped when cache_file is off, the airport has no nodes, or the seed is missing"
+else
+	bad "a provider can still be emitted in a state the kernel rejects fatally"
+fi
+
+# 种子路径必须两边逐字一致，否则内核找不到种子 → 启动同步拉取 → 机场不可达即 FATAL。
+if grep -q "sprintf('%s/providers/%s.sub', HP_DIR, group_hash)" "$GC" \
+   && grep -q "sprintf('%s/%s.sub', dir, group_hash)" "$UPD" \
+   && grep -q "const dir = HP_DIR + '/providers'" "$UPD"; then
+	ok "the generator and the updater agree on the provider seed path"
+else
+	bad "provider seed path differs between generator and updater (the kernel would find no seed)"
+fi
+
+if grep -q 'write_provider_seed(groupHash, res)' "$UPD"; then
+	ok "a successful subscription update seeds the provider cache"
+else
+	bad "the updater never writes the provider seed, so providers can never appear"
+fi
+
+# 显式 detour 到「空 direct」会被内核拒绝（common/dialer/detour.go:64），
+# 因此 provider 不得再下发 http_client。判据只看 providers 的 push 块
+# （rule_set 的 http_client 引用 config.http_clients 的 tag，与本条无关；
+#  注释里记录该坑的示例文本也不能误判）。
+if ! sed -n '/push(providers, {/,/^\t\t});/p' "$GC" | grep -qE '^[[:space:]]+http_client[[:space:]]*:'; then
+	ok "providers do not set an http_client detour (an empty direct detour is rejected by the kernel)"
+else
+	bad "providers still set http_client: 'detour to an empty direct outbound makes no sense'"
 fi
 
 # 补丁是手写的 unified diff：往 + 区加了行却忘了改 hunk 头，git apply 会报
