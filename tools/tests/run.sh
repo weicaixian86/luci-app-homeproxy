@@ -2402,47 +2402,116 @@ else
 fi
 
 # 供应商卡片左上角的「测速」按钮 = GET /providers/proxies/{name}/healthcheck，
-# 由补丁内核实现（补丁 002）。原实现按顺序逐个测、每个节点等 10 秒：一个机场
-# 几十个节点，只要几个连不通，整条请求就超过 zashboard 的 15 秒 axios 超时，
-# 表现为「按钮转圈→报错→节点延迟一片空白」。必须并发测 + 整批封顶。
-PATCH="$ROOT/tools/sing-box-patches/002-support-clash-proxy-providers-1.14.3-reF1nd.patch"
-if grep -q 'providerHealthCheckConcurrency' "$PATCH" && grep -q 'sync\.WaitGroup' "$PATCH"; then
-	ok "provider health check runs its nodes concurrently"
+# 0.4.0 起内核基础升级到 reF1nd v1.14.4-reF1nd：clash proxy-providers 已由
+# reF1nd 1.14.4 官方内置（实测 `sing-box check` 一个 providers 配置 rc=0），
+# 因此本项目不再携带 002 providers 补丁参与构建；该补丁文件已归档到
+# tools/sing-box-patches/archive-1.14.3/ 仅作历史保留。
+# 本段断言随之改为「构建目录里只剩 1.14.4 的 003 补丁，且 002 不参与」。
+PATCHDIR="$ROOT/tools/sing-box-patches"
+ACTIVE_PATCHES="$(ls "$PATCHDIR"/*.patch 2>/dev/null | xargs -n1 basename 2>/dev/null | sort)"
+if [ "$ACTIVE_PATCHES" = "003-add-cache-file-store-selected-1.14.4.patch" ]; then
+	ok "only the 1.14.4 store_selected patch is active (providers ship with reF1nd 1.14.4)"
 else
-	bad "provider health check is serial (a 30-node airport blows past the panel's 15s timeout)"
+	bad "active patch set is not the expected single 003-1.14.4 patch: [${ACTIVE_PATCHES}]"
 fi
 
-if grep -q 'time\.After(providerHealthCheckBudget)' "$PATCH" \
-   && grep -q 'providerHealthCheckTimeout     = 6 \* time\.Second' "$PATCH" \
-   && grep -q 'providerHealthCheckBudget      = 12 \* time\.Second' "$PATCH"; then
-	ok "provider health check is bounded (6s per node, 12s per batch)"
+if [ -f "$PATCHDIR/archive-1.14.3/002-support-clash-proxy-providers-1.14.3-reF1nd.patch" ]; then
+	ok "the obsolete 1.14.3 providers patch is archived, not dropped silently"
 else
-	bad "provider health check has no batch budget: one dead node can hold the whole reply"
+	bad "the 1.14.3 providers patch vanished without being archived"
 fi
 
-# 单节点 3 秒是 0.2.10 之前的取值，实测不够：hysteria2 的 QUIC + TLS 冷启动要
-# 4 秒以上（SNY 巴西-03 一次 4.26 s），被砍掉的节点在面板上就是「没有延迟」，
-# 用户看到的「整批 0 结果」有一半是它造成的。
-if grep -q 'providerHealthCheckTimeout     = 3 \* time\.Second' "$PATCH"; then
-	bad "provider health check still gives each node only 3s (slow hysteria2 nodes time out)"
+# 003（store_selected）必须真的把 store_selected 字段加到 CacheFileOptions，并在
+# LoadSelected/StoreSelected 上做门控 —— 否则 homeproxy 生成配置里的
+# experimental.cache_file.store_selected 会让内核报 unknown field。
+PATCH="$PATCHDIR/003-add-cache-file-store-selected-1.14.4.patch"
+if grep -q 'StoreSelected bool' "$PATCH" \
+   && grep -q 'json:"store_selected,omitempty"' "$PATCH" \
+   && grep -q 'if !c.storeSelected' "$PATCH"; then
+	ok "the store_selected patch adds the option field and gates loads/stores"
 else
-	ok "provider health check gives each node more than 3s"
+	bad "the store_selected patch no longer adds store_selected / does not gate Load/StoreSelected"
 fi
 
-# 探测地址必须跟 client.js 的 urltest_url 默认值一致，并且尊重 Clash 原生的
-# ?url= 参数。补丁里曾硬编码 gstatic：用户把 urltest_url 改成 google 之后，
-# 按钮测速仍然走 gstatic，两边口径对不上，看起来就像改动没生效。
-if grep -q 'testURL := "https://www\.google\.com/generate_204"' "$PATCH" \
-   && grep -q 'r\.URL\.Query()\.Get("url")' "$PATCH"; then
-	ok "provider health check defaults to google's generate_204 and honours ?url="
+# ── eBPF 四种代理模式（local × shared 组合）──────────────────────────────────
+# 现场依据：sing-box 1.14.4 的 option/ebpf.go 把枚举写死为
+#   local.data_plane  ∈ {cgroup, socket_assign}
+#   shared.data_plane ∈ {socket_assign, packet_rewrite}
+# 因此"LAN 设备 + 路由器本机都要代理"只有 4 种组合。UI 必须只给这 4 种（排在
+# Redirect TCP 之前），默认第 1 种；生成侧必须按模式照搬 data_plane，且
+# cgroup_path 只能在 local=cgroup 时下发（否则内核报 "local.cgroup_path requires
+# local.data_plane=cgroup" 直接拒绝启动）。
+CLIENTJS="$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"
+GC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+
+ebpf_modes="ebpf_cgroup_shared_socket_assign ebpf_cgroup_shared_packet_rewrite ebpf_socket_assign_shared_socket_assign ebpf_socket_assign_shared_packet_rewrite"
+missing_mode=""
+for m in $ebpf_modes; do
+	grep -q "o.value('$m'" "$CLIENTJS" || missing_mode="$missing_mode $m"
+done
+if [ -z "$missing_mode" ]; then
+	ok "the proxy-mode list offers all four eBPF local/shared combinations"
 else
-	bad "provider health check ignores the configured probe URL"
+	bad "eBPF proxy modes missing from the dropdown:$missing_mode"
 fi
 
-if grep -q 'www\.gstatic\.com/generate_204' "$PATCH"; then
-	bad "provider health check still probes gstatic while urltest_url defaults to google"
+if grep -q "o.default = 'ebpf_cgroup_shared_socket_assign'" "$CLIENTJS"; then
+	ok "the default proxy mode is eBPF local(cgroup) + shared(socket_assign)"
 else
-	ok "provider health check no longer hardcodes the gstatic probe"
+	bad "the default proxy mode is not the expected eBPF combination"
+fi
+
+# 4 个 eBPF 项必须排在 Redirect TCP 之前（用户明确要求的顺序）。
+order_ok=1
+prev=0
+for m in $ebpf_modes; do
+	ln=$(grep -n "o.value('$m'" "$CLIENTJS" | head -1 | cut -d: -f1)
+	[ -n "$ln" ] || { order_ok=0; break; }
+	[ "$ln" -gt "$prev" ] || { order_ok=0; break; }
+	prev=$ln
+done
+redirect_ln=$(grep -n "o.value('redirect', _('Redirect TCP'))" "$CLIENTJS" | head -1 | cut -d: -f1)
+if [ "$order_ok" = 1 ] && [ -n "$redirect_ln" ] && [ "$prev" -lt "$redirect_ln" ]; then
+	ok "all four eBPF entries are listed before Redirect TCP"
+else
+	bad "eBPF entries are not all listed before Redirect TCP (order changed)"
+fi
+
+# 生成侧必须是"模式→data_plane"的显式映射，而不是残留的单值 'ebpf' 分支或
+# 已废弃的 ebpf_local/ebpf_shared 开关。
+if grep -q "'ebpf_cgroup_shared_socket_assign':" "$GC" \
+   && grep -q "'ebpf_socket_assign_shared_packet_rewrite':" "$GC" \
+   && ! grep -q "ebpf_local\b" "$GC" \
+   && ! grep -q "ebpf_shared\b" "$GC"; then
+	ok "generate_client maps each eBPF mode to its data planes (no leftover on/off switches)"
+else
+	bad "generate_client still uses the old ebpf on/off switches or lacks the mode map"
+fi
+
+# cgroup_path 只能配 local=cgroup：内核在 socket_assign 下会直接报错拒启。
+if grep -q "ebpf_spec.local === 'cgroup'" "$GC"; then
+	ok "cgroup_path is only emitted when local.data_plane=cgroup"
+else
+	bad "cgroup_path can leak into a socket_assign config (kernel refuses to start)"
+fi
+
+# 出厂配置的默认值必须与 UI 默认一致，否则新装设备 UI 显示 eBPF 而实际跑 redirect。
+if grep -q "option proxy_mode 'ebpf_cgroup_shared_socket_assign'" "$PKG/root/etc/config/homeproxy"; then
+	ok "the shipped default config uses the same eBPF default as the UI"
+else
+	bad "shipped default proxy_mode and the UI default disagree"
+fi
+
+# 三处 `|| 'redirect_tproxy'` 兜底必须保持一致：若生成侧回落 eBPF 而防火墙侧回落
+# redirect，会同时产生 ebpf inbound 与 redirect nft 规则，两套抢同一批流量。
+fb=""
+for f in "$GC" "$PKG/root/etc/homeproxy/scripts/firewall_pre.uc" "$PKG/root/etc/homeproxy/scripts/firewall_post.ut"; do
+	grep -q "|| 'redirect_tproxy'" "$f" || fb="$fb $(basename "$f")"
+done
+if [ -z "$fb" ]; then
+	ok "generator and both firewall scripts share the same redirect_tproxy fallback"
+else
+	bad "proxy_mode fallback diverged:$fb (ebpf inbound and redirect rules would both apply)"
 fi
 
 # 补丁是手写的 unified diff：往 + 区加了行却忘了改 hunk 头，git apply 会报

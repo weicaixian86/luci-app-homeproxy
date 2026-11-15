@@ -3,7 +3,7 @@
 # HomeProxy 一体化部署脚本
 #   本目录必须包含：
 #     - luci-app-homeproxy_<版本>-all.ipk / .apk   （本仓库 CI 编译的 all 架构包；按包管理器自动选用）
-#     - sing-box                 （打补丁的 reF1nd 内核，版本为 1.14.3-reF1nd_<插件版本>）
+#     - sing-box                 （打补丁的 reF1nd 内核，版本为 1.14.4-reF1nd_<插件版本>）
 #     - install.sh / README.md   （本脚本与说明）
 #
 # 用法（在路由器上，本脚本所在目录内执行）：
@@ -67,7 +67,7 @@ if ! $PKG_INSTALL "$PKG_FILE"; then
 fi
 
 # ---- 4. 部署打补丁的 sing-box 内核 ------------------------------------------
-echo "==> [3/5] 部署打补丁的 sing-box 内核（版本 1.14.3-reF1nd_<插件版本>）"
+echo "==> [3/5] 部署打补丁的 sing-box 内核（版本 1.14.4-reF1nd_<插件版本>）"
 if [ ! -x ./sing-box ]; then
   echo ":: 错误：当前目录缺少可执行的 ./sing-box"
   exit 1
@@ -89,7 +89,7 @@ rm -rf /tmp/luci-indexcache /tmp/luci-modulecache 2>/dev/null || true
 
 echo ""
 echo "===== 部署完成，开始校验 ====="
-echo "-- sing-box 版本（应为 1.14.3-reF1nd_<插件版本>，如 1.14.3-reF1nd_0.1.3；下载跳过条件只比对下划线前的基础版本）--"
+echo "-- sing-box 版本（应为 1.14.4-reF1nd_<插件版本>，如 1.14.4-reF1nd_0.4.0；下载跳过条件只比对下划线前的基础版本）--"
 /usr/bin/sing-box version 2>/dev/null || echo "(sing-box version 读取失败)"
 echo ""
 echo "-- 配置里是否生成 proxy_providers（内核补丁生效标志）--"
@@ -98,8 +98,7 @@ grep -A2 proxy_providers /var/run/homeproxy/sing-box-c.json 2>/dev/null \
 echo ""
 echo "提示："
 echo "  1) 面板『更新内核』指向本次发布标签的 Release（如 0.1.01，含补丁内核）："
-echo "     amd64/arm64 点它会从你的仓库拉补丁版，安全；armv7/mipsle 不在自动下载名单，"
-echo "     仍请用本脚本升级（zip 内已含对应内核）。"
+echo "     amd64/arm64 点它会从你的仓库拉补丁版，安全（0.4.0 起不再构建 armv7/mipsle）。"
 echo "  2) 要升级内核/面板时，重新跑本脚本即可（它会再次覆盖 /usr/bin/sing-box 并重装 luci）。"
 echo "  3) 面板『代理供应商』页应列出每个订阅的节点/用量/到期；"
 echo "     『概览/连接/日志』三个实时页（WebSocket）也应恢复正常。"

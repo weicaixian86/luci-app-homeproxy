@@ -4238,3 +4238,21 @@ msgstr ""
 #: htdocs/luci-static/resources/homeproxy.js:1886
 msgid "valid uuid"
 msgstr ""
+
+msgid "eBPF: bypass private addresses"
+msgstr ""
+
+msgid "Skip LAN/private destination addresses in eBPF hijacking."
+msgstr ""
+
+msgid "eBPF local(cgroup) + shared(socket_assign)"
+msgstr ""
+
+msgid "eBPF local(cgroup) + shared(packet_rewrite)"
+msgstr ""
+
+msgid "eBPF local(socket_assign) + shared(socket_assign)"
+msgstr ""
+
+msgid "eBPF local(socket_assign) + shared(packet_rewrite)"
+msgstr ""

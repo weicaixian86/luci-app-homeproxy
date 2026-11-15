@@ -4416,3 +4416,21 @@ msgstr "有效 uuid"
 
 #~ msgid "Enable cache"
 #~ msgstr "启用缓存"
+
+msgid "eBPF: bypass private addresses"
+msgstr "eBPF：绕过私有地址"
+
+msgid "Skip LAN/private destination addresses in eBPF hijacking."
+msgstr "eBPF 劫持时跳过 LAN/私有目标地址。"
+
+msgid "eBPF local(cgroup) + shared(socket_assign)"
+msgstr "eBPF 本机(cgroup) + 局域网(socket_assign)"
+
+msgid "eBPF local(cgroup) + shared(packet_rewrite)"
+msgstr "eBPF 本机(cgroup) + 局域网(packet_rewrite)"
+
+msgid "eBPF local(socket_assign) + shared(socket_assign)"
+msgstr "eBPF 本机(socket_assign) + 局域网(socket_assign)"
+
+msgid "eBPF local(socket_assign) + shared(packet_rewrite)"
+msgstr "eBPF 本机(socket_assign) + 局域网(packet_rewrite)"

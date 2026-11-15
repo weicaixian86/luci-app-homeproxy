@@ -9,13 +9,15 @@
 # the matching reF1nd sing-box build, verifies its SHA-256 when a checksum is
 # published, and installs it to /usr/bin/sing-box.
 #
-# weicaixian86/luci-app-homeproxy（本仓库 Release, tag = 发布版本号如 0.1.01）发布打补丁的
-# Linux musl 内核构建，文件名带发布版本号（1.14.3-refind_<发布版本>-linux-<架构>-musl），供运行时自动下载：
-#   - x86_64  -> 1.14.3-refind_<发布版本>-linux-amd64-musl      （含 x86-64-v3 优先候选）
-#   - aarch64 -> 1.14.3-refind_<发布版本>-linux-arm64-musl
-#   - armv7*  -> 1.14.3-refind_<发布版本>-linux-armv7-musl
-#   - mipsel* -> 1.14.3-refind_<发布版本>-linux-mipsle-musl      （仅小端 mips；大端 mips 暂无构建）
-# armv5/armv6（arm-* 而非 armv7-*）与 大端 mips 暂不发布，脚本会给出明确提示并保留已有内核。
+# 0.4.0 起内核基础源码升级到 reF1nd v1.14.4-reF1nd，并叠加本项目补丁
+# （003 store_selected；002 providers 已由 reF1nd 1.14.4 官方自带，不再单独打），
+# 由本仓库 GitHub Actions 编译并编入 with_ebpf（支持 Linux 内核 eBPF），
+# 以 tar.gz 资产随本仓库 Release 发布，供运行时自动下载。
+# 自建资产命名：sing-box-1.14.4-reF1nd_<发布tag>-linux-<架构>-musl.tar.gz
+#   - x86_64  -> -linux-amd64-musl / -linux-amd64v3-musl（含 x86-64-v3 优先候选）
+#   - aarch64 -> -linux-arm64-musl
+#   - armv7* / mipsel* -> 0.4.0 起不再构建，脚本会明确提示并保留已有内核。
+# armv5/armv6（arm-* 而非 armv7-*）、大端 mips 同样暂不发布。
 #
 # Download methodology follows luci-app-vnt2cli:
 #   - curl is the preferred downloader, with --retry 2 inside a single mirror;
@@ -49,25 +51,25 @@ DOWNLOAD_ATTEMPTS_PROXIED=""
 
 # Pinned reF1nd release. Only the leading 'v' differs between the git tag and
 # the download path; the version string itself is reused verbatim.
-# NOTE: the shipped binary reports "<REFIND_VERSION>_<plugin-version>" (e.g.
-# 1.14.3-reF1nd_0.1.3) so the UI can distinguish our patched build from the
-# upstream reF1nd release. ensure_core() only compares the part before '_',
-# hence REFIND_VERSION stays the plain base version on purpose.
+#
+# 0.4.0 起内核基础源码升级到 reF1nd 的 v1.14.4-reF1nd，并叠加本项目补丁
+# （003 store_selected；002 providers 已由 reF1nd 1.14.4 官方自带，不再单独打）
+# 由本仓库 GitHub Actions 编译，编入 with_ebpf（支持 Linux 内核 eBPF）。
+# 二进制报告的版本串为 "1.14.4-reF1nd_<插件版本>"（如 1.14.4-reF1nd_0.4.0），
+# 与官方原版区分。仍从本仓库 Release 发布与下载。
 REFIND_REPO="weicaixian86/luci-app-homeproxy"
-REFIND_TAG="v1.14.3-reF1nd"
-REFIND_VERSION="1.14.3-reF1nd"
-# 发布标签同时充当两件事：Release 名（可能带 v 前缀）和内核压缩包的文件名
-# 组件（构建时统一不带 v）。这里剥掉前缀单独存一份，asset 名一律用它，
-# 这样发布时填 "v0.1.10" 还是 "0.1.10" 都不会找不到文件。
+REFIND_TAG="v1.14.4-reF1nd"
+REFIND_VERSION="1.14.4-reF1nd"
+# 发布标签同时充当 Release 名（可能带 v）与内核压缩包文件名组件（不带 v）。
+# CI 打包时会把 REFIND_TAG 改写为本次发布标签（如 0.4.0）。
 REFIND_ASSET_TAG="${REFIND_TAG#v}"
 REFIND_ASSET_TAG="${REFIND_ASSET_TAG#V}"
 
 # 「目标版本」= 下载安装后 `sing-box version` 会报告的完整版本串。
-# CI 构建时会把 REFIND_TAG 改成本次发布标签（如 0.1.12），而内核二进制的
-# ldflags 写的是 1.14.3-reF1nd_<发布标签>，所以这里也要带上下划线后缀，
+# CI 构建时把 REFIND_TAG 改成本次发布标签（如 0.4.0），内核二进制的
+# ldflags 写的是 1.14.4-reF1nd_<发布标签>，所以这里也要带上下划线后缀，
 # 否则 UI 会显示成 reF1nd 官方版本号，和已安装的版本对不上。
-# 未走 CI（REFIND_TAG 仍是默认的 v1.14.3-reF1nd）时不拼后缀，
-# 避免出现 1.14.3-reF1nd_1.14.3-reF1nd 这种串。
+# 未走 CI（REFIND_TAG 仍是默认的 v1.14.4-reF1nd）时不拼后缀。
 CORE_TARGET_VERSION="$REFIND_VERSION"
 if [ "$(printf '%s' "$REFIND_ASSET_TAG" | tr 'A-Z' 'a-z')" != "$(printf '%s' "$REFIND_VERSION" | tr 'A-Z' 'a-z')" ]; then
 	CORE_TARGET_VERSION="${REFIND_VERSION}_${REFIND_ASSET_TAG}"
@@ -325,22 +327,28 @@ cpu_supports_x86_64_v3() {
 # x86_64 CPU); otherwise only the baseline amd64 build is used.
 asset_candidates_for_arch() {
 	local arch="$1"
+	# 本仓库（自建带补丁内核）发布的资产命名（沿用 0.4.0 之前一致的约定，仅版本部分升级）：
+	#   sing-box-<REFIND_VERSION>_<REFIND_ASSET_TAG>-linux-<arch>-musl.tar.gz
+	# 例：sing-box-1.14.4-reF1nd_0.4.0-linux-amd64-musl.tar.gz
+	# CI 打包时会把 REFIND_TAG 改写为本次发布标签（如 0.4.0）。
+	# 注意：本项目自建，仅构建 amd64 / amd64v3 / arm64 三种（放弃 armv7/mipsle）。
+	local ver="${REFIND_VERSION}" tag="${REFIND_ASSET_TAG}"
 	case "$arch" in
 		x86_64)
 			if cpu_supports_x86_64_v3; then
-				echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64v3-musl.tar.gz sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64-musl.tar.gz"
+				echo "sing-box-${ver}_${tag}-linux-amd64v3-musl.tar.gz sing-box-${ver}_${tag}-linux-amd64-musl.tar.gz"
 			else
-				echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-amd64-musl.tar.gz"
+				echo "sing-box-${ver}_${tag}-linux-amd64-musl.tar.gz"
 			fi
 			;;
 		aarch64)
-			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-arm64-musl.tar.gz"
+			echo "sing-box-${ver}_${tag}-linux-arm64-musl.tar.gz"
 			;;
-		armv7*)
-			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-armv7-musl.tar.gz"
-			;;
-		mipsel*|*mipsle*)
-			echo "sing-box-1.14.3-refind_${REFIND_ASSET_TAG}-linux-mipsle-musl.tar.gz"
+		armv7*|mipsel*|*mipsle*)
+			# 0.4.0 起本项目自建内核只构建 amd64/amd64v3/arm64 三种，不再提供
+			# armv7 / mipsle。返回失败让上层提示「当前架构暂不支持」并保留
+			# 现有内核，绝不误导用户去下载一个会 404 的文件。
+			return 1
 			;;
 		*)
 			return 1
@@ -894,12 +902,10 @@ ensure_core() {
 	fi
 
 	cur_ver="$(installed_core_version)"
-	# The shipped binary reports "<base>_<plugin-version>" (e.g.
-	# 1.14.3-reF1nd_0.1.3). Only the base part is compared so that:
-	#   · an older core installed by a previous release, or a plain "<base>"
-	#     string, is still recognised as up-to-date and never overwritten with
-	#     an official (unpatched) reF1nd binary;
-	#   · the plugin-version suffix stays purely informational for the UI.
+	# 二进制可能是自编译的 "<base>_<插件版本>"（如 1.14.4-reF1nd_0.4.0），
+	# 也可能是不带后缀的纯 "<base>"。只比较 `_` 之前的基础版本号，因此：
+	#   · 旧版内核、或纯 "<base>" 串，都能被正确识别为「已是目标版本」；
+	#   · 需要升级到 1.14.4 时（base 不同）会正常触发下载。
 	cur_base="${cur_ver%%_*}"
 	if [ -x "$CORE_BIN" ] && [ "$cur_base" = "$REFIND_VERSION" ]; then
 		log_download "reF1nd 内核已是最新版本：${cur_ver}"
@@ -922,7 +928,7 @@ ensure_core() {
 
 	# Last resort: an archive placed manually by the user, e.g. copied over
 	# SSH when every mirror is unreachable:
-	#   scp sing-box-1.14.3-refind_*-linux-amd64-musl.tar.gz root@router:/etc/homeproxy/sing-box.tar.gz
+	#   scp sing-box-1.14.4-reF1nd_<发布tag>-linux-amd64-musl.tar.gz root@router:/etc/homeproxy/sing-box.tar.gz
 	if [ -f "${HP_DIR}/sing-box.tar.gz" ]; then
 		log_download "尝试安装手动放置的内核：${HP_DIR}/sing-box.tar.gz"
 		if extract_and_install "${HP_DIR}/sing-box.tar.gz"; then

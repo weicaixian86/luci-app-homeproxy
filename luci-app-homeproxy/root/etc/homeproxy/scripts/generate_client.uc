@@ -221,7 +221,8 @@ const mixed_port = uci.get(uciconfig, uciinfra, 'mixed_port') || '5330';
 
 let self_mark, redirect_port, tproxy_port, tun_name,
     tun_addr4, tun_addr6, tun_mtu, tcpip_stack,
-    udp_timeout;
+    udp_timeout,
+    ebpf_cgroup_path, ebpf_bypass_private, ebpf_interface;
 
 if (routing_mode === 'custom')
 	udp_timeout = uci.get(uciconfig, uciroutingsetting, 'udp_timeout');
@@ -243,6 +244,44 @@ if (match(proxy_mode, /tun/)) {
 	tcpip_stack = 'system';
 	if (routing_mode === 'custom')
 		tcpip_stack = uci.get(uciconfig, uciroutingsetting, 'tcpip_stack') || 'system';
+}
+/* eBPF 四种代理模式（UI 下拉里的 4 项），值即「local 数据面 + shared 数据面」的组合。
+   用显式映射表而不是字符串切分：`socket_assign_socket_assign` 这类用 '_' 切分
+   会产生歧义。四种都同时启用 local 与 shared，因此既给 LAN 设备当透明代理网关，
+   也让路由器本机走代理。
+   枚举合法性（1.14.4 option/ebpf.go:32,52）：
+     local ∈ {cgroup, socket_assign}；shared ∈ {socket_assign, packet_rewrite}。 */
+const ebpf_mode_map = {
+	'ebpf_cgroup_shared_socket_assign':        { local: 'cgroup',        shared: 'socket_assign' },
+	'ebpf_cgroup_shared_packet_rewrite':       { local: 'cgroup',        shared: 'packet_rewrite' },
+	'ebpf_socket_assign_shared_socket_assign': { local: 'socket_assign', shared: 'socket_assign' },
+	'ebpf_socket_assign_shared_packet_rewrite':{ local: 'socket_assign', shared: 'packet_rewrite' }
+};
+let ebpf_spec = ebpf_mode_map[proxy_mode];
+/* 兼容：早期版本的单一 'ebpf' 取值，等价于默认的第 1 种（cgroup + socket_assign）。 */
+if (proxy_mode === 'ebpf')
+	ebpf_spec = ebpf_mode_map['ebpf_cgroup_shared_socket_assign'];
+
+if (ebpf_spec) {
+	/* eBPF 透明代理：由 sing-box 的内核 eBPF inbound 直接接管流量，不再使用
+	   nftables 的 redirect/tproxy 劫持链（firewall_post.ut 里 redirect/tproxy/tun
+	   三类分支都不会命中，故不会生成劫持规则）。
+	   - local（本机进程）：cgroup 数据面挂 cgroup 钩子；socket_assign 数据面走 tcx。
+	   - shared（LAN 转发）：socket_assign 或 packet_rewrite，均通过 tcx 附着网卡。
+	   data_plane 完全由所选模式决定，不再有单独的开关。 */
+	ebpf_cgroup_path = uci.get(uciconfig, ucimain, 'ebpf_cgroup_path');
+	ebpf_bypass_private = uci.get(uciconfig, ucimain, 'ebpf_bypass_private');
+	/* shared 数据面必须指定接管哪个网卡（sing-box: "shared.interface
+	   must not be empty"）。取值优先级：UI 显式 ebpf_interface → control.listen_interfaces
+	   第一项 → network.lan.device → eth0。 */
+	ebpf_interface = uci.get(uciconfig, ucimain, 'ebpf_interface');
+	if (isEmpty(ebpf_interface)) {
+		let li = uci.get(uciconfig, 'control', 'listen_interfaces');
+		if (type(li) === 'array' && length(li) > 0)
+			ebpf_interface = li[0];
+	}
+	if (isEmpty(ebpf_interface))
+		ebpf_interface = uci.get('network', 'lan', 'device') || uci.get('network', 'lan', 'ifname') || 'eth0';
 }
 
 /* Only the four levels the UI offers are accepted by sing-box. A hand-edited
@@ -943,12 +982,12 @@ clash_api = {
 	   experimental.cache_file (see the cache_file block below), NEVER under clash_api.
 	   In sing-box 1.12+ clash_api.store_selected is rejected at startup (deprecated
 	   since 1.8.0, see experimental/clashapi/server.go) — emitting it there makes the
-	   Clash API abort. The stock reF1nd 1.14.3-reF1nd kernel's cache_file also lacked
-	   the field, but this repo's build-deploy.yml applies
-	   tools/sing-box-patches/003-add-cache-file-store-selected.patch which adds it back,
-	   so the patched kernel accepts cache_file.store_selected and persists the selected
-	   outbound across restarts. Outdated stock kernels without that patch would reject
-	   it as an unknown field. */
+	   Clash API abort. The reF1nd 1.14.4-reF1nd kernel (like 1.14.3) still lacks the
+	   `store_selected` option on the global cache_file, so this repo's build-deploy.yml
+	   applies tools/sing-box-patches/003-add-cache-file-store-selected-1.14.4.patch which
+	   adds it back, so the patched kernel accepts cache_file.store_selected and persists
+	   the selected outbound across restarts. Outdated stock kernels without that patch
+	   would reject it as an unknown field. */
 	/* Native proxy providers for the patched reF1nd kernel. The kernel serves
 	   /providers/proxies from this list; empty in non-subscription modes. */
 	proxy_providers: build_proxy_providers()
@@ -1195,6 +1234,35 @@ if (match(proxy_mode, /tun/))
 		udp_timeout: strToTime(udp_timeout),
 		stack: tcpip_stack
 	});
+if (ebpf_spec) {
+	/* 内核 eBPF 透明代理 inbound。字段遵循 sing-box 1.14.4 的 option.EBPFInboundOptions：
+	   local/shared 各自 {enabled, data_plane, ...}。四种模式都已确定
+	   local/shared 的 data_plane，这里直接照搬，不再做开关判断。 */
+	let ebpf_inbound = {
+		type: 'ebpf',
+		tag: 'ebpf-in',
+		network: ['tcp', 'udp']
+	};
+	let local_opt = { enabled: true, data_plane: ebpf_spec.local };
+	/* cgroup_path 只在 local=cgroup 时合法（sing-box: "local.cgroup_path requires
+	   local.data_plane=cgroup"），socket_assign 下不得下发。 */
+	if (ebpf_spec.local === 'cgroup' && !isEmpty(ebpf_cgroup_path))
+		local_opt.cgroup_path = ebpf_cgroup_path;
+	/* 默认跳过私有地址：LAN 内部访问不该被劫持（ebpf_bypass_private 默认开）。 */
+	if (ebpf_bypass_private === '1')
+		local_opt.bypass_private_address = true;
+	ebpf_inbound.local = local_opt;
+
+	let shared_opt = { enabled: true, data_plane: ebpf_spec.shared };
+	/* shared 数据面必须绑定网卡接口（sing-box 要求非空）。 */
+	if (!isEmpty(ebpf_interface))
+		shared_opt.interface = [ ebpf_interface ];
+	if (ebpf_bypass_private === '1')
+		shared_opt.bypass_private_address = true;
+	ebpf_inbound.shared = shared_opt;
+
+	push(config.inbounds, ebpf_inbound);
+}
 /* Inbound end */
 
 /* Outbound start */

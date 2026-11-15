@@ -2,10 +2,10 @@
 适用于 OpenWrt 的 HomeProxy LuCI 管理界面，完美适配Clash API面板（基于 immortalwrt/homeproxy 修改）。
 
 ## 版本说明
-支持架构：amd64 / arm64 / armv7 / mipsle  
+支持架构：amd64 / arm64  
 luci-app-homeproxy_<版本>-all.ipk Openwrt 24.10版本LUCI安装包  
 luci-app-homeproxy_<版本>-all.apk Openwrt 25.12版本LUCI安装包  
-sing-box-1.14.3-refind_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核  
+sing-box-1.14.4-reF1nd_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核（含 with_ebpf）  
 homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁内核）
 
 ## 界面截图
@@ -34,20 +34,18 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
      ```sh
      apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
      ```
-3. 首次启动服务时，插件会按架构自动下载并安装 reF1nd sing-box 内核（`1.14.3-reF1nd`，含 clash proxy-providers 补丁）；也可以在 LuCI 状态页「sing-box 内核管理」中手动点「下载 / 更新内核」。
+3. 首次启动服务时，插件会按架构自动下载并安装 reF1nd sing-box 内核（`1.14.4-reF1nd`，含 clash proxy-providers 与 Linux 内核 eBPF 支持）；也可以在 LuCI 状态页「sing-box 内核管理」中手动点「下载 / 更新内核」。
 ### 方式二：下载 ZIP 离线安装（含内核，无需额外下载）
 适合无法联网拉取内核、或希望一次性铺好「面板 + 内核」的路由器。每个架构一个 zip，内含 luci 包（`.ipk` 与 `.apk` 都有）、打补丁内核 `sing-box`、`install.sh` 与说明。
 1. 到 Releases 下载对应架构的 zip（按 `uname -m` 选择；`<版本>` 为实际发布号）：
    - `x86_64`  → `homeproxy-deploy_<版本>-amd64.zip`
    - `aarch64` → `homeproxy-deploy_<版本>-arm64.zip`
-   - `armv7`   → `homeproxy-deploy_<版本>-armv7.zip`
-   - `mipsel`  → `homeproxy-deploy_<版本>-mipsle.zip`
 2. 上传ZIP包到路由器 `/tmp`，安装：
    ```sh
    cd /tmp && unzip -o homeproxy-deploy_<版本>-amd64.zip && cd homeproxy-deploy_<版本>-amd64 && sh install.sh
    ```
 3. `install.sh` 会自动执行：停服务 → 安装 luci（opkg/apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
-> 两种方式下内核版本都钉死为 `1.14.3-reF1nd`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
+> 两种方式下内核版本都钉死为 `1.14.4-reF1nd_<插件版本>`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
 
 ## 二、卸载
 ### OpenWrt 24.10（`opkg`）
@@ -138,4 +136,4 @@ rm -rf /tmp/luci-modulecache/* 2>/dev/null
 
 ## 四、感谢作者
 - immortalwrt：https://github.com/immortalwrt/homeproxy
-- reF1nd（sing-box 内核基础源码）：https://github.com/reF1nd/sing-box （v1.14.3-reF1nd）
+- reF1nd（sing-box 内核基础源码）：https://github.com/reF1nd/sing-box （v1.14.4-reF1nd）

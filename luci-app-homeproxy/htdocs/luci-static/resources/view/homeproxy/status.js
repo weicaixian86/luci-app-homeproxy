@@ -545,7 +545,7 @@ return view.extend({
 
 				detail += ' / ' + _('Arch: %s').format(sres.arch || '-');
 
-				/* 目标版本用「完整版本串」（1.14.3-reF1nd_<发布版本>），
+				/* 目标版本用「完整版本串」（1.14.4-reF1nd_<发布版本>），
 				   与安装后 sing-box version 报出来的完全一致；旧后端没有
 				   target_version 时回落到基础版本号。 */
 				if (sres.asset_available)
