@@ -4059,6 +4059,27 @@ else
 	bad "subscription triggers are not all named in the log"
 fi
 
+# 面板「单机场更新」的取 id 路径必须有两条：补丁 004 把 md5(订阅URL) 写进
+# /var/run/homeproxy/provider-update-id 后**不带参数** exec 脚本，所以脚本
+# 除了 $1 还必须回落到读请求文件。237 现场两连击：
+#   · 只读 $1 → `提供者标识非法（''）` → 面板按钮点了没反应；
+#   · 用 `tr -d '[:space:]'` 去空白 → BusyBox tr 把 a/c/e/s/p 一起删，
+#     32 位 hash 削成 28 位 → `标识长度不是 32 位`。
+UPD_SH="$PKG/root/etc/homeproxy/scripts/update_provider.sh"
+if grep -q 'REQUEST_FILE="\$RUN_DIR/provider-update-id"' "$UPD_SH" \
+   && grep -q '\[ -s "\$REQUEST_FILE" \]' "$UPD_SH" \
+   && grep -q 'tr -d' "$UPD_SH"; then
+	ok "update_provider.sh falls back to the request file written by the panel"
+else
+	bad "update_provider.sh only reads \$1: the panel's update button silently does nothing"
+fi
+
+if ! grep -q "tr -d '\[:space:\]'" "$UPD_SH"; then
+	ok "update_provider.sh does not use tr '[:space:]' (BusyBox deletes a/c/e/s/p)"
+else
+	bad "update_provider.sh uses tr '[:space:]': BusyBox mangles the 32-byte hash"
+fi
+
 # ── 订阅更新：成功才允许碰服务（0.2.2 用户定稿） ────────────────────────────
 # 「更新成功应该会重载服务，更新不成功不应该影响当前服务」。旧版两处违反：
 #   · 下载前就 stop（所谓绕过自身代理），失败再 start 回来——失败也断流一次；

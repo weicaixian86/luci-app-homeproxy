@@ -29,7 +29,23 @@ REQUEST_FILE="$RUN_DIR/provider-update-id"
 LOCK_DIR="$RUN_DIR/provider-update.lock"
 LOG_FILE="$RUN_DIR/homeproxy.log"
 UPDATER="/etc/homeproxy/scripts/update_subscriptions.uc"
+# 提供者标识的来源有两个，必须都支持：
+#   ① 命令行参数 $1 —— 手动执行 `update_provider.sh <32位hash>`；
+#   ② 请求文件 $REQUEST_FILE —— 内核 Clash API 的
+#      `PUT /providers/proxies/<name>` 由补丁 004 处理：它把 md5(订阅URL)
+#      写进 provider-update-id，再 `exec.Command(脚本)` **不带参数** 启动。
+# 之前这里只读 $1，于是面板点「更新」时 $1 为空 → 日志
+#   `更新请求被忽略：提供者标识非法（''）`
+# → 直接 exit 1，面板按钮点了没反应（237 现场复现）。
+# 改为「参数优先，缺省读请求文件」。
 PROVIDER_ID="${1:-}"
+if [ -z "$PROVIDER_ID" ] && [ -s "$REQUEST_FILE" ]; then
+	# 只删真正的空白字符。**不要**用方括号字符类（space 那一类）去删空白：
+	# 方括号表达式当成「这些字符的集合」，于是连 a/c/e/s/p 一起删掉，
+	# 32 位 hash 被削成 28 位 → 后面长度校验失败（237 现场：
+	# `提供者标识长度不是 32 位（'634385764b1d845843fdb4f82b1d'）`）。
+	PROVIDER_ID="$(tr -d ' \t\r\n' < "$REQUEST_FILE" 2>/dev/null)"
+fi
 LOCK_WAIT=30
 LOCK_HELD=0
 
