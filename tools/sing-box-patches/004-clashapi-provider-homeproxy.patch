@@ -1,5 +1,5 @@
 diff --git a/experimental/clashapi/provider.go b/experimental/clashapi/provider.go
-index e2c7713..4b5c6f4 100644
+index e2c7713..168d4c7 100644
 --- a/experimental/clashapi/provider.go
 +++ b/experimental/clashapi/provider.go
 @@ -3,6 +3,10 @@ package clashapi
@@ -30,7 +30,42 @@ index e2c7713..4b5c6f4 100644
  	})
  	return r
  }
-@@ -65,8 +71,27 @@ func providerInfo(server *Server, p adapter.Provider) *badjson.JSONObject {
+@@ -48,6 +54,12 @@ func getProvider(server *Server) func(w http.ResponseWriter, r *http.Request) {
+ 	}
+ }
+ 
++// homeProxySeedPathProvider is implemented by the remote provider type of
++// reF1nd sing-box; HomeProxyInitialPath returns the seed file the plugin writes.
++type homeProxySeedPathProvider interface {
++	HomeProxyInitialPath() string
++}
++
+ func providerInfo(server *Server, p adapter.Provider) *badjson.JSONObject {
+ 	var info badjson.JSONObject
+ 	proxies := make([]*badjson.JSONObject, 0)
+@@ -58,15 +70,48 @@ func providerInfo(server *Server, p adapter.Provider) *badjson.JSONObject {
+ 	info.Put("vehicleType", C.ProviderDisplayName(p.Type())) // HTTP, File, Compatible
+ 	info.Put("name", p.Tag())
+ 	info.Put("proxies", proxies)
+-	info.Put("updatedAt", p.UpdatedAt())
++	/* Report the plugin's own "last updated" when it owns a seed file: the
++	   kernel only fills lastUpdated on a real fetch, so a panel "update this
++	   airport" click (which rewrites the seed, then relies on cache/seed at the
++	   next start) would otherwise leave updatedAt stuck at zero/old — the panel
++	   shows "updated 7 hours ago" forever. The seed mtime is exactly when the
++	   plugin refreshed this subscription. */
++	updatedAt := p.UpdatedAt()
++	if seedProvider, ok := p.(homeProxySeedPathProvider); ok {
++		if seedPath := seedProvider.HomeProxyInitialPath(); seedPath != "" {
++			if stat, err := os.Stat(seedPath); err == nil && stat.ModTime().After(updatedAt) {
++				updatedAt = stat.ModTime()
++			}
++		}
++	}
++	info.Put("updatedAt", updatedAt)
+ 	if p, ok := p.(adapter.ProviderSubscriptionInfo); ok {
+ 		info.Put("subscriptionInfo", p.SubscriptionInfo())
+ 	}
  	return &info
  }
  
@@ -58,7 +93,7 @@ index e2c7713..4b5c6f4 100644
  	if provider, isUpdater := provider.(adapter.ProviderUpdater); isUpdater {
  		if err := provider.Update(); err != nil {
  			render.Status(r, http.StatusServiceUnavailable)
-@@ -77,6 +102,54 @@ func updateProvider(w http.ResponseWriter, r *http.Request) {
+@@ -77,6 +122,54 @@ func updateProvider(w http.ResponseWriter, r *http.Request) {
  	render.NoContent(w, r)
  }
  
@@ -114,7 +149,7 @@ index e2c7713..4b5c6f4 100644
  	provider := r.Context().Value(CtxKeyProvider).(adapter.Provider)
  	provider.HealthCheck(r.Context())
 diff --git a/provider/remote/remote.go b/provider/remote/remote.go
-index 2a34362..e4c4b37 100644
+index 2a34362..738ce44 100644
 --- a/provider/remote/remote.go
 +++ b/provider/remote/remote.go
 @@ -3,7 +3,9 @@ package remote
@@ -127,7 +162,7 @@ index 2a34362..e4c4b37 100644
  	"errors"
  	"fmt"
  	"io"
-@@ -220,6 +222,20 @@ func (s *ProviderRemote) SubscriptionInfo() adapter.SubscriptionInfo {
+@@ -220,6 +222,30 @@ func (s *ProviderRemote) SubscriptionInfo() adapter.SubscriptionInfo {
  	return s.subscriptionInfo
  }
  
@@ -143,6 +178,16 @@ index 2a34362..e4c4b37 100644
 +	}
 +	sum := md5.Sum([]byte(s.url))
 +	return hex.EncodeToString(sum[:])
++}
++
++// HomeProxyInitialPath exposes the seed file written by luci-app-homeproxy so the
++// Clash API can report the plugin's own "last updated" time (seed mtime) instead
++// of the kernel's fetch time. The kernel only sets lastUpdated when it actually
++// fetches; when it loads from initial_path the field stays at its zero value, so
++// a panel "update this airport" click (which updates the seed but relies on the
++// cache/seed at next start) would otherwise never move "updatedAt".
++func (s *ProviderRemote) HomeProxyInitialPath() string {
++	return s.initialPath
 +}
 +
  func (s *ProviderRemote) Close() error {

@@ -2433,6 +2433,19 @@ else
 	bad "patch 004 no longer provides the provider update hook and/or the slash-tolerant delay route"
 fi
 
+# 面板「更新于 X 前」取自 Clash API 的 provider.updatedAt。内核只在**真的 fetch**
+# 时才写 lastUpdated：从 initial_path/缓存加载时该字段是零值或旧值，于是插件更新完
+# 订阅、种子 mtime 变了，面板仍显示「7 小时前」/「0001-01-01」（237 现场）。
+# 修法：补丁 004 的 providerInfo 用种子文件 mtime 覆盖 updatedAt。
+if grep -q 'func (s \*ProviderRemote) HomeProxyInitialPath' "$PATCH4" \
+   && grep -q 'homeProxySeedPathProvider' "$PATCH4" \
+   && grep -q 'os.Stat(seedPath)' "$PATCH4" \
+   && grep -q 'stat.ModTime().After(updatedAt)' "$PATCH4"; then
+	ok "patch 004 reports the seed mtime as provider updatedAt (panel 'updated X ago' moves)"
+else
+	bad "patch 004 does not use the seed mtime: the panel's provider 'updatedAt' stays stale"
+fi
+
 if [ -f "$PATCHDIR/archive-1.14.3/002-support-clash-proxy-providers-1.14.3-reF1nd.patch" ]; then
 	ok "the obsolete 1.14.3 providers patch is archived, not dropped silently"
 else
