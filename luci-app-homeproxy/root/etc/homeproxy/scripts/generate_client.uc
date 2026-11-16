@@ -1127,7 +1127,11 @@ if (!isEmpty(ntp_server))
 		server: ntp_server,
 		server_port: strToInt(ntp_server_port),
 		interval: ntp_interval,
-		detour: 'direct-out',
+		/* 不下发 detour 字段：本项目 direct-out 是「空 direct」出站，
+		   sing-box 1.14 会直接拒绝（common/dialer/detour.go:64
+		   "detour to an empty direct outbound makes no sense"），表现为
+		   `ERROR ntp: initialize time: detour to an empty direct outbound makes no sense`
+		   —— 时间同步完全失效（237 实测）。省略 detour 时内核用隐式默认出站，正常。 */
 		domain_resolver: 'default-dns',
 	};
 
@@ -1350,6 +1354,30 @@ if (match(proxy_mode, /tun/))
 		udp_timeout: strToTime(udp_timeout),
 		stack: tcpip_stack
 	});
+/* 默认路由接口：从 /proc/net/route 里找 Destination=00000000 的那一行。
+   用于判断「配置给 shared 的接口」是不是本机的默认出口接口（单网口设备
+   LAN/WAN 同一个 eth0 就属于这种情况）。 */
+function default_route_interface() {
+	const content = readfile('/proc/net/route');
+	if (isEmpty(content))
+		return null;
+
+	/* 注意：ucode 的 `for (x in array)` 遍历的是**元素**而不是下标，
+	   所以这里直接用 line 元素本身，不能按数组下标去取。 */
+	for (let line in split(content, '\n')) {
+		const fields = split(trim(line), '\t');
+		if (length(fields) < 8 || isEmpty(fields[0]))
+			continue;
+		/* 表头那行 fields[1] 是 "Destination"，自然被排除。 */
+		if (fields[1] !== '00000000')
+			continue;
+
+		return fields[0];
+	}
+
+	return null;
+}
+
 if (ebpf_spec) {
 	/* 内核 eBPF 透明代理 inbound。字段遵循 sing-box 1.14.4 的 option.EBPFInboundOptions：
 	   local/shared 各自 {enabled, data_plane, ...}。四种模式都已确定
@@ -1371,8 +1399,22 @@ if (ebpf_spec) {
 
 	let shared_opt = { enabled: true, data_plane: ebpf_spec.shared };
 	/* shared 数据面必须绑定网卡接口（sing-box 要求非空）。 */
-	if (!isEmpty(ebpf_interface))
+	if (!isEmpty(ebpf_interface)) {
 		shared_opt.interface = [ ebpf_interface ];
+
+		/* 关键：sing-box 的 activeSharedInterfaces() 会**把默认路由接口从
+		   shared.interface 里删掉**，除非显式 default_interface=true：
+		       if includeDefaultInterface { return configured }
+		       return DeleteFunc(configured, n => n == defaultInterface)
+		   单网口设备（x86 软路由 LAN 与 WAN 同为 eth0）配置的接口正好就是默认
+		   路由接口，于是 shared 列表被删空，inbound 永远停在
+		       state=waiting_for_interface, waiting_paths=["shared"]
+		   —— 本机(local)照常工作、**LAN 设备却完全不被代理**，正是 237 实测
+		   到的现象（切换 socket_assign / packet_rewrite 都一样）。
+		   多网口设备（eth0=LAN、eth1=WAN）两者不相等，不会置位，行为不变。 */
+		if (ebpf_interface === default_route_interface())
+			shared_opt.default_interface = true;
+	}
 	if (ebpf_bypass_private === '1')
 		shared_opt.bypass_private_address = true;
 	ebpf_inbound.shared = shared_opt;

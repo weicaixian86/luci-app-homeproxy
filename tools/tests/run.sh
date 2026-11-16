@@ -2518,6 +2518,36 @@ else
 	bad "cgroup_path can leak into a socket_assign config (kernel refuses to start)"
 fi
 
+# shared 数据面：内核 activeSharedInterfaces() 会把「默认路由接口」从
+# shared.interface 里删掉，除非 default_interface=true。单网口设备（LAN/WAN 同为
+# eth0）因此永远挂不上 shared —— 237 实测日志
+#   state=waiting_for_interface, waiting_paths=["shared"]
+# 修复后 state=normal 且 active_attachments 含 {"interface":"eth0","role":"shared","mechanism":"tcx"}。
+if grep -q 'function default_route_interface' "$GC" \
+   && grep -q "readfile('/proc/net/route')" "$GC" \
+   && grep -q 'ebpf_interface === default_route_interface()' "$GC" \
+   && grep -q 'shared_opt.default_interface = true' "$GC"; then
+	ok "shared interface gets default_interface=true when it is the default-route iface"
+else
+	bad "shared.interface equals the default-route iface without default_interface: LAN hijack never attaches"
+fi
+
+# ucode 的 `for (x in array)` 遍历元素而非下标：写成 lines[i] 会拿到 null，
+# 导致 helper 永远返回 null、上面那行永不生效（实测踩过）。
+if ! grep -q 'lines\[i\]' "$GC"; then
+	ok "default_route_interface iterates array values (ucode for-in yields elements)"
+else
+	bad "default_route_interface uses lines[i]: in ucode that is null, the helper never matches"
+fi
+
+# ntp 不得 detour 到「空 direct」出站：1.14 会报
+# "detour to an empty direct outbound makes no sense" 并让时间同步失效（237 实测）。
+if ! sed -n '/config\.ntp = {/,/};/p' "$GC" | grep -q "detour:"; then
+	ok "ntp does not detour to the empty direct outbound (time sync stays working)"
+else
+	bad "ntp detours to direct-out: sing-box 1.14 rejects it and NTP never initializes"
+fi
+
 # 出厂配置**不得**默认 eBPF：插件可能先于内核升级落地（或内核下载失败），
 # 此时默认 eBPF 会让新装/重置配置的设备一起起不来。出厂用 redirect_tproxy，
 # 内核带 with_ebpf 时由 UI 的 o.default 把新选项默认成 eBPF（见上一条断言）。
