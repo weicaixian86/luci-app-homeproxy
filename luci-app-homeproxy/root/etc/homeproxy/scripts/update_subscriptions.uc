@@ -1926,17 +1926,41 @@ function choose_subscription_body(url, body) {
    内核就找不到种子 —— 而没有种子时它会在启动阶段**同步**拉订阅，机场不可达
    就直接 FATAL，整个 sing-box 起不来（provider/remote.go: StartContext）。
    写失败只记日志、不影响订阅更新本身。 */
-function write_provider_seed(group_hash, body) {
+/* 内核 provider 正文的首行约定（provider/remote.go 的 decodeContent → parseInfo）：
+   `upload=..;download=..;total=..;expire=..`。内核自己写缓存时也会在正文前面加这一行
+   （remote.go: `content = append([]byte(infoStr+"\n"), content...)`），只是它不把它存进
+   bbolt 的 SavedBinary —— 所以流量/到期只能从「内容」里读。
+   插件写种子时带上这一行后：重启内核 → loadInitialPath/loadCacheFile → decodeContent
+   → parseInfo，**不联网就能还原上次的流量与到期**；不再出现「重启后供应商流量全变 0」。
+   （237 现场：重启后 LX/PKM/SNY 的 subscriptionInfo 全 0，只有能立刻拉到头的 NB 有数字。） */
+function provider_seed_info_line(info) {
+	if (type(info) !== 'object' || isEmpty(info))
+		return null;
+
+	let parts = [];
+	for (let key in ['upload', 'download', 'total', 'expire']) {
+		const value = info[key];
+		if (isEmpty(value))
+			continue;
+		push(parts, sprintf('%s=%s', key, value));
+	}
+
+	return length(parts) ? join(';', parts) : null;
+}
+
+function write_provider_seed(group_hash, body, info) {
 	if (isEmpty(group_hash) || isEmpty(body))
 		return;
 
 	const dir = HP_DIR + '/providers',
-	      path = sprintf('%s/%s.sub', dir, group_hash);
+	      path = sprintf('%s/%s.sub', dir, group_hash),
+	      info_line = provider_seed_info_line(info),
+	      payload = info_line ? info_line + '\n' + body : body;
 
 	system(`mkdir -p ${dir}`);
 
 	try {
-		writefile(path, body);
+		writefile(path, payload);
 	} catch (e) {
 		log(sprintf('Failed to write provider seed %s: %s', path, trim(sprintf('%s', e))));
 		return;
@@ -1945,9 +1969,9 @@ function write_provider_seed(group_hash, body) {
 	/* 回读校验：写了一半/被磁盘写满时，内核会拿这份残缺正文去解析，
 	   表现为 provider 0 节点 → 「no servers found」→ 服务起不来。 */
 	const check = readfile(path);
-	if (isEmpty(check) || length(check) !== length(body))
+	if (isEmpty(check) || length(check) !== length(payload))
 		log(sprintf('Provider seed %s looks truncated (%d/%d bytes); the kernel may fall back to fetching on start.',
-			path, length(check ?? ''), length(body)));
+			path, length(check ?? ''), length(payload)));
 }
 
 function main() {
@@ -2104,15 +2128,13 @@ function main() {
 			failed++;
 		}
 		else {
-			/* 先把正文种给内核 provider（initial_path），再继续写 uci：
-			   即便后面某一步失败，种子也是可用的，内核启动不会因为
-			   「既无缓存又无种子」去同步拉订阅。 */
-			write_provider_seed(groupHash, res);
+			/* 先解析 userinfo 头，把结果留给下面「种子首行」用；种子本身在信息
+			   合并完成后再落盘（见下方 write_provider_seed 的调用点）。 */
+			let subscription_info = parse_subscription_userinfo(response.headers);
 
 			const info_option = subscription_info_option(url),
 			      display_name = subscription_display_name(url);
 			const previous_info = previous_subscription_info(info_option);
-			let subscription_info = parse_subscription_userinfo(response.headers);
 
 			/* 补 userinfo 头这一跳要跟正文走同一条路径（response.via_proxy
 			   由 fetch_subscription 标注）：正文是直连拉的、头却去问代理，
@@ -2147,6 +2169,16 @@ function main() {
 			}
 
 			subscription_info.updated_at = getTime();
+
+			/* 种子放在「信息合并完成之后」写，且仍在写 uci 节点之前：
+			   ① 正文要在写 uci 之前落盘 —— 即便后面某一步失败，内核启动也不会因为
+			      「既无缓存又无种子」去同步拉订阅；
+			   ② 首行必须用**最终合并后**的 userinfo（很多机场只有带 Clash Meta UA
+			      的第二次请求才返回 subscription-userinfo，用第一次的头会写不出首行，
+			      重启后流量就变 0 —— 237 现场 LX/PKM/SNY 就是这样）。
+			   内核 loadInitialPath/loadCacheFile → decodeContent → parseInfo 会读首行，
+			   因此重启后**不联网**也能还原上次的流量与到期。 */
+			write_provider_seed(groupHash, res, subscription_info);
 			uci.set(uciconfig, ucisubscription, info_option, sprintf('%.J', subscription_info));
 
 			log(sprintf('Successfully fetched %s nodes of total %s from %s.', count, length(nodes), url));

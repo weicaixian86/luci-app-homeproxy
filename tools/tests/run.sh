@@ -2623,10 +2623,33 @@ else
 	bad "provider seed path differs between generator and updater (the kernel would find no seed)"
 fi
 
-if grep -q 'write_provider_seed(groupHash, res)' "$UPD"; then
+if grep -q 'write_provider_seed(groupHash, res, subscription_info)' "$UPD"; then
 	ok "a successful subscription update seeds the provider cache"
 else
 	bad "the updater never writes the provider seed, so providers can never appear"
+fi
+
+# 种子首行必须是 `upload=..;download=..;total=..;expire=..`：
+# 内核 provider/remote.go 的 decodeContent → parseInfo 只从「内容首行」还原
+# 流量/到期（bbolt 的 SavedBinary 并不存 subscriptionInfo）。不写首行 →
+# 每次重启供应商页的流量全变 0（237 现场实测：LX/PKM/SNY 重启后全 0）。
+if grep -q 'function provider_seed_info_line' "$UPD" \
+   && grep -q "'upload', 'download', 'total', 'expire'" "$UPD" \
+   && grep -qF 'info_line ? info_line +' "$UPD" \
+   && grep -q 'length(payload)' "$UPD"; then
+	ok "provider seeds carry a subscription-info first line so traffic survives restarts"
+else
+	bad "provider seeds lack the info first line: subscriptionInfo resets to 0 on every restart"
+fi
+
+# 首行必须来自「合并后」的信息：很多机场只有带 Clash Meta UA 的第二次请求才返回
+# subscription-userinfo，用第一次的头写种子会写不出首行（237 现场 LX/PKM/SNY）。
+seed_ln=$(grep -n 'write_provider_seed(groupHash, res, subscription_info)' "$UPD" | head -1 | cut -d: -f1)
+info_ln=$(grep -n 'subscription_info.updated_at = getTime()' "$UPD" | head -1 | cut -d: -f1)
+if [ -n "$seed_ln" ] && [ -n "$info_ln" ] && [ "$seed_ln" -gt "$info_ln" ]; then
+	ok "the seed is written after the user info has been merged (no zeros on restart)"
+else
+	bad "the seed is written before the merged user info is available; restarts would show 0"
 fi
 
 # 显式 detour 到「空 direct」会被内核拒绝（common/dialer/detour.go:64），
