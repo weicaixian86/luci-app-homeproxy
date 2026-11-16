@@ -2563,11 +2563,14 @@ else
 	bad "DNS hijack still redirects to dnsmasq:53 (self-loop): LAN clients cannot resolve"
 fi
 
+# UDP 53 劫持到 5333；**不能**劫持 TCP 53：sing-box 的 dns 入站（type=direct, listen 5333）
+# 只处理 UDP DNS，TCP 劫持过去会得到 0 字节应答，反而比不劫持更糟（不劫持时
+# dnsmasq 的 TCP 53 可用）。237 实测：TCP 53 redirect 到 5333 后 nc 查询返回 0 字节。
 if grep -q "udp dport 53 counter redirect to :{{ dns_port }}" "$FW" \
-   && grep -q "tcp dport 53 counter redirect to :{{ dns_port }}" "$FW"; then
-	ok "DNS hijack covers both UDP and TCP port 53"
+   && ! grep -q "tcp dport 53" "$FW"; then
+	ok "DNS hijack covers UDP 53 only (5333 has no TCP DNS; hijacking TCP would break it)"
 else
-	bad "DNS hijack misses TCP 53: TCP-fallback resolvers would still fail"
+	bad "DNS hijack touches TCP 53: 5333 cannot answer TCP DNS, so TCP fallback would fail"
 fi
 
 if grep -q "ebpf_dns_mode = uci.get(uciconfig, uciinfra, 'ebpf_dns_mode') || 'off'" "$GC" \
