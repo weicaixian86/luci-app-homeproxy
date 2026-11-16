@@ -3,8 +3,9 @@
 
 ## 版本说明
 支持架构：amd64 / arm64  
-luci-app-homeproxy_<版本>-all.ipk Openwrt 24.10版本LUCI安装包  
-luci-app-homeproxy_<版本>-all.apk Openwrt 25.12版本LUCI安装包  
+> OpenWrt **24.10 及更早不再提供安装包**：eBPF 透明代理需要 Linux 6.6+ 且内核编译带 `with_ebpf`，这些版本内核过低，装上也无法启用 eBPF，请升级到 25.12 后再安装。
+
+luci-app-homeproxy_<版本>-all.apk OpenWrt 25.12 版本 LUCI 安装包  
 sing-box-1.14.4-reF1nd_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核（含 with_ebpf）  
 homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁内核）
 
@@ -20,23 +21,17 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
 > 截图中的地址、节点与订阅信息均为示例环境。
 
 ## 一、安装
-### 方式一：安装 IPK / APK，内核自动下载（推荐，在线）
+### 方式一：安装 APK，内核自动下载（推荐，在线）
 适合能联网、已配置软件源的路由器。装好面板后，打补丁的 reF1nd 内核会按设备架构自动下载并安装。
-1. 到 Releases 下载与系统对应的包（`<版本>` 替换成实际发布号，如 `0.1.01`）：
-   - OpenWrt **24.10** → `luci-app-homeproxy_<版本>-all.ipk`
+1. 到 Releases 下载 **OpenWrt 25.12** 的包（`<版本>` 替换成实际发布号，如 `0.4.6`）：
    - OpenWrt **25.12** → `luci-app-homeproxy_<版本>-all.apk`
-2. 上传到路由器 `/tmp`，按系统安装：
-   - 24.10（`opkg`）：
-     ```sh
-     opkg update && opkg install /tmp/luci-app-homeproxy_<版本>-all.ipk
-     ```
-   - 25.12（`apk`）：
-     ```sh
-     apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
-     ```
+2. 上传到路由器 `/tmp` 后安装：
+   ```sh
+   apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
+   ```
 3. 首次启动服务时，插件会按架构自动下载并安装 reF1nd sing-box 内核（`1.14.4-reF1nd`，含 clash proxy-providers 与 Linux 内核 eBPF 支持）；也可以在 LuCI 状态页「sing-box 内核管理」中手动点「下载 / 更新内核」。
 ### 方式二：下载 ZIP 离线安装（含内核，无需额外下载）
-适合无法联网拉取内核、或希望一次性铺好「面板 + 内核」的路由器。每个架构一个 zip，内含 luci 包（`.ipk` 与 `.apk` 都有）、打补丁内核 `sing-box`、`install.sh` 与说明。
+适合无法联网拉取内核、或希望一次性铺好「面板 + 内核」的路由器。每个架构一个 zip，内含 luci 包（`.apk`）、打补丁内核 `sing-box`、`install.sh` 与说明。
 1. 到 Releases 下载对应架构的 zip（按 `uname -m` 选择；`<版本>` 为实际发布号）：
    - `x86_64`  → `homeproxy-deploy_<版本>-amd64.zip`
    - `aarch64` → `homeproxy-deploy_<版本>-arm64.zip`
@@ -44,7 +39,7 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
    ```sh
    cd /tmp && unzip -o homeproxy-deploy_<版本>-amd64.zip && cd homeproxy-deploy_<版本>-amd64 && sh install.sh
    ```
-3. `install.sh` 会自动执行：停服务 → 安装 luci（opkg/apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
+3. `install.sh` 会自动执行：停服务 → 安装 luci（apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
 > 两种方式下内核版本都钉死为 `1.14.4-reF1nd_<插件版本>`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
 
 ## 二、卸载

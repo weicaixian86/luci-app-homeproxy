@@ -2,7 +2,8 @@
 
 本 ZIP 由 GitHub Actions 自动构建，内含：
 
-- `luci-app-homeproxy_<版本>-all.ipk` / `.apk` —— 本仓库用 OpenWrt SDK 编译的 **all 架构** luci 包（含中文 lmo；按包管理器二选一）
+- `luci-app-homeproxy_<版本>-all.apk` —— 本仓库用 OpenWrt 25.12 SDK 编译的 **all 架构** luci 包（含中文 lmo）
+  （IPK / OpenWrt 24.10 及更早已不再提供：内核过低，启用不了 eBPF）
 - `sing-box` —— **打过补丁的 reF1nd sing-box 1.14.4-reF1nd** 静态二进制（对应架构，含 with_ebpf）
 - `install.sh` —— 一键部署脚本
 - `README.md` —— 本说明
@@ -23,7 +24,7 @@
 4. 等待所有 job 完成（luci 编译 + 2 个架构内核 amd64/arm64 + 打包，约 10–20 分钟）
 5. 到 **Releases** 页面，该版本只有一个 Release（标签即你填的版本号），内含：
    - `homeproxy-deploy_<ver>-amd64.zip` / `-arm64`：各架构一体化部署包（命名与 luci 包一致：版本号在前、架构在后）
-   - `luci-app-homeproxy_<ver>-all.ipk` / `.apk`：独立 luci 包（不含内核，装后自动下载）
+   - `luci-app-homeproxy_<ver>-all.apk`：独立 luci 包（不含内核，装后自动下载）
    - `sing-box-1.14.4-reF1nd_<版本>-linux-*-musl.tar.gz`：打补丁内核（供「更新内核」自动下载）
 
 > 说明：luci 包是架构无关的（all），每个 zip 只是内核二进制不同。
@@ -42,7 +43,7 @@ ssh root@路由器IP
 cd /tmp && unzip -o homeproxy-deploy_0.1.01-amd64.zip && cd homeproxy-deploy_0.1.01-amd64 && sh install.sh
 ```
 
-`install.sh` 会自动：停服务 → 用 opkg/apk 安装 luci（自动解决依赖，需联网或已配源）→
+`install.sh` 会自动：停服务 → 用 apk 安装 luci（自动解决依赖，需联网或已配源）→
 铺设打补丁内核到 `/usr/bin/sing-box` → 启用并启动 homeproxy → 刷新 LuCI 缓存。
 
 ---
@@ -71,12 +72,13 @@ cd /tmp && unzip -o homeproxy-deploy_0.1.01-amd64.zip && cd homeproxy-deploy_0.1
    `update_core.sh` 的 `ensure_core` 只比对 `_` 之前的基础版本 `1.14.4-reF1nd`，因此会判定
    「已是最新」并**跳过下载**，从而保留补丁。若用裸 `go build` 编译导致版本为 `unknown`，
    会被判定需更新而被覆盖。
-3. **luci 依赖**：`opkg install` / `apk add` 会自动拉 `firewall4 / dnsmasq-full / kmod-tun /
+3. **luci 依赖**：`apk add` 会自动拉 `firewall4 / dnsmasq-full / kmod-tun /
    kmod-nft-tproxy / curl / jsonfilter / ucode-*` 等；若你的镜像缺少源，安装会警告，
    需先配好软件源或手动补齐依赖，否则面板/分流不可用。
-4. **apk 镜像（OpenWrt 25.12+）**：每个 zip 内已同时含 `.ipk` 与 `.apk`，`install.sh` 会
-   按当前包管理器自动选对文件安装，无需额外操作。同一 Release 也单独提供了
-   `luci-app-homeproxy_<ver>-all.apk`，可直接 `apk add --allow-untrusted` 安装后再走自动下载内核。
+4. **仅支持 OpenWrt 25.12+（apk）**：每个 zip 内含 `.apk`，`install.sh` 直接安装，无需额外操作。
+   同一 Release 也单独提供 `luci-app-homeproxy_<ver>-all.apk`，可直接
+   `apk add --allow-untrusted` 安装后再走自动下载内核。**24.10 及更早（opkg/ipk）不再支持**：
+   内核过低，启用不了 eBPF 透明代理，请升级系统。
 
 ---
 

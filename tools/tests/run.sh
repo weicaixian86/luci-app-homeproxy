@@ -2654,6 +2654,26 @@ else
 	bad "maintenance workflow risk:$WF_BAD"
 fi
 
+# ── IPK 已退场：IPK 面向 OpenWrt 24.10 及更早，内核偏低装不了 eBPF 内核 ────────
+# 现场：CI 在 SDK 里编 IPK 时因宿主缺 GNU install 等依赖直接失败（Error 1），
+# 且该产物本身在 24.10 上无法启用 eBPF。现只编 APK(25.12)。
+BD="$ROOT/.github/workflows/build-deploy.yml"
+if ! grep -qE '^\s+ext:\s*ipk\s*$' "$BD" \
+   && ! grep -qE '^\s+- name: IPK ' "$BD" \
+   && ! grep -q 'luci-app-homeproxy_\*-all\.ipk' "$BD" \
+   && grep -qE '^\s+ext:\s*apk\s*$' "$BD"; then
+	ok "build workflow builds APK only (IPK / OpenWrt 24.10 dropped: no eBPF kernel)"
+else
+	bad "build workflow still builds/copies IPK: it fails on SDK host prereqs and cannot run eBPF"
+fi
+
+if ! grep -q 'luci-app-homeproxy_\*-all\.ipk' "$ROOT/deploy/install.sh" \
+   && grep -q '已不再提供 .ipk' "$ROOT/deploy/install.sh"; then
+	ok "install.sh rejects opkg/24.10 and installs only the .apk"
+else
+	bad "install.sh still references the .ipk package or lacks the 24.10 rejection"
+fi
+
 # ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
 # 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
 # （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测

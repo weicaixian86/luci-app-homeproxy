@@ -2,10 +2,10 @@ name: Build & Release All-in-One
 
 # 一体化构建与发布（只跑这一个 workflow 即覆盖全部安装方式）：
 #   - guard job：发布前用 git ls-remote --tags 与 gh release view 校验，拒绝覆盖同名 tag/Release（需求 4.3.3）
-#   - luci job（matrix）：用 OpenWrt SDK 分别编译
-#       · OpenWrt 24.10.0 的 .ipk（opkg 安装）
-#       · OpenWrt 25.12.0 的 .apk（apk 安装）
-#     两者均含中文 lmo；独立产物随 Release 发布，可直接 opkg/apk 安装。
+#   - luci job：用 OpenWrt 25.12.0 SDK 编译 .apk（apk 安装，含中文 lmo），随 Release 发布。
+#     **不再编译 .ipk**：IPK 面向 OpenWrt 24.10 及更早，内核版本偏低，装不了 eBPF 内核
+#     （eBPF 透明代理需要 Linux 6.6+ 且内核带 with_ebpf），保留只会误导用户下载装不上的包。
+#     需要 24.10 的用户请升级到 25.12 再安装。
 #   - core job（matrix）：clone reF1nd/sing-box @ v1.14.4-reF1nd，打本项目补丁
 #     （仅 003 store_selected；002 clash proxy-providers 已由 reF1nd 1.14.4 官方自带，
 #     不再单独打），Go 交叉编译多架构静态内核（amd64 / arm64；amd64v3 为 amd64 副本）。
@@ -13,7 +13,7 @@ name: Build & Release All-in-One
 #     即自动启用，与官方流水线一致）。armv7 / mipsle 不再构建。
 #   - package job：只发一个 Release，tag 即输入版本号（如 0.4.0），包含：
 #       · 每架构一个一体化 zip（luci 包 + 内核 + install.sh + README）
-#       · 独立 luci-app-homeproxy_<ver>-all.ipk / .apk
+#       · 独立 luci-app-homeproxy_<ver>-all.apk
 #       · sing-box-1.14.4-reF1nd-refind_<版本>-linux-{amd64,amd64v3,arm64}-musl.tar.gz
 #     构建时会把 update_core.sh 的 REFIND_TAG 改写为该 Release 标签，
 #     使「更新内核」按钮从同一个 Release 自动下载打补丁内核。
@@ -69,7 +69,7 @@ jobs:
           echo "OK: tag '$tag' does not exist yet; proceeding"
 
   # ===========================================================================
-  # 1) 编译 luci 包（matrix：24.10 IPK + 25.12 APK，均含中文 lmo）
+  # 1) 编译 luci 包（OpenWrt 25.12 APK，含中文 lmo；不再编 24.10 IPK）
   # ===========================================================================
   luci:
     name: Build luci ${{ matrix.name }}
@@ -81,9 +81,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: IPK (OpenWrt 24.10.0)
-            sdk_url: https://downloads.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
-            ext: ipk
           - name: APK (OpenWrt 25.12.0)
             sdk_url: https://downloads.openwrt.org/releases/25.12.0/targets/x86/64/openwrt-sdk-25.12.0-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst
             ext: apk
@@ -366,7 +363,7 @@ jobs:
           path: sha256-${{ matrix.arch }}.txt
 
   # ===========================================================================
-  # 3) 打包 zip + 独立 IPK/APK + 内核 tar.gz，并发布到 Release
+  # 3) 打包 zip + 独立 APK + 内核 tar.gz，并发布到 Release
   # ===========================================================================
   package:
     name: Package and Release
@@ -391,12 +388,12 @@ jobs:
           version="${tag#v}"; version="${version#V}"
           echo "version=$version"
           for arch in amd64 arm64; do
-            # 命名与 luci 包（luci-app-homeproxy_<ver>-all.ipk）一致：版本号在前、
+            # 命名与 luci 包（luci-app-homeproxy_<ver>-all.apk）一致：版本号在前、
             # 架构在后，用下划线分隔 —— README 与 deploy/README.md 都按这个名字
             # 写命令，用连字符会让用户照文档下载 404。
+            # 只发 .apk：IPK（24.10 及更早）内核偏低，装不了 eBPF 内核，已不再构建。
             d="homeproxy-deploy_${version}-${arch}"
             mkdir -p "$d"
-            cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk "$d/"
             cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk "$d/"
             cp -f "artifacts/core-bin-$arch/sing-box-$arch"        "$d/sing-box"
             cp -f deploy/install.sh                                "$d/"
@@ -445,7 +442,6 @@ jobs:
       - name: Stage standalone luci packages
         run: |
           set -e
-          cp -f artifacts/luci-ipk/luci-app-homeproxy_*-all.ipk ./
           cp -f artifacts/luci-apk/luci-app-homeproxy_*-all.apk ./
           ls -la luci-app-homeproxy_*
 
@@ -457,7 +453,6 @@ jobs:
           body_path: release_body.md
           files: |
             homeproxy-deploy*.zip
-            luci-app-homeproxy_*-all.ipk
             luci-app-homeproxy_*-all.apk
             sing-box-1.14.4-reF1nd_*.tar.gz
             sha256sums-*.txt

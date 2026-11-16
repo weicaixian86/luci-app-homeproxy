@@ -2,7 +2,8 @@
 # =============================================================================
 # HomeProxy 一体化部署脚本
 #   本目录必须包含：
-#     - luci-app-homeproxy_<版本>-all.ipk / .apk   （本仓库 CI 编译的 all 架构包；按包管理器自动选用）
+#     - luci-app-homeproxy_<版本>-all.apk         （本仓库 CI 编译的 all 架构包）
+#       IPK（OpenWrt 24.10 及更早）已不再提供：那些版本内核过低，启用不了 eBPF，请升级到 25.12。
 #     - sing-box                 （打补丁的 reF1nd 内核，版本为 1.14.4-reF1nd_<插件版本>）
 #     - install.sh / README.md   （本脚本与说明）
 #
@@ -29,9 +30,14 @@ elif command -v opkg >/dev/null 2>&1; then
   PKG=opkg
   PKG_INSTALL="opkg install"
   PKG_REMOVE="opkg remove"
+elif command -v opkg >/dev/null 2>&1; then
+  echo ":: 错误：检测到 opkg（OpenWrt 24.10 及更早）。本版本已不再提供 .ipk 安装包。"
+  echo "   eBPF 透明代理需要 Linux 6.6+ 且内核带 with_ebpf，24.10 内核过低，装上也启用不了。"
+  echo "   请升级到 OpenWrt 25.12（apk）后再安装。"
+  exit 1
 else
-  echo ":: 错误：未找到 opkg 或 apk，无法安装 luci。"
-  echo "   请先手动安装 ./luci-app-homeproxy_*-all.ipk，再单独部署内核（把 ./sing-box 拷到 /usr/bin/sing-box）。"
+  echo ":: 错误：未找到 apk 包管理器，无法安装 luci。"
+  echo "   本版本仅支持 OpenWrt 25.12（apk）。"
   exit 1
 fi
 echo "==> 包管理器: $PKG"
@@ -43,10 +49,9 @@ sleep 1
 
 # ---- 3. 安装 / 重装 luci-app-homeproxy --------------------------------------
 echo "==> [2/5] 安装 luci-app-homeproxy（自动解决依赖，需联网或已配置软件源）"
-# 按当前包管理器选择对应的包文件（zip 内同时含 .ipk 与 .apk；文件名带版本号）
+# 只发 .apk（IPK 已随 24.10 一起退场；文件名带版本号）
 case "$PKG" in
   apk)  PKG_EXT="apk" ;;
-  opkg) PKG_EXT="ipk" ;;
   *)    PKG_EXT="" ;;
 esac
 PKG_FILE=""
@@ -56,14 +61,14 @@ if [ -n "$PKG_EXT" ]; then
 fi
 if [ -z "$PKG_FILE" ]; then
   echo ":: 错误：当前目录缺少 luci-app-homeproxy*.${PKG_EXT}"
-  echo "   请确认下载的是与本机包管理器匹配的部署包（opkg→.ipk，apk→.apk）。"
+  echo "   本版本仅提供 .apk（OpenWrt 25.12）。"
   exit 1
 fi
-# 已安装则先卸载（opkg/apk 默认保留 conffiles，配置不丢），保证可重复执行=升级
+# 已安装则先卸载（apk 默认保留 conffiles，配置不丢），保证可重复执行=升级
 $PKG_REMOVE luci-app-homeproxy 2>/dev/null || true
 if ! $PKG_INSTALL "$PKG_FILE"; then
   echo ":: 警告：luci 安装失败（多半是软件源不可用或依赖缺失）。"
-  echo "   请确认 opkg/apk 源可用后重试；内核仍会照常部署，但 LuCI 页面可能缺失。"
+  echo "   请确认 apk 源可用后重试；内核仍会照常部署，但 LuCI 页面可能缺失。"
 fi
 
 # ---- 4. 部署打补丁的 sing-box 内核 ------------------------------------------
