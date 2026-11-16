@@ -1388,6 +1388,18 @@ if (ebpf_spec) {
 		network: ['tcp', 'udp']
 	};
 	let local_opt = { enabled: true, data_plane: ebpf_spec.local };
+	/* DNS 必须交给正常的劫持链（nft dstnat :53 → redirect to :5333）处理，不能让
+	   eBPF 在 TC/cgroup 层先截走。默认 dns_mode=hijack 时，eBPF 在 netfilter 之前
+	   就吃掉发往本机 53 的查询，却又没转交给 sing-box 的 DNS 入口（5333），
+	   结果是**静默丢弃**。192.168.0.23 现场：网关+DNS 指向 237 后局域网 WEB 能开
+	   （TCP 转发正常）、国内外域名全部解析失败；237 上
+	   `nslookup www.baidu.com 192.168.0.237` 超时，而 `127.0.0.1:53` 与
+	   `192.168.0.237:5333` 均正常；把 proxy_mode 临时改为 redirect_tproxy
+	   （无 eBPF）后 `192.168.0.237:53` 立刻恢复 —— 由此定位。
+	   取值：off（默认，完全交给 nft 的 dstnat 劫持链）/ respect_policy / hijack。
+	   实测：respect_policy / hijack 仍会让 192.168.0.237:53 超时，只有 off 恢复。 */
+	const ebpf_dns_mode = uci.get(uciconfig, uciinfra, 'ebpf_dns_mode') || 'off';
+	local_opt.dns_mode = ebpf_dns_mode;
 	/* cgroup_path 只在 local=cgroup 时合法（sing-box: "local.cgroup_path requires
 	   local.data_plane=cgroup"），socket_assign 下不得下发。 */
 	if (ebpf_spec.local === 'cgroup' && !isEmpty(ebpf_cgroup_path))
@@ -1398,6 +1410,9 @@ if (ebpf_spec) {
 	ebpf_inbound.local = local_opt;
 
 	let shared_opt = { enabled: true, data_plane: ebpf_spec.shared };
+	/* 与 local 同理：shared 侧的 DNS 也不能被 eBPF 抢在 netfilter 之前截走，
+	   否则 LAN 设备的 DNS 请求会静默丢失（192.168.0.23 现场）。 */
+	shared_opt.dns_mode = ebpf_dns_mode;
 	/* shared 数据面必须绑定网卡接口（sing-box 要求非空）。 */
 	if (!isEmpty(ebpf_interface)) {
 		shared_opt.interface = [ ebpf_interface ];

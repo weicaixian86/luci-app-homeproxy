@@ -108,8 +108,14 @@ for (let i in control_options)
 	control_info[i] = uci.get(cfgname, 'control', i);
 
 const dns_redirect = uci.get(cfgname, 'infra', 'dns_redirect') || '1';
+/* 劫持目标必须是 homeproxy 自己的 DNS 入口（infra.dns_port，默认 5333），而不是
+   dnsmasq 的 53。原先取 dhcp.@dnsmasq[0].port（=53），生成的规则变成
+   `udp dport 53 redirect to :53` —— 把 LAN 设备的 DNS 包又送回本机 53，
+   也就是 dnsmasq 自己，形成自环，客户端解析超时/被拒。
+   现场（192.168.0.23 网关+DNS 指向本机）复现：局域网 WEB 能开（TCP 正常）、
+   国内国外域名全部解析失败。 */
 const dns_hijacked = uci.get('dhcp', '@dnsmasq[0]', 'dns_redirect') || '0',
-      dns_port = uci.get('dhcp', '@dnsmasq[0]', 'port') || '53';
+      dns_port = uci.get(cfgname, 'infra', 'dns_port') || '5333';
 /* UCI config end */
 -%}
 
@@ -257,6 +263,7 @@ chain dstnat {
 	meta iifname {{ array_to_nftarr(control_info.listen_interfaces) }}
 	{%- endif /* listen_interfaces */ %}
 	meta nfproto { ipv4, ipv6 } udp dport 53 counter redirect to :{{ dns_port }} comment "!{{ cfgname }}: DNS hijack"
+	meta nfproto { ipv4, ipv6 } tcp dport 53 counter redirect to :{{ dns_port }} comment "!{{ cfgname }}: DNS hijack (TCP)"
 {% endif /* dns_hijacked */ %}
 {% if (match(proxy_mode, /redirect/)): %}
 	meta nfproto { {{ (ipv6_support === '1') ? 'ipv4, ipv6' : 'ipv4' }} } meta l4proto tcp jump homeproxy_redirect_lanac

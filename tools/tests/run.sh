@@ -2548,6 +2548,36 @@ else
 	bad "ntp detours to direct-out: sing-box 1.14 rejects it and NTP never initializes"
 fi
 
+# ── 透明网关的 DNS 链路（192.168.0.23 现场：网关+DNS 指向本机后域名全解析失败）──
+# 两个独立缺陷，缺一不可：
+#  ① nft 的劫持目标曾是 dnsmasq 的 53（`redirect to :53` = 自环），必须指向
+#     homeproxy 自己的 DNS 入口 infra.dns_port（5333）；
+#  ② eBPF inbound 的 dns_mode 默认 hijack 会在 netfilter 之前截走发往本机 53 的
+#     查询且不转交，实测 respect_policy 仍超时，只有 off 恢复。
+FW="$PKG/root/etc/homeproxy/scripts/firewall_post.ut"
+if grep -q "dns_port = uci.get(cfgname, 'infra', 'dns_port')" "$FW" \
+   && ! grep -q "uci.get('dhcp', '@dnsmasq\[0\]', 'port')" "$FW" \
+   && grep -q 'redirect to :{{ dns_port }}' "$FW"; then
+	ok "DNS hijack redirects to homeproxy's own dns_port, not back to dnsmasq:53"
+else
+	bad "DNS hijack still redirects to dnsmasq:53 (self-loop): LAN clients cannot resolve"
+fi
+
+if grep -q "udp dport 53 counter redirect to :{{ dns_port }}" "$FW" \
+   && grep -q "tcp dport 53 counter redirect to :{{ dns_port }}" "$FW"; then
+	ok "DNS hijack covers both UDP and TCP port 53"
+else
+	bad "DNS hijack misses TCP 53: TCP-fallback resolvers would still fail"
+fi
+
+if grep -q "ebpf_dns_mode = uci.get(uciconfig, uciinfra, 'ebpf_dns_mode') || 'off'" "$GC" \
+   && grep -q 'local_opt.dns_mode = ebpf_dns_mode' "$GC" \
+   && grep -q 'shared_opt.dns_mode = ebpf_dns_mode' "$GC"; then
+	ok "eBPF dns_mode defaults to off so nft can hand DNS to sing-box's resolver"
+else
+	bad "eBPF dns_mode not forced off: it silently eats queries to port 53 (no resolution)"
+fi
+
 # 出厂配置**不得**默认 eBPF：插件可能先于内核升级落地（或内核下载失败），
 # 此时默认 eBPF 会让新装/重置配置的设备一起起不来。出厂用 redirect_tproxy，
 # 内核带 with_ebpf 时由 UI 的 o.default 把新选项默认成 eBPF（见上一条断言）。
