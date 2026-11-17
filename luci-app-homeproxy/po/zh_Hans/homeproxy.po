@@ -2280,7 +2280,7 @@ msgstr "当前架构暂无可匹配的二进制。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1497
 msgid "No policy node is selected."
-msgstr "未选择策略节点。"
+msgstr "未选择策略组。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2700
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2718
@@ -2536,7 +2536,7 @@ msgstr "策略组不使用上游出站。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1484
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1959
 msgid "Policy nodes"
-msgstr "策略节点"
+msgstr "策略组"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2385
 #: htdocs/luci-static/resources/view/homeproxy/client.js:2525
@@ -3820,7 +3820,7 @@ msgstr "未知错误"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1492
 msgid "Unknown policy node"
-msgstr "未知策略节点"
+msgstr "未知策略组"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1464
 msgid "Unnamed airport"

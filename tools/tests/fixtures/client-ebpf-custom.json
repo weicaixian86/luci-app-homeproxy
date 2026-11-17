@@ -1,0 +1,2130 @@
+{
+	"log": {
+		"disabled": false,
+		"level": "warn",
+		"output": "/var/run/homeproxy/sing-box-c.log",
+		"timestamp": true
+	},
+	"ntp": {
+		"enabled": true,
+		"server": "ntp.aliyun.com",
+		"server_port": 123,
+		"interval": "30m",
+		"domain_resolver": "default-dns"
+	},
+	"dns": {
+		"servers": [
+			{
+				"tag": "default-dns",
+				"type": "udp",
+				"server": "223.5.5.5"
+			},
+			{
+				"tag": "system-dns",
+				"type": "local"
+			},
+			{
+				"tag": "cfg-dns_server_dnspod-dns",
+				"type": "https",
+				"server": "1.12.12.12",
+				"server_port": 443,
+				"path": "/dns-query"
+			},
+			{
+				"tag": "cfg-dns_server_cloudflare-dns",
+				"type": "https",
+				"server": "1.1.1.1",
+				"server_port": 443,
+				"path": "/dns-query",
+				"detour": "默认代理"
+			}
+		],
+		"rules": [
+			{
+				"rule_set": [
+					"geosite-private",
+					"geosite-cn"
+				],
+				"action": "route",
+				"server": "cfg-dns_server_dnspod-dns"
+			}
+		],
+		"strategy": "ipv4_only",
+		"final": "cfg-dns_server_cloudflare-dns"
+	},
+	"inbounds": [
+		{
+			"type": "direct",
+			"tag": "dns-in",
+			"listen": "::",
+			"listen_port": 5333
+		},
+		{
+			"type": "mixed",
+			"tag": "mixed-in",
+			"listen": "::",
+			"listen_port": 5330,
+			"set_system_proxy": false
+		},
+		{
+			"type": "ebpf",
+			"tag": "ebpf-in",
+			"network": [
+				"tcp",
+				"udp"
+			],
+			"local": {
+				"enabled": true,
+				"data_plane": "cgroup",
+				"dns_mode": "off",
+				"bypass_private_address": true
+			},
+			"shared": {
+				"enabled": true,
+				"data_plane": "socket_assign",
+				"dns_mode": "off",
+				"interface": [
+					"eth0"
+				],
+				"default_interface": true,
+				"bypass_private_address": true
+			}
+		}
+	],
+	"outbounds": [
+		{
+			"type": "direct",
+			"tag": "direct-out"
+		},
+		{
+			"type": "block",
+			"tag": "block-out"
+		},
+		{
+			"type": "selector",
+			"tag": "默认代理",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "全球手动",
+			"outbounds": [
+				"[NB] 🇭🇰香港HKT02|hy2",
+				"[NB] 🇭🇰香港HKT03",
+				"[NB] 🇭🇰香港HKT05|v6入口",
+				"[NB] 🇭🇰香港HKT08|hy2",
+				"[NB] 🇭🇰香港HKT09",
+				"[NB] 🇭🇰香港HKT11|v6入口",
+				"[NB] 🇸🇬新加坡02|hy2|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡03|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡05|流媒体解锁|AI|v6入口",
+				"[NB] 🇯🇵日本02|hy2|流媒体解锁|AI",
+				"[NB] 🇯🇵日本03|流媒体解锁|AI",
+				"[NB] 🇰🇷韩国03|家宽",
+				"[NB] 🇨🇳台湾01|Google play|AI|移动优化",
+				"[NB] 🇨🇳台湾03|Google play|AI|移动优化",
+				"[NB] 🇺🇸亚特兰大01|流媒体解锁|AI|移动优化",
+				"[NB] 🇺🇸凤凰城03|流媒体解锁|AI|移动优化",
+				"[NB] 🇩🇪德国01|移动优化",
+				"[NB] 🇬🇧英国01|流媒体解锁|AI|移动优化",
+				"[LX] 🇭🇰香港高速01|BGP|CMCU",
+				"[LX] 🇭🇰香港高速02|BGP|CMCU",
+				"[LX] 🇭🇰香港高速03|BGP|CMCU",
+				"[LX] 🇭🇰香港高速04|BGP|CMCU",
+				"[LX] 🇭🇰香港高速05|BGP|CMCU",
+				"[LX] 🇸🇬新加坡高速01|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速02|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速03|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速04|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速05|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速06|BGP|CTCU",
+				"[LX] 🇯🇵日本高速01|BGP|CUCM",
+				"[LX] 🇯🇵日本高速02|BGP|CUCM",
+				"[LX] 🇯🇵日本高速03|BGP|CUCM",
+				"[LX] 🇯🇵日本高速04|BGP|CUCM",
+				"[LX] 🇯🇵日本高速05|BGP|CUCM",
+				"[LX] 🇺🇸美国高速01|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速02|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速03|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速04|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速05|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦01|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦02|CTCU|0.1x",
+				"[LX] 🇨🇳台湾高速01|BGP|流媒体",
+				"[LX] 🇺🇸美国洛杉矶01|流媒体|0.01x",
+				"[LX] 🇺🇸美国洛杉矶02|流媒体|0.01x",
+				"[LX] 🇸🇬新加坡专线01|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线02|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线03|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线04|BGP|流媒体",
+				"[LX] 🇯🇵日本专线01|BGP|流媒体",
+				"[LX] 🇯🇵日本专线02|BGP|流媒体",
+				"[LX] 🇯🇵日本专线03|BGP|流媒体",
+				"[LX] 🇯🇵日本专线04|BGP|流媒体",
+				"[LX] 🇬🇧英国伦敦01|流媒体|0.1x",
+				"[LX] 🇺🇸美国01|流媒体|0.1x",
+				"[LX] 🇺🇸美国02|流媒体|0.1x",
+				"[LX] 🇺🇸美国03|流媒体|0.1x",
+				"[LX] 🇺🇸美国04|流媒体|0.1x",
+				"[LX] 🇺🇸美国05|流媒体|0.1x",
+				"[SNY] [Hy2]美国-11|IPV61.0X",
+				"[SNY] [Hy2]迪拜-01|1.0X",
+				"[SNY] [Hy2]巴西-03|1.0X",
+				"[SNY] [vLess]美国-06|1.0X",
+				"[SNY] [vLess]巴西-01|1.0X",
+				"[SNY] [vLess]荷兰-000实验|1.0X",
+				"[PKM] 🇭🇰【亚洲】香港01丨直连",
+				"[PKM] 🇭🇰【亚洲】香港03丨直连",
+				"[PKM] 🇭🇰【亚洲】香港04丨直连",
+				"[PKM] 🇸🇬【亚洲】新加坡01丨直连",
+				"[PKM] 🇸🇬【亚洲】新加坡03丨直连",
+				"[PKM] 🇸🇬 【亚洲】新加坡01丨Vless",
+				"[PKM] 🇸🇬 【亚洲】新加坡02丨Vless",
+				"[PKM] 🇯🇵【亚洲】日本01丨Vless",
+				"[PKM] 🇯🇵【亚洲】日本02丨Vless",
+				"[PKM] 🇺🇸【北美洲】美国01原生丨直连【2x】",
+				"[PKM] 🇺🇸【北美洲】美国03原生丨直连【2x】",
+				"[PKM] 🇭🇰【亚洲】香港01丨V6【1x】",
+				"[PKM] 🇭🇰【亚洲】香港02丨V6【1x】",
+				"[PKM] 🇸🇬【亚洲】新加坡07丨V6【1x】",
+				"[PKM] 🇸🇬【亚洲】新加坡08丨V6【1x】",
+				"[PKM] 🇯🇵【亚洲】日本01丨V6【1x】",
+				"[PKM] 🇯🇵【亚洲】日本02丨V6【1x】",
+				"[PKM] 🇺🇸【北美洲】美国01丨V6【1x】",
+				"[PKM] 🇺🇸【北美洲】美国02丨V6【1x】"
+			]
+		},
+		{
+			"type": "urltest",
+			"tag": "香港自动",
+			"outbounds": [
+				"[NB] 🇭🇰香港HKT02|hy2",
+				"[NB] 🇭🇰香港HKT03",
+				"[NB] 🇭🇰香港HKT05|v6入口",
+				"[NB] 🇭🇰香港HKT08|hy2",
+				"[NB] 🇭🇰香港HKT09",
+				"[NB] 🇭🇰香港HKT11|v6入口",
+				"[LX] 🇭🇰香港高速01|BGP|CMCU",
+				"[LX] 🇭🇰香港高速02|BGP|CMCU",
+				"[LX] 🇭🇰香港高速03|BGP|CMCU",
+				"[LX] 🇭🇰香港高速04|BGP|CMCU",
+				"[LX] 🇭🇰香港高速05|BGP|CMCU"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "日本自动",
+			"outbounds": [
+				"[NB] 🇯🇵日本02|hy2|流媒体解锁|AI",
+				"[NB] 🇯🇵日本03|流媒体解锁|AI",
+				"[LX] 🇯🇵日本高速01|BGP|CUCM",
+				"[LX] 🇯🇵日本高速02|BGP|CUCM",
+				"[LX] 🇯🇵日本高速03|BGP|CUCM",
+				"[LX] 🇯🇵日本高速04|BGP|CUCM",
+				"[LX] 🇯🇵日本高速05|BGP|CUCM",
+				"[LX] 🇯🇵日本专线01|BGP|流媒体",
+				"[LX] 🇯🇵日本专线02|BGP|流媒体",
+				"[LX] 🇯🇵日本专线03|BGP|流媒体",
+				"[LX] 🇯🇵日本专线04|BGP|流媒体"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "新加坡自动",
+			"outbounds": [
+				"[NB] 🇸🇬新加坡02|hy2|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡03|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡05|流媒体解锁|AI|v6入口",
+				"[LX] 🇸🇬新加坡高速01|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速02|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速03|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速04|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速05|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速06|BGP|CTCU",
+				"[LX] 🇸🇬新加坡专线01|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线02|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线03|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线04|BGP|流媒体"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "台湾自动",
+			"outbounds": [
+				"[NB] 🇨🇳台湾01|Google play|AI|移动优化",
+				"[NB] 🇨🇳台湾03|Google play|AI|移动优化",
+				"[LX] 🇨🇳台湾高速01|BGP|流媒体"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "韩国自动",
+			"outbounds": [
+				"[NB] 🇰🇷韩国03|家宽"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "美国自动",
+			"outbounds": [
+				"[NB] 🇺🇸亚特兰大01|流媒体解锁|AI|移动优化",
+				"[NB] 🇺🇸凤凰城03|流媒体解锁|AI|移动优化",
+				"[LX] 🇺🇸美国高速01|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速02|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速03|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速04|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速05|CTCU|0.1x",
+				"[LX] 🇺🇸美国洛杉矶01|流媒体|0.01x",
+				"[LX] 🇺🇸美国洛杉矶02|流媒体|0.01x",
+				"[LX] 🇺🇸美国01|流媒体|0.1x",
+				"[LX] 🇺🇸美国02|流媒体|0.1x",
+				"[LX] 🇺🇸美国03|流媒体|0.1x",
+				"[LX] 🇺🇸美国04|流媒体|0.1x",
+				"[LX] 🇺🇸美国05|流媒体|0.1x",
+				"[SNY] [Hy2]美国-11|IPV61.0X",
+				"[SNY] [vLess]美国-06|1.0X"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "urltest",
+			"tag": "欧盟自动",
+			"outbounds": [
+				"[NB] 🇩🇪德国01|移动优化",
+				"[NB] 🇬🇧英国01|流媒体解锁|AI|移动优化",
+				"[LX] 🇬🇧英国伦敦01|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦02|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦01|流媒体|0.1x",
+				"[SNY] [vLess]荷兰-000实验|1.0X"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "selector",
+			"tag": "电报消息",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "谷歌服务",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "油管视频",
+			"outbounds": [
+				"亚洲自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "Github",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "Tiktok",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "微软服务",
+			"outbounds": [
+				"全球自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "selector",
+			"tag": "人工智能",
+			"outbounds": [
+				"美国自动",
+				"全球手动"
+			]
+		},
+		{
+			"type": "urltest",
+			"tag": "全球自动",
+			"outbounds": [
+				"[LX] 🇭🇰香港高速01|BGP|CMCU",
+				"[LX] 🇭🇰香港高速02|BGP|CMCU",
+				"[LX] 🇭🇰香港高速03|BGP|CMCU",
+				"[LX] 🇭🇰香港高速04|BGP|CMCU",
+				"[LX] 🇭🇰香港高速05|BGP|CMCU",
+				"[LX] 🇸🇬新加坡高速01|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速02|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速03|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速04|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速05|BGP|CTCUCM",
+				"[LX] 🇸🇬新加坡高速06|BGP|CTCU",
+				"[LX] 🇯🇵日本高速01|BGP|CUCM",
+				"[LX] 🇯🇵日本高速02|BGP|CUCM",
+				"[LX] 🇯🇵日本高速03|BGP|CUCM",
+				"[LX] 🇯🇵日本高速04|BGP|CUCM",
+				"[LX] 🇯🇵日本高速05|BGP|CUCM",
+				"[LX] 🇺🇸美国高速01|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速02|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速03|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速04|CTCU|0.1x",
+				"[LX] 🇺🇸美国高速05|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦01|CTCU|0.1x",
+				"[LX] 🇬🇧英国伦敦02|CTCU|0.1x",
+				"[LX] 🇨🇳台湾高速01|BGP|流媒体",
+				"[LX] 🇺🇸美国洛杉矶01|流媒体|0.01x",
+				"[LX] 🇺🇸美国洛杉矶02|流媒体|0.01x",
+				"[LX] 🇸🇬新加坡专线01|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线02|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线03|BGP|流媒体",
+				"[LX] 🇸🇬新加坡专线04|BGP|流媒体",
+				"[LX] 🇯🇵日本专线01|BGP|流媒体",
+				"[LX] 🇯🇵日本专线02|BGP|流媒体",
+				"[LX] 🇯🇵日本专线03|BGP|流媒体",
+				"[LX] 🇯🇵日本专线04|BGP|流媒体",
+				"[LX] 🇬🇧英国伦敦01|流媒体|0.1x",
+				"[LX] 🇺🇸美国01|流媒体|0.1x",
+				"[LX] 🇺🇸美国02|流媒体|0.1x",
+				"[LX] 🇺🇸美国03|流媒体|0.1x",
+				"[LX] 🇺🇸美国04|流媒体|0.1x",
+				"[LX] 🇺🇸美国05|流媒体|0.1x",
+				"[NB] 🇭🇰香港HKT02|hy2",
+				"[NB] 🇭🇰香港HKT03",
+				"[NB] 🇭🇰香港HKT05|v6入口",
+				"[NB] 🇭🇰香港HKT08|hy2",
+				"[NB] 🇭🇰香港HKT09",
+				"[NB] 🇭🇰香港HKT11|v6入口",
+				"[NB] 🇸🇬新加坡02|hy2|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡03|流媒体解锁|AI",
+				"[NB] 🇸🇬新加坡05|流媒体解锁|AI|v6入口",
+				"[NB] 🇯🇵日本02|hy2|流媒体解锁|AI",
+				"[NB] 🇯🇵日本03|流媒体解锁|AI",
+				"[NB] 🇰🇷韩国03|家宽",
+				"[NB] 🇨🇳台湾01|Google play|AI|移动优化",
+				"[NB] 🇨🇳台湾03|Google play|AI|移动优化",
+				"[NB] 🇺🇸亚特兰大01|流媒体解锁|AI|移动优化",
+				"[NB] 🇺🇸凤凰城03|流媒体解锁|AI|移动优化",
+				"[NB] 🇩🇪德国01|移动优化",
+				"[NB] 🇬🇧英国01|流媒体解锁|AI|移动优化",
+				"[SNY] [Hy2]美国-11|IPV61.0X",
+				"[SNY] [Hy2]迪拜-01|1.0X",
+				"[SNY] [Hy2]巴西-03|1.0X",
+				"[SNY] [vLess]美国-06|1.0X",
+				"[SNY] [vLess]巴西-01|1.0X",
+				"[SNY] [vLess]荷兰-000实验|1.0X",
+				"[PKM] 🇭🇰【亚洲】香港01丨直连",
+				"[PKM] 🇭🇰【亚洲】香港03丨直连",
+				"[PKM] 🇭🇰【亚洲】香港04丨直连",
+				"[PKM] 🇸🇬【亚洲】新加坡01丨直连",
+				"[PKM] 🇸🇬【亚洲】新加坡03丨直连",
+				"[PKM] 🇸🇬 【亚洲】新加坡01丨Vless",
+				"[PKM] 🇸🇬 【亚洲】新加坡02丨Vless",
+				"[PKM] 🇯🇵【亚洲】日本01丨Vless",
+				"[PKM] 🇯🇵【亚洲】日本02丨Vless",
+				"[PKM] 🇺🇸【北美洲】美国01原生丨直连【2x】",
+				"[PKM] 🇺🇸【北美洲】美国03原生丨直连【2x】",
+				"[PKM] 🇭🇰【亚洲】香港01丨V6【1x】",
+				"[PKM] 🇭🇰【亚洲】香港02丨V6【1x】",
+				"[PKM] 🇸🇬【亚洲】新加坡07丨V6【1x】",
+				"[PKM] 🇸🇬【亚洲】新加坡08丨V6【1x】",
+				"[PKM] 🇯🇵【亚洲】日本01丨V6【1x】",
+				"[PKM] 🇯🇵【亚洲】日本02丨V6【1x】",
+				"[PKM] 🇺🇸【北美洲】美国01丨V6【1x】",
+				"[PKM] 🇺🇸【北美洲】美国02丨V6【1x】"
+			],
+			"url": "https://example.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "1800s"
+		},
+		{
+			"type": "selector",
+			"tag": "亚洲自动",
+			"outbounds": [
+				"日本自动",
+				"香港自动",
+				"新加坡自动",
+				"台湾自动",
+				"韩国自动"
+			]
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[NB] 🇭🇰香港HKT02|hy2",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 22001,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com"
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇭🇰香港HKT03",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55001,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇭🇰香港HKT05|v6入口",
+			"server": "shouzhuzhu.niubifast.cc",
+			"server_port": 45001,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[NB] 🇭🇰香港HKT08|hy2",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 22002,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com"
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇭🇰香港HKT09",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55102,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇭🇰香港HKT11|v6入口",
+			"server": "shouzhuzhu.niubifast.cc",
+			"server_port": 45102,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[NB] 🇸🇬新加坡02|hy2|流媒体解锁|AI",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 22003,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com"
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇸🇬新加坡03|流媒体解锁|AI",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55003,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇸🇬新加坡05|流媒体解锁|AI|v6入口",
+			"server": "shouzhuzhu.niubifast.cc",
+			"server_port": 45003,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[NB] 🇯🇵日本02|hy2|流媒体解锁|AI",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 22004,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com"
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇯🇵日本03|流媒体解锁|AI",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55004,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇰🇷韩国03|家宽",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55014,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇨🇳台湾01|Google play|AI|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55005,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇨🇳台湾03|Google play|AI|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55006,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇺🇸亚特兰大01|流媒体解锁|AI|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55007,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇺🇸凤凰城03|流媒体解锁|AI|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55008,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇩🇪德国01|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55009,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "anytls",
+			"tag": "[NB] 🇬🇧英国01|流媒体解锁|AI|移动优化",
+			"server": "l2.woyaosongwaimai.top",
+			"server_port": 55010,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇭🇰香港高速01|BGP|CMCU",
+			"server": "aws-link1.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "TF960L2RQcljFhnd6GKHRO82TGpefFLT25BY-KSuwxA",
+					"short_id": "c8660f6e"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇭🇰香港高速02|BGP|CMCU",
+			"server": "aws-link2.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "ypy2n5s98wb2NQfVnOG_nvyXk329g_PAZCTerKcMi28",
+					"short_id": "6afd82c0"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇭🇰香港高速03|BGP|CMCU",
+			"server": "aws-link3.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "ux5T2jsYXnAMuf4eILTucbcX1xd1OwocOEkYetmUyAs",
+					"short_id": "3206e665"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇭🇰香港高速04|BGP|CMCU",
+			"server": "aws-link4.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "wlh6mFICApoUIVqqQRBbS7o5X3sveqUJCRc54bH0XSg",
+					"short_id": "a31b59fe"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇭🇰香港高速05|BGP|CMCU",
+			"server": "aws-link5.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "HfZeg7YPEWJMQKBXctbNZBuBAk1CW98FoJ7AEyCEdQQ",
+					"short_id": "a49232a7"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速01|BGP|CTCUCM",
+			"server": "aws-link7.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "w7AGIp_u4slcX3JotLyiuaT05lawuzU3f1eL88RI53c",
+					"short_id": "1d77a374"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速02|BGP|CTCUCM",
+			"server": "aws-link8.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "vDrdqD70aoQOIU5P5UU-h2h9wCu_tEOD4pGu8NOGvzA",
+					"short_id": "55c73a28"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速03|BGP|CTCUCM",
+			"server": "aws-link9.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "ncsES25G1Nj31aY0kdaNrooqQOqqqaHLk8zbF2b4BGw",
+					"short_id": "bef8fff6"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速04|BGP|CTCUCM",
+			"server": "aws-link30.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "NQboj96aHW_domplSIfIBqJpAnNN8rZokNYa-W-NdAo",
+					"short_id": "fa6fb544"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速05|BGP|CTCUCM",
+			"server": "aws-link31.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "wXayfckurSM2zWeis7OAL_QVGm9wBLr0WYp2zFtJFAE",
+					"short_id": "c7487aeb"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇸🇬新加坡高速06|BGP|CTCU",
+			"server": "cfyes.7770008.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/sg1",
+				"headers": {
+					"Host": [
+						"lx-sg1.7770006.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇯🇵日本高速01|BGP|CUCM",
+			"server": "aws-link13.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "AYnt6YQxdEGfpWjo25H9ZvgPp_WxRbGWSkaptwTZJ3M",
+					"short_id": "131baaed"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇯🇵日本高速02|BGP|CUCM",
+			"server": "aws-link14.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "-nx1roqVG90gja9-412UcxR7tqdtdKqxuSHsSh03wm4",
+					"short_id": "93d482c0"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇯🇵日本高速03|BGP|CUCM",
+			"server": "aws-link19.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "p6pNXigacmPazS1t76m66ia0DcFgAxOshOiPgzVvNGs",
+					"short_id": "44099498"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇯🇵日本高速04|BGP|CUCM",
+			"server": "aws-link20.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "QE5l0RUqs4OsH3j3u_xHm06-4NlILmQivZUJqiEx11o",
+					"short_id": "6314e825"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇯🇵日本高速05|BGP|CUCM",
+			"server": "aws-link23.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "dLmUAqcdy4Z7iucApd9zjOhkXTjl-xt_eHumShIYW0c",
+					"short_id": "ba826a54"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国高速01|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/us",
+				"headers": {
+					"Host": [
+						"lx-us1.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国高速02|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/us",
+				"headers": {
+					"Host": [
+						"lx-us2.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国高速03|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/us",
+				"headers": {
+					"Host": [
+						"lx-us3.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国高速04|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/us",
+				"headers": {
+					"Host": [
+						"lx-us4.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国高速05|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/us",
+				"headers": {
+					"Host": [
+						"lx-us5.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇬🇧英国伦敦01|CTCU|0.1x",
+			"server": "cfyes.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/liangxin/gb1",
+				"headers": {
+					"Host": [
+						"gb-lx.777096.xyz"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇬🇧英国伦敦02|CTCU|0.1x",
+			"server": "62.164.143.252",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "a9I2uA3NNZA6uBAe3Tui9vZ8CG5MrMaYOifWrAdc0zg",
+					"short_id": "a8609be8"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇨🇳台湾高速01|BGP|流媒体",
+			"server": "aws-link28.lxyun.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "I0KCN29MUCJ9CnUptlwBK4Nr-NZZUNh0bQj5aXxKrDY",
+					"short_id": "0b03cf9a"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国洛杉矶01|流媒体|0.01x",
+			"server": "lxyus1.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "ulU6wfyain_FQnYt23NGunTAfBQNLhIBY49mvekiQB0",
+					"short_id": "ca032f81"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[LX] 🇺🇸美国洛杉矶02|流媒体|0.01x",
+			"server": "lxyus3.777078.xyz",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "safari"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "paFz5M87V_EcKgUk7C9MlHYCTkOMLTNVe-h-6mSHOAk",
+					"short_id": "cffc91ca"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇸🇬新加坡专线01|BGP|流媒体",
+			"server": "aws-linkhy9.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇸🇬新加坡专线02|BGP|流媒体",
+			"server": "aws-linkhy10.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇸🇬新加坡专线03|BGP|流媒体",
+			"server": "aws-linkhy11.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇸🇬新加坡专线04|BGP|流媒体",
+			"server": "aws-linkhy12.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇯🇵日本专线01|BGP|流媒体",
+			"server": "aws-linkhy15.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇯🇵日本专线02|BGP|流媒体",
+			"server": "aws-linkhy16.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇯🇵日本专线03|BGP|流媒体",
+			"server": "aws-linkhy17.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇯🇵日本专线04|BGP|流媒体",
+			"server": "aws-linkhy18.lxyun.xyz",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇬🇧英国伦敦01|流媒体|0.1x",
+			"server": "62.164.143.251",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇺🇸美国01|流媒体|0.1x",
+			"server": "lxyus1.777078.xyz",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇺🇸美国02|流媒体|0.1x",
+			"server": "lxyus2.777078.xyz",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇺🇸美国03|流媒体|0.1x",
+			"server": "lxyus3.777078.xyz",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇺🇸美国04|流媒体|0.1x",
+			"server": "lxyus4.777078.xyz",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[LX] 🇺🇸美国05|流媒体|0.1x",
+			"server": "203.10.97.121",
+			"server_port": 60000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[SNY] [Hy2]美国-11|IPV61.0X",
+			"server": "2001:470:d:b97:1f9e:52c1:8465:9388",
+			"server_port": 11000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[SNY] [Hy2]迪拜-01|1.0X",
+			"server": "84.12.131.43",
+			"server_port": 11000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[SNY] [Hy2]巴西-03|1.0X",
+			"server": "brb.nnpy.org",
+			"server_port": 11100,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[SNY] [vLess]美国-06|1.0X",
+			"server": "vl27bv5lxy4d.yx2.nnpq.org",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/",
+				"headers": {
+					"Host": [
+						"0123456789vlus6.xn--9kq653e9ge.top"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[SNY] [vLess]巴西-01|1.0X",
+			"server": "yx2.xn--11x.org",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "firefox"
+				}
+			},
+			"transport": {
+				"type": "ws",
+				"path": "/",
+				"headers": {
+					"Host": [
+						"0123456789vlbr.xn--9kq653e9ge.top"
+					]
+				},
+				"max_early_data": 2048,
+				"early_data_header_name": "Sec-WebSocket-Protocol"
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[SNY] [vLess]荷兰-000实验|1.0X",
+			"server": "85.208.9.189",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"utls": {
+					"enabled": true,
+					"fingerprint": "firefox"
+				},
+				"reality": {
+					"enabled": true,
+					"public_key": "nJBetWH6fBEGQUxbI6htCLjNKF9xtOnKsLo_RjFDuGo",
+					"short_id": "9d50812e"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇭🇰【亚洲】香港01丨直连",
+			"server": "42.200.172.169",
+			"server_port": 20000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇭🇰【亚洲】香港03丨直连",
+			"server": "209.9.202.19",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇭🇰【亚洲】香港04丨直连",
+			"server": "42.200.173.123",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇸🇬【亚洲】新加坡01丨直连",
+			"server": "sg01-hy.poke-mon.xyz",
+			"server_port": 20000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇸🇬【亚洲】新加坡03丨直连",
+			"server": "sg02-hy.poke-mon.xyz",
+			"server_port": 20000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[PKM] 🇸🇬 【亚洲】新加坡01丨Vless",
+			"server": "13.250.3.76",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true,
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[PKM] 🇸🇬 【亚洲】新加坡02丨Vless",
+			"server": "54.169.49.130",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true,
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[PKM] 🇯🇵【亚洲】日本01丨Vless",
+			"server": "35.74.78.62",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true,
+				"utls": {
+					"enabled": true,
+					"fingerprint": "ios"
+				}
+			}
+		},
+		{
+			"type": "vless",
+			"tag": "[PKM] 🇯🇵【亚洲】日本02丨Vless",
+			"server": "35.74.78.62",
+			"server_port": 443,
+			"uuid": "00000000-0000-0000-0000-000000000000",
+			"flow": "xtls-rprx-vision",
+			"packet_encoding": "xudp",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true,
+				"utls": {
+					"enabled": true,
+					"fingerprint": "chrome"
+				}
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇺🇸【北美洲】美国01原生丨直连【2x】",
+			"server": "us01zl.poke-mon.xyz",
+			"server_port": 20000,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "hysteria2",
+			"tag": "[PKM] 🇺🇸【北美洲】美国03原生丨直连【2x】",
+			"server": "us02zl.poke-mon.xyz",
+			"server_port": 443,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇭🇰【亚洲】香港01丨V6【1x】",
+			"server": "pokemonv6-01.pikaholo.com",
+			"server_port": 54357,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇭🇰【亚洲】香港02丨V6【1x】",
+			"server": "pokemonv6-02.pikaholo.com",
+			"server_port": 54357,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇸🇬【亚洲】新加坡07丨V6【1x】",
+			"server": "pokemonv6-01.pikaholo.com",
+			"server_port": 54258,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇸🇬【亚洲】新加坡08丨V6【1x】",
+			"server": "pokemonv6-02.pikaholo.com",
+			"server_port": 54258,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇯🇵【亚洲】日本01丨V6【1x】",
+			"server": "pokemonv6-01.pikaholo.com",
+			"server_port": 54261,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇯🇵【亚洲】日本02丨V6【1x】",
+			"server": "pokemonv6-02.pikaholo.com",
+			"server_port": 54261,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇺🇸【北美洲】美国01丨V6【1x】",
+			"server": "pokemonv6-01.pikaholo.com",
+			"server_port": 54273,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		},
+		{
+			"type": "trojan",
+			"tag": "[PKM] 🇺🇸【北美洲】美国02丨V6【1x】",
+			"server": "pokemonv6-02.pikaholo.com",
+			"server_port": 54273,
+			"password": "placeholder-password",
+			"tls": {
+				"enabled": true,
+				"server_name": "example.com",
+				"insecure": true
+			}
+		}
+	],
+	"route": {
+		"rules": [
+			{
+				"inbound": "dns-in",
+				"action": "hijack-dns"
+			},
+			{
+				"action": "sniff"
+			},
+			{
+				"rule_set": [
+					"geosite-private",
+					"geosite-cn",
+					"geoip-cn"
+				],
+				"action": "route",
+				"outbound": "direct-out"
+			},
+			{
+				"domain_suffix": [
+					"siwiot.com"
+				],
+				"action": "route",
+				"outbound": "direct-out"
+			},
+			{
+				"rule_set": [
+					"geosite-telegram",
+					"geoip-telegram"
+				],
+				"action": "route",
+				"outbound": "电报消息"
+			},
+			{
+				"rule_set": [
+					"geosite-google",
+					"geoip-google"
+				],
+				"action": "route",
+				"outbound": "谷歌服务"
+			},
+			{
+				"rule_set": [
+					"geosite-youtube"
+				],
+				"action": "route",
+				"outbound": "油管视频"
+			},
+			{
+				"rule_set": [
+					"geosite-github"
+				],
+				"action": "route",
+				"outbound": "Github"
+			},
+			{
+				"rule_set": [
+					"geosite-tiktok"
+				],
+				"action": "route",
+				"outbound": "Tiktok"
+			},
+			{
+				"rule_set": [
+					"geosite-microsoft"
+				],
+				"action": "route",
+				"outbound": "微软服务"
+			},
+			{
+				"rule_set": [
+					"geosite-gfwai"
+				],
+				"action": "route",
+				"outbound": "人工智能"
+			},
+			{
+				"rule_set": [
+					"geosite-gfw"
+				],
+				"action": "route",
+				"outbound": "默认代理"
+			}
+		],
+		"rule_set": [
+			{
+				"type": "local",
+				"tag": "geosite-private",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-private.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-cn",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-cn.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-telegram",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-telegram.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-gfwai",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-gfwai.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-github",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-github.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-tiktok",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-tiktok.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-youtube",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-youtube.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-google",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-google.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-microsoft",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-microsoft.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-gfw",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-gfw.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geoip-cn",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geoip-cn.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geoip-telegram",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geoip-telegram.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geoip-google",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geoip-google.srs"
+			}
+		],
+		"auto_detect_interface": true,
+		"default_domain_resolver": {
+			"action": "resolve",
+			"server": "cfg-dns_server_dnspod-dns"
+		},
+		"final": "默认代理",
+		"default_http_client": "dl-default"
+	},
+	"http_clients": [
+		{
+			"tag": "dl-default"
+		}
+	],
+	"experimental": {
+		"clash_api": {
+			"external_controller": "0.0.0.0:9095",
+			"external_ui": "/etc/homeproxy/run/ui",
+			"secret": "S6bovwZ5zb836nhr",
+			"default_mode": "rule"
+		},
+		"cache_file": {
+			"enabled": true,
+			"path": "/etc/homeproxy/cache.db",
+			"store_dns": true,
+			"store_selected": true
+		}
+	},
+	"providers": [
+		{
+			"type": "remote",
+			"tag": "LX",
+			"url": "https://example.com/api/v1/owoOwO=PLACEHOLDER",
+			"initial_path": "/etc/homeproxy/providers/b66d0ae08a2ca7d5d3ae39d72090cbdc.sub",
+			"update_interval": "24h",
+			"health_check": {
+				"enabled": true,
+				"url": "https://example.com/generate_204",
+				"interval": "10m",
+				"timeout": "6s"
+			}
+		},
+		{
+			"type": "remote",
+			"tag": "NB",
+			"url": "https://example.com/dazhutou/cbc2c09c2e130eac2ed0485903b685f9",
+			"initial_path": "/etc/homeproxy/providers/a6343857ac64b1d845843fdb4ef82b1d.sub",
+			"update_interval": "24h",
+			"health_check": {
+				"enabled": true,
+				"url": "https://example.com/generate_204",
+				"interval": "10m",
+				"timeout": "6s"
+			}
+		},
+		{
+			"type": "remote",
+			"tag": "SNY",
+			"url": "https://example.com/niu/niutoken=PLACEHOLDER",
+			"initial_path": "/etc/homeproxy/providers/8ac9af011e992c46c5f658aa6eb91e2e.sub",
+			"update_interval": "24h",
+			"health_check": {
+				"enabled": true,
+				"url": "https://example.com/generate_204",
+				"interval": "10m",
+				"timeout": "6s"
+			}
+		},
+		{
+			"type": "remote",
+			"tag": "PKM",
+			"url": "https://example.com/api/v1/client/subscribetoken=PLACEHOLDER",
+			"initial_path": "/etc/homeproxy/providers/839da26cd11e2d46719917221bd3d726.sub",
+			"update_interval": "24h",
+			"health_check": {
+				"enabled": true,
+				"url": "https://example.com/generate_204",
+				"interval": "10m",
+				"timeout": "6s"
+			}
+		}
+	]
+}

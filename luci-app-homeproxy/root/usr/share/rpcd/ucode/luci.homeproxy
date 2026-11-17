@@ -2646,6 +2646,23 @@ const methods = {
 		}
 	},
 
+	/* 综合评分触发（异步脱管）：评分要对组内成员逐个实测（预算
+	   ceil(sqrt(n))+1 次探测，实测 60~90 秒），远超 rpcd 30 秒上限，
+	   所以与切换配置同一套写法 —— 子壳脱管执行，立即返回。
+	   注意：本文件未 import HP_DIR/shellQuote，路径硬编码（本文件惯例）。 */
+	score_group_update: {
+		call: function() {
+			const script = '/etc/homeproxy/scripts/score_nodes.uc';
+			if (!access(script))
+				return { result: false, error: 'scorer_missing' };
+			if (access('/var/run/homeproxy/score_nodes.lock'))
+				return { result: false, error: 'already_running' };
+
+			system('( ucode -L /etc/homeproxy/scripts -S /etc/homeproxy/scripts/score_nodes.uc >/dev/null 2>&1 ) &');
+			return { result: true };
+		}
+	},
+
 	singbox_get_features: {
 		call: function() {
 			let features = {};

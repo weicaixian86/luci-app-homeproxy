@@ -1,0 +1,202 @@
+{
+	"log": {
+		"disabled": false,
+		"level": "warn",
+		"output": "/var/run/homeproxy/sing-box-c.log",
+		"timestamp": true
+	},
+	"ntp": {
+		"enabled": true,
+		"server": "ntp.aliyun.com",
+		"server_port": 123,
+		"interval": "30m",
+		"domain_resolver": "default-dns"
+	},
+	"dns": {
+		"servers": [
+			{
+				"tag": "default-dns",
+				"type": "udp",
+				"server": "223.5.5.5",
+				"detour": "direct-out"
+			},
+			{
+				"tag": "system-dns",
+				"type": "local"
+			},
+			{
+				"tag": "cfg-dns_server_alidns-dns",
+				"type": "https",
+				"server": "223.5.5.5",
+				"server_port": 443,
+				"path": "/dns-query"
+			},
+			{
+				"tag": "cfg-dns_server_cloudflare-dns",
+				"type": "https",
+				"server": "1.1.1.1",
+				"server_port": 443,
+				"path": "/dns-query",
+				"detour": "默认代理"
+			}
+		],
+		"rules": [
+			{
+				"rule_set": [
+					"geosite-private",
+					"geosite-cn"
+				],
+				"action": "route",
+				"server": "cfg-dns_server_alidns-dns"
+			}
+		],
+		"strategy": "ipv4_only",
+		"final": "cfg-dns_server_cloudflare-dns"
+	},
+	"inbounds": [
+		{
+			"type": "direct",
+			"tag": "dns-in",
+			"listen": "::",
+			"listen_port": 5333
+		},
+		{
+			"type": "mixed",
+			"tag": "mixed-in",
+			"listen": "::",
+			"listen_port": 5330,
+			"set_system_proxy": false
+		},
+		{
+			"type": "redirect",
+			"tag": "redirect-in",
+			"listen": "::",
+			"listen_port": 5331
+		},
+		{
+			"type": "tproxy",
+			"tag": "tproxy-in",
+			"listen": "::",
+			"listen_port": 5332,
+			"network": "udp",
+			"udp_timeout": "60s"
+		}
+	],
+	"outbounds": [
+		{
+			"type": "direct",
+			"tag": "direct-out",
+			"routing_mark": 100
+		},
+		{
+			"type": "block",
+			"tag": "block-out"
+		},
+		{
+			"type": "selector",
+			"tag": "默认代理",
+			"outbounds": [
+				"全球自动",
+				"direct-out"
+			],
+			"default": "全球自动",
+			"interrupt_exist_connections": false
+		},
+		{
+			"type": "urltest",
+			"tag": "全球自动",
+			"outbounds": [
+				"direct-out"
+			],
+			"url": "https://www.google.com/generate_204",
+			"interval": "300s",
+			"tolerance": 50,
+			"idle_timeout": "600s",
+			"interrupt_exist_connections": false
+		}
+	],
+	"route": {
+		"rules": [
+			{
+				"inbound": "dns-in",
+				"action": "hijack-dns"
+			},
+			{
+				"action": "sniff"
+			},
+			{
+				"rule_set": [
+					"geosite-private",
+					"geosite-cn",
+					"geoip-cn"
+				],
+				"action": "route",
+				"outbound": "direct-out"
+			},
+			{
+				"domain_suffix": [
+					"siwiot.com"
+				],
+				"action": "route",
+				"outbound": "direct-out"
+			},
+			{
+				"rule_set": [
+					"geosite-telegram",
+					"geoip-telegram"
+				],
+				"action": "route",
+				"outbound": "电报消息"
+			}
+		],
+		"rule_set": [
+			{
+				"type": "local",
+				"tag": "geosite-private",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-private.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-cn",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-cn.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geoip-cn",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geoip-cn.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geosite-telegram",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geosite-telegram.srs"
+			},
+			{
+				"type": "local",
+				"tag": "geoip-telegram",
+				"format": "binary",
+				"path": "/etc/homeproxy/ruleset/geoip-telegram.srs"
+			}
+		],
+		"auto_detect_interface": true,
+		"final": "默认代理"
+	},
+	"experimental": {
+		"clash_api": {
+			"external_controller": "0.0.0.0:9095",
+			"external_ui": "/etc/homeproxy/run/ui",
+			"secret": "PLACEHOLDER",
+			"default_mode": "rule"
+		},
+		"cache_file": {
+			"enabled": true,
+			"path": "/etc/homeproxy/cache.db",
+			"store_dns": true,
+			"store_selected": true
+		}
+	},
+	"providers": []
+}

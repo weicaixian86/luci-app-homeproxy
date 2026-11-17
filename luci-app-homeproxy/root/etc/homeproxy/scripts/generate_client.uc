@@ -8,7 +8,7 @@
 'use strict';
 
 import { md5 } from 'digest';
-import { open, readfile, writefile } from 'fs';
+import { access, open, readfile, writefile } from 'fs';
 import { isnan } from 'math';
 import { connect } from 'ubus';
 import { cursor } from 'uci';
@@ -214,7 +214,7 @@ if (routing_mode !== 'custom') {
 	sniff_override = uci.get(uciconfig, uciroutingsetting, 'sniff_override');
 }
 
-const proxy_mode = uci.get(uciconfig, ucimain, 'proxy_mode') || 'redirect_tproxy',
+let proxy_mode = uci.get(uciconfig, ucimain, 'proxy_mode') || 'redirect_tproxy',
       default_interface = uci.get(uciconfig, ucicontrol, 'bind_interface');
 
 const mixed_port = uci.get(uciconfig, uciinfra, 'mixed_port') || '5330';
@@ -261,6 +261,114 @@ let ebpf_spec = ebpf_mode_map[proxy_mode];
 /* 兼容：早期版本的单一 'ebpf' 取值，等价于默认的第 1 种（cgroup + socket_assign）。 */
 if (proxy_mode === 'ebpf')
 	ebpf_spec = ebpf_mode_map['ebpf_cgroup_shared_socket_assign'];
+
+/* ── eBPF 能力自检（借鉴 honk 的"启动前内核能力预检"）──────────────────────
+   用户选了 eBPF 模式，但当前内核/环境不满足时，**不要**让内核以
+   `eBPF inbound is not included in this build` 之类的 FATAL 把整个服务带崩
+   （那样全屋断网、且日志里只有一句难懂的内核报错，用户不知道要升级到什么）。
+
+   这里逐项检查，任何一项不满足就：
+     ① 往 homeproxy.log 写一条**精确**的【eBPF 不可用】原因（缺什么、需要什么版本）；
+     ② 自动回退到 redirect_tproxy 继续生成本次配置（服务能起来，只是不走 eBPF）；
+     ③ 回退结果由 update_core/前端读取 —— 见 generate_client 末尾写出的
+        `ebpf_fallback` 标记（前端据此在状态页提示，无需重启也不会静默）。
+   检查项与判据：
+     · 内核 ≥ 6.6           —— eBPF inbound（tcx/cgroup 挂载）的最低内核要求
+     · 内核带 with_ebpf tag —— sing-box 编译期是否编入 eBPF（缺则 100% 不可用）
+     · /sys/fs/cgroup 存在  —— local=cgroup 数据面的挂载前提
+     · bpffs 可挂载/已挂载  —— sing-box eBPF 加载程序的运行前提
+   （以上任一不满足 → 回退；满足则照常生成 eBPF inbound） */
+function _hp_log(msg) {
+	system(sprintf("printf '%%s %%s\\n' \"$(date '+%%Y-%%m-%%d %%H:%%M:%%S')\" %s >> %s 2>/dev/null",
+		shellQuote('[EBPF] ' + msg), shellQuote(RUN_DIR + '/homeproxy.log')));
+}
+
+function _hp_kernel_version() {
+	const rel = trim(readfile('/proc/sys/kernel/osrelease') || '');
+	const m = match(rel, /^([0-9]+)\.([0-9]+)/);
+	if (!m)
+		return null;
+	return { major: +m[1], minor: +m[2], raw: rel };
+}
+
+function _hp_bpffs_ready() {
+	// bpffs 已挂到 /sys/fs/bpf 且可写（sing-box 在其下 pin 程序/映射）
+	if (!access('/sys/fs/bpf'))
+		return false;
+	// 已是 bpffs：尝试在目录里建一个临时文件判断可写
+	const probe = '/sys/fs/bpf/.hp_probe';
+	if (system(sprintf('touch %s 2>/dev/null && rm -f %s', shellQuote(probe), shellQuote(probe))) === 0)
+		return true;
+	// 未挂 bpffs 但内核支持（mount -t bpf 成功即视为具备能力）
+	if (system('mount -t bpf bpf /sys/fs/bpf 2>/dev/null') === 0) {
+		system(sprintf('touch %s 2>/dev/null && rm -f %s', shellQuote(probe), shellQuote(probe)));
+		return true;
+	}
+	return false;
+}
+
+let ebpf_fallback = null;   // 记录回退原因（供状态页展示）
+if (ebpf_spec) {
+	let feat = {};
+	try { feat = ubus.call('luci.homeproxy', 'singbox_get_features') || {}; } catch (e) { feat = {}; }
+
+	let problems = [];
+
+	/* ① 内核版本 ≥ 6.6 */
+	const kv = _hp_kernel_version();
+	if (!kv)
+		push(problems, '无法读取内核版本（/proc/sys/kernel/osrelease 为空）');
+	else if (kv.major < 6 || (kv.major == 6 && kv.minor < 6))
+		push(problems, sprintf('当前内核 %s 低于 eBPF 要求的 6.6。请升级内核：MT7981 等 ARM64 设备请用 OpenWrt 25.12+ 自带内核（6.6/6.12），或在本插件「状态 → 内核」更新到 1.14.4-reF1nd 且系统内核 ≥ 6.6', kv.raw));
+
+	/* ② 内核/内核二进制带 with_ebpf */
+	if (feat.with_ebpf !== true)
+		push(problems, sprintf('当前 sing-box 未编译 eBPF 支持（缺 with_ebpf）。当前版本：%s。请到「状态 → 内核管理 → 下载/更新内核」，安装本仓库带 with_ebpf 的 1.14.4-reF1nd 内核', feat.version || '未知/未安装'));
+
+	/* ③ cgroup v2 路径（local=cgroup 数据面） */
+	if (ebpf_spec.local === 'cgroup' && !access('/sys/fs/cgroup'))
+		push(problems, '缺少 /sys/fs/cgroup（cgroup v2 未启用，local=cgroup 数据面无法挂载）。请在固件中启用 cgroup v2，或改用 local=socket_assign 的 eBPF 模式');
+
+	/* ④ bpffs */
+	if (!_hp_bpffs_ready())
+		push(problems, 'bpffs 不可用（/sys/fs/bpf 无法挂载或不可写）。eBPF 程序无法加载，请确认内核编译了 CONFIG_BPF_SYSCALL 且可 mount -t bpf');
+
+	if (length(problems) > 0) {
+		ebpf_fallback = problems;
+		_hp_log(sprintf('eBPF 模式「%s」不可用，已自动回退到 redirect_tproxy（服务将照常运行，仅不走 eBPF）：', proxy_mode));
+		for (let i = 0; i < length(problems); i++)
+			_hp_log(sprintf('  [%d] %s', i + 1, problems[i]));
+		_hp_log('修复上述问题后，在本页重新选择 eBPF 模式并保存即可切换。');
+		/* 回退：让本次生成按 redirect_tproxy 走。三件事缺一不可（第一版只做了
+		   ①，结果 inbound 里既无 ebpf 也无 redirect —— 劫持入口整个消失，全屋
+		   断网；238 现场复现：google=000，nft 有规则但 5331 无监听）：
+		     ① ebpf_spec = null → 不再生成 eBPF inbound；
+		     ② proxy_mode = 'redirect_tproxy' → 下文 match(proxy_mode,/redirect|tproxy/)
+		        的 inbound 分支（redirect-in / tproxy-in）会正常生成；
+		     ③ 补设 self_mark / redirect_port / tproxy_port —— 这些在 232-238 行
+		        按**原** proxy_mode 分支赋值，而那段在本自检**之前**已执行过
+		        （当时 proxy_mode 还是 eBPF，三个端口都没设），必须在这里补上，
+		        否则 redirect-in 的 listen_port 是 int(null)。
+		   同时把生效模式与原因写进 RUN_DIR/ebpf_fallback 标记文件：
+		     · firewall_post.ut 读它 —— uci 里 proxy_mode 仍是 eBPF 值，但这次
+		       生效的是 redirect_tproxy，防火墙必须生成 redirect 劫持链；
+		     · 前端（status.js / rpcd）读它 —— 把回退原因展示给用户。
+		   内容为 JSON：{"mode":"redirect_tproxy","reasons":[...]} */
+		ebpf_spec = null;
+		proxy_mode = 'redirect_tproxy';
+		self_mark = uci.get(uciconfig, 'infra', 'self_mark') || '100';
+		redirect_port = uci.get(uciconfig, 'infra', 'redirect_port') || '5331';
+		if (main_udp_node !== 'nil' || routing_mode === 'custom')
+			tproxy_port = uci.get(uciconfig, 'infra', 'tproxy_port') || '5332';
+		writefile(RUN_DIR + '/ebpf_fallback',
+			sprintf('%.J\n', { mode: 'redirect_tproxy', reasons: problems }));
+	} else {
+		_hp_log(sprintf('eBPF 模式「%s」能力自检通过（内核 %s、with_ebpf、cgroup、bpffs 均满足）。',
+			proxy_mode, (kv ? kv.raw : '?')));
+		/* 自检通过：清掉可能残留的回退标记（上一次回退留下的）。 */
+		system('rm -f ' + shellQuote(RUN_DIR + '/ebpf_fallback'));
+	}
+}
 
 if (ebpf_spec) {
 	/* eBPF 透明代理：由 sing-box 的内核 eBPF inbound 直接接管流量，不再使用
@@ -1629,6 +1737,17 @@ if (!isEmpty(main_node)) {
 				tolerance: strToInt(cfg.urltest_tolerance),
 				idle_timeout: strToTime(cfg.urltest_idle_timeout),
 				interrupt_exist_connections: strToBool(cfg.urltest_interrupt_exist_connections)
+			});
+			/* 配套「综合评分」selector：成员与 urltest 组完全一致，default 由评分器
+			   score_nodes.uc 按「实际成功率 + 延迟」动态写入（对齐 honk 的 Score
+			   语义：业务观测为主 + 有界验证为辅）。sing-box 没有原生 Score 组，
+			   用 selector 承载评分结果 —— 评分器通过 Clash API PUT 切换 default。
+			   面板上两个组成对出现：URLTEST = 延时最低，本组 = 综合评分。 */
+			push(config.outbounds, {
+				type: 'selector',
+				tag: get_section_outbound_tag(cfg['.name']) + '(综合评分)',
+				outbounds: length(urltest_tags) ? urltest_tags : [ 'direct-out' ],
+				interrupt_exist_connections: false
 			});
 			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
 		} else if (cfg.node === 'selector') {

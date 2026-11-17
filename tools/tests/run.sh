@@ -2699,6 +2699,77 @@ else
 	bad "install.sh still references the .ipk package or lacks the 24.10 rejection"
 fi
 
+# ── CI 用真内核 check 预生成配置样例（借鉴 honk 的 parser-oracle）─────────────
+# 生成器（ucode）与内核 schema 会漂移：store_selected、detour 空 direct、
+# dns_mode 这些坑全是"生成的配置内核不认"。fixtures 覆盖两种最易漂移的形态：
+# eBPF 全量 + 能力自检回退后的 redirect_tproxy 兜底。
+FIX="$ROOT/tools/tests/fixtures"
+if ls "$FIX"/client-*.json >/dev/null 2>&1 \
+   && [ -f "$FIX/client-ebpf-custom.json" ] \
+   && [ -f "$FIX/client-fallback-minimal.json" ]; then
+	ok "kernel-check fixtures exist (eBPF full + redirect_tproxy fallback forms)"
+else
+	bad "no kernel-check fixtures under tools/tests/fixtures: generator/kernel schema drift goes unnoticed"
+fi
+
+if grep -q 'Check generated config fixtures against real kernel' "$BD" \
+   && grep -q 'for fx in tools/tests/fixtures/\*.json' "$BD" \
+   && grep -q 'check -c "\$fx"' "$BD"; then
+	ok "CI runs the real kernel's check against every fixture"
+else
+	bad "CI does not check fixtures with the real kernel: schema drift ships to users"
+fi
+
+# fixtures 里的关键字段必须与生成器口径一致（抽查最容易漂移的三个）：
+# cache_file.store_selected（补丁003）、providers[].initial_path（种子）、
+# ebpf local dns_mode（能力自检回退配套）。
+for key in '"store_selected"' '"initial_path"' '"dns_mode"'; do
+	grep -q "$key" "$FIX/client-ebpf-custom.json" || bad "fixture client-ebpf-custom.json lost $key (schema drift in fixtures themselves)"
+done
+ls "$FIX/client-ebpf-custom.json" >/dev/null 2>&1 \
+	&& grep -q '"store_selected"' "$FIX/client-ebpf-custom.json" \
+	&& grep -q '"initial_path"' "$FIX/client-ebpf-custom.json" \
+	&& grep -q '"dns_mode"' "$FIX/client-ebpf-custom.json" \
+	&& ok "eBPF fixture carries the drift-prone fields (store_selected/initial_path/dns_mode)"
+
+# ── 综合评分组（对齐 honk 的 Score 语义，sing-box 插件层实现）──────────────
+# sing-box 没有原生 Score 组（只有 selector/urltest），用「配套 selector +
+# 评分器动态写 default」实现：生成器为每个 urltest 组追加一个
+# 「<组名>(综合评分)」selector（成员相同），score_nodes.uc 按
+# 「日志失败观测（罚分封顶）+ 有界实测（预算 ceil(sqrt(n))+1）」打分，
+# 挑战者 >10% 改善才 PUT 切换 default（在位保护）。
+GC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
+SN="$PKG/root/etc/homeproxy/scripts/score_nodes.uc"
+LP="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
+
+if grep -q '(综合评分)' "$GC" \
+   && grep -q "type: 'selector'" "$GC" \
+   && grep -q 'urltest_tags' "$GC"; then
+	ok "generator emits a companion score selector for every urltest group"
+else
+	bad "generator lacks the companion score selector for urltest groups"
+fi
+
+if [ -f "$SN" ] \
+   && grep -q 'probe_list' "$SN" \
+   && grep -q 'SWITCH_RATIO = 0.9' "$SN" \
+   && grep -q 'DELAY_FRESH = 10 \* 60' "$SN" \
+   && grep -q 'biz > 3 ? 3 : biz' "$SN" \
+   && grep -q 'score_nodes.lock' "$SN" \
+   && grep -q 'score_state.json' "$SN"; then
+	ok "scorer carries incumbent protection / bounded probing / penalty cap / lock / persistence"
+else
+	bad "scorer missing one of: probe_list, 0.9 switch ratio, 10min fresh window, penalty cap, lock, state file"
+fi
+
+if grep -q 'score_group_update' "$LP" \
+   && grep -q 'score_nodes.lock' "$LP" \
+   && grep -q 'already_running' "$LP"; then
+	ok "rpcd exposes score_group_update (async, guarded by the scorer lock)"
+else
+	bad "rpcd lacks the score_group_update trigger method"
+fi
+
 # ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
 # 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
 # （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测

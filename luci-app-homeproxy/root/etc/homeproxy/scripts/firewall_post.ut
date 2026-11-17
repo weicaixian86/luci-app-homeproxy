@@ -72,8 +72,22 @@ let routing_port = uci.get(cfgname, 'config', 'routing_port');
 if (routing_port === 'common')
 	routing_port = uci.get(cfgname, 'infra', 'common_port') || '22,53,80,143,443,465,587,853,873,993,995,8080,8443,9418';
 
-const proxy_mode = uci.get(cfgname, 'config', 'proxy_mode') || 'redirect_tproxy',
+const proxy_mode_uci = uci.get(cfgname, 'config', 'proxy_mode') || 'redirect_tproxy',
       ipv6_support = uci.get(cfgname, 'config', 'ipv6_support') || '0';
+
+/* eBPF 能力自检回退（generate_client.uc 启动时检测内核版本/with_ebpf/cgroup/
+   bpffs，任一不满足则写本标记并按 redirect_tproxy 生成 inbound）：
+   uci 里 proxy_mode 仍是 eBPF 值，但**实际生效的是 redirect_tproxy** ——
+   这里必须跟随标记生成 redirect/tproxy 劫持规则。若不跟随：eBPF 回退后
+   inbound 里没有劫持入口、防火墙又因 uci 是 eBPF 而不生成劫持规则，
+   结果是「无接管 = 全屋断网」。 */
+let proxy_mode = proxy_mode_uci;
+const ebpf_fb_raw = trim(readfile('/var/run/homeproxy/ebpf_fallback') || '');
+if (ebpf_fb_raw) {
+	const fb = json(ebpf_fb_raw);
+	if (type(fb) === 'object' && fb.mode === 'redirect_tproxy')
+		proxy_mode = 'redirect_tproxy';
+}
 
 let self_mark, redirect_port,
     tproxy_port, tproxy_mark,

@@ -320,6 +320,28 @@ jobs:
           file "$f"
           ./$f version | head -n1
 
+      # 用**真内核**对预生成配置样例跑 check（借鉴 honk 的 parser-oracle 思路）：
+      # 生成器（ucode）与内核 schema 之间会漂移 —— store_selected、detour 空
+      # direct、dns_mode 这些坑全是"生成的配置内核不认"。fixtures 覆盖两种
+      # 最易漂移的形态：eBPF 全量（providers/组/DoH/cache_file.store_selected）
+      # 与能力自检回退后的 redirect_tproxy 兜底。任一 check 失败即拒绝发布。
+      - name: Check generated config fixtures against real kernel
+        run: |
+          set -e
+          f="sing-box-${{ matrix.arch }}"
+          fail=0
+          for fx in tools/tests/fixtures/*.json; do
+            echo "==> check $fx"
+            if ! ./$f check -c "$fx" > /tmp/check.log 2>&1; then
+              echo "::error::kernel rejects fixture $fx (generator/kernel schema drift)"
+              cat /tmp/check.log
+              fail=1
+            fi
+            grep -qE 'FATAL|decode config|unknown field' /tmp/check.log && { echo "::error::FATAL in $fx"; cat /tmp/check.log; fail=1; }
+          done
+          [ "$fail" = "0" ] || exit 1
+          echo "all fixtures pass"
+
       # 内核压缩包只在这里打一次包：tar/gzip 不是可复现的（含 mtime），
       # 若在不同 job 各打一次，两次的 sha256 会不一致，内置校验值就对不上。
       # 因此 tarball + sha256 都在这里产出，luci job 把 sha256 sed 进
