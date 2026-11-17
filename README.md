@@ -9,6 +9,17 @@ luci-app-homeproxy_<版本>-all.apk OpenWrt 25.12 版本 LUCI 安装包
 sing-box-1.14.4-reF1nd_<版本>-linux-amd64-musl.tar.gz Amd64带补丁内核（含 with_ebpf）  
 homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁内核）
 
+### 系统要求（Linux eBPF 技术最小可运行配置）
+
+低于以下配置时 eBPF 透明代理无法正常运行（可退回 redirect/tproxy 模式）：
+
+| 项目 | 最小要求 |
+| --- | --- |
+| **Flash（存储）** | **最少 256 MB（overlay 可用 ≥ 100 MB）**；128 MB flash 装不下（sing-box 解压后约 78 MB），可用 U 盘 extroot 扩展 |
+| **RAM（运行内存）** | **最少 256 MB（建议 512 MB）**；sing-box 稳态约 120~200 MB，128 MB 会 OOM |
+| **系统** | **OpenWrt 25.12+（apk）**；24.10 及更早（opkg）不再支持 |
+| **内核** | **≥ 6.6**（eBPF 用；需编译带 `with_ebpf`） |
+
 ## 界面截图
 | 客户端设置 | 节点设置 |
 | --- | --- |
