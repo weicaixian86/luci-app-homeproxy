@@ -4437,3 +4437,18 @@ msgstr "eBPF 本机(socket_assign) + 局域网(packet_rewrite)"
 
 msgid "eBPF modes need a sing-box core built with <code>with_ebpf</code>. The current core lacks it, so selecting an eBPF mode makes the service fail to start."
 msgstr "eBPF 模式需要带 <code>with_ebpf</code> 的 sing-box 内核；当前内核没有该能力，选择 eBPF 会导致服务无法启动。"
+
+msgid "leave empty = no token"
+msgstr "留空 = 不使用令牌"
+
+msgid "set — type to replace"
+msgstr "已设置 — 输入可替换"
+
+msgid "Clear"
+msgstr "清除"
+
+msgid "Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty (or click \"Clear\") to remove it. Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one."
+msgstr "可选。仅在检查资源更新时使用，用于把 GitHub API 的额度从每小时 60 次提升到 5000 次。留空（或点「清除」）即可移除。注意令牌以明文保存在 /etc/config/homeproxy，建议使用只读令牌。"
+
+msgid "Failed to fill missing config defaults: %s"
+msgstr "补齐缺失的配置默认值失败：%s"

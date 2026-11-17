@@ -46,8 +46,15 @@ trap 'rm -f "$RUN_DIR/schedule-run" 2>/dev/null' EXIT INT TERM
 
 for i in "china_ip4" "china_ip6" "gfw_list" "china_list"; do
 	log "更新内置资源：$i"
-	/bin/sh "$SCRIPTS_DIR/update_resources.sh" "$i"
-	[ "$?" = "0" ] || log "内置资源 $i 更新失败（update_resources.sh 返回非 0）"
+	# 输出必须进日志：以前这里没有重定向，失败时只留一句「更新失败」，
+	# 真正的原因（GitHub API 限流 / 下载超时 / 校验不过）全被丢掉。
+	/bin/sh "$SCRIPTS_DIR/update_resources.sh" "$i" >>"$LOG_FILE" 2>&1
+	rc=$?
+	# update_resources.sh 的返回码语义：0=已更新；3=已是最新（**正常**）；
+	# 1=失败；2=已有任务在跑。以前只认 0，于是「已是最新」天天被记成
+	# 「更新失败」——238 现场 03:00 的 `china_ip4/china_ip6 更新失败` 全是误报
+	# （手动跑返回 You're already at the latest version → rc=3）。
+	[ "$rc" = "0" ] || [ "$rc" = "3" ] || log "内置资源 $i 更新失败（update_resources.sh 返回 rc=$rc）"
 done
 
 log "开始更新订阅…"

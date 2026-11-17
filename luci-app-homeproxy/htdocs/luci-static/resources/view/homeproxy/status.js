@@ -363,11 +363,33 @@ return view.extend({
 
 		o = s.option(form.Value, 'github_token', _('GitHub token'));
 		o.password = true;
-		o.description = _('Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty unless updates keep failing with "Failed to get the latest version". Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one.');
+		/* 必须显式 rmempty：值为空时 CBI 会 uci delete 掉该项。若不加，
+		   再叠加密码框「空值不清 DOM」的行为（ui.Textfield 的 setValue 只在
+		   value 非空时才写 DOM），用户清空后提交仍会把旧 token 写回 ——
+		   现场：清空保存后 /etc/config/homeproxy 里仍有 option github_token。 */
+		o.rmempty = true;
+		o.optional = true;
+		o.placeholder = _('leave empty = no token');
+		o.description = _('Optional. It is only used when checking resource updates, to raise the GitHub API rate limit from 60 to 5000 requests per hour. Leave it empty (or click "Clear") to remove it. Note that the token is stored in plain text in /etc/config/homeproxy, so use a read-only one.');
 		o.renderWidget = function() {
+			/* 直接读 uci 判断「是否已设置」，不依赖 section 内部字段名。 */
+			let current = '';
+			try { current = this.map.uci.get('homeproxy', 'config', 'github_token') || ''; } catch (e) { current = ''; }
 			let node = form.Value.prototype.renderWidget.apply(this, arguments);
 
-			(node.querySelector('.control-group') || node).appendChild(E('button', {
+			/* 不在页面回显明文：password 框渲染时若带 value=旧 token，浏览器/
+			   密码管理器常把它自动填回，导致「清空」提交后又变回旧值。
+			   这里把 input 的 value 清空，只用 placeholder 提示是否已设置。 */
+			const input = node.querySelector ? node.querySelector('input') : null;
+			if (input) {
+				input.value = '';
+				if (current)
+					input.placeholder = _('set — type to replace');
+			}
+
+			const actions = node.querySelector('.control-group') || node;
+
+			actions.appendChild(E('button', {
 				'class': 'cbi-button cbi-button-apply',
 				'title': _('Save'),
 				'click': ui.createHandlerFn(this, () => {
@@ -376,6 +398,22 @@ return view.extend({
 					});
 				}, this.option)
 			}, [ _('Save') ]));
+
+			/* 显式「清除」：直接删掉该项再 commit + apply，绕开密码框的
+			   「空值不清 DOM」问题，确保 uci 里真的没有 github_token。 */
+			actions.appendChild(E('button', {
+				'class': 'cbi-button cbi-button-reset',
+				'title': _('Clear'),
+				'click': ui.createHandlerFn(this, () => {
+					const map = this.map;
+					map.uci.remove('homeproxy', 'config', 'github_token');
+					return map.uci.save().then(() => {
+						if (input)
+							input.value = '';
+						return map.uci.apply();
+					});
+				}, this.option)
+			}, [ _('Clear') ]));
 
 			return node;
 		}

@@ -1674,6 +1674,15 @@ return baseclass.extend({
 			expect: { '': {} }
 		});
 
+		/* 补齐缺失的配置项：上传的精简/残缺配置文件（少参数）在这里按默认值补全，
+		   只补缺失项、不动已有值。必须在 reload 之前跑 —— 生成器与内核都按 uci
+		   取值，缺项会走各自兜底或行为异常。 */
+		const callFillDefaults = rpc.declare({
+			object: 'luci.homeproxy',
+			method: 'ensure_config_defaults',
+			expect: { '': {} }
+		});
+
 		/* 基类实现：先保存页面里所有 .cbi-map，再 ui.changes.apply()。
 		   它不 return apply 的 promise，所以这一步只负责「提交配置」。 */
 		const base = (viewproto && typeof viewproto.handleSaveApply === 'function')
@@ -1700,10 +1709,19 @@ return baseclass.extend({
 			return null;
 		});
 
-		/* 等配置提交完 → 先同步规则集 → 再无条件重载服务。
+		/* 补齐默认值：失败只告警、不阻断保存（升级后 rpcd 未重启会 Method not found）。 */
+		const fillDefaults = () => callFillDefaults().then((ret) => {
+			if (ret && ret.result === false)
+				ui.addNotification(null, E('p', {},
+					_('Failed to fill missing config defaults: %s').format(ret.error || '')), 'warning');
+			return null;
+		}).catch(() => null);
+
+		/* 等配置提交完 → 补齐缺失项 → 再同步规则集 → 最后无条件重载服务。
 		   reload 刻意不 await：stop+start 要几秒，让它自己跑完，
 		   页面该刷新就刷新。 */
 		return Promise.resolve(saved).catch(() => null)
+			.then(fillDefaults)
 			.then(sync)
 			.then(() => { L.resolveDefault(callRcInit('homeproxy', 'reload'), null).catch(() => null); })
 			.then(() => saved);

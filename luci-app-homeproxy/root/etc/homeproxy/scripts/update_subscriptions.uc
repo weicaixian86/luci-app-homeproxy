@@ -81,9 +81,22 @@ if (type(ARGV) === 'array') {
 }
 
 let subscription_urls = all_subscription_urls;
-if (provider_update_id)
+/* 「只更新某一个机场」只应在**面板单机场「更新」按钮**这条链路上生效：
+   它把 md5(订阅URL) 写进 provider-update-id，然后由 update_provider.sh 以
+   --source "面板单个机场「更新」按钮" 调用本脚本。其它任何触发——定时任务、
+   手动「更新全部」、服务启动自愈——都必须更新全部订阅。
+   历史 bug：这个文件写进去后**再没人删**，于是只要点过一次单机场更新，
+   之后每次 cron 都只更新那一个机场，其余机场永远不更新。238 现场（2026-11-17
+   03:00 定时任务）日志「共 1 个订阅」、只更新了 LX，正是残留的
+   /var/run/homeproxy/provider-update-id 里存着 LX 的 grouphash 所致。
+   修法：按来源判定；非单机场触发时把陈旧标记清掉。 */
+const provider_update_trigger = (provider_update_id !== '' &&
+	match(cli_source, /面板单个机场/));
+if (provider_update_trigger)
 	subscription_urls = filter(all_subscription_urls, (url) =>
 		md5(replace(url, /#.*$/, '')) === provider_update_id);
+else if (provider_update_id !== '')
+	system('rm -f ' + RUN_DIR + '/provider-update-id');
 
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 let main_node, main_udp_node;

@@ -2260,6 +2260,18 @@ else
 	bad "update_resources.sh has no mkdir lock (or still relies on the external lock command)"
 fi
 
+# cron 侧必须把 update_resources.sh 的 **rc=3（已是最新）当成功**，并把输出落日志。
+# 否则「已是最新」天天被记成「更新失败」——238 现场 03:00 的
+# `china_ip4/china_ip6 更新失败` 全是误报（手动跑返回 latest → rc=3），
+# 而失败时又因为没重定向，真正原因（限流/超时）全被丢掉。
+CRON_SH="$PKG/root/etc/homeproxy/scripts/update_crond.sh"
+if grep -q '\[ "\$rc" = "3" \]' "$CRON_SH" \
+   && grep -q 'update_resources.sh" "\$i" >>"\$LOG_FILE" 2>&1' "$CRON_SH"; then
+	ok "cron treats resource rc=3 (already latest) as success and logs the reason"
+else
+	bad "cron misreports 'already latest' as failure and/or drops the update output"
+fi
+
 # 升级兼容（0.1.25 现场）：旧版用 **同名文件** 当锁（`lock -n` 创建、从不释放），
 # 新版用的是 **同名目录**。升级后那个文件还留在 /var/run（内存盘，重启才清）里
 # 挡路 → mkdir 恒失败 → 日志照样是「A task is already running.」，用户会以为
@@ -2959,6 +2971,44 @@ if grep -q "const params = trim(req.args?.params" "$RPC_UC" \
 	ok "key generation, certificate upload and resource updates report like real features"
 else
 	bad "a ucode builtin that does not exist, an empty argv, or a bare status code still breaks these buttons"
+fi
+
+# GitHub token 清空后必须能从 uci 里真正删掉。现场：清空保存后
+# /etc/config/homeproxy 仍有 option github_token。后端删除/重启都正常
+# （已实测：delete 后重启不回填），问题在前端 —— 密码框渲染时把旧值塞进
+# DOM（ui.Textfield 的 setValue 只在 value 非空时才写 DOM），用户"清空"后
+# formvalue() 仍读到旧值。修法：显式 rmempty + 不回显明文 + 提供「Clear」按钮
+# 直接 uci.remove + commit。
+if grep -q "form.Value, 'github_token'" "$STATUS_JS" \
+   && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q 'o.rmempty = true' \
+   && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q "input.value = ''" \
+   && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q "uci.remove('homeproxy', 'config', 'github_token')"; then
+	ok "GitHub token can be cleared (rmempty + no echo + explicit Clear button)"
+else
+	bad "GitHub token cannot be cleared from the UI: empty save keeps writing the old value back"
+fi
+
+# 上传精简/残缺的配置文件后，点「保存并应用」必须按默认值补齐缺失项
+# （只补缺失、不覆盖已有值），否则生成器/内核会因缺项行为异常。
+# 需求：用户明确要求「以当前 LuCI 界面参数补齐配置文件」。
+if grep -q 'ensure_config_defaults' "$RPC_UC" \
+   && grep -q 'if (uci.get(.homeproxy., sect, opt) === null)' "$RPC_UC" \
+   && grep -q "routing: {" "$RPC_UC" \
+   && grep -q "method: 'ensure_config_defaults'" "$HPJS"; then
+	ok "save-and-apply fills missing config keys with defaults (only missing, never overwrite)"
+else
+	bad "missing config keys are not filled on save: an uploaded minimal config stays short"
+fi
+
+# 补齐的默认值必须与 generate_client.uc 的兜底值同口径，否则"补齐"后
+# 界面显示的和内核实际用的不一致（例如 mixed_port 5330 vs 其他）。
+if grep -q "mixed_port: '5330'" "$RPC_UC" \
+   && grep -q "uci.get(uciconfig, uciinfra, 'mixed_port') || '5330'" "$GC" \
+   && grep -q "proxy_mode: 'redirect_tproxy'" "$RPC_UC" \
+   && grep -q "uci.get(uciconfig, ucimain, 'proxy_mode') || 'redirect_tproxy'" "$GC"; then
+	ok "filled defaults match the generator's own fallback values"
+else
+	bad "filled defaults drift from generate_client.uc fallbacks"
 fi
 
 # 一条订阅都没成功时不许重启内核，也不许说 Successfully。
@@ -4091,6 +4141,19 @@ if ! grep -q "tr -d '\[:space:\]'" "$UPD_SH"; then
 	ok "update_provider.sh does not use tr '[:space:]' (BusyBox deletes a/c/e/s/p)"
 else
 	bad "update_provider.sh uses tr '[:space:]': BusyBox mangles the 32-byte hash"
+fi
+
+# 「只更新一个机场」必须由**来源**决定，不能只看 provider-update-id 在不在。
+# 历史 bug：该文件写进去后没人删，于是点过一次单机场更新，之后每次 cron 都只
+# 更新那一个机场 —— 238 现场 03:00 定时任务日志「共 1 个订阅」，只更了 LX，
+# 其余 3 个机场永远不更新。
+UPD_UC="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
+if grep -q 'provider_update_trigger' "$UPD_UC" \
+   && grep -q 'match(cli_source, /面板单个机场/)' "$UPD_UC" \
+   && grep -q "rm -f ' + RUN_DIR + '/provider-update-id'" "$UPD_UC"; then
+	ok "only the panel single-airport path filters by update id; stale ids are cleared"
+else
+	bad "update id filtering is not scoped to the panel path: cron would update a single airport"
 fi
 
 # ── 订阅更新：成功才允许碰服务（0.2.2 用户定稿） ────────────────────────────

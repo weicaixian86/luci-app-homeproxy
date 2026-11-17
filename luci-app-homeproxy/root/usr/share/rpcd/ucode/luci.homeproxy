@@ -636,6 +636,66 @@ function resourcesUpdateRunning(type) {
 }
 
 const methods = {
+	/* 补齐缺失的配置项（用户在「配置管理」上传了精简/残缺的配置文件后，
+	   点「保存并应用」时按默认值补齐 uci，避免生成器/内核因为缺项行为异常）。
+	   —— 只补**缺失**项：已存在的键一律不动（不覆盖用户手改的高级值）。
+	   默认值与 generate_client.uc 里的 `uci.get(...) || 默认` 保同一口径，
+	   测试 tools/tests/run.sh 会校验这里的表与生成器兜底值一致。 */
+	ensure_config_defaults: {
+		call: function() {
+			const uci = cursor();
+			const defaults = {
+				config: {
+					routing_mode: 'bypass_mainland_china',
+					proxy_mode: 'redirect_tproxy',
+					ipv6_support: '0',
+					main_node: 'nil',
+					main_udp_node: 'nil',
+					log_level: 'warn'
+				},
+				infra: {
+					dns_port: '5333',
+					mixed_port: '5330',
+					sniff_override: '1',
+					self_mark: '100',
+					redirect_port: '5331',
+					tproxy_port: '5332',
+					tun_name: 'singtun0',
+					tun_addr4: '172.19.0.1/30',
+					tun_addr6: 'fdfe:dcba:9876::1/126',
+					tun_mtu: '9000',
+					ebpf_dns_mode: 'off',
+					dns_redirect: '1'
+				},
+				routing: {
+					default_outbound: 'nil',
+					default_outbound_dns: 'default-dns',
+					tcpip_stack: 'system'
+				},
+				clash_api: {
+					external_controller: '127.0.0.1:9090',
+					default_mode: 'rule'
+				}
+			};
+
+			let filled = [];
+
+			for (let sect in defaults) {
+				for (let opt in defaults[sect]) {
+					if (uci.get('homeproxy', sect, opt) === null) {
+						push(filled, sprintf('%s.%s=%s', sect, opt, defaults[sect][opt]));
+						uci.set('homeproxy', sect, opt, defaults[sect][opt]);
+					}
+				}
+			}
+
+			if (length(filled))
+				uci.commit('homeproxy');
+
+			return { result: true, filled: filled };
+		}
+	},
+
 	config_profile_list: {		call: function() {
 			const fd = popen(`/bin/sh ${shellquote(HP_DIR + '/scripts/config_profile.sh')} list 2>&1`),
 			      output = fd ? trim(readProcess(fd) || '') : '';
