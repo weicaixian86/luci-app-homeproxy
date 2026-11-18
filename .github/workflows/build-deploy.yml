@@ -325,7 +325,11 @@ jobs:
       # direct、dns_mode 这些坑全是"生成的配置内核不认"。fixtures 覆盖两种
       # 最易漂移的形态：eBPF 全量（providers/组/DoH/cache_file.store_selected）
       # 与能力自检回退后的 redirect_tproxy 兜底。任一 check 失败即拒绝发布。
+      # fixtures 的 rule_set 用相对路径 tools/tests/fixtures/ruleset/*.srs
+      # （随仓库分发，runner 上没有 /etc/homeproxy）；只跑 amd64 —— runner 是
+      # x86_64，无法执行 arm64 ELF，而 schema 校验与内核架构无关（同一份 Go 代码）。
       - name: Check generated config fixtures against real kernel
+        if: matrix.arch == 'amd64'
         run: |
           set -e
           f="sing-box-${{ matrix.arch }}"

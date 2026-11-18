@@ -154,31 +154,31 @@
 				"type": "local",
 				"tag": "geosite-private",
 				"format": "binary",
-				"path": "/etc/homeproxy/ruleset/geosite-private.srs"
+				"path": "tools/tests/fixtures/ruleset/geosite-private.srs"
 			},
 			{
 				"type": "local",
 				"tag": "geosite-cn",
 				"format": "binary",
-				"path": "/etc/homeproxy/ruleset/geosite-cn.srs"
+				"path": "tools/tests/fixtures/ruleset/geosite-cn.srs"
 			},
 			{
 				"type": "local",
 				"tag": "geoip-cn",
 				"format": "binary",
-				"path": "/etc/homeproxy/ruleset/geoip-cn.srs"
+				"path": "tools/tests/fixtures/ruleset/geoip-cn.srs"
 			},
 			{
 				"type": "local",
 				"tag": "geosite-telegram",
 				"format": "binary",
-				"path": "/etc/homeproxy/ruleset/geosite-telegram.srs"
+				"path": "tools/tests/fixtures/ruleset/geosite-telegram.srs"
 			},
 			{
 				"type": "local",
 				"tag": "geoip-telegram",
 				"format": "binary",
-				"path": "/etc/homeproxy/ruleset/geoip-telegram.srs"
+				"path": "tools/tests/fixtures/ruleset/geoip-telegram.srs"
 			}
 		],
 		"auto_detect_interface": true,
