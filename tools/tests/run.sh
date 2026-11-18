@@ -2753,15 +2753,17 @@ fi
 
 if [ -f "$SN" ] \
    && grep -q 'probe_list' "$SN" \
-   && grep -q 'SWITCH_RATIO = 0.9' "$SN" \
+   && grep -q 'TOLERANCE = 0.10' "$SN" \
    && grep -q 'DELAY_FRESH = 10 \* 60' "$SN" \
-   && grep -q 'biz > 3 ? 3 : biz' "$SN" \
+   && grep -q 'update_baseline' "$SN" \
+   && grep -q 'W_JITTER' "$SN" \
+   && grep -q 'compute_score' "$SN" \
    && grep -q 'score_nodes.lock' "$SN" \
    && grep -q "cfg.node !== 'score'" "$SN" \
    && grep -q 'score_state.json' "$SN"; then
-	ok "scorer carries uci-based score-group detection / incumbent protection / bounded probing / penalty cap / lock / persistence"
+	ok "scorer carries uci-based score-group detection / tolerance anti-flap / EMA baseline+degrade / jitter dimension / bounded probing / lock / persistence"
 else
-	bad "scorer missing one of: probe_list, 0.9 switch ratio, 10min fresh window, penalty cap, lock, state file"
+	bad "scorer missing one of: probe_list, tolerance, fresh window, baseline+degrade, jitter, lock, state file"
 fi
 
 if grep -q 'score_group_update' "$LP" \
