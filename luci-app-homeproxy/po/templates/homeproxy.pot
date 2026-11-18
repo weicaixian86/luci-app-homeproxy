@@ -1835,8 +1835,8 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1993
 msgid ""
 "List of policy groups. The ticking order decides the display order of group "
-"members; for manual select, when the default member is empty, the first group "
-"member is used."
+"members in the panel; for manual select, when the default member is None, the "
+"first group member is used."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1915

@@ -1888,14 +1888,14 @@ return view.extend({
 			_('The domain strategy for resolving the domain name in the address.'));
 		for (let i in hp.dns_strategy)
 			so.value(i, hp.dns_strategy[i]);
-		so.depends('node', /^((?!(urltest|selector)$).)+$/);
+		so.depends('node', /^((?!(urltest|score|selector)$).)+$/);
 		so.modalonly = true;
 
 		so = ss.option(widgets.DeviceSelect, 'bind_interface', _('Bind interface'),
 			_('The network interface to bind to.'));
 		so.multiple = false;
 		so.noaliases = true;
-		so.depends({'outbound': '', 'node': /^((?!(urltest|selector)$).)+$/});
+		so.depends({'outbound': '', 'node': /^((?!(urltest|score|selector)$).)+$/});
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'outbound', _('Outbound'),
@@ -1939,7 +1939,7 @@ return view.extend({
 
 			return true;
 		}
-		so.depends('node', /^((?!(urltest|selector)$).)+$/);
+		so.depends('node', /^((?!(urltest|score|selector)$).)+$/);
 		so.editable = true;
 		/* 出站节点只在单节点包装时生效（点击下拉菜单手动选），
 		   策略组表格里显示这列对多数人含义不明，改为仅在弹窗中展示。 */
@@ -1995,7 +1995,7 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
-			_('List of policy groups. The ticking order decides the display order of group members; for manual select, when the default member is empty, the first group member is used.'));
+			_('List of policy groups. The ticking order decides the display order of group members in the panel; for manual select, when the default member is None, the first group member is used.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
@@ -2013,6 +2013,10 @@ return view.extend({
 
 			return true;
 		}
+		/* 三种工作模式都可挂策略组成员（urltest/score 挂的组参与自动选择，
+		   selector 挂的组为手动成员）。 */
+		so.depends('node', 'urltest');
+		so.depends('node', 'score');
 		so.depends('node', 'selector');
 		so.rmempty = true;
 		so.modalonly = true;

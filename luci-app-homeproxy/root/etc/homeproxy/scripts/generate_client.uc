@@ -1725,7 +1725,11 @@ if (!isEmpty(main_node)) {
 
 		if (cfg.node === 'urltest') {
 			const legacy_nodes = (isEmpty(cfg.subscription_groups) && isEmpty(cfg.subscription_nodes) && isEmpty(cfg.selected_nodes)) ? cfg.urltest_nodes : null;
-			const urltest_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes, cfg.filter_nodes, cfg.filter_keywords);
+			const urltest_base = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, legacy_nodes, cfg.filter_nodes, cfg.filter_keywords);
+			/* 手动挂的策略组（policy_nodes）同样参与自动选择（三种工作模式
+			   统一，UI 与生成行为一致）。 */
+			const urltest_policy = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);
+			const urltest_list = [...urltest_base, ...filter(urltest_policy, (l) => !~index(urltest_base, l))];
 			const urltest_tags = map(urltest_list, (k) => get_section_outbound_tag(k));
 			push(config.outbounds, {
 				type: 'urltest',
@@ -1755,7 +1759,9 @@ if (!isEmpty(main_node)) {
 			   收集与 urltest 相同，default 可由用户设初始值（selector_default），
 			   运行期由 score_nodes.uc 按「日志失败观测 + 有界实测」动态切换
 			   （对齐 honk 的 Score 语义）。评分器按 uci node=='score' 识别本组。 */
-			const score_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
+			const score_base = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
+			const score_policy = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);
+			const score_node_list = [...score_base, ...filter(score_policy, (l) => !~index(score_base, l))];
 			const score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
 			/* 综合评分组**不设 default**：初始选中由评分器第一轮实测后 PUT 写入
 			   （评分语义 = 评分器全权，UI 也不提供默认成员选项 —— 用户确认）。 */

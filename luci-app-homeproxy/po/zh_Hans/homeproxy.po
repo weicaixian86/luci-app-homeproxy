@@ -1891,9 +1891,9 @@ msgstr "要测试的节点列表。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1960
 msgid ""
 "List of policy groups. The ticking order decides the display order of group "
-"members; for manual select, when the default member is empty, the first group "
-"member is used."
-msgstr "选择先后决定策略组成员显示先后顺序，手动选择如默认成员为无时，表示使用第一个策略组成员。"
+"members in the panel; for manual select, when the default member is None, the "
+"first group member is used."
+msgstr "选择先后决定策略组成员在面板显示顺序，如手动选择默认成员为无时，表示使用第一个策略组成员。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1915
 #: htdocs/luci-static/resources/view/homeproxy/server.js:574
