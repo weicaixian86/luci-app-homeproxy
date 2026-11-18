@@ -4370,3 +4370,12 @@ msgstr ""
 
 msgid "Show/Hide"
 msgstr ""
+
+msgid "Lowest latency"
+msgstr ""
+
+msgid "No available node (falling back to direct)."
+msgstr ""
+
+msgid "No available node data yet."
+msgstr ""

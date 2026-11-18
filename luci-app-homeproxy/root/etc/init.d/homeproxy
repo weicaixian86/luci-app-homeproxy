@@ -815,6 +815,48 @@ setup_auto_update_cron() {
 		log "规则集定时更新未登记：routing_mode='${routing_mode_now:-空}'（用户规则集只在 custom 模式下被内核引用）。旧任务已清理。"
 	fi
 	config_foreach add_ruleset_cron "ruleset"
+
+	# 综合评分自动调度：存在启用中的 node=='score' 策略组才登记。评分器
+	# 自带文件锁防并发，cron 直接跑 ucode（脚本自己写 [SCORE] 日志），
+	# 不经过 rpcd。频率 uci 可配（config.score_update_time，5 段 cron）。
+	# ⚠ 30 分钟间隔与 DELAY_FRESH=10min 的关系：每轮现任样本必过期 →
+	#   现任必被重测 + 最老样本轮询 → 基线/抖动历史全员逐步积累。
+	local has_score_group="0"
+	local _sec
+	for _sec in $(uci -q show "$CONF" 2>/dev/null | grep "=routing_node$" | cut -d. -f2 | cut -d= -f1); do
+		[ "$(uci -q get "$CONF.$_sec".node)" = "score" ] && \
+		[ "$(uci -q get "$CONF.$_sec".enabled)" != "0" ] && has_score_group="1"
+	done
+	sed -i "/#${CONF}_score/d" "/etc/crontabs/root" 2>"/dev/null"
+	if [ "$has_score_group" = "1" ]; then
+		# 频率用「分钟间隔」表达（valid_update_cron 只认每日固定时刻，
+		# 不支持 */30 步进），这里自行换算成 cron：
+		#   1-59   → */N * * * *
+		#   60 的倍数（≤1440）→ 0 */H * * *
+		#   0 = 关闭调度（cron 行仍会清理）。
+		local score_int score_time=""
+		config_get score_int "config" "score_update_interval" "30"
+		case "$score_int" in
+			''|*[!0-9]*) score_int="30" ;;
+		esac
+		if [ "$score_int" = "0" ]; then
+			log "综合评分自动调度已关闭（score_update_interval=0），旧 cron 行已清理。"
+		elif [ "$score_int" -le 59 ]; then
+			score_time="*/$score_int * * * *"
+		elif [ $((score_int % 60)) = "0" ] && [ "$score_int" -le 1440 ]; then
+			score_time="0 */$((score_int / 60)) * * *"
+		else
+			log "综合评分间隔无效（$score_int 分钟）：请用 1-59，或 60/120/240 等 60 的倍数（上限 1440）。未登记 cron。"
+		fi
+		if [ -n "$score_time" ]; then
+			echo -e "$score_time ucode -S $HP_DIR/scripts/score_nodes.uc >/dev/null 2>&1 #${CONF}_score" >> "/etc/crontabs/root"
+			cron_reload="1"
+			log "综合评分自动调度已登记：每 $score_int 分钟（$score_time → score_nodes.uc）"
+		fi
+	else
+		log "综合评分自动调度未登记：没有启用中的综合评分策略组（旧的 cron 行已清理）。"
+	fi
+
 	[ "$cron_reload" = "1" ] && /etc/init.d/cron restart
 }
 

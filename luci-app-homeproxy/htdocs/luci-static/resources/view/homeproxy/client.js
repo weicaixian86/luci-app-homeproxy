@@ -1390,6 +1390,15 @@ return view.extend({
 
 				const name = (cur && cur.name) || grp.now || '';
 
+				/* direct-out / block-out 只是兜底出口（组内没有可用成员时退回
+				   直连/拦截），不是真实节点；显示成 — 更直观（现场：空成员的
+				   手册组当前节点列显示 "direct-out"）。 */
+				if (name === 'direct-out' || name === 'block-out' || name === 'direct') {
+					span.textContent = '—';
+					span.title = _('No available node (falling back to direct).');
+					continue;
+				}
+
 				if (!name) {
 					if (!span.textContent.trim() || span.textContent.trim() === '…') {
 						span.textContent = '—';
@@ -1467,8 +1476,8 @@ return view.extend({
 
 					if (node === 'urltest' || node === 'score' || node === 'selector') {
 						const badge = E('span', {
-							'class': 'hp-tag ' + ((node === 'urltest') ? 'hp-tag-auto' : 'hp-tag-manual')
-						}, (node === 'urltest') ? _('Auto select') : (node === 'score') ? _('Auto score') : _('Manual select'));
+							'class': 'hp-tag ' + ((node === 'urltest') ? 'hp-tag-auto' : (node === 'score') ? 'hp-tag-score' : 'hp-tag-manual')
+						}, (node === 'urltest') ? _('Lowest latency') : (node === 'score') ? _('Auto score') : _('Manual select'));
 
 						return badge;
 					}

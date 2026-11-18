@@ -37,16 +37,34 @@ const LOCK_DIR = RUN_DIR + '/score_nodes.lock';
 const LOG_FILE = RUN_DIR + '/homeproxy.log';
 const HALF_LIFE = 30 * 60;
 const DELAY_FRESH = 10 * 60;
-const SWITCH_RATIO = 0.9;
-const FAIL_PENALTY_MS = 100000;
 const PROBE_TIMEOUT_MS = 4000;
+
+/* ===== 第一档（借鉴 mihomo Smart Group）：多维评分 + 防抖 + 退化检测 ===== */
+const TOLERANCE = 0.10;          // 评分容差：最优分要优于现任 10% 才切换
+/* 权重（分数越低越好）：延迟仍是最强区分项；抖动衡量稳定性；
+   速度维度因 reF1nd 内核 /connections 无连接追踪数据（实测恒为空）
+   改由抖动承担“稳定性”目标——完全基于既有延迟样本，零额外探测。 */
+const W_DELAY = 0.45;
+const W_LOSS = 0.25;
+const W_JITTER = 0.30;
+const JITTER_MIN_SAMPLES = 3;    // 抖动样本不足不计惩罚（中性）
+const HIST_MAX = 10;             // 每成员保留最近 10 次成功延迟
+const DEGRADE_PENALTY = 0.5;     // 退化节点额外惩罚分
+const BASE_ALPHA = 0.20;         // EMA 基线系数（新样本权重 20%）
+const BASE_MIN_SAMPLES = 3;      // 建立基线的最少成功样本
+const SPIKE_FACTOR = 3.0;        // 延迟 > 基线×3 视为 spike，不更新基线
+const BASE_MAX_STEP_UP = 1.25;   // 基线单次最多上涨 25%
+const DEGRADE_FACTOR = 1.5;      // 延迟 > 基线×1.5 标记退化
+const RECOVER_FACTOR = 1.2;      // 延迟 ≤ 基线×1.2 才可清除退化
+const RECOVER_SUCCESSES = 2;     // 连续成功次数清除退化
+const LOSS_MIN_SAMPLES = 3;      // 失败率样本不足不惩罚
 /* 与 urltest 同口径：google.com/generate_204（别用 gstatic —— 它在 china_list 里，
    且实测有节点通 gstatic 却连不上 google.com，会选出口径上"最优"实则不通的节点，
    237 现场：台湾高速01 gstatic 158ms 最优，google.com 却 000。 */
 const PROBE_URL_ENC = 'https%3A%2F%2Fwww.google.com%2Fgenerate_204';
 
 function log(msg) {
-	system(sprintf('printf "%%s %%s\n" "$(date +%%Y-%%m-%%d\ %%H:%%M:%%S)" %s >> %s 2>/dev/null',
+	system(sprintf('printf "%%s %%s\n" "$(date +%%Y-%%m-%%dT%%H:%%M:%%S)" %s >> %s 2>/dev/null',
 		shellQuote('[SCORE] ' + msg), shellQuote(LOG_FILE)));
 }
 
@@ -126,23 +144,6 @@ function save_state(st) {
 	writefile(STATE_FILE, sprintf('%.J\n', st));
 }
 
-function collect_business_failures() {
-	/* 按行计数即可：tail 窗口（800 行）本身就是“近期”的近似，不解析时间戳
-	   （ucode 没有 mktime）。时间衰减交给 30 分钟半衰期的样本清理处理。 */
-	const fails = {};
-	const fd = popen(sprintf('tail -n 800 %s 2>/dev/null | grep "ERROR" | grep "using outbound/"', shellQuote(LOG_FILE)));
-	if (!fd)
-		return fails;
-	for (let line = fd.read('line'); length(line); line = fd.read('line')) {
-		const m = match(line, /using outbound\/[a-z0-9]+\[(.*)\]:/);
-		if (!m)
-			continue;
-		fails[m[1]] = (fails[m[1]] ?? 0) + 1;
-	}
-	fd.close();
-	return fails;
-}
-
 function probe_member(tag) {
 	const enc = uri_escape(tag);
 	const resp = api_get(sprintf('/proxies/%s/delay?timeout=%d&url=%s',
@@ -151,6 +152,85 @@ function probe_member(tag) {
 		return null;
 	const d = json(resp);
 	return (type(d) === 'object' && d.delay != null) ? d.delay : null;
+}
+
+/* 更新单个成员的 EMA 延迟基线 + 退化标记（借鉴 mihomo Smart）：
+   · 成功：样本<BASE_MIN_SAMPLES 用算术平均 bootstrap，之后用 EMA（新 20%）；
+     延迟 > 基线×SPIKE_FACTOR 视为 spike 不更新；单次上涨限 BASE_MAX_STEP_UP。
+   · 失败：立即标记退化。
+   · 恢复：延迟 ≤ 基线×RECOVER_FACTOR 且连续 RECOVER_SUCCESSES 次成功才清除（滞后防抖）。 */
+function update_baseline(st, success, delay) {
+	if (success && delay != null) {
+		const base = st.base ?? null;
+		if (base == null || st.base_n == null || st.base_n < BASE_MIN_SAMPLES) {
+			/* bootstrap：累加平均 */
+			const prev_sum = (st.base_sum ?? 0) + delay;
+			st.base_sum = prev_sum;
+			st.base_n = (st.base_n ?? 0) + 1;
+			st.base = prev_sum / (st.base_n * 1.0);
+		} else if (delay > base * SPIKE_FACTOR) {
+			/* spike：不更新基线（异常值忽略） */
+		} else {
+			let nb = base * (1 - BASE_ALPHA) + delay * BASE_ALPHA;
+			/* 单次最多上涨 BASE_MAX_STEP_UP 倍 */
+			if (nb > base * BASE_MAX_STEP_UP)
+				nb = base * BASE_MAX_STEP_UP;
+			st.base = nb;
+		}
+
+		/* 退化恢复：延迟回到基线附近且连续成功 N 次 */
+		const nb = st.base ?? null;
+		if (st.deg) {
+			if (nb != null && delay <= nb * RECOVER_FACTOR) {
+				st.deg_ok = (st.deg_ok ?? 0) + 1;
+				if (st.deg_ok >= RECOVER_SUCCESSES) {
+					st.deg = 0;
+					st.deg_ok = 0;
+				}
+			} else {
+				st.deg_ok = 0;
+			}
+		}
+	} else {
+		/* 失败：标记退化 */
+		st.deg = 1;
+		st.deg_ok = 0;
+	}
+}
+
+/* 计算单个成员的评分（分数越低越好，与 mihomo Smart 同构）：
+   score = delay/2000(归一上限1) + W_LOSS*失败率 + (退化?DEGRADE_PENALTY:0) */
+function compute_score(st) {
+	if (!st || !st.ok || st.delay == null)
+		return 999;      /* 无样本/失败：极高，仅当全部如此才用 */
+	let nd = st.delay / 2000.0;   /* /2000 会被 ucode 当整数除法截断成 0，必须用浮点 */
+	if (nd > 1) nd = 1;
+	let loss = 0;
+	const total = (st.ok_cnt ?? 0) + (st.fail_cnt ?? 0);
+	if (total >= LOSS_MIN_SAMPLES)
+		loss = (st.fail_cnt ?? 0) / (total * 1.0);
+	let sc = W_DELAY * nd + W_LOSS * loss;
+
+	/* 抖动维度：最近 N 次成功延迟的极差 / 基线（归一上限 1）。
+	   稳定节点极差约为基线的 10~20%（惩罚 0.03~0.06）；
+   忽高忽低的节点极差接近基线甚至更高（惩罚逼近 0.30）。 */
+	if (type(st.hist) === 'array' && length(st.hist) >= JITTER_MIN_SAMPLES) {
+		let mx = st.hist[0], mn = st.hist[0];
+		for (let v in st.hist) {
+			if (v > mx) mx = v;
+			if (v < mn) mn = v;
+		}
+		const jb = st.base ?? ((mx + mn) / 2.0);
+		if (jb > 0) {
+			let jn = (mx - mn) / (jb * 1.0);
+			if (jn > 1) jn = 1;
+			sc += W_JITTER * jn;
+		}
+	}
+
+	if (st.deg)
+		sc += DEGRADE_PENALTY;
+	return sc;
 }
 
 /* 识别综合评分组：uci 里 node=='score' 的 routing_node 段（生成器把它们
@@ -185,8 +265,6 @@ function run() {
 		return { result: false, error: 'clash_api_unreachable' };
 	}
 
-	const biz_fails = collect_business_failures();
-
 	const score_groups = find_score_groups(proxies);
 
 	for (let tag in score_groups) {
@@ -203,58 +281,96 @@ function run() {
 		const incumbent_st = state.members?.[incumbent] ?? null;
 		const incumbent_fresh = incumbent_st && incumbent_st.ok && (now_ts - incumbent_st.ts) < DELAY_FRESH;
 
-		/* 探测名单（有界）：现任样本过期优先补测，其次未测成员。 */
+		/* 探测名单（有界）：现任样本过期优先补测，其次未测成员，最后按
+		   样本时间【最旧优先】轮询补足预算——保证基线与抖动历史（hist）
+		   在全体成员上逐步积累，而不是只有现任/新成员有样本。 */
 		let probe_list = [];
 		if (incumbent && !incumbent_fresh)
 			push(probe_list, incumbent);
 		for (let m in members)
 			if (state.members?.[m] == null && !~index(probe_list, m))
 				push(probe_list, m);
+		let olds = [];
+		for (let m in members) {
+			if (~index(probe_list, m))
+				continue;
+			const st = state.members?.[m];
+			/* ok=false 的成员也要参与“最老优先”轮询——否则探测失败的节点
+			   永远没有重测机会（评分池持续缩水，组会退化成“无可用样本”）。 */
+			if (st && (st.ok || (st.fail_cnt ?? 0) > 0))
+				push(olds, { m: m, ts: st.ts ?? 0 });
+		}
+		sort(olds, (a, b) => (a.ts - b.ts));
+		for (let o in olds) {
+			if (length(probe_list) >= budget)
+				break;
+			push(probe_list, o.m);
+		}
 		if (length(probe_list) > budget)
 			probe_list = slice(probe_list, 0, budget);
 
-		let best_tag = '', best_eff = -1;
+		let best_tag = '', best_score = 9999;
 		for (let m in members) {
-			const st = state.members?.[m] ?? null;
-			let delay = null;
-			if (st && st.ok && (now_ts - st.ts) < DELAY_FRESH)
-				delay = st.delay;
-			else if (~index(probe_list, m) && probe_count < budget) {
+			let st = state.members?.[m] ?? null;
+			/* 需要探测时更新样本与基线 */
+			if (!(st && st.ok && (now_ts - st.ts) < DELAY_FRESH) &&
+			    (~index(probe_list, m) && probe_count < budget)) {
 				probe_count++;
-				delay = probe_member(m);
-				state.members[m] = { delay: delay, ok: (delay != null), ts: now_ts };
-			} else if (st && st.ok)
-				delay = st.delay;
-			if (delay == null)
+				const delay = probe_member(m);
+				const success = (delay != null);
+				if (!st) st = { ok_cnt: 0, fail_cnt: 0 };
+				st.delay = delay;
+				st.ok = success;
+				st.ts = now_ts;
+				if (success) {
+					st.ok_cnt = (st.ok_cnt ?? 0) + 1;
+					/* 记录最近 HIST_MAX 次成功延迟，供抖动维度使用。
+					   ⚠ ucode 的 push(arr, x) 返回的是新长度（int），不是数组——
+					   不能写 st.hist = push(...)，必须语句式调用原地修改。 */
+					if (type(st.hist) !== 'array')
+						st.hist = [];
+					push(st.hist, delay);
+					if (length(st.hist) > HIST_MAX)
+						st.hist = slice(st.hist, length(st.hist) - HIST_MAX);
+				}
+				else st.fail_cnt = (st.fail_cnt ?? 0) + 1;
+				update_baseline(st, success, delay);
+				state.members[m] = st;
+			}
+			if (!st || !st.ok || st.delay == null)
 				continue;
-			const biz = (biz_fails[m] ?? 0);
-			const eff = delay + (biz > 3 ? 3 : biz) * 200;
-			if (best_eff < 0 || eff < best_eff) {
-				best_eff = eff;
+			const sc = compute_score(st);
+			/* 持久化算法分（分越低越好），供状态页统一显示：
+			   质量分 = 100 - min(100, 分×50)，越高越好。 */
+			st.score = sc;
+			if (sc < best_score) {
+				best_score = sc;
 				best_tag = m;
 			}
 		}
 
 		for (let k in (state.members ?? {}))
-			if (now_ts - state.members[k].ts > 2 * HALF_LIFE)
+			if (now_ts - (state.members[k].ts ?? 0) > 2 * HALF_LIFE)
 				delete state.members[k];
 
 		if (!best_tag) {
 			log(sprintf('组「%s」无可用成员样本，维持现状。', tag));
 			continue;
 		}
-		const ibiz = (biz_fails[incumbent] ?? 0);
-		const incumbent_eff = (incumbent_st && incumbent_st.ok)
-			? (incumbent_st.delay + (ibiz > 3 ? 3 : ibiz) * 200)
-			: -1;
+
+		/* 现任评分（用于容差防抖） */
+		const inc_st = state.members?.[incumbent] ?? null;
+		const incumbent_score = (inc_st && inc_st.ok) ? compute_score(inc_st) : 9999;
 
 		if (best_tag === incumbent) {
-			log(sprintf('[keep] %s: incumbent %s best=%d', tag, incumbent, best_eff));
-		} else if (incumbent_eff > 0 && best_eff > incumbent_eff * SWITCH_RATIO) {
-			log(sprintf('[hold] %s: challenger %s best=%d vs incumbent eff=%d (10%% rule)', tag, best_tag, best_eff, incumbent_eff));
+			log(sprintf('[keep] %s: incumbent %s score=%.2f', tag, incumbent, best_score));
+		} else if (incumbent_score < 9999 && best_score >= incumbent_score * (1 - TOLERANCE)) {
+			log(sprintf('[hold] %s: challenger %s score=%.2f vs incumbent %s score=%.2f (within tolerance %.0f%%)',
+				tag, best_tag, best_score, incumbent, incumbent_score, TOLERANCE * 100));
 		} else {
 			const rc = api_put(sprintf('/proxies/%s', uri_escape(tag)), { name: best_tag });
-			log(sprintf('[switch] %s: %s -> %s best=%d incumbent=%d rc=%d', tag, incumbent, best_tag, best_eff, incumbent_eff, rc));
+			log(sprintf('[switch] %s: %s -> %s score=%.2f incumbent_score=%.2f rc=%d',
+				tag, incumbent, best_tag, best_score, incumbent_score, rc));
 			push(summary, sprintf('%s: %s -> %s', tag, incumbent, best_tag));
 		}
 	}

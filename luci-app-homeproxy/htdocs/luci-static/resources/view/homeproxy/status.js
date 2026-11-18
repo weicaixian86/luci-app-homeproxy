@@ -68,7 +68,7 @@ const css = '				\
 .homeproxy-score-grid {				\
 	display: grid;				\
 	grid-template-columns: 1fr;		\
-	gap: 14px;				\
+	gap: 16px;				\
 }						\
 .homeproxy-score-card {				\
 	background: #fff;			\
@@ -82,27 +82,35 @@ const css = '				\
 	border-bottom: 1px solid #eee;		\
 	background: linear-gradient(90deg,#f7fbf5,#fff); \
 }						\
-.homeproxy-score-hd h4 { margin: 0; font-size: 15px; } \
-.homeproxy-score-hd .mode { font-size: 12px; color: #999; margin-left: 6px; } \
+.homeproxy-score-hd .ttl { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } \
+.homeproxy-score-hd h4 { margin: 0; font-size: 16px; font-weight: 700; } \
+.homeproxy-score-hd .mode { font-size: 12.5px; color: #999; } \
 .homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
-	padding: 2px 9px; border-radius: 10px; font-weight: 600; } \
-.homeproxy-score-kv { display: flex; gap: 22px; flex-wrap: wrap; \
-	padding: 11px 16px; border-bottom: 1px solid #f2f2f2; font-size: 13px; } \
-.homeproxy-score-kv > div > span { display: block; color: #999; font-size: 11px; margin-bottom: 2px; } \
-.homeproxy-score-kv > div > b { font-size: 15px; } \
-.homeproxy-score-kv b.hl { color: #2d6d2d; } \
-.homeproxy-score-title { padding: 9px 16px 4px; font-size: 12px; color: #888; font-weight: 600; } \
-table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 13px; } \
-.homeproxy-score-tbl th { text-align: left; padding: 5px 16px; color: #aaa; \
-	font-weight: 500; font-size: 11px; border-bottom: 1px solid #f0f0f0; } \
-.homeproxy-score-tbl td { padding: 6px 16px; border-bottom: 1px solid #f7f7f7; } \
-.homeproxy-score-tbl .rk { width: 34px; color: #999; text-align: center; } \
-.homeproxy-score-tbl .dl { width: 96px; text-align: right; color: #555; } \
-.homeproxy-score-tbl .sc { width: 70px; text-align: right; color: #2d6d2d; font-weight: 700; } \
-.homeproxy-score-ft { padding: 8px 16px; font-size: 12px; color: #2b8a3e; } \
-.homeproxy-score-ft a { cursor: pointer; color: #2b8a3e; text-decoration: underline; } \
-.homeproxy-score-empty { padding: 14px 16px; font-size: 13px; color: #999; } \
-.homeproxy-score-npc { font-size: 12px; color: #aaa; margin-top: 6px; }';
+	padding: 2px 10px; border-radius: 10px; font-weight: 600; white-space: nowrap; } \
+.homeproxy-score-kv { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-end; \
+	padding: 14px 18px; border-bottom: 1px solid #f0f0f0; } \
+.homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; } \
+.homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; } \
+.homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; } \
+.homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
+.homeproxy-score-kv .kv-cur { flex: 1 1 auto; min-width: 200px; } \
+.homeproxy-score-kv .kv-cur > b { font-size: 15px; font-weight: 600; overflow: hidden; \
+	text-overflow: ellipsis; white-space: nowrap; max-width: 100%; } \
+.homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #9aa3ad; font-weight: 600; letter-spacing: .3px; } \
+table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; } \
+.homeproxy-score-tbl th { text-align: left; padding: 6px 12px; color: #9aa3ad; \
+	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
+.homeproxy-score-tbl td { padding: 7px 12px; border-bottom: 1px solid #f4f5f6; } \
+.homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
+.homeproxy-score-tbl .rk { width: 44px; color: #b0b7bf; text-align: center; } \
+.homeproxy-score-tbl .dl { width: 96px; text-align: right; color: #5a6470; } \
+.homeproxy-score-tbl .sc { width: 72px; text-align: right; color: #1f8a4c; font-weight: 700; } \
+.homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
+.homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #8a949e; \
+	display: flex; justify-content: space-between; align-items: center; } \
+.homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
+.homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #9aa3ad; } \
+.homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: #b0b7bf; }';
 
 function renderScoreCards() {
 	const callScoreStatus = rpc.declare({
@@ -158,35 +166,36 @@ function renderScoreCards() {
 		const cards = groups.map((g) => {
 			const rows = (g.top || []).map((m, i) => E('tr', {}, [
 				E('td', { 'class': 'rk' }, [ String(i + 1) ]),
-				E('td', {}, [ m.name ]),
+				E('td', { 'class': 'nm', 'title': m.name }, [ m.name ]),
 				E('td', { 'class': 'dl' }, [ '%d ms'.format(m.delay) ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
+			const hasTop = rows.length > 0;
 			return E('div', { 'class': 'homeproxy-score-card' }, [
 				E('div', { 'class': 'homeproxy-score-hd' }, [
-					E('div', {}, [
+					E('div', { 'class': 'ttl' }, [
 						E('h4', {}, [ '🌏 ' + g.tag ]),
 						E('span', { 'class': 'mode' }, [ _('Mode') + ': ' + _('Auto select (comprehensive score)') ])
 					]),
 					E('span', { 'class': 'homeproxy-score-badge' }, [ _('Scoring') ])
 				]),
 				E('div', { 'class': 'homeproxy-score-kv' }, [
-					E('div', {}, [ E('span', {}, [ _('Current') ]), E('b', {}, [ g.now || '—' ]) ]),
+					E('div', { 'class': 'kv-cur' }, [ E('span', {}, [ _('Current') ]), E('b', { 'title': g.now || '—' }, [ g.now || '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Available / Total') ]), E('b', {}, [ '%d / %d'.format(g.ok, g.total) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl' }, [ String(g.score) ]) ])
 				]),
-				E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]),
-				E('table', { 'class': 'homeproxy-score-tbl' }, [
+				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
+				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
-						E('th', {}, [ '#' ]), E('th', {}, [ _('Node') ]),
-						E('th', { 'style': 'text-align:right' }, [ _('Latency') ]),
-						E('th', { 'style': 'text-align:right' }, [ _('Score') ])
+						E('th', { 'class': 'rk' }, [ '#' ]), E('th', {}, [ _('Node') ]),
+						E('th', { 'class': 'dl', 'style': 'text-align:right' }, [ _('Latency') ]),
+						E('th', { 'class': 'sc', 'style': 'text-align:right' }, [ _('Score') ])
 					]) ]),
 					E('tbody', {}, rows)
-				]),
+				]) : E('div', { 'class': 'homeproxy-score-nodata' }, [ _('No available node data yet.') ]),
 				E('div', { 'class': 'homeproxy-score-ft' }, [
-					'%d'.format(g.total) + ' ' + _('members') + ' · ',
+					E('span', {}, [ '%d'.format(g.total) + ' ' + _('members') ]),
 					E('a', { 'click': ui.createHandlerFn(this, () => showMembers(g.tag)) }, [ _('View all') + ' ↗' ])
 				])
 			]);
@@ -473,14 +482,6 @@ return view.extend({
 		o.rawhtml = true;
 		o.render = renderConnCards;
 
-		/* 综合评分：只展示 node=='score' 的组，每组独立排行（手动选择 /
-		   延时最低不参与）。无评分组时整个区块仍显示一句提示。 */
-		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Comprehensive score'));
-		s.anonymous = true;
-		o = s.option(form.DummyValue, '_score_status');
-		o.rawhtml = true;
-		o.render = renderScoreCards;
-
 		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Resources management'));
 		s.anonymous = true;
 
@@ -736,6 +737,15 @@ return view.extend({
 
 		return content;
 	};
+
+
+		/* 综合评分：只展示 node=='score' 的组，每组独立排行（手动选择 /
+		   延时最低不参与）。无评分组时整个区块仍显示一句提示。 */
+		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Comprehensive score'));
+		s.anonymous = true;
+		o = s.option(form.DummyValue, '_score_status');
+		o.rawhtml = true;
+		o.render = renderScoreCards;
 
 	return m.render();
 	},

@@ -2783,10 +2783,16 @@ const methods = {
 				}
 
 				const ok_count = length(filter(list, (x) => x.ok));
-				/* 评分：最优延迟=100，其余每慢 8ms 减 1 分（下限 0），失败=0 */
+				/* 评分：优先用评分器持久化的算法分（多维评分，分越低越好）
+				   → 转成 0-100 质量分（quality = 100 - min(100, 分×50)，越高
+				   越好，与「评分」列语义一致）。评分器没跑过/成员失败时回退
+				   延迟映射（最优=100，每慢 8ms 减 1 分），保证有内容可显示。 */
 				for (let x in list) {
 					let sc = 0;
-					if (x.ok && best != null)
+					const alg = members_state[x.name]?.score ?? null;
+					if (alg != null)
+						sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+					else if (x.ok && best != null)
 						sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
 					x.score = sc;
 				}
@@ -2867,7 +2873,11 @@ const methods = {
 			}
 			for (let x in list) {
 				let sc = 0;
-				if (x.ok && best != null) sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+				const alg = ms[x.name]?.score ?? null;
+				if (alg != null)
+					sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+				else if (x.ok && best != null)
+					sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
 				x.score = sc;
 			}
 			list = sort(list, (a, b) => { if (b.score !== a.score) return b.score - a.score; return (a.delay ?? 999999) - (b.delay ?? 999999); });

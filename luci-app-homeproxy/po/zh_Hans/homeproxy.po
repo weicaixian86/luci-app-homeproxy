@@ -4260,7 +4260,7 @@ msgstr "详见日志"
 
 #: htdocs/luci-static/resources/view/homeproxy/status.js:383
 msgid "sing-box core management"
-msgstr "sing-box 内核管理"
+msgstr "内核管理"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1992
 msgid "uTLS fingerprint"
@@ -4545,3 +4545,12 @@ msgstr "隐藏"
 
 msgid "Show/Hide"
 msgstr "显示/隐藏"
+
+msgid "Lowest latency"
+msgstr "延时最低"
+
+msgid "No available node (falling back to direct)."
+msgstr "无可用节点（已回退直连）。"
+
+msgid "No available node data yet."
+msgstr "暂无可用节点数据。"

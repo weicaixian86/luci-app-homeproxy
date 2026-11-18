@@ -279,7 +279,7 @@ if (proxy_mode === 'ebpf')
      · bpffs 可挂载/已挂载  —— sing-box eBPF 加载程序的运行前提
    （以上任一不满足 → 回退；满足则照常生成 eBPF inbound） */
 function _hp_log(msg) {
-	system(sprintf("printf '%%s %%s\\n' \"$(date '+%%Y-%%m-%%d %%H:%%M:%%S')\" %s >> %s 2>/dev/null",
+	system(sprintf("printf '%%s %%s\\n' \"$(date '+%%Y-%%m-%%dT%%H:%%M:%%S')\" %s >> %s 2>/dev/null",
 		shellQuote('[EBPF] ' + msg), shellQuote(RUN_DIR + '/homeproxy.log')));
 }
 

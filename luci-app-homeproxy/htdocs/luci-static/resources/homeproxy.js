@@ -504,6 +504,7 @@ return baseclass.extend({
 				disabled: (this.readonly != null) ? this.readonly : this.map.readonly
 			});
 
+			this.widget = widget;
 			const node = widget.render();
 			if (this.wrap_items)
 				node.classList.add('hp-dd-wrap');
@@ -516,21 +517,36 @@ return baseclass.extend({
 		   误报「未选成员」把工作模式标红；② 保存时可能写不进 uci。
 		   这里直接从 DOM 的 input 读取（与 LuCI Dropdown.getValue 同源）。 */
 		formvalue(section_id) {
-			const elem = this.getUIElement(section_id);
-			if (!elem)
-				return null;
-
-			const input = elem.querySelector ? elem.querySelector('input') : null;
-			let v = input ? input.value : null;
-
-			if (v == null || v === '')
-				return null;
-
-			if (typeof v === 'string' && v.charAt(0) === '[') {
-				try { v = JSON.parse(v); } catch (e) { /* 保留原值 */ }
+			/* ui.Dropdown 的选项值在 li[data-value]（已选中的 li 带 selected
+			   属性），不在隐藏 input 里。父类 CBIDynamicList 的
+			   elem.getValue() 对 DOM 元素无效 → 多选值一律读成空，导致
+			   ① 校验误报「未选成员」把工作模式标红；② 保存时成员写不进 uci
+			   （237 现场：勾了机场保存后 uci 里 subscription_groups 消失）。
+			   优先用 Dropdown 实例的 getValue()（其内部按 data-value 取值），
+			   回退则直接扫 li[selected] 的 data-value。 */
+			const w = this.widget;
+			if (w && typeof w.getValue === 'function') {
+				let v = w.getValue();
+				if (v != null && v !== '' && !(Array.isArray(v) && v.length === 0))
+					return v;
 			}
 
-			return v;
+			const elem = this.getUIElement(section_id);
+			if (!elem || !elem.querySelectorAll)
+				return null;
+
+			/* 选中项的标记有两套：下拉未展开时预览区的 li 带 display 属性
+			   （bind() 里 setAttribute('display', n++)）；下拉展开时被勾选的
+			   li 带 selected 属性。两个都扫一遍，取 data-value。 */
+			const lis = elem.querySelectorAll('li[display], li[selected]');
+			let vals = [];
+			for (let i = 0; i < lis.length; i++) {
+				const dv = lis[i].getAttribute('data-value');
+				if (dv != null && dv !== '' && vals.indexOf(dv) === -1)
+					vals.push(dv);
+			}
+
+			return vals.length ? vals : null;
 		}
 	}),
 
@@ -1080,6 +1096,8 @@ return baseclass.extend({
 					font-size: .85rem; line-height: 1.5; white-space: nowrap; }
 				.hp-tag-auto { background: rgba(176, 106, 0, .14); color: #b06a00; }
 				.hp-tag-manual { background: rgba(43, 91, 215, .12); color: #2b5bd7; }
+	/* 综合评分徽章：绿色，与「自动选择(延时最低)」的橙、「手动选择」的蓝区分 */
+	.hp-tag-score { background: rgba(46, 160, 90, .15); color: #1f8a4c; }
 				.hp-rn-status { display: inline-block; max-width: 280px; overflow: hidden;
 					text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
 					font-size: .85rem; }
