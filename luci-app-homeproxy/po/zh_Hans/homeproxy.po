@@ -641,7 +641,7 @@ msgstr "自定义URL"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1933
 msgid "Custom nodes"
-msgstr "自选节点"
+msgstr "自建节点"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1156
 msgid "Custom routing"
@@ -1795,6 +1795,9 @@ msgstr "文件无效"
 #: htdocs/luci-static/resources/view/homeproxy/node.js:923
 msgid "Invalid node"
 msgstr "无效节点"
+
+msgid "Please select at least one member: Subscription airports / Subscription nodes / Custom nodes / Policy nodes."
+msgstr "请至少选择一个成员：订阅机场 / 订阅节点 / 自建节点 / 策略组。"
 
 #: htdocs/luci-static/resources/homeproxy.js:1789
 msgid "Invalid panel ZIP file."
@@ -4468,3 +4471,35 @@ msgstr "可选。仅在检查资源更新时使用，用于把 GitHub API 的额
 
 msgid "Failed to fill missing config defaults: %s"
 msgstr "补齐缺失的配置默认值失败：%s"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Custom URL must start with http:// or https://"
+msgstr "自定义 URL 必须以 http:// 或 https:// 开头"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "TLS SNI must be a bare domain name (no spaces or scheme)"
+msgstr "TLS SNI 必须是纯域名（不含空格或协议头）"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache file path must be absolute (start with /)"
+msgstr "缓存文件路径必须是绝对路径（以 / 开头）"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Each header must be in \"Name: Value\" form"
+msgstr "每个请求头必须是「名称: 值」格式"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Invalid regular expression in filter keywords"
+msgstr "过滤关键词中存在非法的正则表达式"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "No custom node is selected."
+msgstr "未选择自建节点。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Only manual select uses a default member."
+msgstr "仅「手动选择」使用默认成员。"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Default member is None (uses the first member)."
+msgstr "默认成员为「无」（使用第一个成员）。"

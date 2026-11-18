@@ -1484,7 +1484,7 @@ return view.extend({
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
-					if (node !== 'urltest' && node !== 'selector')
+					if (node !== 'urltest' && node !== 'score' && node !== 'selector')
 						return E('span', { 'class': 'hp-chip-empty' }, [ '—' ]);
 
 					const names = [],
@@ -1506,6 +1506,30 @@ return view.extend({
 						}, [ '—' ]);
 
 					/* 每行固定 5 个，超过换行（hp-chip-list-5） */
+					return E('span', { 'class': 'hp-chip-list hp-chip-list-5' },
+						names.map((name) => E('span', { 'class': 'hp-chip', 'title': name }, [ name ])));
+				}
+			},
+			{
+				/* 该策略组选中的「自建节点」（selected_nodes，手工挑的单个节点）；
+				   无则显示 —。自动/手动/综合评分三种组都可能用到。 */
+				header: _('Custom nodes'),
+				renderCell: function(sid) {
+					const node = uci.get(data[0], sid, 'node') || 'selector';
+
+					if (node !== 'urltest' && node !== 'score' && node !== 'selector')
+						return E('span', { 'class': 'hp-chip-empty' }, [ '—' ]);
+
+					const names = normalizeFormList(uci.get(data[0], sid, 'selected_nodes'))
+						.map((id) => proxy_nodes[id] || id)
+						.filter((name) => name);
+
+					if (!names.length)
+						return E('span', {
+							'class': 'hp-chip-empty',
+							'title': _('No custom node is selected.')
+						}, [ '—' ]);
+
 					return E('span', { 'class': 'hp-chip-list hp-chip-list-5' },
 						names.map((name) => E('span', { 'class': 'hp-chip', 'title': name }, [ name ])));
 				}
@@ -1549,39 +1573,33 @@ return view.extend({
 				}
 			},
 			{
-				/* 出站：单节点包装（自建节点 / 订阅节点）的上游出站。
-				   对应 generate_client.uc 里 routed_outbound.detour = get_outbound(cfg.outbound)：
-				   空值即无上游（直接由该节点拨出），有值则串到另一个路由节点的出站。
-				   策略组（urltest / selector）没有这个概念，显示占位符。 */
-				header: _('Outbound'),
+				/* 默认成员（selector_default）：手动选择组的初始选中成员；未设置时
+				   sing-box 用成员列表第一个。只对手动选择组有意义，其余显示 —。 */
+				header: _('Default member'),
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
-					if (node === 'urltest' || node === 'selector')
+					if (node !== 'selector')
 						return E('span', {
 							'class': 'hp-rn-out hp-rn-out-na',
-							'title': _('Policy groups do not use an upstream outbound.')
+							'title': _('Only manual select uses a default member.')
 						}, [ '—' ]);
 
-					const upstream = uci.get(data[0], sid, 'outbound') || '';
+					const def = uci.get(data[0], sid, 'selector_default') || '';
 
-					if (!upstream)
+					if (!def)
 						return E('span', {
 							'class': 'hp-rn-out hp-rn-out-direct',
-							'title': _('This node dials out directly.')
-						}, [ _('Direct') ]);
+							'title': _('Default member is None (uses the first member).')
+						}, [ _('None') ]);
 
-					let label = upstream;
-
+					let label = proxy_nodes[def] || def;
 					uci.sections(data[0], 'routing_node', (res) => {
-						if (res['.name'] === upstream)
-							label = res.label || upstream;
+						if (res['.name'] === def)
+							label = res.label || def;
 					});
 
-					return E('span', {
-						'class': 'hp-rn-out hp-rn-out-chain',
-						'title': label + ' (' + upstream + ')'
-					}, [ '→ ' + label ]);
+					return E('span', { 'class': 'hp-rn-out', 'title': label }, [ label ]);
 				}
 			}
 		]);
@@ -1852,14 +1870,25 @@ return view.extend({
 			if (result !== true)
 				return result;
 
-			if (section_id && (value === 'urltest' || value === 'selector')) {
-				let groups = normalizeFormList(this.section.formvalue(section_id, 'subscription_groups')),
-				    subscription_nodes = normalizeFormList(this.section.formvalue(section_id, 'subscription_nodes')),
-				    selected = normalizeFormList(this.section.formvalue(section_id, 'selected_nodes')),
-				    policy_nodes = normalizeFormList(this.section.formvalue(section_id, 'policy_nodes'));
+			if (section_id && (value === 'urltest' || value === 'score' || value === 'selector')) {
+				/* 同时参考「表单当前值」和「已保存的 uci 值」：多选控件在
+				   某些渲染路径下 formvalue 可能取不到未提交的选择，只读
+				   formvalue 会把已勾选的组误判为空并标红（237 现场）。 */
+				const readList = (opt) => {
+					let v = this.section.formvalue(section_id, opt);
+					let list = normalizeFormList(v);
+					if (!list.length)
+						list = normalizeFormList(uci.get(data[0], section_id, opt));
+					return list;
+				};
+
+				let groups = readList('subscription_groups'),
+				    subscription_nodes = readList('subscription_nodes'),
+				    selected = readList('selected_nodes'),
+				    policy_nodes = readList('policy_nodes');
 
 				if (!groups.length && !subscription_nodes.length && !selected.length && !policy_nodes.length)
-					return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
+					return _('Please select at least one member: Subscription airports / Subscription nodes / Custom nodes / Policy nodes.');
 			}
 
 			return true;
@@ -1946,8 +1975,18 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'subscription_groups', _('Subscription airports'));
-		for (let hash in subscription_groups)
-			so.value(hash, subscription_groups[hash]);
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+			for (let hash in subscription_groups)
+				this.value(hash, subscription_groups[hash]);
+			return this.super('load', section_id);
+		}
+		/* display_size：让预览区显示全部「已选中」项（默认只显示 3 个 + ···）。
+		   用原生 display_items 参数，不加自定义 CSS —— 未选中的项由 LuCI
+		   原生 display:none 保持隐藏。 */
+		so.display_size = 99;
+		so.wrap_items = true;
 		so.depends('node', 'urltest');
 		so.depends('node', 'score');
 		so.depends('node', 'selector');
@@ -1956,10 +1995,17 @@ return view.extend({
 
 		so = ss.option(hp.CBIMultiValue, 'subscription_nodes', _('Subscription nodes'),
 			_('List of nodes from subscriptions.'));
-		uci.sections(data[0], 'node', (res) => {
-			if (res.grouphash)
-				so.value(res['.name'], proxy_nodes[res['.name']]);
-		});
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+			uci.sections(data[0], 'node', (res) => {
+				if (res.grouphash)
+					this.value(res['.name'], proxy_nodes[res['.name']]);
+			});
+			return this.super('load', section_id);
+		}
+		so.display_size = 99;
+		so.wrap_items = true;
 		so.depends('node', 'urltest');
 		so.depends('node', 'score');
 		so.depends('node', 'selector');
@@ -1967,10 +2013,17 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'selected_nodes', _('Custom nodes'));
-		uci.sections(data[0], 'node', (res) => {
-			if (!res.grouphash)
-				so.value(res['.name'], proxy_nodes[res['.name']]);
-		});
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+			uci.sections(data[0], 'node', (res) => {
+				if (!res.grouphash)
+					this.value(res['.name'], proxy_nodes[res['.name']]);
+			});
+			return this.super('load', section_id);
+		}
+		so.display_size = 99;
+		so.wrap_items = true;
 		so.depends('node', 'urltest');
 		so.depends('node', 'score');
 		so.depends('node', 'selector');
@@ -1991,6 +2044,17 @@ return view.extend({
 
 		so = ss.option(form.DynamicList, 'filter_keywords', _('Filter keywords'),
 			_('Drop/keep nodes that contain the specific keywords. <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions">Regex</a> is supported.'));
+		so.validate = function(section_id, value) {
+			let items = (typeof(value) === 'string') ? [ value ] : (Array.isArray(value) ? value : []);
+			for (let item in items) {
+				let s = (item ?? '').toString();
+				if (!s)
+					continue;
+				try { new RegExp(s); }
+				catch (e) { return _('Invalid regular expression in filter keywords'); }
+			}
+			return true;
+		};
 		so.depends({ 'node': /^(urltest|score|selector)$/, 'filter_nodes': /^(blacklist|whitelist)$/ });
 		so.modalonly = true;
 
@@ -2007,6 +2071,8 @@ return view.extend({
 
 			return this.super('load', section_id);
 		}
+		so.display_size = 99;
+		so.wrap_items = true;
 		so.validate = function(section_id, value) {
 			if (normalizeFormList(value).includes(section_id))
 				return _('Recursive outbound detected!');
@@ -2014,7 +2080,8 @@ return view.extend({
 			return true;
 		}
 		/* 三种工作模式都可挂策略组成员（urltest/score 挂的组参与自动选择，
-		   selector 挂的组为手动成员）。 */
+		   selector 挂的组为手动成员）。已选值全部平铺、超出换行显示
+		   （默认控件只显示 3 个 + ··· 折叠）。 */
 		so.depends('node', 'urltest');
 		so.depends('node', 'score');
 		so.depends('node', 'selector');
@@ -2600,12 +2667,29 @@ return view.extend({
 
 		so = ss.option(form.DynamicList, 'headers', _('Headers'),
 			_('Additional headers to be sent to the DNS server.'));
+		so.validate = function(section_id, value) {
+			let items = (typeof(value) === 'string') ? [ value ] : (Array.isArray(value) ? value : []);
+			for (let item in items) {
+				let s = (item ?? '').toString().trim();
+				if (!s || !/[=:]/.test(s))
+					return _('Each header must be in "Name: Value" form');
+			}
+			return true;
+		};
 		so.depends('type', 'https');
 		so.depends('type', 'h3');
 		so.modalonly = true;
 
 		so = ss.option(form.Value, 'tls_sni', _('TLS SNI'),
 			_('Used to verify the hostname on the returned certificates.'));
+		so.validate = function(section_id, value) {
+			value = (value || '').trim();
+			if (!value)
+				return true;
+			if (/\s/.test(value) || /^[a-z]+:\/\//i.test(value))
+				return _('TLS SNI must be a bare domain name (no spaces or scheme)');
+			return true;
+		};
 		so.depends('type', 'tls');
 		so.depends('type', 'https');
 		so.depends('type', 'h3');
@@ -3650,6 +3734,14 @@ return view.extend({
 
 		so = ss.option(form.Value, 'path', _('Persistent cache file path'));
 		so.placeholder = '/etc/homeproxy/cache.db';
+		so.validate = function(section_id, value) {
+			value = (value || '').trim();
+			if (!value)
+				return true;
+			if (value.charAt(0) !== '/')
+				return _('Cache file path must be absolute (start with /)');
+			return true;
+		};
 		so.default = '/etc/homeproxy/cache.db';
 		so.depends('enabled', '1');
 
@@ -3910,6 +4002,14 @@ return view.extend({
 
 		so = ss.option(form.Value, 'external_ui_download_url_custom', _('Custom URL'));
 		so.placeholder = 'https://example.com/dist.zip';
+		so.validate = function(section_id, value) {
+			value = (value || '').trim();
+			if (!value)
+				return true;
+			if (!/^https?:\/\/[^\s]+$/i.test(value))
+				return _('Custom URL must start with http:// or https://');
+			return true;
+		};
 		so.depends('external_ui_download_url', '__custom__');
 		so.load = function(section_id) {
 			const value = stripPanelMirror((uci.get(data[0], section_id, 'external_ui_download_url') || '').trim());

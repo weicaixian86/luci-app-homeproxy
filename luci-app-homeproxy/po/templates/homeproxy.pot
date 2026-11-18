@@ -1744,6 +1744,9 @@ msgstr ""
 msgid "Invalid node"
 msgstr ""
 
+msgid "Please select at least one member: Subscription airports / Subscription nodes / Custom nodes / Policy nodes."
+msgstr ""
+
 #: htdocs/luci-static/resources/homeproxy.js:1789
 msgid "Invalid panel ZIP file."
 msgstr ""
@@ -4292,4 +4295,36 @@ msgid "Optional. It is only used when checking resource updates, to raise the Gi
 msgstr ""
 
 msgid "Failed to fill missing config defaults: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Custom URL must start with http:// or https://"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "TLS SNI must be a bare domain name (no spaces or scheme)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Cache file path must be absolute (start with /)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Each header must be in \"Name: Value\" form"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Invalid regular expression in filter keywords"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "No custom node is selected."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Only manual select uses a default member."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js
+msgid "Default member is None (uses the first member)."
 msgstr ""

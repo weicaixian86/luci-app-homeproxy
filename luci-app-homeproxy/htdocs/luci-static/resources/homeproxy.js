@@ -504,7 +504,33 @@ return baseclass.extend({
 				disabled: (this.readonly != null) ? this.readonly : this.map.readonly
 			});
 
-			return widget.render();
+			const node = widget.render();
+			if (this.wrap_items)
+				node.classList.add('hp-dd-wrap');
+			return node;
+		},
+
+		/* 覆写 formvalue：ui.Dropdown 的 getValue() 在 widget 类上（值在 DOM
+		   隐藏 input 里），父类 CBIDynamicList 的 elem.getValue() 拿到的是 DOM
+		   元素（无该方法）→ 多选值一律读成空。后果：① 依赖成员列表的校验
+		   误报「未选成员」把工作模式标红；② 保存时可能写不进 uci。
+		   这里直接从 DOM 的 input 读取（与 LuCI Dropdown.getValue 同源）。 */
+		formvalue(section_id) {
+			const elem = this.getUIElement(section_id);
+			if (!elem)
+				return null;
+
+			const input = elem.querySelector ? elem.querySelector('input') : null;
+			let v = input ? input.value : null;
+
+			if (v == null || v === '')
+				return null;
+
+			if (typeof v === 'string' && v.charAt(0) === '[') {
+				try { v = JSON.parse(v); } catch (e) { /* 保留原值 */ }
+			}
+
+			return v;
 		}
 	}),
 
@@ -1078,6 +1104,17 @@ return baseclass.extend({
 				/* 单个标签留 96px 上限：5 个中文字够放，超长的机场名才省略
 				   （hover 有完整名称），避免一条超长标签把整列撑爆。 */
 				.hp-chip-list-5 .hp-chip { max-width: 96px; text-align: center; }
+	/* 多选（wrap_items）：已选中项全部显示，一行放得下就不换行、放不下自动
+	   换行。⚠ 关键：显式 display:none 未选中项（li:not([selected])）——
+	   LuCI 预览区 ul 里其实包含全部选项，未选的靠 display:none 隐藏，
+	   之前未排除它们导致「没选也显示」。 */
+	.hp-dd-wrap > ul:not(.dropdown) { display: flex !important; flex-wrap: wrap !important;
+	  overflow: visible !important; align-items: flex-start !important; width: 100%; }
+	.hp-dd-wrap > ul:not(.dropdown) > li:not([selected]) { display: none !important; }
+	.hp-dd-wrap > ul:not(.dropdown) > li[selected] { display: flex !important;
+	  flex: 0 0 auto !important; white-space: normal !important; overflow: visible !important;
+	  text-overflow: clip !important; max-width: 100%; margin: 1px 3px 1px 0; }
+	.hp-dd-wrap > .more { display: none !important; }
 				/* 窄屏放不下 5 列时不强行撑宽表格，退成 3 列。 */
 				@media (max-width: 720px) {
 					.hp-chip-list-5 { grid-template-columns: repeat(3, minmax(max-content, 1fr)); }
@@ -1867,7 +1904,7 @@ return baseclass.extend({
 		if (section_id) {
 			if (!value)
 				return _('Expecting: %s').format(_('non-empty value', 'homeproxy'));
-			if (ucioption === 'node' && (value === 'urltest' || value === 'selector'))
+			if (ucioption === 'node' && (value === 'urltest' || value === 'score' || value === 'selector'))
 				return true;
 
 			let duplicate = false;
