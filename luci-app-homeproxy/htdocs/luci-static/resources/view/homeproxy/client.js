@@ -1465,10 +1465,10 @@ return view.extend({
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
-					if (node === 'urltest' || node === 'selector') {
+					if (node === 'urltest' || node === 'score' || node === 'selector') {
 						const badge = E('span', {
 							'class': 'hp-tag ' + ((node === 'urltest') ? 'hp-tag-auto' : 'hp-tag-manual')
-						}, (node === 'urltest') ? _('Auto select') : _('Manual select'));
+						}, (node === 'urltest') ? _('Auto select') : (node === 'score') ? _('Auto score') : _('Manual select'));
 
 						return badge;
 					}
@@ -1817,7 +1817,8 @@ return view.extend({
 		   也能直接固定成某一个节点，所以标签用「工作模式」而不是「节点」。 */
 		so = ss.option(form.ListValue, 'node', _('Working mode'),
 			_('Auto select picks the lowest-latency node; manual select can be switched at runtime; picking a single node uses only that node.'));
-		so.value('urltest', _('Auto select'));
+		so.value('urltest', _('Auto select (lowest latency)'));
+		so.value('score', _('Auto select (comprehensive score)'));
 		so.value('selector', _('Manual select'));
 		for (let i in proxy_nodes)
 			so.value(i, proxy_nodes[i]);
@@ -1880,7 +1881,7 @@ return view.extend({
 
 			return this.super('load', section_id);
 		}
-		so.depends('node', /^((?!(urltest|selector)$).)+$/);
+		so.depends('node', /^((?!(urltest|score|selector)$).)+$/);
 		so.modalonly = true;
 
 		so = ss.option(form.ListValue, 'domain_strategy', _('Domain strategy'),
@@ -1948,6 +1949,7 @@ return view.extend({
 		for (let hash in subscription_groups)
 			so.value(hash, subscription_groups[hash]);
 		so.depends('node', 'urltest');
+		so.depends('node', 'score');
 		so.depends('node', 'selector');
 		so.rmempty = true;
 		so.modalonly = true;
@@ -1959,6 +1961,7 @@ return view.extend({
 				so.value(res['.name'], proxy_nodes[res['.name']]);
 		});
 		so.depends('node', 'urltest');
+		so.depends('node', 'score');
 		so.depends('node', 'selector');
 		so.rmempty = true;
 		so.modalonly = true;
@@ -1969,6 +1972,7 @@ return view.extend({
 				so.value(res['.name'], proxy_nodes[res['.name']]);
 		});
 		so.depends('node', 'urltest');
+		so.depends('node', 'score');
 		so.depends('node', 'selector');
 		so.rmempty = true;
 		so.modalonly = true;
@@ -1981,22 +1985,23 @@ return view.extend({
 		so.default = 'disabled';
 		so.rmempty = false;
 		so.depends('node', 'urltest');
+		so.depends('node', 'score');
 		so.depends('node', 'selector');
 		so.modalonly = true;
 
 		so = ss.option(form.DynamicList, 'filter_keywords', _('Filter keywords'),
 			_('Drop/keep nodes that contain the specific keywords. <a target="_blank" href="https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions">Regex</a> is supported.'));
-		so.depends({ 'node': /^(urltest|selector)$/, 'filter_nodes': /^(blacklist|whitelist)$/ });
+		so.depends({ 'node': /^(urltest|score|selector)$/, 'filter_nodes': /^(blacklist|whitelist)$/ });
 		so.modalonly = true;
 
 		so = ss.option(hp.CBIMultiValue, 'policy_nodes', _('Policy nodes'),
-			_('List of policy groups. The ticking order decides the node order in the panel, and the first ticked node is used by default.'));
+			_('List of policy groups. The ticking order decides the display order of group members; for manual select, when the default member is empty, the first group member is used.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
 
 			uci.sections(data[0], 'routing_node', (res) => {
-				if (res['.name'] !== section_id && res.enabled === '1' && ['urltest', 'selector'].includes(res.node))
+				if (res['.name'] !== section_id && res.enabled === '1' && ['urltest', 'score', 'selector'].includes(res.node))
 					this.value(res['.name'], res.label || res['.name']);
 			});
 
@@ -2012,7 +2017,10 @@ return view.extend({
 		so.rmempty = true;
 		so.modalonly = true;
 
-		so = ss.option(form.ListValue, 'selector_default', _('Default node'));
+		/* 「默认成员」：手动选择/综合评分组的初始选中项；为空时 sing-box 用
+		   成员列表的第一个。评分器的 PUT 切换运行期会覆盖它。 */
+		so = ss.option(form.ListValue, 'selector_default', _('Default member'),
+			_('The initial member for manual select; empty means the first member.'));
 		so.load = function(section_id) {
 			delete this.keylist;
 			delete this.vallist;
@@ -2024,7 +2032,7 @@ return view.extend({
 			    filter_mode = this.section.formvalue(section_id, 'filter_nodes'),
 			    filter_keywords = normalizeFormList(this.section.formvalue(section_id, 'filter_keywords'));
 
-			this.value('', _('Default'));
+			this.value('', _('None'));
 			for (let node of collectSelectedRoutingNodes(groups, subscription_nodes, selected, policy_nodes, section_id, filter_mode, filter_keywords))
 				this.value(node, proxy_nodes[node] || routing_groups[node]);
 
@@ -2047,6 +2055,7 @@ return view.extend({
 			return true;
 		}
 		so.depends('node', 'selector');
+		so.depends('node', 'score');
 		so.modalonly = true;
 
 		so = ss.option(form.Flag, 'selector_interrupt_exist_connections', _('Interrupt existing connections'),

@@ -35,13 +35,15 @@ import { isEmpty, shellQuote, HP_DIR, RUN_DIR } from 'homeproxy';
 const STATE_FILE = HP_DIR + '/score_state.json';
 const LOCK_DIR = RUN_DIR + '/score_nodes.lock';
 const LOG_FILE = RUN_DIR + '/homeproxy.log';
-const SCORE_SUFFIX = '(综合评分)';
 const HALF_LIFE = 30 * 60;
 const DELAY_FRESH = 10 * 60;
 const SWITCH_RATIO = 0.9;
 const FAIL_PENALTY_MS = 100000;
 const PROBE_TIMEOUT_MS = 4000;
-const PROBE_URL_ENC = 'https%3A%2F%2Fwww.gstatic.com%2Fgenerate_204';
+/* 与 urltest 同口径：google.com/generate_204（别用 gstatic —— 它在 china_list 里，
+   且实测有节点通 gstatic 却连不上 google.com，会选出口径上"最优"实则不通的节点，
+   237 现场：台湾高速01 gstatic 158ms 最优，google.com 却 000。 */
+const PROBE_URL_ENC = 'https%3A%2F%2Fwww.google.com%2Fgenerate_204';
 
 function log(msg) {
 	system(sprintf('printf "%%s %%s\n" "$(date +%%Y-%%m-%%d\ %%H:%%M:%%S)" %s >> %s 2>/dev/null',
@@ -151,6 +153,23 @@ function probe_member(tag) {
 	return (type(d) === 'object' && d.delay != null) ? d.delay : null;
 }
 
+/* 识别综合评分组：uci 里 node=='score' 的 routing_node 段（生成器把它们
+   生成为 type=Selector、tag=组显示名）。返回 [tag, ...]（已确认在
+   Clash API 里存在且类型为 Selector 的）。 */
+function find_score_groups(proxies) {
+	const uci = cursor();
+	uci.load('homeproxy');
+	let groups = [];
+	uci.foreach('homeproxy', 'routing_node', (cfg) => {
+		if (cfg.node !== 'score' || cfg.enabled === '0' || isEmpty(cfg.label))
+			return;
+		const p = proxies.proxies?.[cfg.label];
+		if (type(p) === 'object' && p.type === 'Selector')
+			push(groups, cfg.label);
+	});
+	return groups;
+}
+
 function run() {
 	if (!lock_acquire())
 		return { result: false, error: 'already_running' };
@@ -168,23 +187,18 @@ function run() {
 
 	const biz_fails = collect_business_failures();
 
-	for (let tag in proxies.proxies) {
-		if (length(tag) <= length(SCORE_SUFFIX) ||
-		    substr(tag, length(tag) - length(SCORE_SUFFIX)) !== SCORE_SUFFIX ||
-		    proxies.proxies[tag]?.type !== 'Selector')
+	const score_groups = find_score_groups(proxies);
+
+	for (let tag in score_groups) {
+		const score_proxy = proxies.proxies[tag];
+		if (type(score_proxy) !== 'object' || isEmpty(score_proxy.all))
 			continue;
 
-		const urltest_tag = substr(tag, 0, length(tag) - length(SCORE_SUFFIX));
-		const urltest = proxies.proxies[urltest_tag];
-		if (type(urltest) !== 'object' || isEmpty(urltest.all))
-			continue;
-
-		const members = urltest.all;
+		const members = score_proxy.all;
 		const n = length(members);
 		const budget = (n <= 4) ? (n + 1) : (int(sqrt(n)) + 1);
 		let probe_count = 0;
 
-		const score_proxy = proxies.proxies[tag];
 		const incumbent = score_proxy.now ?? '';
 		const incumbent_st = state.members?.[incumbent] ?? null;
 		const incumbent_fresh = incumbent_st && incumbent_st.ok && (now_ts - incumbent_st.ts) < DELAY_FRESH;

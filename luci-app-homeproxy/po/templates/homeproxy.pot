@@ -293,6 +293,18 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1787
 msgid "Auto select"
 msgstr ""
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1820
+msgid "Auto select (lowest latency)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1821
+msgid "Auto select (comprehensive score)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1471
+msgid "Auto score"
+msgstr ""
+
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1786
 msgid ""
@@ -712,7 +724,12 @@ msgid "Default mode"
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1982
-msgid "Default node"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2020
+msgid "Default member"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:2021
+msgid "The initial member for manual select; empty means the first member."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1257
@@ -1815,9 +1832,11 @@ msgid "List of nodes to test."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1960
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1993
 msgid ""
-"List of policy groups. The ticking order decides the node order in the "
-"panel, and the first ticked node is used by default."
+"List of policy groups. The ticking order decides the display order of group "
+"members; for manual select, when the default member is empty, the first group "
+"member is used."
 msgstr ""
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1915

@@ -307,6 +307,18 @@ msgstr "自动刷新"
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1787
 msgid "Auto select"
 msgstr "自动选择"
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1820
+msgid "Auto select (lowest latency)"
+msgstr "自动选择(延时最低)"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1821
+msgid "Auto select (comprehensive score)"
+msgstr "自动选择(综合评分)"
+
+#: htdocs/luci-static/resources/view/homeproxy/client.js:1471
+msgid "Auto score"
+msgstr "综合评分"
+
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1786
 msgid ""
@@ -737,8 +749,11 @@ msgid "Default mode"
 msgstr "默认模式"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1982
-msgid "Default node"
-msgstr "默认节点"
+msgid "Default member"
+msgstr "默认成员"
+
+msgid "The initial member for manual select; empty means the first member."
+msgstr "手动选择的初始成员；无表示使用第一个成员。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1257
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3475
@@ -1875,9 +1890,10 @@ msgstr "要测试的节点列表。"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1960
 msgid ""
-"List of policy groups. The ticking order decides the node order in the "
-"panel, and the first ticked node is used by default."
-msgstr "选择先后决定节点先后顺序，默认为首选节点。"
+"List of policy groups. The ticking order decides the display order of group "
+"members; for manual select, when the default member is empty, the first group "
+"member is used."
+msgstr "选择先后决定策略组成员显示先后顺序，手动选择如默认成员为无时，表示使用第一个策略组成员。"
 
 #: htdocs/luci-static/resources/view/homeproxy/node.js:1915
 #: htdocs/luci-static/resources/view/homeproxy/server.js:574

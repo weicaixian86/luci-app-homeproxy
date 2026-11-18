@@ -1065,6 +1065,17 @@ function build_native_providers() {
 			tag: unique_provider_name(subscription_provider_name(subscription_name), used_names),
 			url: url,
 			initial_path: provider_seed_path(group_hash),
+			/* provider 更新订阅 URL 时要自己解析机场域名。sing-box 1.14 **不**
+			   让 provider 继承 route.default_domain_resolver（实测 237：
+			   default_domain_resolver=dnspod 已设仍报错），缺省时内核去找隐式
+			   "local" 解析器并报 `domain resolver not found: local`，
+			   provider 更新全部失败（订阅运行期内永不更新）。显式指向
+			   default-dns（直连 UDP 223.5.5.5）——机场域名就该直连解析。 */
+			domain_resolver: { server: 'default-dns' },
+			/* info 节点（剩余流量/到期等）导致的 provider 更新失败（
+			   `domain resolver not found: local`）见需求书 99 —— 内核侧
+			   provider filter 实测不生效（invert 语义未确认），插件 seed
+			   过滤需 base64 解码重编码，均留待单独一轮。 */
 			/* 24h：与常见的机场流量刷新节奏相当；间隔过长会让面板的
 			   已用/到期长期不动，过短则等于每次重启都多下一遍订阅。 */
 			update_interval: '24h',
@@ -1738,18 +1749,23 @@ if (!isEmpty(main_node)) {
 				idle_timeout: strToTime(cfg.urltest_idle_timeout),
 				interrupt_exist_connections: strToBool(cfg.urltest_interrupt_exist_connections)
 			});
-			/* 配套「综合评分」selector：成员与 urltest 组完全一致，default 由评分器
-			   score_nodes.uc 按「实际成功率 + 延迟」动态写入（对齐 honk 的 Score
-			   语义：业务观测为主 + 有界验证为辅）。sing-box 没有原生 Score 组，
-			   用 selector 承载评分结果 —— 评分器通过 Clash API PUT 切换 default。
-			   面板上两个组成对出现：URLTEST = 延时最低，本组 = 综合评分。 */
+			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
+		} else if (cfg.node === 'score') {
+			/* 综合评分组（工作模式=自动选择(综合评分)）：生成 selector，成员
+			   收集与 urltest 相同，default 可由用户设初始值（selector_default），
+			   运行期由 score_nodes.uc 按「日志失败观测 + 有界实测」动态切换
+			   （对齐 honk 的 Score 语义）。评分器按 uci node=='score' 识别本组。 */
+			const score_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
+			const score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
+			const score_default = (!isEmpty(cfg.selector_default) && ~index(score_node_list, cfg.selector_default)) ? cfg.selector_default : null;
 			push(config.outbounds, {
 				type: 'selector',
-				tag: get_section_outbound_tag(cfg['.name']) + '(综合评分)',
-				outbounds: length(urltest_tags) ? urltest_tags : [ 'direct-out' ],
+				tag: get_section_outbound_tag(cfg['.name']),
+				outbounds: length(score_tags) ? score_tags : [ 'direct-out' ],
+				default: score_default ? get_section_outbound_tag(score_default) : null,
 				interrupt_exist_connections: false
 			});
-			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
+			urltest_nodes = [...urltest_nodes, ...filter(score_node_list, (l) => !~index(urltest_nodes, l))];
 		} else if (cfg.node === 'selector') {
 			const selector_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
 			const selector_policy_list = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);

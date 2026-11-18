@@ -2742,12 +2742,13 @@ GC="$PKG/root/etc/homeproxy/scripts/generate_client.uc"
 SN="$PKG/root/etc/homeproxy/scripts/score_nodes.uc"
 LP="$PKG/root/usr/share/rpcd/ucode/luci.homeproxy"
 
-if grep -q '(综合评分)' "$GC" \
+if grep -q "cfg.node === 'score'" "$GC" \
    && grep -q "type: 'selector'" "$GC" \
-   && grep -q 'urltest_tags' "$GC"; then
-	ok "generator emits a companion score selector for every urltest group"
+   && grep -q 'score_tags' "$GC" \
+   && ! grep -q "+ '(综合评分)'" "$GC"; then
+	ok "generator emits the score selector only for node=='score' groups (explicit work mode)"
 else
-	bad "generator lacks the companion score selector for urltest groups"
+	bad "generator score-mode branch missing or stale auto-pairing remnant"
 fi
 
 if [ -f "$SN" ] \
@@ -2756,8 +2757,9 @@ if [ -f "$SN" ] \
    && grep -q 'DELAY_FRESH = 10 \* 60' "$SN" \
    && grep -q 'biz > 3 ? 3 : biz' "$SN" \
    && grep -q 'score_nodes.lock' "$SN" \
+   && grep -q "cfg.node !== 'score'" "$SN" \
    && grep -q 'score_state.json' "$SN"; then
-	ok "scorer carries incumbent protection / bounded probing / penalty cap / lock / persistence"
+	ok "scorer carries uci-based score-group detection / incumbent protection / bounded probing / penalty cap / lock / persistence"
 else
 	bad "scorer missing one of: probe_list, 0.9 switch ratio, 10min fresh window, penalty cap, lock, state file"
 fi
