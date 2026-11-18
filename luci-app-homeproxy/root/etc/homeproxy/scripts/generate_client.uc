@@ -2167,6 +2167,18 @@ function ensure_outbound_refs(config) {
 	}
 
 	if (!has_proxy) {
+		/* 明确告警：本次生成的配置里没有任何“真实节点”出站，DNS/路由全部退回
+		   直连。常见原因：① 确实没配节点；② routing_mode=bypass_mainland_china
+		   但 main_node 为空；③ custom 模式但 default_outbound 指向的段不存在；
+		   ④ 装包覆盖后 config 段丢失（routing_mode 读空 → 走默认 bypass →
+		   main_node 空）。把 uci 里实际 node 段数一并记下，避免“静默变直连”。
+		   —— 2026-11 现场：某次装 0.4.15 后 config.uci.bak 缺 config 段，
+		   82 个节点全在、服务却“启动成功”跑直连，就是这个分支。 */
+		let _hp_node_n = 0;
+		try { uci.foreach(uciconfig, ucinode, () => { _hp_node_n++; }); } catch (e) { _hp_node_n = -1; }
+		_hp_log(sprintf('警告：客户端配置没有任何节点出站（DNS/路由全部退回直连）。uci node 段=%d，routing_mode=%s，main_node=%s。若 node 段>0 却无出站，请检查 routing_mode / main_node / default_outbound（装包覆盖后 config 段可能丢失，可在 LuCI 设置页重新保存一次）。',
+			_hp_node_n, routing_mode ?? '?', main_node ?? '?'));
+
 		for (let server in config.dns?.servers ?? [])
 			if (server.tag !== 'system-dns')
 				server.detour = 'direct-out';

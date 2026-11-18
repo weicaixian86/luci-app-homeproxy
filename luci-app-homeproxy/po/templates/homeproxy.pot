@@ -4328,3 +4328,45 @@ msgstr ""
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Default member is None (uses the first member)."
 msgstr ""
+
+msgid "Comprehensive score"
+msgstr ""
+
+msgid "No policy group is using comprehensive score mode."
+msgstr ""
+
+msgid "Available / Total"
+msgstr ""
+
+msgid "Top 3 by score"
+msgstr ""
+
+msgid "View all"
+msgstr ""
+
+msgid "Scoring"
+msgstr ""
+
+msgid "Score"
+msgstr ""
+
+msgid "Timeout / failed"
+msgstr ""
+
+msgid "members"
+msgstr ""
+
+msgid "Current"
+msgstr ""
+
+msgid "Loading..."
+msgstr ""
+
+msgid "Show"
+msgstr ""
+
+msgid "Hide"
+msgstr ""
+
+msgid "Show/Hide"
+msgstr ""

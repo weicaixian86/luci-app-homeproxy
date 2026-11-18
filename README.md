@@ -60,8 +60,14 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
 /etc/init.d/homeproxy stop 2>/dev/null || true
 /etc/init.d/homeproxy disable 2>/dev/null || true
 opkg remove luci-app-homeproxy 2>/dev/null || true
-# 2) 清理 opkg 不会删的残留（保留规则集 /etc/homeproxy/ruleset 与面板 /etc/homeproxy/run/ui）
+# 2) 清理 opkg 不会删的残留：连同配置文件一起清除，仅忽略面板与规则集
 rm -rf /etc/config/homeproxy
+# /etc/homeproxy 下除「面板 run」「规则集 ruleset」外全部删除
+#   （含 config.uci.bak、current_profile、providers/ 订阅种子、cache.db、
+#     score_state.json 以及运行期生成的配置/日志/锁）
+find /etc/homeproxy -mindepth 1 -maxdepth 1 ! -name run ! -name ruleset -exec rm -rf {} + 2>/dev/null
+# run 目录里只保留 ui（面板），其余运行期文件删掉
+find /etc/homeproxy/run -mindepth 1 -maxdepth 1 ! -name ui -exec rm -rf {} + 2>/dev/null
 # 只删程序文件，保留 ruleset/(规则集) 与 run/ui/(面板)：
 rm -rf /etc/homeproxy/scripts
 rm -rf /etc/homeproxy/resources
@@ -93,8 +99,14 @@ rm -rf /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/homeproxy stop 2>/dev/null || true
 /etc/init.d/homeproxy disable 2>/dev/null || true
 apk del luci-app-homeproxy 2>/dev/null || true
-# 2) 清理 apk 不会删的残留（保留规则集 /etc/homeproxy/ruleset 与面板 /etc/homeproxy/run/ui）
+# 2) 清理 apk 不会删的残留：连同配置文件一起清除，仅忽略面板与规则集
 rm -rf /etc/config/homeproxy
+# /etc/homeproxy 下除「面板 run」「规则集 ruleset」外全部删除
+#   （含 config.uci.bak、current_profile、providers/ 订阅种子、cache.db、
+#     score_state.json 以及运行期生成的配置/日志/锁）
+find /etc/homeproxy -mindepth 1 -maxdepth 1 ! -name run ! -name ruleset -exec rm -rf {} + 2>/dev/null
+# run 目录里只保留 ui（面板），其余运行期文件删掉
+find /etc/homeproxy/run -mindepth 1 -maxdepth 1 ! -name ui -exec rm -rf {} + 2>/dev/null
 # 只删程序文件，保留 ruleset/(规则集) 与 run/ui/(面板)：
 rm -rf /etc/homeproxy/scripts
 rm -rf /etc/homeproxy/resources
@@ -120,7 +132,7 @@ rm -rf /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/uhttpd restart
 ```
 > 说明：
-> - 卸载时忽略面板、规则集、配置文件。
+> - 卸载时**连同配置文件一并清除**（含 config.uci.bak、订阅种子 providers/、cache.db、score_state.json 等），**仅忽略面板（`/etc/homeproxy/run/ui`）与规则集（`/etc/homeproxy/ruleset`）**。
 
 
 ## 三 、常见问题

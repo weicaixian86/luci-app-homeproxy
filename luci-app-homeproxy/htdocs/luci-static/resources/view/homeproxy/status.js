@@ -63,7 +63,138 @@ const css = '				\
 	font-size: 13px;		\
 	cursor: pointer;		\
 	line-height: 1.2;		\
-}';
+}					\
+/* 综合评分卡片（每组独立排行） */ \
+.homeproxy-score-grid {				\
+	display: grid;				\
+	grid-template-columns: 1fr;		\
+	gap: 14px;				\
+}						\
+.homeproxy-score-card {				\
+	background: #fff;			\
+	border-radius: 8px;			\
+	box-shadow: 0 1px 4px rgba(0,0,0,.08);	\
+	overflow: hidden;			\
+}						\
+.homeproxy-score-hd {				\
+	display: flex; align-items: center; justify-content: space-between; \
+	padding: 12px 16px;			\
+	border-bottom: 1px solid #eee;		\
+	background: linear-gradient(90deg,#f7fbf5,#fff); \
+}						\
+.homeproxy-score-hd h4 { margin: 0; font-size: 15px; } \
+.homeproxy-score-hd .mode { font-size: 12px; color: #999; margin-left: 6px; } \
+.homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
+	padding: 2px 9px; border-radius: 10px; font-weight: 600; } \
+.homeproxy-score-kv { display: flex; gap: 22px; flex-wrap: wrap; \
+	padding: 11px 16px; border-bottom: 1px solid #f2f2f2; font-size: 13px; } \
+.homeproxy-score-kv > div > span { display: block; color: #999; font-size: 11px; margin-bottom: 2px; } \
+.homeproxy-score-kv > div > b { font-size: 15px; } \
+.homeproxy-score-kv b.hl { color: #2d6d2d; } \
+.homeproxy-score-title { padding: 9px 16px 4px; font-size: 12px; color: #888; font-weight: 600; } \
+table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 13px; } \
+.homeproxy-score-tbl th { text-align: left; padding: 5px 16px; color: #aaa; \
+	font-weight: 500; font-size: 11px; border-bottom: 1px solid #f0f0f0; } \
+.homeproxy-score-tbl td { padding: 6px 16px; border-bottom: 1px solid #f7f7f7; } \
+.homeproxy-score-tbl .rk { width: 34px; color: #999; text-align: center; } \
+.homeproxy-score-tbl .dl { width: 96px; text-align: right; color: #555; } \
+.homeproxy-score-tbl .sc { width: 70px; text-align: right; color: #2d6d2d; font-weight: 700; } \
+.homeproxy-score-ft { padding: 8px 16px; font-size: 12px; color: #2b8a3e; } \
+.homeproxy-score-ft a { cursor: pointer; color: #2b8a3e; text-decoration: underline; } \
+.homeproxy-score-empty { padding: 14px 16px; font-size: 13px; color: #999; } \
+.homeproxy-score-npc { font-size: 12px; color: #aaa; margin-top: 6px; }';
+
+function renderScoreCards() {
+	const callScoreStatus = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'score_status',
+		expect: { '': {} }
+	});
+	const callMembers = rpc.declare({
+		object: 'luci.homeproxy',
+		method: 'score_group_members',
+		params: ['group'],
+		expect: { '': {} }
+	});
+
+	const container = E('div', { 'class': 'homeproxy-score-grid' }, [
+		E('div', { 'class': 'homeproxy-score-empty' }, [ _('Loading...') ])
+	]);
+
+	function showMembers(group) {
+		return L.resolveDefault(callMembers(group), {}).then((ret) => {
+			const rows = (ret.members || []).map((m, i) => E('tr', {}, [
+				E('td', { 'class': 'rk' }, [ m.ok ? String(i + 1) : '—' ]),
+				E('td', {}, [ m.name ]),
+				E('td', { 'class': 'dl' }, [ m.ok ? '%d ms'.format(m.delay) : _('Timeout / failed') ]),
+				E('td', { 'class': 'sc' }, [ String(m.score) ])
+			]));
+			ui.showModal(group, [
+				E('div', { 'style': 'max-height:60vh;overflow:auto' }, [
+					E('table', { 'class': 'homeproxy-score-tbl' }, [
+						E('thead', {}, [ E('tr', {}, [
+							E('th', {}, [ '#' ]), E('th', {}, [ _('Node') ]),
+							E('th', { 'style': 'text-align:right' }, [ _('Latency') ]),
+							E('th', { 'style': 'text-align:right' }, [ _('Score') ])
+						]) ]),
+						E('tbody', {}, rows)
+					])
+				]),
+				E('div', { 'class': 'right' }, [
+					E('button', { 'class': 'btn cbi-button', 'click': ui.hideModal }, [ _('Close') ])
+				])
+			]);
+		});
+	}
+
+	return L.resolveDefault(callScoreStatus(), {}).then((ret) => {
+		const groups = ret.groups || [];
+		if (!groups.length) {
+			dom.content(container, E('div', { 'class': 'homeproxy-score-empty' }, [
+				_('No policy group is using comprehensive score mode.')
+			]));
+			return container;
+		}
+		const cards = groups.map((g) => {
+			const rows = (g.top || []).map((m, i) => E('tr', {}, [
+				E('td', { 'class': 'rk' }, [ String(i + 1) ]),
+				E('td', {}, [ m.name ]),
+				E('td', { 'class': 'dl' }, [ '%d ms'.format(m.delay) ]),
+				E('td', { 'class': 'sc' }, [ String(m.score) ])
+			]));
+			return E('div', { 'class': 'homeproxy-score-card' }, [
+				E('div', { 'class': 'homeproxy-score-hd' }, [
+					E('div', {}, [
+						E('h4', {}, [ '🌏 ' + g.tag ]),
+						E('span', { 'class': 'mode' }, [ _('Mode') + ': ' + _('Auto select (comprehensive score)') ])
+					]),
+					E('span', { 'class': 'homeproxy-score-badge' }, [ _('Scoring') ])
+				]),
+				E('div', { 'class': 'homeproxy-score-kv' }, [
+					E('div', {}, [ E('span', {}, [ _('Current') ]), E('b', {}, [ g.now || '—' ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Available / Total') ]), E('b', {}, [ '%d / %d'.format(g.ok, g.total) ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl' }, [ String(g.score) ]) ])
+				]),
+				E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]),
+				E('table', { 'class': 'homeproxy-score-tbl' }, [
+					E('thead', {}, [ E('tr', {}, [
+						E('th', {}, [ '#' ]), E('th', {}, [ _('Node') ]),
+						E('th', { 'style': 'text-align:right' }, [ _('Latency') ]),
+						E('th', { 'style': 'text-align:right' }, [ _('Score') ])
+					]) ]),
+					E('tbody', {}, rows)
+				]),
+				E('div', { 'class': 'homeproxy-score-ft' }, [
+					'%d'.format(g.total) + ' ' + _('members') + ' · ',
+					E('a', { 'click': ui.createHandlerFn(this, () => showMembers(g.tag)) }, [ _('View all') + ' ↗' ])
+				])
+			]);
+		});
+		dom.content(container, cards);
+		return container;
+	});
+}
 
 function getConnStat(o, site) {
 	const callConnStat = rpc.declare({
@@ -342,6 +473,14 @@ return view.extend({
 		o.rawhtml = true;
 		o.render = renderConnCards;
 
+		/* 综合评分：只展示 node=='score' 的组，每组独立排行（手动选择 /
+		   延时最低不参与）。无评分组时整个区块仍显示一句提示。 */
+		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Comprehensive score'));
+		s.anonymous = true;
+		o = s.option(form.DummyValue, '_score_status');
+		o.rawhtml = true;
+		o.render = renderScoreCards;
+
 		s = m.section(form.NamedSection, 'config', 'homeproxy', _('Resources management'));
 		s.anonymous = true;
 
@@ -377,14 +516,12 @@ return view.extend({
 			try { current = this.map.uci.get('homeproxy', 'config', 'github_token') || ''; } catch (e) { current = ''; }
 			let node = form.Value.prototype.renderWidget.apply(this, arguments);
 
-			/* 不在页面回显明文：password 框渲染时若带 value=旧 token，浏览器/
-			   密码管理器常把它自动填回，导致「清空」提交后又变回旧值。
-			   这里把 input 的 value 清空，只用 placeholder 提示是否已设置。 */
+			/* 令牌默认以星号（password）显示真实值；旁边一个「👁」按钮可切换
+			   明文/遮挡。去掉原来的「已设置 — 输入可替换」占位提示。 */
 			const input = node.querySelector ? node.querySelector('input') : null;
 			if (input) {
-				input.value = '';
-				if (current)
-					input.placeholder = _('set — type to replace');
+				input.value = current;
+				input.placeholder = '';
 			}
 
 			const actions = node.querySelector('.control-group') || node;

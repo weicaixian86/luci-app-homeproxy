@@ -1227,6 +1227,23 @@ start_service() {
 		return 1
 	fi
 
+	# 装包覆盖防御：/etc/config/homeproxy 可能被包内默认模板覆盖，而
+	# config_guard restore 用的 config.uci.bak 又可能缺 config 段（node 段在、
+	# routing_mode/proxy_mode 全无）→ 生成器读到空值走默认 bypass + main_node 空
+	# → 静默变成「0 节点直连」。这里只在 config 段【整个不存在】时补安全默认
+	# （config 段存在但某项空则不动，尊重用户刻意留空），并明确告警。
+	if ! uci -q show homeproxy.config >/dev/null 2>&1; then
+		log "警告：/etc/config/homeproxy 缺少 config 段（疑似装包覆盖 + 备份不完整，node 段可能还在）。已补安全默认 routing_mode=custom、proxy_mode=ebpf_cgroup_shared_socket_assign，请到 LuCI「客户端设置」确认后保存一次。"
+		uci set homeproxy.config=homeproxy
+		uci set homeproxy.config.routing_mode='custom'
+		uci set homeproxy.config.proxy_mode='ebpf_cgroup_shared_socket_assign'
+		uci set homeproxy.config.ipv6_support='0'
+		uci set homeproxy.config.log_level='warn'
+		uci set homeproxy.config.main_node='nil'
+		uci set homeproxy.config.main_udp_node='nil'
+		uci commit homeproxy
+	fi
+
 	local routing_mode proxy_mode
 	config_get routing_mode "config" "routing_mode" "bypass_mainland_china"
 	config_get proxy_mode "config" "proxy_mode" "redirect_tproxy"

@@ -643,7 +643,17 @@ const methods = {
 	   测试 tools/tests/run.sh 会校验这里的表与生成器兜底值一致。 */
 	ensure_config_defaults: {
 		call: function() {
+			/* rpcd 是常驻进程，cursor() 不带参时读的是进程内已缓存的配置；
+			   用户可能刚通过「配置管理」上传/切换了旧配置，必须显式 load
+			   强制从文件重新读取，否则补的仍是旧缓存里的值。 */
 			const uci = cursor();
+			uci.load('homeproxy');
+			/* 各「全局单例段」的全部标量字段的 LuCI 缺省值。保存并应用后若
+			   旧配置缺这些项，按此补齐（= “旧配置没有的参数按 LuCI 缺省补齐”）。
+			   只列标量；列表字段（如 control.wan_proxy_ipv4_ips）跳过——它们
+			   有自己的一套默认，不适合在这里强行 set。
+			   动态多实例段（node / routing_node / ruleset / dns_server /
+			   dns_rule / routing_rule）不在此表：没有实例就不该凭空补。 */
 			const defaults = {
 				config: {
 					routing_mode: 'bypass_mainland_china',
@@ -654,27 +664,69 @@ const methods = {
 					log_level: 'warn'
 				},
 				infra: {
+					common_port: '22,53,80,143,443,465,587,853,873,993,995,5222,8080,8443,9418',
 					dns_port: '5333',
 					mixed_port: '5330',
 					sniff_override: '1',
 					self_mark: '100',
 					redirect_port: '5331',
 					tproxy_port: '5332',
+					tproxy_mark: '101',
+					table_mark: '100',
 					tun_name: 'singtun0',
 					tun_addr4: '172.19.0.1/30',
 					tun_addr6: 'fdfe:dcba:9876::1/126',
 					tun_mtu: '9000',
+					tun_mark: '102',
+					ntp_server: 'nil',
 					ebpf_dns_mode: 'off',
 					dns_redirect: '1'
 				},
 				routing: {
 					default_outbound: 'nil',
 					default_outbound_dns: 'default-dns',
-					tcpip_stack: 'system'
+					tcpip_stack: 'system',
+					udp_timeout: '300',
+					bypass_cn_traffic: '0',
+					domain_strategy: 'prefer_ipv4',
+					sniff_override: '1'
 				},
 				clash_api: {
+					external_ui: '/etc/homeproxy/run/ui',
+					external_ui_download_url: 'https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip',
+					external_ui_download_detour: 'direct-out',
 					external_controller: '127.0.0.1:9090',
 					default_mode: 'rule'
+				},
+				cache: {
+					enabled: '1',
+					path: '/etc/homeproxy/cache.db',
+					store_dns: '1',
+					store_selected: '1'
+				},
+				ntp: {
+					enabled: '1',
+					server: 'ntp.aliyun.com',
+					server_port: '123',
+					interval: '30m'
+				},
+				dns: {
+					dns_strategy: 'prefer_ipv4',
+					default_server: 'default-dns',
+					default_strategy: 'ipv4_only'
+				},
+				subscription: {
+					auto_update: '1',
+					allow_insecure: '0',
+					latency_test_mode: 'icmp',
+					packet_encoding: 'xudp',
+					update_via_proxy: '0',
+					auto_update_time: '00 03 * * *',
+					auto_flag: '1'
+				},
+				server: {
+					enabled: '0',
+					log_level: 'warn'
 				}
 			};
 
@@ -2660,6 +2712,167 @@ const methods = {
 
 			system('( ucode -L /etc/homeproxy/scripts -S /etc/homeproxy/scripts/score_nodes.uc >/dev/null 2>&1 ) &');
 			return { result: true };
+		}
+	},
+
+	/* 综合评分状态：给「服务状态」页的「综合评分」区块用。按「每组独立排行」
+	   返回——只统计 node=='score' 的组（手动选择/延时最低不参与），每组给出
+	   当前选中、可用/总数、评分（延迟映射百分制，最优=100）、前三名。
+	   数据源：score_state.json（节点实测延迟）+ Clash API（组的成员与当前选中）。 */
+	score_status: {
+		call: function() {
+			let state = { members: {} };
+			try {
+				const raw = trim(readfile(HP_DIR + '/score_state.json') || '');
+				if (length(raw)) {
+					const d = json(raw);
+					if (type(d) === 'object' && type(d.members) === 'object')
+						state = d;
+				}
+			} catch (e) { /* 状态文件缺失/损坏 → 空 */ }
+
+			/* 找 node=='score' 的组（tag = label） */
+			const uci = cursor();
+			uci.load('homeproxy');
+			let score_tags = [], non_participate = 0;
+			uci.foreach('homeproxy', 'routing_node', (cfg) => {
+				if (cfg.node === 'score' && cfg.enabled !== '0' && cfg.label != null && cfg.label !== '')
+					push(score_tags, cfg.label);
+				else if (cfg.node === 'urltest' || cfg.node === 'selector')
+					non_participate++;
+			});
+
+			if (!length(score_tags))
+				return { result: true, groups: [], non_participate: non_participate };
+
+			/* 通过 Clash API 读各组的成员与当前选中 */
+			let proxies = null;
+			try {
+				const sec = trim(uci.get('homeproxy', 'clash_api', 'secret') || '');
+				const fd = popen(sprintf('curl -s -m 6 -H %s %s 2>/dev/null',
+					shellquote('Authorization: Bearer ' + sec),
+					shellquote('http://127.0.0.1:9095/proxies')));
+				if (fd) {
+					let buf = '';
+					for (let line = fd.read('line'); length(line); line = fd.read('line'))
+						buf += line;
+					fd.close();
+					const pd = json(buf);
+					if (type(pd) === 'object') proxies = pd.proxies;
+				}
+			} catch (e) { proxies = null; }
+
+			const members_state = state.members || {};
+			let groups = [];
+
+			for (let tag in score_tags) {
+				const p = proxies ? proxies[tag] : null;
+				if (type(p) !== 'object' || p.all == null || length(p.all) === 0)
+					continue;
+
+				/* 组内每个成员的延迟（来自 state；无样本视为失败） */
+				let list = [];
+				let best = null;
+				for (let name in p.all) {
+					const st = members_state[name] ?? null;
+					const ok = st && st.ok && st.delay != null;
+					const delay = ok ? st.delay : null;
+					if (ok && (best === null || delay < best))
+						best = delay;
+					push(list, { name: name, delay: delay, ok: ok });
+				}
+
+				const ok_count = length(filter(list, (x) => x.ok));
+				/* 评分：最优延迟=100，其余每慢 8ms 减 1 分（下限 0），失败=0 */
+				for (let x in list) {
+					let sc = 0;
+					if (x.ok && best != null)
+						sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+					x.score = sc;
+				}
+
+				/* 按评分降序、延迟升序取前三 */
+				let sorted = sort(list, (a, b) => {
+					if (b.score !== a.score) return b.score - a.score;
+					return (a.delay ?? 999999) - (b.delay ?? 999999);
+				});
+				let top = [];
+				let c = 0;
+				for (let x in sorted) {
+					if (!x.ok) continue;
+					push(top, { name: x.name, delay: x.delay, score: x.score });
+					if (++c >= 3) break;
+				}
+
+				/* 当前选中成员的评分 */
+				const now = p.now ?? '';
+				let now_delay = null, now_score = 0;
+				for (let x in list) {
+					if (x.name === now) { now_delay = x.delay; now_score = x.score; break; }
+				}
+
+				push(groups, {
+					tag: tag,
+					now: now,
+					now_delay: now_delay,
+					score: now_score,
+					ok: ok_count,
+					total: length(list),
+					top: top,
+					updated: state.updated ?? 0
+				});
+			}
+
+			return { result: true, groups: groups, non_participate: non_participate };
+		}
+	},
+
+	/* 综合评分单个组的完整成员排行（给「查看全部」弹窗）。 */
+	score_group_members: {
+		args: { group: 'string' },
+		call: function(req) {
+			const tag = trim(req.args?.group ?? '');
+			if (!length(tag))
+				return { result: false, error: 'missing_group' };
+
+			let state = { members: {} };
+			try {
+				const raw = trim(readfile(HP_DIR + '/score_state.json') || '');
+				if (length(raw)) { const d = json(raw); if (type(d) === 'object' && type(d.members) === 'object') state = d; }
+			} catch (e) {}
+
+			const uci = cursor();
+			uci.load('homeproxy');
+			const sec = trim(uci.get('homeproxy', 'clash_api', 'secret') || '');
+			let proxies = null;
+			try {
+				const fd = popen(sprintf('curl -s -m 6 -H %s %s 2>/dev/null',
+					shellquote('Authorization: Bearer ' + sec),
+					shellquote('http://127.0.0.1:9095/proxies')));
+				if (fd) { let buf = ''; for (let line = fd.read('line'); length(line); line = fd.read('line')) buf += line; fd.close(); const pd = json(buf); if (type(pd) === 'object') proxies = pd.proxies; }
+			} catch (e) {}
+
+			const p = proxies ? proxies[tag] : null;
+			if (type(p) !== 'object' || p.all == null || length(p.all) === 0)
+				return { result: false, error: 'group_not_found' };
+
+			const ms = state.members || {};
+			let list = [], best = null;
+			for (let name in p.all) {
+				const st = ms[name] ?? null;
+				const ok = st && st.ok && st.delay != null;
+				const delay = ok ? st.delay : null;
+				if (ok && (best === null || delay < best)) best = delay;
+				push(list, { name: name, delay: delay, ok: ok });
+			}
+			for (let x in list) {
+				let sc = 0;
+				if (x.ok && best != null) sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+				x.score = sc;
+			}
+			list = sort(list, (a, b) => { if (b.score !== a.score) return b.score - a.score; return (a.delay ?? 999999) - (b.delay ?? 999999); });
+
+			return { result: true, group: tag, now: p.now ?? '', members: list };
 		}
 	},
 

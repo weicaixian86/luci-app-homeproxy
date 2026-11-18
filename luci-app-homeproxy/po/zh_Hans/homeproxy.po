@@ -4503,3 +4503,45 @@ msgstr "仅「手动选择」使用默认成员。"
 #: htdocs/luci-static/resources/view/homeproxy/client.js
 msgid "Default member is None (uses the first member)."
 msgstr "默认成员为「无」（使用第一个成员）。"
+
+msgid "Comprehensive score"
+msgstr "综合评分"
+
+msgid "No policy group is using comprehensive score mode."
+msgstr "当前没有使用综合评分模式的策略组。"
+
+msgid "Available / Total"
+msgstr "可用 / 总数"
+
+msgid "Top 3 by score"
+msgstr "评分前三名"
+
+msgid "View all"
+msgstr "查看全部"
+
+msgid "Scoring"
+msgstr "评分中"
+
+msgid "Score"
+msgstr "评分"
+
+msgid "Timeout / failed"
+msgstr "超时/失败"
+
+msgid "members"
+msgstr "个成员"
+
+msgid "Current"
+msgstr "当前"
+
+msgid "Loading..."
+msgstr "加载中…"
+
+msgid "Show"
+msgstr "显示"
+
+msgid "Hide"
+msgstr "隐藏"
+
+msgid "Show/Hide"
+msgstr "显示/隐藏"
