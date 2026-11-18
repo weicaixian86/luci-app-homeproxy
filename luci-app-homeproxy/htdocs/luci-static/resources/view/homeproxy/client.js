@@ -2055,7 +2055,6 @@ return view.extend({
 			return true;
 		}
 		so.depends('node', 'selector');
-		so.depends('node', 'score');
 		so.modalonly = true;
 
 		so = ss.option(form.Flag, 'selector_interrupt_exist_connections', _('Interrupt existing connections'),

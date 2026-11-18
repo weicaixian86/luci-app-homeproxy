@@ -1757,12 +1757,12 @@ if (!isEmpty(main_node)) {
 			   （对齐 honk 的 Score 语义）。评分器按 uci node=='score' 识别本组。 */
 			const score_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
 			const score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
-			const score_default = (!isEmpty(cfg.selector_default) && ~index(score_node_list, cfg.selector_default)) ? cfg.selector_default : null;
+			/* 综合评分组**不设 default**：初始选中由评分器第一轮实测后 PUT 写入
+			   （评分语义 = 评分器全权，UI 也不提供默认成员选项 —— 用户确认）。 */
 			push(config.outbounds, {
 				type: 'selector',
 				tag: get_section_outbound_tag(cfg['.name']),
 				outbounds: length(score_tags) ? score_tags : [ 'direct-out' ],
-				default: score_default ? get_section_outbound_tag(score_default) : null,
 				interrupt_exist_connections: false
 			});
 			urltest_nodes = [...urltest_nodes, ...filter(score_node_list, (l) => !~index(urltest_nodes, l))];
