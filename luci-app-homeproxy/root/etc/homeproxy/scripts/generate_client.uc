@@ -555,6 +555,34 @@ function collect_group_nodes(groups, subscription_nodes, nodes, legacy_nodes, fi
 	return filter_group_nodes(result, filter_mode, filter_keywords);
 }
 
+/* score 组的 policy_nodes 递归展开（评分语义=「评子组下的所有节点」）：
+   被引用的 score 子组替换为其全部成员（其 policy 递归 + 其订阅/自建节点），
+   外层组的 outbounds 直接是叶子池——评分器对叶子打分、PUT 叶子才有效
+   （sing-box selector 不接受成员列表以外的值；外层成员若是子组 tag，
+   PUT 叶子会被静默拒绝，现场：亚洲自动 [switch] rc=0 但 now 不变）。
+   urltest/selector 子组不展开（外层选组、内层自治，均为合法组引用）。 */
+function expand_policy_sections(nodes, current, depth) {
+	let out = [];
+	for (let node in normalize_list(nodes)) {
+		if (node === current || ~index(out, node))
+			continue;
+		const outbound = uci.get_all(uciconfig, node) || {};
+		if (isEmpty(outbound) || outbound['.type'] !== uciroutingnode || !isSectionEnabled(outbound.enabled))
+			continue;
+		if (depth < 4 && outbound.node === 'score') {
+			for (let x in expand_policy_sections(outbound.policy_nodes, node, depth + 1))
+				if (!~index(out, x))
+					push(out, x);
+			for (let x in collect_group_nodes(outbound.subscription_groups, outbound.subscription_nodes, outbound.selected_nodes, null, outbound.filter_nodes, outbound.filter_keywords))
+				if (!~index(out, x))
+					push(out, x);
+		} else if (outbound.node in ['urltest', 'selector', 'score']) {
+			push(out, node);
+		}
+	}
+	return out;
+}
+
 function collect_policy_nodes(nodes, current) {
 	let result = [];
 
@@ -563,7 +591,12 @@ function collect_policy_nodes(nodes, current) {
 			continue;
 
 		const outbound = uci.get_all(uciconfig, node) || {};
-		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && isSectionEnabled(outbound.enabled) && outbound.node in ['urltest', 'selector'])
+		/* score 组同样可作为被引用成员（综合评分组嵌套综合评分组是合法
+		   拓扑——外层组的评分器在外层 selector 上选路，成员组由内核/各自
+		   的评分器管理）。此前白名单漏了 score，导致 score 组引用其它
+		   score 组时成员全部被过滤、组退化成 direct-out 兜底（现场：
+		   亚洲自动引用 5 个 score 组，内核里 members=1）。 */
+		if (!isEmpty(outbound) && outbound['.type'] === uciroutingnode && isSectionEnabled(outbound.enabled) && outbound.node in ['urltest', 'selector', 'score'])
 			push(result, node);
 	}
 
@@ -1753,14 +1786,17 @@ if (!isEmpty(main_node)) {
 				idle_timeout: strToTime(cfg.urltest_idle_timeout),
 				interrupt_exist_connections: strToBool(cfg.urltest_interrupt_exist_connections)
 			});
-			urltest_nodes = [...urltest_nodes, ...filter(urltest_list, (l) => !~index(urltest_nodes, l))];
+			/* 同 score 分支：只收 urltest_base（真实节点），不收 policy 组 id。 */
+			urltest_nodes = [...urltest_nodes, ...filter(urltest_base, (l) => !~index(urltest_nodes, l))];
 		} else if (cfg.node === 'score') {
 			/* 综合评分组（工作模式=自动选择(综合评分)）：生成 selector，成员
 			   收集与 urltest 相同，default 可由用户设初始值（selector_default），
 			   运行期由 score_nodes.uc 按「日志失败观测 + 有界实测」动态切换
 			   （对齐 honk 的 Score 语义）。评分器按 uci node=='score' 识别本组。 */
 			const score_base = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
-			const score_policy = collect_policy_nodes(cfg.policy_nodes, cfg['.name']);
+			/* policy_nodes 指向 score 子组时递归展开为叶子池（见
+			   expand_policy_sections）；urltest/selector 子组保持组引用。 */
+			const score_policy = expand_policy_sections(cfg.policy_nodes, cfg['.name'], 0);
 			const score_node_list = [...score_base, ...filter(score_policy, (l) => !~index(score_base, l))];
 			const score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
 			/* 综合评分组**不设 default**：初始选中由评分器第一轮实测后 PUT 写入
@@ -1771,6 +1807,14 @@ if (!isEmpty(main_node)) {
 				outbounds: length(score_tags) ? score_tags : [ 'direct-out' ],
 				interrupt_exist_connections: false
 			});
+			/* ⚠ 只把 score_base（真实节点 section id）加入 urltest_nodes：
+			   urltest_nodes 的唯一用途是「出站生成循环为真实节点生成出站」，
+			   组的出站已在上方分支生成。若把 policy 组 id 也塞进来，循环对
+			   routing_node 段调 generate_outbound 会产出空 type 出站 →
+			   内核 FATAL「unknown outbound type: 」（0.4.17 现场：亚洲自动
+			   引用 5 个 score 组，服务整体起不来）。 */
+			/* 展开后 score_node_list 全部是真实节点 section id（score 子组
+			   已被展开为叶子），需要在这里生成它们的出站。 */
 			urltest_nodes = [...urltest_nodes, ...filter(score_node_list, (l) => !~index(urltest_nodes, l))];
 		} else if (cfg.node === 'selector') {
 			const selector_node_list = collect_group_nodes(cfg.subscription_groups, cfg.subscription_nodes, cfg.selected_nodes, null, cfg.filter_nodes, cfg.filter_keywords);
@@ -1827,6 +1871,11 @@ if (!isEmpty(main_node)) {
 	for (let i in filter(urltest_nodes, (l) => !~index(routing_nodes, l))) {
 		const urltest_node = uci.get_all(uciconfig, i) || {};
 		if (isEmpty(urltest_node))
+			continue;
+		/* 防御：这里只为「真实节点」生成出站。routing_node（策略组）段混进
+		   来时 generate_outbound 产出空 type 出站，内核 FATAL。组出站一律
+		   由上面的组分支生成。 */
+		if (urltest_node['.type'] === uciroutingnode)
 			continue;
 
 		if (urltest_node.type === 'wireguard') {

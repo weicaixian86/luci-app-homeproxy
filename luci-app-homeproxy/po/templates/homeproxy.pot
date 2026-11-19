@@ -4379,3 +4379,6 @@ msgstr ""
 
 msgid "No available node data yet."
 msgstr ""
+
+msgid "Last scored"
+msgstr ""

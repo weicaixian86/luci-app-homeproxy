@@ -4554,3 +4554,6 @@ msgstr "无可用节点（已回退直连）。"
 
 msgid "No available node data yet."
 msgstr "暂无可用节点数据。"
+
+msgid "Last scored"
+msgstr "上次评分"

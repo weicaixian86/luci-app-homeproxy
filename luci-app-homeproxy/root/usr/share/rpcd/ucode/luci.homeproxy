@@ -15,6 +15,25 @@ function shellquote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
 }
 
+/* score 组成员递归展开到叶子（与 score_nodes.uc 的 expand_score_members
+   同一语义）：score 组引用 score 组时评叶子、显示叶子。urltest/selector
+   子组不展开（内层自治）。 */
+function expand_score_members(tags, proxies, score_tags, depth) {
+	let out = [];
+	for (let t in tags) {
+		const sub = proxies[t];
+		if (depth < 4 && sub != null && type(sub.all) === 'array' &&
+		    length(sub.all) > 0 && ~index(score_tags, t)) {
+			for (let x in expand_score_members(sub.all, proxies, score_tags, depth + 1))
+				if (!~index(out, x))
+					push(out, x);
+		} else if (!~index(out, t)) {
+			push(out, t);
+		}
+	}
+	return out;
+}
+
 function hasKernelModule(kmod) {
 	return (system(sprintf('[ -e "/lib/modules/$(uname -r)"/%s ]', shellquote(kmod))) === 0);
 }
@@ -2770,10 +2789,13 @@ const methods = {
 				if (type(p) !== 'object' || p.all == null || length(p.all) === 0)
 					continue;
 
+				/* score 子组递归展开到叶子（与评分器同一语义） */
+				const members_all = expand_score_members(p.all, proxies, score_tags, 0);
+
 				/* 组内每个成员的延迟（来自 state；无样本视为失败） */
 				let list = [];
 				let best = null;
-				for (let name in p.all) {
+				for (let name in members_all) {
 					const st = members_state[name] ?? null;
 					const ok = st && st.ok && st.delay != null;
 					const delay = ok ? st.delay : null;
@@ -2849,6 +2871,11 @@ const methods = {
 
 			const uci = cursor();
 			uci.load('homeproxy');
+			let score_tags = [];
+			uci.foreach('homeproxy', 'routing_node', (cfg) => {
+				if (cfg.node === 'score' && cfg.enabled !== '0' && cfg.label != null && cfg.label !== '')
+					push(score_tags, cfg.label);
+			});
 			const sec = trim(uci.get('homeproxy', 'clash_api', 'secret') || '');
 			let proxies = null;
 			try {
@@ -2863,8 +2890,9 @@ const methods = {
 				return { result: false, error: 'group_not_found' };
 
 			const ms = state.members || {};
+			const members_all = expand_score_members(p.all, proxies, score_tags, 0);
 			let list = [], best = null;
-			for (let name in p.all) {
+			for (let name in members_all) {
 				const st = ms[name] ?? null;
 				const ok = st && st.ok && st.delay != null;
 				const delay = ok ? st.delay : null;

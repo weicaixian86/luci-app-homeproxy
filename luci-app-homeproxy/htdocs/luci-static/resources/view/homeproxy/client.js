@@ -1551,7 +1551,10 @@ return view.extend({
 				renderCell: function(sid) {
 					const node = uci.get(data[0], sid, 'node') || 'selector';
 
-					if (node !== 'selector')
+					/* score/urltest 同样支持 policy_nodes（生成器会合并成员），
+					   显示条件必须与订阅机场/自建节点列一致，否则综合评分组
+					   勾选的策略组在表格里永远显示 —（现场：亚洲自动）。 */
+					if (node !== 'urltest' && node !== 'score' && node !== 'selector')
 						return E('span', { 'class': 'hp-chip-empty' }, [ '—' ]);
 
 					const names = normalizeFormList(uci.get(data[0], sid, 'policy_nodes'))

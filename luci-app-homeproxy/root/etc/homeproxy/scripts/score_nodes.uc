@@ -28,6 +28,10 @@
  * ===================================================================== */
 
 import { readfile, writefile, access, popen, stat } from 'fs';
+/* ⚠ 本文件的自定义 log(msg) 是写日志函数，会覆盖内置/数学的 log——
+   对数曲线必须用别名导入，否则 log(1+k·nd) 会把数值当消息打出
+   并返回 undefined（分数 NaN，现场教训）。 */
+import { log as math_log } from 'math';
 import { cursor } from 'uci';
 import { sqrt } from 'math';
 import { isEmpty, shellQuote, HP_DIR, RUN_DIR } from 'homeproxy';
@@ -44,9 +48,12 @@ const TOLERANCE = 0.10;          // 评分容差：最优分要优于现任 10% 
 /* 权重（分数越低越好）：延迟仍是最强区分项；抖动衡量稳定性；
    速度维度因 reF1nd 内核 /connections 无连接追踪数据（实测恒为空）
    改由抖动承担“稳定性”目标——完全基于既有延迟样本，零额外探测。 */
-const W_DELAY = 0.45;
-const W_LOSS = 0.25;
-const W_JITTER = 0.30;
+const W_DELAY = 0.30;
+/* Paily 对数延迟曲线系数：低延迟区（<500ms）的微小差距不再线性放大，
+   高延迟区（>1500ms）惩罚放缓——延迟维度整体更平滑。 */
+const LATENCY_CURVE_K = 0.3;
+const W_LOSS = 0.30;
+const W_JITTER = 0.40;
 const JITTER_MIN_SAMPLES = 3;    // 抖动样本不足不计惩罚（中性）
 const HIST_MAX = 10;             // 每成员保留最近 10 次成功延迟
 const DEGRADE_PENALTY = 0.5;     // 退化节点额外惩罚分
@@ -205,6 +212,10 @@ function compute_score(st) {
 		return 999;      /* 无样本/失败：极高，仅当全部如此才用 */
 	let nd = st.delay / 2000.0;   /* /2000 会被 ucode 当整数除法截断成 0，必须用浮点 */
 	if (nd > 1) nd = 1;
+	/* Paily 对数延迟曲线：delay_term = ln(1+k·nd)/ln(1+k)。150ms→0.085、
+	   500ms→0.285、1000ms→0.533、2000ms→1.0——与线性接近但高延迟区
+	   增长放缓，低延迟节点之间的差距不再主导评分。 */
+	nd = math_log(1 + LATENCY_CURVE_K * nd) / math_log(1 + LATENCY_CURVE_K);
 	let loss = 0;
 	const total = (st.ok_cnt ?? 0) + (st.fail_cnt ?? 0);
 	if (total >= LOSS_MIN_SAMPLES)
@@ -236,6 +247,28 @@ function compute_score(st) {
 /* 识别综合评分组：uci 里 node=='score' 的 routing_node 段（生成器把它们
    生成为 type=Selector、tag=组显示名）。返回 [tag, ...]（已确认在
    Clash API 里存在且类型为 Selector 的）。 */
+/* 递归展开成员（对齐 mihomo Smart 的 resolve 语义）：score 组引用其它
+   score 组时，展开到叶子节点——评叶子、选叶子，外层 now 直接指向全池
+   综合最优的真实节点。叶子延迟数据节点级共享（state.members 按节点名
+   存），子组评分器的实测外层直接复用，几乎不增加探测量。
+   urltest/selector 子组不展开：内核 urltest 自选、用户手选的内层自治
+   不应被外层绕过。depth 限 4 防配置成环。 */
+function expand_score_members(tags, proxies, score_tags, depth) {
+	let out = [];
+	for (let t in tags) {
+		const sub = proxies[t];
+		if (depth < 4 && sub != null && type(sub.all) === 'array' &&
+		    length(sub.all) > 0 && ~index(score_tags, t)) {
+			for (let x in expand_score_members(sub.all, proxies, score_tags, depth + 1))
+				if (!~index(out, x))
+					push(out, x);
+		} else if (!~index(out, t)) {
+			push(out, t);
+		}
+	}
+	return out;
+}
+
 function find_score_groups(proxies) {
 	const uci = cursor();
 	uci.load('homeproxy');
@@ -272,7 +305,7 @@ function run() {
 		if (type(score_proxy) !== 'object' || isEmpty(score_proxy.all))
 			continue;
 
-		const members = score_proxy.all;
+		const members = expand_score_members(score_proxy.all, proxies.proxies, score_groups, 0);
 		const n = length(members);
 		const budget = (n <= 4) ? (n + 1) : (int(sqrt(n)) + 1);
 		let probe_count = 0;

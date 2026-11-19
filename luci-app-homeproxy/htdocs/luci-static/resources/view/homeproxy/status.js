@@ -69,6 +69,8 @@ const css = '				\
 	display: grid;				\
 	grid-template-columns: 1fr;		\
 	gap: 16px;				\
+	max-width: 860px;			\
+	margin: 0 auto;			\
 }						\
 .homeproxy-score-card {				\
 	background: #fff;			\
@@ -85,26 +87,31 @@ const css = '				\
 .homeproxy-score-hd .ttl { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } \
 .homeproxy-score-hd h4 { margin: 0; font-size: 16px; font-weight: 700; } \
 .homeproxy-score-hd .mode { font-size: 12.5px; color: #999; } \
+.homeproxy-score-hd .stat { font-size: 12.5px; color: #6b7683; white-space: nowrap; } \
+.homeproxy-score-hd .stat-avail { color: #2d6d2d; font-weight: 600; } \
 .homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
 	padding: 2px 10px; border-radius: 10px; font-weight: 600; white-space: nowrap; } \
-.homeproxy-score-kv { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-end; \
+ .homeproxy-score-kv { display: grid; \
+	grid-template-columns: 44px minmax(0, 1fr) 112px 84px; \
+	align-items: end; \
 	padding: 14px 18px; border-bottom: 1px solid #f0f0f0; } \
-.homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; } \
+	padding: 14px 18px; border-bottom: 1px solid #f0f0f0; } \
+.homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \	align-items: center; text-align: center; } \
 .homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; } \
 .homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; } \
 .homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
-.homeproxy-score-kv .kv-cur { flex: 1 1 auto; min-width: 200px; } \
+ .homeproxy-score-kv .kv-cur { min-width: 0; max-width: 100%; align-items: flex-start; text-align: left; } \
 .homeproxy-score-kv .kv-cur > b { font-size: 15px; font-weight: 600; overflow: hidden; \
 	text-overflow: ellipsis; white-space: nowrap; max-width: 100%; } \
 .homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #9aa3ad; font-weight: 600; letter-spacing: .3px; } \
 table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; } \
-.homeproxy-score-tbl th { text-align: left; padding: 6px 12px; color: #9aa3ad; \
+.homeproxy-score-tbl th { text-align: left; padding: 7px 18px; color: #9aa3ad; \
 	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
-.homeproxy-score-tbl td { padding: 7px 12px; border-bottom: 1px solid #f4f5f6; } \
+.homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid #f4f5f6; } \
 .homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
 .homeproxy-score-tbl .rk { width: 44px; color: #b0b7bf; text-align: center; } \
-.homeproxy-score-tbl .dl { width: 96px; text-align: right; color: #5a6470; } \
-.homeproxy-score-tbl .sc { width: 72px; text-align: right; color: #1f8a4c; font-weight: 700; } \
+.homeproxy-score-tbl .dl { width: 112px; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .sc { width: 84px; text-align: center; color: #1f8a4c; font-weight: 700; } \
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
 .homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #8a949e; \
 	display: flex; justify-content: space-between; align-items: center; } \
@@ -142,8 +149,8 @@ function renderScoreCards() {
 					E('table', { 'class': 'homeproxy-score-tbl' }, [
 						E('thead', {}, [ E('tr', {}, [
 							E('th', {}, [ '#' ]), E('th', {}, [ _('Node') ]),
-							E('th', { 'style': 'text-align:right' }, [ _('Latency') ]),
-							E('th', { 'style': 'text-align:right' }, [ _('Score') ])
+							E('th', {  }, [ _('Latency') ]),
+							E('th', {  }, [ _('Score') ])
 						]) ]),
 						E('tbody', {}, rows)
 					])
@@ -171,26 +178,36 @@ function renderScoreCards() {
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
 			const hasTop = rows.length > 0;
+			/* 上次评分时间：年月日 + 时:分（秒不显示） */
+			const fmtScored = (ts) => {
+				if (!ts)
+					return '—';
+				const d = new Date(ts * 1000);
+				const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+				return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+			};
 			return E('div', { 'class': 'homeproxy-score-card' }, [
 				E('div', { 'class': 'homeproxy-score-hd' }, [
 					E('div', { 'class': 'ttl' }, [
 						E('h4', {}, [ '🌏 ' + g.tag ]),
-						E('span', { 'class': 'mode' }, [ _('Mode') + ': ' + _('Auto select (comprehensive score)') ])
+						E('span', { 'class': 'mode' }, [ _('Mode') + ': ' + _('Auto select (comprehensive score)') ]),
+						E('span', { 'class': 'stat' }, [ _('Last scored') + ' ' + fmtScored(g.updated) ]),
+						E('span', { 'class': 'stat stat-avail' }, [ _('Available / Total') + ' ' + '%d / %d'.format(g.ok, g.total) ])
 					]),
 					E('span', { 'class': 'homeproxy-score-badge' }, [ _('Scoring') ])
 				]),
 				E('div', { 'class': 'homeproxy-score-kv' }, [
+					E('div', { 'class': 'kv-sp' }, [ ]),
 					E('div', { 'class': 'kv-cur' }, [ E('span', {}, [ _('Current') ]), E('b', { 'title': g.now || '—' }, [ g.now || '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
-					E('div', {}, [ E('span', {}, [ _('Available / Total') ]), E('b', {}, [ '%d / %d'.format(g.ok, g.total) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl' }, [ String(g.score) ]) ])
 				]),
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
 				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
 						E('th', { 'class': 'rk' }, [ '#' ]), E('th', {}, [ _('Node') ]),
-						E('th', { 'class': 'dl', 'style': 'text-align:right' }, [ _('Latency') ]),
-						E('th', { 'class': 'sc', 'style': 'text-align:right' }, [ _('Score') ])
+						E('th', { 'class': 'dl',  }, [ _('Latency') ]),
+						E('th', { 'class': 'sc',  }, [ _('Score') ])
 					]) ]),
 					E('tbody', {}, rows)
 				]) : E('div', { 'class': 'homeproxy-score-nodata' }, [ _('No available node data yet.') ]),
