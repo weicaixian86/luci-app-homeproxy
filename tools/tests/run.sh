@@ -3057,7 +3057,7 @@ fi
 if grep -q "form.Value, 'github_token'" "$STATUS_JS" \
    && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q 'o.rmempty = true' \
    && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q "input.value = ''" \
-   && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q "uci.remove('homeproxy', 'config', 'github_token')"; then
+   && awk "/form.Value, 'github_token'/,/^\t\t\treturn node;/" "$STATUS_JS" | grep -q "uci.set('homeproxy', 'config', 'github_token', null)"; then
 	ok "GitHub token can be cleared (rmempty + no echo + explicit Clear button)"
 else
 	bad "GitHub token cannot be cleared from the UI: empty save keeps writing the old value back"

@@ -4557,3 +4557,6 @@ msgstr "暂无可用节点数据。"
 
 msgid "Last scored"
 msgstr "上次评分"
+
+msgid "GitHub token cleared and applied."
+msgstr "GitHub 令牌已清除并应用。"

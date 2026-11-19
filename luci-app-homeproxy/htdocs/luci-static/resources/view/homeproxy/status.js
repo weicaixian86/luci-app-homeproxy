@@ -554,18 +554,24 @@ return view.extend({
 				}, this.option)
 			}, [ _('Save') ]));
 
-			/* 显式「清除」：直接删掉该项再 commit + apply，绕开密码框的
-			   「空值不清 DOM」问题，确保 uci 里真的没有 github_token。 */
+			/* 显式「清除」：删掉该 option 再 commit + apply，绕开密码框的
+			   「空值不清 DOM」问题，确保 uci 里真的没有 github_token。
+			   ⚠ 必须用 uci.set(conf, sid, opt, null)：LuCI 的 uci.remove()
+			   签名只有 (conf, sid) 两个参数（删整个段）。早期误传三个参数，
+			   第三参数被忽略 → 删掉了整个 config 段 → 配置损坏、内核起不来
+			   （2026-11 现场事故）。 */
 			actions.appendChild(E('button', {
 				'class': 'cbi-button cbi-button-reset',
 				'title': _('Clear'),
 				'click': ui.createHandlerFn(this, () => {
 					const map = this.map;
-					map.uci.remove('homeproxy', 'config', 'github_token');
+					map.uci.set('homeproxy', 'config', 'github_token', null);
 					return map.uci.save().then(() => {
 						if (input)
 							input.value = '';
-						return map.uci.apply();
+						return map.uci.apply().then(() => {
+							ui.addNotification(null, E('p', _('GitHub token cleared and applied.')), 'info');
+						});
 					});
 				}, this.option)
 			}, [ _('Clear') ]));

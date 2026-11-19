@@ -4382,3 +4382,6 @@ msgstr ""
 
 msgid "Last scored"
 msgstr ""
+
+msgid "GitHub token cleared and applied."
+msgstr ""
