@@ -1581,17 +1581,25 @@ start_service() {
 
 	# 配置备份已在 start_service 开头完成（必须排在所有早退判定之前，见上）。
 
-	# Auto-install the dashboard panel after the core is up, the same way the
-	# kernel is fetched at start. Run detached so service start is not blocked
-	# while the core boots and the clash API becomes reachable.
-	( exec 1000>&- 2>/dev/null; ensure_panel ) &
+	# 面板准备（ensure_panel）已移到「订阅更新之后」执行——见下方 case。
+	# 原因：订阅更新会 stop+start 内核，若面板下载先起，它「等 Clash API
+	# 就绪」的那段时间正好撞上内核重启，容易被中断再重试。放在订阅完成
+	# （内核刚重启、API 即将就绪）之后执行最顺；内核始终保持运行时它也会
+	# 在确保阶段自行重试，缺失时不影响业务。
 
-	# 启动即评分：服务起来后异步跑一次，用户装完/重启后 1 分钟内状态页
-	# 就有评分数据，不必干等 cron 的下一个 0/30 分（最坏 30 分钟空窗）。
-	# 注意：has_score_group/score_int 是 setup_auto_update_cron() 里的
-	# local 变量，这里看不到——必须就地重新判定（有 score 组 + 未关闭调度）。
-	# sleep 15 等内核与 Clash API 就绪；setsid 脱管防 init 退出时被杀
-	# （同下方 core_guard 的 0.2.9 教训）；评分器自带锁，与 cron 不冲突。
+	# ── 启动后：先拉订阅，订阅完成（内核重启）后再评分（严格串行）────────
+	# 需求：插件成功启动自动拉一次全部订阅；且评分必须在订阅更新完成后跑
+	# （新节点就绪后再评分才有意义）。
+	#
+	# 时序设计：
+	#   A. 普通启动（开机/用户重启）→ 只触发订阅更新（后台，脱管）；
+	#      订阅脚本更新完会 stop+start 内核 → 触发启动 B。
+	#   B. 启动 B 的来源是订阅更新脚本（hp_caller 识别）→ 说明订阅已完成、
+	#      内核已重启 → 此时才触发评分。天然串行，无需轮询等待。
+	#   C. 没有订阅（无 subscription_url）→ 不拉订阅，直接评分。
+	#
+	# 防循环：B 里不再拉订阅（case 已排除），因此不会无限重启。
+	# 评分条件：有启用中的 score 组 + 调度未关闭 + 评分器存在。
 	boot_score_ok="0"
 	for _bs in $(uci -q show "$CONF" 2>/dev/null | grep "=routing_node$" | cut -d. -f2 | cut -d= -f1); do
 		[ "$(uci -q get "$CONF.$_bs".node)" = "score" ] && \
@@ -1599,10 +1607,47 @@ start_service() {
 	done
 	boot_score_int=$(uci -q get "$CONF.config.score_update_interval")
 	[ -z "$boot_score_int" ] && boot_score_int="30"
-	if [ "$boot_score_ok" = "1" ] && [ "$boot_score_int" != "0" ] && [ -x "$HP_DIR/scripts/score_nodes.uc" ]; then
-		( exec 1000>&- 2>/dev/null; setsid /bin/sh -c 'sleep 15; /usr/bin/ucode -S '"$HP_DIR"'/scripts/score_nodes.uc >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & )
-		log "启动即评分已触发（15 秒后后台运行一次，不必等 cron）。"
-	fi
+	boot_score_ready="0"
+	[ "$boot_score_ok" = "1" ] && [ "$boot_score_int" != "0" ] && [ -x "$HP_DIR/scripts/score_nodes.uc" ] && boot_score_ready="1"
+
+	_boot_sub_url="$(uci -q get "$CONF.subscription.subscription_url" 2>/dev/null)"
+	_boot_caller="$(hp_caller)"
+
+	case "$_boot_caller" in
+		*订阅更新脚本*)
+			# B. 订阅已完成、内核刚重启：先准备面板（等 Clash API 就绪），
+			#    再评分。
+			( exec 1000>&- 2>/dev/null; ensure_panel ) &
+			if [ "$boot_score_ready" = "1" ]; then
+				( exec 1000>&- 2>/dev/null; setsid /bin/sh -c 'sleep 15; /usr/bin/ucode -S '"$HP_DIR"'/scripts/score_nodes.uc >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & )
+				log "订阅更新已完成（内核已重启）：面板准备已触发，综合评分已触发（15 秒后后台运行）。"
+			else
+				log "订阅更新已完成（内核已重启）：面板准备已触发。"
+			fi ;;
+		*)
+			# A. 普通启动：有订阅就先拉订阅（面板与评分都交给订阅重启后的
+			#    启动 B）；但若当前面板缺失，仍立刻补一次（否则 /ui/ 在订阅
+			#    期间一直 404，且万一订阅全失败不会重启内核、B 不出现）。
+			#    没有订阅就直接 面板 + 评分。
+			if [ -n "$_boot_sub_url" ] && [ -x "$HP_DIR/scripts/update_subscriptions_async.sh" ]; then
+				_bp_dir="$(uci -q get "$CONF.clash_api.external_ui" 2>/dev/null)"
+				[ -n "$_bp_dir" ] || _bp_dir="$HP_DIR/run/ui"
+				if [ ! -f "$_bp_dir/index.html" ]; then
+					( exec 1000>&- 2>/dev/null; ensure_panel ) &
+					log "启动时面板缺失，已立即触发面板准备（与订阅并行，避免 /ui/ 404）。"
+				fi
+				( exec 1000>&- 2>/dev/null; setsid /bin/sh -c 'sleep 5; /bin/sh '"$HP_DIR"'/scripts/update_subscriptions_async.sh --detach' </dev/null >/dev/null 2>&1 & )
+				log "启动后自动拉取订阅已触发（5 秒后后台执行），完成后自动重载内核并再触发评分。"
+			else
+				( exec 1000>&- 2>/dev/null; ensure_panel ) &
+				if [ "$boot_score_ready" = "1" ]; then
+					( exec 1000>&- 2>/dev/null; setsid /bin/sh -c 'sleep 15; /usr/bin/ucode -S '"$HP_DIR"'/scripts/score_nodes.uc >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & )
+					log "无订阅需拉取：面板准备已触发，综合评分已触发（15 秒后后台运行）。"
+				else
+					log "无订阅需拉取：面板准备已触发。"
+				fi
+			fi ;;
+	esac
 
 	# 内核没起来就撤劫持，别让局域网失去 DNS（见 scripts/core_guard.sh）。
 	# 必须用 setsid 脱管：init 脚本退出时，`( … ) &` 起的子 shell 会被一起
