@@ -1579,6 +1579,24 @@ start_service() {
 	# while the core boots and the clash API becomes reachable.
 	( exec 1000>&- 2>/dev/null; ensure_panel ) &
 
+	# 启动即评分：服务起来后异步跑一次，用户装完/重启后 1 分钟内状态页
+	# 就有评分数据，不必干等 cron 的下一个 0/30 分（最坏 30 分钟空窗）。
+	# 注意：has_score_group/score_int 是 setup_auto_update_cron() 里的
+	# local 变量，这里看不到——必须就地重新判定（有 score 组 + 未关闭调度）。
+	# sleep 15 等内核与 Clash API 就绪；setsid 脱管防 init 退出时被杀
+	# （同下方 core_guard 的 0.2.9 教训）；评分器自带锁，与 cron 不冲突。
+	boot_score_ok="0"
+	for _bs in $(uci -q show "$CONF" 2>/dev/null | grep "=routing_node$" | cut -d. -f2 | cut -d= -f1); do
+		[ "$(uci -q get "$CONF.$_bs".node)" = "score" ] && \
+		[ "$(uci -q get "$CONF.$_bs".enabled)" != "0" ] && boot_score_ok="1"
+	done
+	boot_score_int=$(uci -q get "$CONF.config.score_update_interval")
+	[ -z "$boot_score_int" ] && boot_score_int="30"
+	if [ "$boot_score_ok" = "1" ] && [ "$boot_score_int" != "0" ] && [ -x "$HP_DIR/scripts/score_nodes.uc" ]; then
+		( exec 1000>&- 2>/dev/null; setsid /bin/sh -c 'sleep 15; /usr/bin/ucode -S '"$HP_DIR"'/scripts/score_nodes.uc >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & )
+		log "启动即评分已触发（15 秒后后台运行一次，不必等 cron）。"
+	fi
+
 	# 内核没起来就撤劫持，别让局域网失去 DNS（见 scripts/core_guard.sh）。
 	# 必须用 setsid 脱管：init 脚本退出时，`( … ) &` 起的子 shell 会被一起
 	# 杀掉，检查根本活不到 15 秒（0.2.9 实测）。
