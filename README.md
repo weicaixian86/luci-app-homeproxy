@@ -132,26 +132,20 @@ rm -rf /tmp/luci-modulecache/* 2>/dev/null
 /etc/init.d/uhttpd restart
 ```
 > 说明：
-> - 卸载时**连同配置文件一并清除**（含 config.uci.bak、订阅种子 providers/、cache.db、score_state.json 等），**仅忽略面板（`/etc/homeproxy/run/ui`）与规则集（`/etc/homeproxy/ruleset`）**。
+> - 卸载时**仅忽略面板（`/etc/homeproxy/run/ui`）与规则集（`/etc/homeproxy/ruleset`）**。
 
+## 三 、备份配置
+备份 /etc/config/homeproxy
 
-## 三 、常见问题
+## 四 、常见问题
 1. **面板下载失败**
    - 客户端设置 → 点「更新面板」手动触发；
    - 或手动下载 ZIP 上传：`https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip`，客户端设置 → 点「上传面板ZIP」。
 2. **远程规则集是否下载成功**
    面板查看，有即成功或者SSH 查看 `/etc/homeproxy/ruleset/`，否则检查规则集远程连接。
-3. **sing-box 内核未安装或下载失败**
-   服务状态 → 「sing-box 内核管理」查看架构与目标版本；显示"未安装"则点「下载 / 更新内核」。日志：`/var/run/homeproxy/core_download.log`。若当前架构 reF1nd 暂未发布，请等作者更新。
-4. **装新包后页面仍是旧文字**
-   清浏览器缓存，或执行：
-   ```sh
-   rm -f /tmp/luci-indexcache
-   rm -rf /tmp/luci-modulecache/*
-   /etc/init.d/rpcd restart
-   /etc/init.d/uhttpd restart
-   ```
+3. **内核未安装或下载失败**
+   服务状态 → 「内核管理」查看架构与目标版本；显示"未安装"则点「下载 / 更新内核」。若当前架构 reF1nd 暂未发布，请等作者更新。
 
-## 四、感谢作者
+## 五、感谢作者
 - immortalwrt：https://github.com/immortalwrt/homeproxy
 - reF1nd（sing-box 内核基础源码）：https://github.com/reF1nd/sing-box （v1.14.4-reF1nd）
