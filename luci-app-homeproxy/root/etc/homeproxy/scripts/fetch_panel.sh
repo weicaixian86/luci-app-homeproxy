@@ -261,11 +261,18 @@ build_candidates() {
 
 	# 直连轮：镜像在前、原地址最后。镜像存在的意义就是「直连可达」，
 	# 而直连 github.com 实测只有 60~80 KB/s 且经常断，放前面会把预算耗光。
+	#
+	# 镜像顺序按 2026-11-20 在 237 上「停服务、真直连、-L 跟随重定向、
+	# 各取 512KB」实测排序（此前顺序是拍脑袋定的，实测证明排错了）：
+	#   ghfast.top     524KB / 6.9s  ≈ 75 KB/s   ← 最快，排第一
+	#   gh-proxy.com   376KB / 30s   ≈ 12 KB/s   （未取完，超时）
+	#   ghproxy.net    390KB / 30s   ≈ 13 KB/s   （未取完，超时）
+	# ghfast 比另两个快约 6 倍；9.5MB 面板从 ~12 分钟缩到 ~2 分钟。
 	case "$direct" in
 		https://github.com/*|http://github.com/*)
+			printf 'D|%s\n' "https://ghfast.top/${direct}"
 			printf 'D|%s\n' "https://gh-proxy.com/${direct}"
 			printf 'D|%s\n' "https://ghproxy.net/${direct}"
-			printf 'D|%s\n' "https://ghfast.top/${direct}"
 			;;
 	esac
 	printf 'D|%s\n' "$direct"
