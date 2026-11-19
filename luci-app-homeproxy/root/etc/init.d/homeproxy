@@ -1111,6 +1111,13 @@ start_service() {
 	# 而提前返回，兜底就永远不触发。
 	rm -f "$RUN_DIR/.stopping" 2>"/dev/null"
 
+	# 开机自启跟随用户意图：用户主动「启动」时恢复开机自启（装包 postinst
+	# 也会 enable，这里覆盖「用户停止后手动再启动」的场景）。boot 时 rc.d
+	# 已带链接，无需再 enable；只对 action=='start' 操作，幂等无副作用。
+	if [ "$action" = "start" ]; then
+		( /etc/init.d/homeproxy enable >/dev/null 2>&1 || true )
+	fi
+
 	init_logs
 
 	# 时钟必须先校正，再写第一行日志：NTP 之前的时钟可能停在几天前（RTC 没
@@ -1607,6 +1614,15 @@ start_service() {
 
 stop_service() {
 	hp_event "服务停止" "${1:-}"
+
+	# 开机自启跟随用户意图：用户主动「停止」时取消开机自启，重启/关机后
+	# 保持停止（而不是下次开机又被 rc.d 拉起来）。只在 action=='stop' 时
+	# 生效——reload/restart 内部同样走 stop_service，不能误伤。
+	# 动作在 $action（rc.common 已 shift 过 $1，见文件头说明）。
+	if [ "$action" = "stop" ]; then
+		( /etc/init.d/homeproxy disable >/dev/null 2>&1 || true )
+		log "用户主动停止服务：已取消开机自启（下次开机保持停止）。"
+	fi
 
 	# 让 core_health_check 知道「这次是用户停的」，别把正常停止当成启动失败。
 	touch "$RUN_DIR/.stopping" 2>"/dev/null"

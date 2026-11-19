@@ -97,6 +97,13 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 			uci -q commit ucitrack
 		fi
 	fi
+	# 开机自启：apk 安装不会自动 enable /etc/init.d 脚本，缺少这一步时
+	# 重启设备后插件不会自动启动（核心未运行），用户必须在 LuCI 里点
+	# 「重载服务」才拉起来（238 现场：装 0.4.22 重启后 core 未运行）。
+	# rc.common 的 enable 会创建 /etc/rc.d/S99homeproxy 链接；幂等，
+	# 重复安装不会报错。放在 IPKG_INSTROOT 为空（真机安装）分支内，
+	# 避免 SDK 构建阶段操作构建机。
+	( /etc/init.d/homeproxy enable >/dev/null 2>&1 || true )
 fi
 endef
 
