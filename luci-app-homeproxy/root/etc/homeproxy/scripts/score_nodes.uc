@@ -45,15 +45,21 @@ const PROBE_TIMEOUT_MS = 4000;
 
 /* ===== 第一档（借鉴 mihomo Smart Group）：多维评分 + 防抖 + 退化检测 ===== */
 const TOLERANCE = 0.10;          // 评分容差：最优分要优于现任 10% 才切换
-/* 权重（分数越低越好）：延迟仍是最强区分项；抖动衡量稳定性；
-   速度维度因 reF1nd 内核 /connections 无连接追踪数据（实测恒为空）
-   改由抖动承担“稳定性”目标——完全基于既有延迟样本，零额外探测。 */
+/* 权重（分数越低越好）——按 mihomo Smart Group 官方方案：
+   score = 0.3×延迟 + 0.3×丢包 + 0.4×(1-速度) + 退化0.5
+   抖动项 W_JITTER=0（mihomo 模型不含独立抖动维度；稳定性由丢包 +
+   EMA 基线退化检测覆盖）。速度无数据时中性（不奖不罚）。 */
 const W_DELAY = 0.30;
+const W_LOSS = 0.30;
+const W_JITTER = 0.0;
+const W_SPEED = 0.40;
+const SPEED_SAMPLE_SECS = 6;            // 轮内两次采样间隔
+const SPEED_REF_FLOOR = 512 * 1024;     // 速度参考地板 512KB/s
+const SPEED_REF_CEIL = 32 * 1024 * 1024;// 上限 32MB/s
+const SPEED_MIN_SAMPLES = 3;            // 组内至少 3 个样本才启用 P90 锚定
 /* Paily 对数延迟曲线系数：低延迟区（<500ms）的微小差距不再线性放大，
    高延迟区（>1500ms）惩罚放缓——延迟维度整体更平滑。 */
 const LATENCY_CURVE_K = 0.3;
-const W_LOSS = 0.30;
-const W_JITTER = 0.40;
 const JITTER_MIN_SAMPLES = 3;    // 抖动样本不足不计惩罚（中性）
 const HIST_MAX = 10;             // 每成员保留最近 10 次成功延迟
 const DEGRADE_PENALTY = 0.5;     // 退化节点额外惩罚分
@@ -151,6 +157,56 @@ function save_state(st) {
 	writefile(STATE_FILE, sprintf('%.J\n', st));
 }
 
+/* 被动速度采样（mihomo SpeedObserver 模式，适配本内核）：
+   GET /connections 按 chains[0]（leaf outbound，sing-box 已反转链）
+   聚合 download 字节。两次采样间隔 SPEED_SAMPLE_SECS 秒，
+   delta/间隔 = 该 leaf 的近期吞吐（B/s）。无连接时返回空 map。 */
+function sample_conn_bytes() {
+	const out = {};
+	const raw = api_get('/connections');
+	if (isEmpty(raw))
+		return out;
+	const d = json(raw);
+	if (type(d) !== 'object' || type(d.connections) !== 'array')
+		return out;
+	for (let con in d.connections) {
+		if (type(con) !== 'object' || type(con.chains) !== 'array' || length(con.chains) === 0)
+			continue;
+		const leaf = con.chains[0];
+		const dl = con.download ?? 0;
+		if (type(leaf) === 'string' && !isEmpty(leaf) && dl > 0)
+			out[leaf] = (out[leaf] ?? 0) + dl;
+	}
+	return out;
+}
+
+function sample_speeds() {
+	const out = {};
+	const t0 = sample_conn_bytes();
+	system(sprintf('sleep %d >/dev/null 2>&1', SPEED_SAMPLE_SECS));
+	const t1 = sample_conn_bytes();
+	for (let leaf in t1) {
+		const d = t1[leaf] - (t0[leaf] ?? 0);
+		if (d > 0)
+			out[leaf] = d / (SPEED_SAMPLE_SECS * 1.0);
+	}
+	return out;
+}
+
+/* P90 速度参考锚定（mihomo）：样本不足用地板值，P90 限幅 [floor, ceiling]。 */
+function compute_speed_ref(speeds) {
+	let vals = [];
+	for (let k in speeds)
+		push(vals, speeds[k]);
+	if (length(vals) < SPEED_MIN_SAMPLES)
+		return SPEED_REF_FLOOR;
+	sort(vals, (a, b) => (a - b));
+	let ref = vals[int(length(vals) * 0.9)];
+	if (ref < SPEED_REF_FLOOR) ref = SPEED_REF_FLOOR;
+	if (ref > SPEED_REF_CEIL) ref = SPEED_REF_CEIL;
+	return ref;
+}
+
 function probe_member(tag) {
 	const enc = uri_escape(tag);
 	const resp = api_get(sprintf('/proxies/%s/delay?timeout=%d&url=%s',
@@ -207,7 +263,7 @@ function update_baseline(st, success, delay) {
 
 /* 计算单个成员的评分（分数越低越好，与 mihomo Smart 同构）：
    score = delay/2000(归一上限1) + W_LOSS*失败率 + (退化?DEGRADE_PENALTY:0) */
-function compute_score(st) {
+function compute_score(st, speed, speed_ref) {
 	if (!st || !st.ok || st.delay == null)
 		return 999;      /* 无样本/失败：极高，仅当全部如此才用 */
 	let nd = st.delay / 2000.0;   /* /2000 会被 ucode 当整数除法截断成 0，必须用浮点 */
@@ -237,6 +293,15 @@ function compute_score(st) {
 			if (jn > 1) jn = 1;
 			sc += W_JITTER * jn;
 		}
+	}
+
+	/* 速度项：有本轮实测吞吐才计入，无数据中性（不奖不罚）。
+	   norm = min(1, speed/ref)，快节点 norm→1 → 惩罚→0；慢节点惩罚逼近 W_SPEED。 */
+	if (speed != null && speed > 0 && speed_ref > 0) {
+		let ns = speed / (speed_ref * 1.0);
+		if (ns > 1) ns = 1;
+		sc += W_SPEED * (1 - ns);
+		st.speed = speed;
 	}
 
 	if (st.deg)
@@ -299,6 +364,15 @@ function run() {
 	}
 
 	const score_groups = find_score_groups(proxies);
+
+	/* 被动速度采样（轮内一次，所有组共享）；无流量时几乎零成本 */
+	const speeds = sample_speeds();
+	let speed_vals = [];
+	for (let k in speeds)
+		push(speed_vals, speeds[k]);
+	const speed_ref = compute_speed_ref(speeds);
+	if (length(speed_vals) > 0)
+		log(sprintf('速度采样: %d 个节点有吞吐, P90参考=%d KB/s', length(speed_vals), int(speed_ref / 1024)));
 
 	for (let tag in score_groups) {
 		const score_proxy = proxies.proxies[tag];
@@ -372,7 +446,7 @@ function run() {
 			}
 			if (!st || !st.ok || st.delay == null)
 				continue;
-			const sc = compute_score(st);
+			const sc = compute_score(st, speeds[m] ?? null, speed_ref);
 			/* 持久化算法分（分越低越好），供状态页统一显示：
 			   质量分 = 100 - min(100, 分×50)，越高越好。 */
 			st.score = sc;
@@ -393,7 +467,7 @@ function run() {
 
 		/* 现任评分（用于容差防抖） */
 		const inc_st = state.members?.[incumbent] ?? null;
-		const incumbent_score = (inc_st && inc_st.ok) ? compute_score(inc_st) : 9999;
+		const incumbent_score = (inc_st && inc_st.ok) ? compute_score(inc_st, speeds[incumbent] ?? null, speed_ref) : 9999;
 
 		if (best_tag === incumbent) {
 			log(sprintf('[keep] %s: incumbent %s score=%.2f', tag, incumbent, best_score));
