@@ -1867,19 +1867,41 @@ return baseclass.extend({
 			}
 		};
 
-		return this.uploadToTemp('/tmp/homeproxy_panel.tmp', ev.target.files && ev.target.files[0])
-		.then((res) => {
-			return L.resolveDefault(callInstallPanel(), {}).then((ret) => {
-				if (ret.result === true)
-					ui.addNotification(null, E('p', _('Your %s was successfully uploaded. Size: %sB.').format(_('panel ZIP package'), res.size)), 'info');
-				else
-					ui.addNotification(null, E('p', _('Failed to upload %s, error: %s.').format(_('panel ZIP package'), normalizeMessage(ret.error))), 'danger');
-
-				if (ev.target && 'value' in ev.target)
-					ev.target.value = '';
+		/* 按钮点击时 ev.target 是 <button>，没有 files 属性——必须从自建的
+		   隐藏 <input type=file> 取文件，并主动 .click() 弹出选择窗口
+		   （此前直接用 ev.target.files 导致点击按钮毫无反应）。 */
+		const installZip = (file) => {
+			return this.uploadToTemp('/tmp/homeproxy_panel.tmp', file)
+			.then((res) => {
+				return L.resolveDefault(callInstallPanel(), {}).then((ret) => {
+					if (ret.result === true)
+						ui.addNotification(null, E('p', _('Your %s was successfully uploaded. Size: %sB.').format(_('panel ZIP package'), res.size)), 'info');
+					else
+						ui.addNotification(null, E('p', _('Failed to upload %s, error: %s.').format(_('panel ZIP package'), normalizeMessage(ret.error))), 'danger');
+				});
 			});
-		})
-		.catch((e) => { ui.addNotification(null, E('p', e.message || e), 'danger') });
+		};
+
+		const picked = ev && ev.target && ev.target.files && ev.target.files[0];
+		if (picked)
+			return installZip(picked);
+
+		/* ⚠ 必须在用户点击的【同步调用栈】里触发 input.click()——
+		   浏览器只允许用户手势直接触发文件选择框，放进 Promise /
+		   setTimeout 会被安全策略拦截（现场：Promise executor 里 click
+		   被拦，用户点了按钮却没弹窗）。 */
+		const input = document.createElement('input');
+		input.type = 'file';
+		input.accept = '.zip,application/zip';
+		input.style.display = 'none';
+		input.addEventListener('change', () => {
+			const file = input.files && input.files[0];
+			input.remove();
+			if (file)
+				installZip(file).catch((e) => ui.addNotification(null, E('p', e.message || e), 'danger'));
+		});
+		document.body.appendChild(input);
+		input.click();
 	},
 
 	validateBase64Key(length, section_id, value) {

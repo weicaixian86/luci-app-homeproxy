@@ -1497,12 +1497,18 @@ const methods = {
 				return { result: false, error: 'panel_backup_failed' };
 			}
 
+			/* 权限：面板是静态文件，chmod a+rX 保证所有用户可读（目录可进入）。
+			   chown 到 sing-box 仅在有该用户时做——很多装机环境没有
+			   （237 实测），此时保留 root 属主即可，不能算安装失败。 */
 			const replace_cmd = `
 				set -e
 				rm -rf ${shellquote(panel_dir)}
 				mkdir -p ${shellquote(panel_dir)}
 				cp -a ${shellquote(stage_dir)}/. ${shellquote(panel_dir)}/
-				chown -R sing-box:sing-box ${shellquote(panel_dir)} 2>/dev/null || true
+				chmod -R a+rX ${shellquote(panel_dir)} 2>/dev/null || true
+				if id sing-box >/dev/null 2>&1; then
+					chown -R sing-box:sing-box ${shellquote(panel_dir)} 2>/dev/null || true
+				fi
 			`;
 
 			let result = { result: true };
