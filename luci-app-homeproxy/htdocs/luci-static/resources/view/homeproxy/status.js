@@ -105,7 +105,7 @@ const css = '				\
 	text-overflow: ellipsis; white-space: nowrap; max-width: 100%; } \
 .homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #9aa3ad; font-weight: 600; letter-spacing: .3px; } \
 table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; } \
-.homeproxy-score-tbl th { text-align: left; padding: 7px 18px; color: #9aa3ad; \
+.homeproxy-score-tbl th { text-align: center; padding: 7px 18px; color: #9aa3ad; \
 	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
 .homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid #f4f5f6; } \
 .homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
@@ -113,6 +113,8 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 .homeproxy-score-tbl .dl { width: 112px; text-align: center; color: #5a6470; } \
 .homeproxy-score-tbl .sc { width: 84px; text-align: center; color: #1f8a4c; font-weight: 700; } \
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
+/* 表头与数据上下对齐：序号/延迟/评分表头居中，节点列表头左对齐（与数据一致） */ \
+.homeproxy-score-tbl th.nm { text-align: left; } \
 .homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #8a949e; \
 	display: flex; justify-content: space-between; align-items: center; } \
 .homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
@@ -140,7 +142,7 @@ function renderScoreCards() {
 		return L.resolveDefault(callMembers(group), {}).then((ret) => {
 			const rows = (ret.members || []).map((m, i) => E('tr', {}, [
 				E('td', { 'class': 'rk' }, [ m.ok ? String(i + 1) : '—' ]),
-				E('td', {}, [ m.name ]),
+				E('td', { 'class': 'nm', 'title': m.name }, [ m.name ]),
 				E('td', { 'class': 'dl' }, [ m.ok ? '%d ms'.format(m.delay) : _('Timeout / failed') ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
@@ -148,9 +150,10 @@ function renderScoreCards() {
 				E('div', { 'style': 'max-height:60vh;overflow:auto' }, [
 					E('table', { 'class': 'homeproxy-score-tbl' }, [
 						E('thead', {}, [ E('tr', {}, [
-							E('th', {}, [ '#' ]), E('th', {}, [ _('Node') ]),
-							E('th', {  }, [ _('Latency') ]),
-							E('th', {  }, [ _('Score') ])
+							E('th', { 'class': 'rk' }, [ '#' ]),
+							E('th', { 'class': 'nm' }, [ _('Node') ]),
+							E('th', { 'class': 'dl' }, [ _('Latency') ]),
+							E('th', { 'class': 'sc' }, [ _('Score') ])
 						]) ]),
 						E('tbody', {}, rows)
 					])
@@ -205,7 +208,7 @@ function renderScoreCards() {
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
 				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
-						E('th', { 'class': 'rk' }, [ '#' ]), E('th', {}, [ _('Node') ]),
+						E('th', { 'class': 'rk' }, [ '#' ]), E('th', { 'class': 'nm' }, [ _('Node') ]),
 						E('th', { 'class': 'dl',  }, [ _('Latency') ]),
 						E('th', { 'class': 'sc',  }, [ _('Score') ])
 					]) ]),

@@ -2817,11 +2817,20 @@ const methods = {
 				   延迟映射（最优=100，每慢 8ms 减 1 分），保证有内容可显示。 */
 				for (let x in list) {
 					let sc = 0;
-					const alg = members_state[x.name]?.score ?? null;
-					if (alg != null)
-						sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
-					else if (x.ok && best != null)
-						sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+					/* ⚠ 失败/无样本成员一律 0 分：state.members[].score 是评分器
+					   上次成功时算的分，节点现在超时失败后该字段不会清零——
+					   若仍读它，界面会把「超时/失败」的节点显示成 74 分并排到
+					   首位（2026-11-20 现场：香港高速05 ok=false 但 score 残留
+					   0.53 → 74 分，弹窗列表第一名）。所以先判 x.ok。 */
+					if (!x.ok || x.delay == null)
+						sc = 0;
+					else {
+						const alg = members_state[x.name]?.score ?? null;
+						if (alg != null)
+							sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+						else if (best != null)
+							sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+					}
 					x.score = sc;
 				}
 
@@ -2907,13 +2916,19 @@ const methods = {
 			}
 			for (let x in list) {
 				let sc = 0;
-				const alg = ms[x.name]?.score ?? null;
-				if (alg != null)
-					sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
-				else if (x.ok && best != null)
-					sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+				/* 同上：失败成员一律 0 分，绝不读残留的 score。 */
+				if (!x.ok || x.delay == null)
+					sc = 0;
+				else {
+					const alg = ms[x.name]?.score ?? null;
+					if (alg != null)
+						sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+					else if (best != null)
+						sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
+				}
 				x.score = sc;
 			}
+			/* 失败成员（score=0）自然沉底；同为 0 分时把失败/无延迟的排最后。 */
 			list = sort(list, (a, b) => { if (b.score !== a.score) return b.score - a.score; return (a.delay ?? 999999) - (b.delay ?? 999999); });
 
 			return { result: true, group: tag, now: p.now ?? '', members: list };
