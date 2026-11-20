@@ -31,7 +31,7 @@ import { readfile, writefile, access, popen, stat } from 'fs';
 /* ⚠ 本文件的自定义 log(msg) 是写日志函数，会覆盖内置/数学的 log——
    对数曲线必须用别名导入，否则 log(1+k·nd) 会把数值当消息打出
    并返回 undefined（分数 NaN，现场教训）。 */
-import { log as math_log } from 'math';
+import { log as math_log, pow as math_pow } from 'math';
 import { cursor } from 'uci';
 import { sqrt } from 'math';
 import { isEmpty, shellQuote, HP_DIR, RUN_DIR } from 'homeproxy';
@@ -62,7 +62,7 @@ const SPEED_MIN_SAMPLES = 3;            // 组内至少 3 个样本才启用 P90
 const LATENCY_CURVE_K = 0.3;
 const JITTER_MIN_SAMPLES = 3;    // 抖动样本不足不计惩罚（中性）
 const HIST_MAX = 10;             // 每成员保留最近 10 次成功延迟
-const DEGRADE_PENALTY = 0.5;     // 退化节点额外惩罚分
+const DEGRADE_PENALTY = 0.5;     // 退化节点基础惩罚分
 const BASE_ALPHA = 0.20;         // EMA 基线系数（新样本权重 20%）
 const BASE_MIN_SAMPLES = 3;      // 建立基线的最少成功样本
 const SPIKE_FACTOR = 3.0;        // 延迟 > 基线×3 视为 spike，不更新基线
@@ -71,6 +71,21 @@ const DEGRADE_FACTOR = 1.5;      // 延迟 > 基线×1.5 标记退化
 const RECOVER_FACTOR = 1.2;      // 延迟 ≤ 基线×1.2 才可清除退化
 const RECOVER_SUCCESSES = 2;     // 连续成功次数清除退化
 const LOSS_MIN_SAMPLES = 3;      // 失败率样本不足不惩罚
+
+/* ===== 借鉴 mihomo Smart 的增强（2026-11-20）=====
+   ③ 指数惩罚：连续失败次数越多，惩罚越大（封顶 DEGRADE_PENALTY_MAX）；
+      同时按退化已持续时长做时间衰减，久未复现的旧故障不再重罚。
+   ④ 时间衰减：样本越久未验证，权重越低（越不可信），分数向中性回摆。
+   ② 分阶段恢复：退化节点按 5/10/15/30 分钟递增间隔再探测，避免永久惩罚。 */
+const DEGRADE_INDEX_BASE = 0.5;  // 指数惩罚基数：penalty = base * min(n, cap)
+const DEGRADE_MAX_FAILS = 3;     // 指数惩罚计入的失败次数上限（3 → 惩罚 3×base）
+const DEGRADE_PENALTY_MAX = 1.5; // 指数惩罚绝对上限（不超过不退化满分区间太多）
+const DEGRADE_TIME_DECAY = 15 * 60; // 退化惩罚的时间衰减半衰期（15 分钟减半）
+const SAMPLE_DECAY_HALF = 20 * 60;  // ④ 样本新鲜度衰减半衰期（20 分钟权重减半）
+/* 分阶段恢复：退化后第 1/2/3/4 次再探测的最小间隔（秒），递增，之后固定 30 分钟 */
+const RECOVER_STEPS = [5 * 60, 10 * 60, 15 * 60, 30 * 60];
+/* ① 快速检测：当前 now 节点延迟 > 基线×QUICK_FACTOR 或探测失败即判故障，触发全量评分 */
+const QUICK_FACTOR = 1.5;
 /* 与 urltest 同口径：google.com/generate_204（别用 gstatic —— 它在 china_list 里，
    且实测有节点通 gstatic 却连不上 google.com，会选出口径上"最优"实则不通的节点，
    237 现场：台湾高速01 gstatic 158ms 最优，google.com 却 000。 */
@@ -249,14 +264,21 @@ function update_baseline(st, success, delay) {
 				if (st.deg_ok >= RECOVER_SUCCESSES) {
 					st.deg = 0;
 					st.deg_ok = 0;
+					st.deg_fail_n = 0;
+					st.deg_since = 0;
 				}
 			} else {
 				st.deg_ok = 0;
 			}
 		}
 	} else {
-		/* 失败：标记退化 */
-		st.deg = 1;
+		/* 失败：标记退化，累计失败次数（供指数惩罚），记录退化起点（供时间衰减 +
+		   分阶段恢复的递增间隔） */
+		if (!st.deg) {
+			st.deg = 1;
+			st.deg_since = time();
+		}
+		st.deg_fail_n = (st.deg_fail_n ?? 0) + 1;
 		st.deg_ok = 0;
 	}
 }
@@ -304,8 +326,39 @@ function compute_score(st, speed, speed_ref) {
 		st.speed = speed;
 	}
 
-	if (st.deg)
-		sc += DEGRADE_PENALTY;
+	/* ③ 指数惩罚 + 时间衰减：失败次数越多罚越重（封顶），但惩罚随退化已持续
+	   时长按半衰期衰减（久未复现的旧故障不再重罚）。deg_fail_n 由 update_baseline
+	   在失败时累加、成功时清零。 */
+	if (st.deg) {
+		/* deg_fail_n 缺省（老状态文件）按 1 次算；下限 1、上限 DEGRADE_MAX_FAILS */
+		let _fn = (st.deg_fail_n ?? 1);
+		if (_fn < 1) _fn = 1;
+		const n = min(_fn, DEGRADE_MAX_FAILS);
+		let pen = DEGRADE_INDEX_BASE * n;
+		if (pen > DEGRADE_PENALTY_MAX)
+			pen = DEGRADE_PENALTY_MAX;
+		/* 时间衰减：自 deg_since 起每 DEGRADE_TIME_DECAY 秒惩罚减半 */
+		let since = (st.deg_since ?? 0);
+		if (!since) since = (st.ts ?? 0);
+		const age = (since > 0) ? (time() - since) : 0;
+		if (age > 0)
+			pen = pen * math_pow(0.5, age / DEGRADE_TIME_DECAY);
+		sc += pen;
+	}
+
+	/* ④ 样本新鲜度衰减：样本越久未验证越不可信 → 分数向中性（0.5）回摆。
+	   刚验证的样本权重 1.0，一个 SAMPLE_DECAY_HALF 后半衰。已 ok 的节点
+	   st.ts 会在每轮探测刷新；这里只影响“久未探测”的陈旧样本。 */
+	const _ts = (st.ts ?? 0);
+	if (_ts > 0) {
+		const sample_age = (time() - _ts);
+		if (sample_age > 0) {
+			const w = math_pow(0.5, sample_age / SAMPLE_DECAY_HALF);
+			/* 用 (1-w) 把分数往中性 0.5 拉：w=1 不改，w→0 收缩到 0.5 */
+			sc = sc * w + 0.5 * (1 - w);
+		}
+	}
+
 	return sc;
 }
 
@@ -402,6 +455,14 @@ function run() {
 			if (~index(probe_list, m))
 				continue;
 			const st = state.members?.[m];
+			/* ② 分阶段自动恢复：退化节点按 5/10/15/30 分钟的递增间隔再探测，
+			   刚挂的节点 5 分钟就重试，反复挂的才逐步拉长——避免永久惩罚，也
+			   不让坏节点每轮都白占探测预算。deg_retry_n 是退化后已重试的次数。 */
+			if (st && st.deg) {
+				const step = RECOVER_STEPS[min((st.deg_retry_n ?? 0), length(RECOVER_STEPS) - 1)];
+				if ((now_ts - (st.ts ?? 0)) < step)
+					continue;
+			}
 			/* ok=false 的成员也要参与“最老优先”轮询——否则探测失败的节点
 			   永远没有重测机会（评分池持续缩水，组会退化成“无可用样本”）。 */
 			if (st && (st.ok || (st.fail_cnt ?? 0) > 0))
@@ -442,6 +503,9 @@ function run() {
 				}
 				else st.fail_cnt = (st.fail_cnt ?? 0) + 1;
 				update_baseline(st, success, delay);
+				/* ② 退化节点被重探一次就推进阶段（下次按更长间隔再来） */
+				if (st.deg)
+					st.deg_retry_n = (st.deg_retry_n ?? 0) + 1;
 				state.members[m] = st;
 			}
 			if (!st || !st.ok || st.delay == null)
@@ -489,8 +553,68 @@ function run() {
 	return { result: true, changes: length(summary), summary: summary };
 }
 
-const result = run();
-log(sprintf('==== 综合评分完成：变更 %d 项 ====', length(result.summary ?? [])));
+/* ① 实时故障切换的快速检测（--quick，由 cron 每分钟调用，开销极小）：
+   只探每个 score 组「当前选中的 now 节点」，正常则立即退出（只发 1 个延迟请求/组）；
+   一旦发现当前节点探测失败（不通）或延迟 > 基线×QUICK_FACTOR（明显劣化），
+   立即触发一次完整评分把流量切走——不必等 30 分钟一轮的 cron。
+   借鉴 mihomo Smart「握手超历史平均 1.5 倍即怀疑 → 立即切换」。 */
+function quick_check() {
+	const raw = api_get('/proxies');
+	const proxies = isEmpty(raw) ? null : json(raw);
+	if (type(proxies) !== 'object' || isEmpty(proxies.proxies))
+		return false;
+	const score_groups = find_score_groups(proxies);
+	const state = load_state();
+	const now_ts = time();
+	let need_full = false;
+
+	for (let tag in score_groups) {
+		const score_proxy = proxies.proxies[tag];
+		if (type(score_proxy) !== 'object')
+			continue;
+		const now = score_proxy.now ?? '';
+		if (isEmpty(now))
+			continue;
+		const delay = probe_member(now);   /* 只探当前节点：1 个请求 */
+		const st = state.members?.[now] ?? null;
+		let bad = false;
+		if (delay == null) {
+			bad = true;   /* 当前节点探测失败（不通）→ 立即换 */
+		} else if (st && st.base != null && delay > st.base * QUICK_FACTOR) {
+			bad = true;   /* 当前节点延迟劣化超过基线 1.5 倍（含退化阈值）→ 立即换 */
+		}
+		if (bad) {
+			log(sprintf('[quick] %s 当前节点 %s 异常（delay=%s base=%s），触发即时评分切换',
+				tag, now, delay == null ? '失败' : sprintf('%d', delay),
+				st && st.base != null ? sprintf('%d', int(st.base)) : '-'));
+			need_full = true;
+		}
+	}
+	return need_full;
+}
+
+/* 参数解析：--quick 只做快速检测，发现异常才跑完整评分；否则直接完整评分 */
+let quick_mode = false;
+{
+	/* ucode 用全局 ARGV 读命令行参数（ucode -S script.uc --quick） */
+	for (let a in ARGV)
+		if (a == '--quick')
+			quick_mode = true;
+}
+
+let result;
+if (quick_mode) {
+	if (quick_check()) {
+		result = run();
+		log(sprintf('==== 即时评分（故障触发）完成：变更 %d 项 ====', length(result.summary ?? [])));
+	}
+	else
+		result = { result: true, changes: 0, summary: [] };
+}
+else {
+	result = run();
+	log(sprintf('==== 综合评分完成：变更 %d 项 ====', length(result.summary ?? [])));
+}
 for (let line in result.summary ?? [])
 	log(line);
 
