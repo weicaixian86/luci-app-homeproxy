@@ -92,12 +92,12 @@ const css = '				\
 .homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
 	padding: 2px 10px; border-radius: 10px; font-weight: 600; white-space: nowrap; } \
  .homeproxy-score-kv { display: grid; \
-	grid-template-columns: 40px minmax(0, 1fr) 116px 60px 112px 74px 64px; \
+	grid-template-columns: 40px minmax(0, 1fr) 116px 68px 112px 74px 64px; \
 	align-items: end; box-sizing: border-box; \
 	border-bottom: 1px solid #f0f0f0; } \
 .homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \
 	align-items: center; text-align: center; padding: 14px 18px; box-sizing: border-box; } \
-.homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; } \
+.homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; white-space: nowrap; } \
 .homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } \
 .homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
  .homeproxy-score-kv .kv-cur { min-width: 0; max-width: 100%; align-items: flex-start; text-align: left; } \
@@ -112,7 +112,7 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 .homeproxy-score-tbl .rk { width: 40px; color: #b0b7bf; text-align: center; } \
 .homeproxy-score-tbl .dl { width: 116px; white-space: nowrap; text-align: center; color: #5a6470; } \
 .homeproxy-score-tbl .sc { width: 64px; text-align: center; color: #1f8a4c; font-weight: 700; } \
-.homeproxy-score-tbl .ls { width: 60px; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .ls { width: 68px; white-space: nowrap; text-align: center; color: #5a6470; } \
 .homeproxy-score-tbl .sp { width: 112px; white-space: nowrap; text-align: center; color: #5a6470; } \
 .homeproxy-score-tbl .dg { width: 74px; text-align: center; } \
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
