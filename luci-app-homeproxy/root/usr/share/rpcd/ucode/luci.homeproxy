@@ -2767,8 +2767,12 @@ const methods = {
 					non_participate++;
 			});
 
+			/* 是否正在评分：评分器运行时创建 score_nodes.lock 目录。单轮仅几秒，
+			   界面多数时候看到的是 false（不显示「评分中」），符合语义。 */
+			const scoring = !!access('/var/run/homeproxy/score_nodes.lock');
+
 			if (!length(score_tags))
-				return { result: true, groups: [], non_participate: non_participate };
+				return { result: true, groups: [], non_participate: non_participate, scoring: scoring };
 
 			/* 通过 Clash API 读各组的成员与当前选中 */
 			let proxies = null;
@@ -2875,7 +2879,7 @@ const methods = {
 				});
 			}
 
-			return { result: true, groups: groups, non_participate: non_participate };
+			return { result: true, groups: groups, non_participate: non_participate, scoring: scoring };
 		}
 	},
 

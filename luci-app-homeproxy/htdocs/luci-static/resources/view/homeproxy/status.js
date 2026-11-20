@@ -190,6 +190,7 @@ function renderScoreCards() {
 
 	return L.resolveDefault(callScoreStatus(), {}).then((ret) => {
 		const groups = ret.groups || [];
+		const scoring = ret.scoring === true;   /* 是否正在评分（评分器锁存在） */
 		if (!groups.length) {
 			dom.content(container, E('div', { 'class': 'homeproxy-score-empty' }, [
 				_('No policy group is using comprehensive score mode.')
@@ -223,7 +224,9 @@ function renderScoreCards() {
 						E('span', { 'class': 'stat' }, [ _('Last scored') + ' ' + fmtScored(g.updated) ]),
 						E('span', { 'class': 'stat stat-avail' }, [ _('Available / Total') + ' ' + '%d / %d'.format(g.ok, g.total) ])
 					]),
-					E('span', { 'class': 'homeproxy-score-badge' }, [ _('Scoring') ])
+					/* 「评分中」只在评分器真的在跑时显示（rpcd 查 score_nodes.lock）。
+					   以前是无条件静态渲染，导致永远显示、误导用户以为一直评分中。 */
+					scoring ? E('span', { 'class': 'homeproxy-score-badge' }, [ _('Scoring') ]) : ''
 				]),
 				E('div', { 'class': 'homeproxy-score-kv' }, [
 					E('div', { 'class': 'kv-sp' }, [ ]),
