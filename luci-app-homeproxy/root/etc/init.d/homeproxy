@@ -850,8 +850,12 @@ setup_auto_update_cron() {
 		fi
 		if [ -n "$score_time" ]; then
 			echo -e "$score_time ucode -S $HP_DIR/scripts/score_nodes.uc >/dev/null 2>&1 #${CONF}_score" >> "/etc/crontabs/root"
+			# ① 实时故障切换：每分钟跑一次 --quick（只探当前 now 节点，正常则静默
+			#    退出，开销极小）；发现当前节点不通/劣化超过基线 1.5 倍就立即触发
+			#    完整评分把流量切走，不必等 30 分钟一轮的定时评分。
+			echo -e "* * * * * ucode -S $HP_DIR/scripts/score_nodes.uc --quick >/dev/null 2>&1 #${CONF}_score_quick" >> "/etc/crontabs/root"
 			cron_reload="1"
-			log "综合评分自动调度已登记：每 $score_int 分钟（$score_time → score_nodes.uc）"
+			log "综合评分自动调度已登记：每 $score_int 分钟（$score_time → score_nodes.uc）；另每分钟 --quick 实时探测当前节点"
 		fi
 	else
 		log "综合评分自动调度未登记：没有启用中的综合评分策略组（旧的 cron 行已清理）。"
