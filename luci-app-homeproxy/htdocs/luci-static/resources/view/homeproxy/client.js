@@ -3405,7 +3405,7 @@ return view.extend({
 						const d = new Date((info.mtime || 0) * 1000);
 						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-ok' }));
 						span.appendChild(document.createTextNode(String.format(
-							'%02d-%02d %02d:%02d', d.getMonth() + 1, d.getDate(),
+							'%04d-%02d-%02d %02d:%02d', d.getFullYear(), d.getMonth() + 1, d.getDate(),
 							d.getHours(), d.getMinutes()) + ' · ' + rulesetHumanSize(info.size)));
 					} else if (info.unavailable) {
 						span.appendChild(E('span', { 'class': 'hp-rs-dot hp-dot-bad' }));
