@@ -2807,7 +2807,13 @@ const methods = {
 					const delay = ok ? st.delay : null;
 					if (ok && (best === null || delay < best))
 						best = delay;
-					push(list, { name: name, delay: delay, ok: ok });
+					const okc = (st && st.ok_cnt) ? st.ok_cnt : 0;
+					const failc = (st && st.fail_cnt) ? st.fail_cnt : 0;
+					const tot = okc + failc;
+					const loss = (tot >= 3) ? (failc / (tot * 1.0)) : null;
+					const speed = (st && st.speed) ? st.speed : 0;
+					const deg = (st && st.deg) ? 1 : 0;
+					push(list, { name: name, delay: delay, ok: ok, loss: loss, speed: speed, deg: deg });
 				}
 
 				const ok_count = length(filter(list, (x) => x.ok));
@@ -2843,21 +2849,24 @@ const methods = {
 				let c = 0;
 				for (let x in sorted) {
 					if (!x.ok) continue;
-					push(top, { name: x.name, delay: x.delay, score: x.score });
+					push(top, { name: x.name, delay: x.delay, score: x.score, loss: x.loss, speed: x.speed, deg: x.deg });
 					if (++c >= 3) break;
 				}
 
 				/* 当前选中成员的评分 */
 				const now = p.now ?? '';
-				let now_delay = null, now_score = 0;
+				let now_delay = null, now_score = 0, now_loss = 0, now_speed = 0, now_deg = 0;
 				for (let x in list) {
-					if (x.name === now) { now_delay = x.delay; now_score = x.score; break; }
+					if (x.name === now) { now_delay = x.delay; now_score = x.score; now_loss = x.loss; now_speed = x.speed; now_deg = x.deg; break; }
 				}
 
 				push(groups, {
 					tag: tag,
 					now: now,
 					now_delay: now_delay,
+					now_loss: now_loss,
+					now_speed: now_speed,
+					now_deg: now_deg,
 					score: now_score,
 					ok: ok_count,
 					total: length(list),
@@ -2912,7 +2921,13 @@ const methods = {
 				const ok = st && st.ok && st.delay != null;
 				const delay = ok ? st.delay : null;
 				if (ok && (best === null || delay < best)) best = delay;
-				push(list, { name: name, delay: delay, ok: ok });
+				const okc = (st && st.ok_cnt) ? st.ok_cnt : 0;
+				const failc = (st && st.fail_cnt) ? st.fail_cnt : 0;
+				const tot = okc + failc;
+				const loss = (tot >= 3) ? (failc / (tot * 1.0)) : null;
+				const speed = (st && st.speed) ? st.speed : 0;
+				const deg = (st && st.deg) ? 1 : 0;
+				push(list, { name: name, delay: delay, ok: ok, loss: loss, speed: speed, deg: deg });
 			}
 			for (let x in list) {
 				let sc = 0;

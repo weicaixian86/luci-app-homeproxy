@@ -4385,3 +4385,15 @@ msgstr ""
 
 msgid "GitHub token cleared and applied."
 msgstr ""
+
+msgid "Degraded"
+msgstr ""
+
+msgid "Loss"
+msgstr ""
+
+msgid "Speed"
+msgstr ""
+
+msgid "Yes"
+msgstr ""

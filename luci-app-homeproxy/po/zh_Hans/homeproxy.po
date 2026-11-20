@@ -4560,3 +4560,15 @@ msgstr "上次评分"
 
 msgid "GitHub token cleared and applied."
 msgstr "GitHub 令牌已清除并应用。"
+
+msgid "Degraded"
+msgstr "退化"
+
+msgid "Loss"
+msgstr "丢包"
+
+msgid "Speed"
+msgstr "速度"
+
+msgid "Yes"
+msgstr "是"

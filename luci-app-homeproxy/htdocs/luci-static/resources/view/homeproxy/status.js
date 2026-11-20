@@ -92,13 +92,13 @@ const css = '				\
 .homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
 	padding: 2px 10px; border-radius: 10px; font-weight: 600; white-space: nowrap; } \
  .homeproxy-score-kv { display: grid; \
-	grid-template-columns: 44px minmax(0, 1fr) 112px 84px; \
-	align-items: end; \
-	padding: 14px 18px; border-bottom: 1px solid #f0f0f0; } \
-	padding: 14px 18px; border-bottom: 1px solid #f0f0f0; } \
-.homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \	align-items: center; text-align: center; } \
+	grid-template-columns: 40px minmax(0, 1fr) 116px 60px 112px 74px 64px; \
+	align-items: end; box-sizing: border-box; \
+	border-bottom: 1px solid #f0f0f0; } \
+.homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \
+	align-items: center; text-align: center; padding: 14px 18px; box-sizing: border-box; } \
 .homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; } \
-.homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; } \
+.homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } \
 .homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
  .homeproxy-score-kv .kv-cur { min-width: 0; max-width: 100%; align-items: flex-start; text-align: left; } \
 .homeproxy-score-kv .kv-cur > b { font-size: 15px; font-weight: 600; overflow: hidden; \
@@ -109,9 +109,12 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
 .homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid #f4f5f6; } \
 .homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
-.homeproxy-score-tbl .rk { width: 44px; color: #b0b7bf; text-align: center; } \
-.homeproxy-score-tbl .dl { width: 112px; text-align: center; color: #5a6470; } \
-.homeproxy-score-tbl .sc { width: 84px; text-align: center; color: #1f8a4c; font-weight: 700; } \
+.homeproxy-score-tbl .rk { width: 40px; color: #b0b7bf; text-align: center; } \
+.homeproxy-score-tbl .dl { width: 116px; white-space: nowrap; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .sc { width: 64px; text-align: center; color: #1f8a4c; font-weight: 700; } \
+.homeproxy-score-tbl .ls { width: 60px; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .sp { width: 112px; white-space: nowrap; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .dg { width: 74px; text-align: center; } \
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
 /* 表头与数据上下对齐：序号/延迟/评分表头居中，节点列表头左对齐（与数据一致） */ \
 .homeproxy-score-tbl th.nm { text-align: left; } \
@@ -138,21 +141,41 @@ function renderScoreCards() {
 		E('div', { 'class': 'homeproxy-score-empty' }, [ _('Loading...') ])
 	]);
 
+	function fmtLoss(m) {
+		/* 无样本（loss 未定义）显示 —，有样本显示百分比 */
+		if (m.loss == null) return '—';
+		return '%d%%'.format(Math.round(m.loss * 100));
+	}
+	function fmtSpeed(m) {
+		if (!m.speed) return '—';
+		const kb = m.speed / 1024.0;
+		return (kb >= 1024) ? '%.1f MB/s'.format(kb / 1024.0) : '%d KB/s'.format(Math.round(kb));
+	}
+	function fmtDeg(m) { return m.deg ? _('Yes') : '—'; }
+
 	function showMembers(group) {
 		return L.resolveDefault(callMembers(group), {}).then((ret) => {
 			const rows = (ret.members || []).map((m, i) => E('tr', {}, [
 				E('td', { 'class': 'rk' }, [ m.ok ? String(i + 1) : '—' ]),
 				E('td', { 'class': 'nm', 'title': m.name }, [ m.name ]),
 				E('td', { 'class': 'dl' }, [ m.ok ? '%d ms'.format(m.delay) : _('Timeout / failed') ]),
+				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
+				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:#d9534f' }, [ _('Yes') ]) : '—' ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
 			ui.showModal(group, [
+				E('style', [ '#modal_overlay > .modal, #modal_overlay > .modal.cbi-modal' +
+					' { max-width: 90vw !important; width: 860px !important; }' ].join('')),
 				E('div', { 'style': 'max-height:60vh;overflow:auto' }, [
 					E('table', { 'class': 'homeproxy-score-tbl' }, [
 						E('thead', {}, [ E('tr', {}, [
 							E('th', { 'class': 'rk' }, [ '#' ]),
 							E('th', { 'class': 'nm' }, [ _('Node') ]),
 							E('th', { 'class': 'dl' }, [ _('Latency') ]),
+							E('th', { 'class': 'ls' }, [ _('Loss') ]),
+							E('th', { 'class': 'sp' }, [ _('Speed') ]),
+							E('th', { 'class': 'dg' }, [ _('Degraded') ]),
 							E('th', { 'class': 'sc' }, [ _('Score') ])
 						]) ]),
 						E('tbody', {}, rows)
@@ -178,6 +201,9 @@ function renderScoreCards() {
 				E('td', { 'class': 'rk' }, [ String(i + 1) ]),
 				E('td', { 'class': 'nm', 'title': m.name }, [ m.name ]),
 				E('td', { 'class': 'dl' }, [ '%d ms'.format(m.delay) ]),
+				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
+				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:#d9534f' }, [ _('Yes') ]) : '—' ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
 			const hasTop = rows.length > 0;
@@ -203,14 +229,20 @@ function renderScoreCards() {
 					E('div', { 'class': 'kv-sp' }, [ ]),
 					E('div', { 'class': 'kv-cur' }, [ E('span', {}, [ _('Current') ]), E('b', { 'title': g.now || '—' }, [ g.now || '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Loss') ]), E('b', {}, [ fmtLoss({ loss: g.now_loss }) ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Speed') ]), E('b', {}, [ fmtSpeed({ speed: g.now_speed }) ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:#d9534f' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl' }, [ String(g.score) ]) ])
 				]),
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
 				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
 						E('th', { 'class': 'rk' }, [ '#' ]), E('th', { 'class': 'nm' }, [ _('Node') ]),
-						E('th', { 'class': 'dl',  }, [ _('Latency') ]),
-						E('th', { 'class': 'sc',  }, [ _('Score') ])
+						E('th', { 'class': 'dl' }, [ _('Latency') ]),
+						E('th', { 'class': 'ls' }, [ _('Loss') ]),
+						E('th', { 'class': 'sp' }, [ _('Speed') ]),
+						E('th', { 'class': 'dg' }, [ _('Degraded') ]),
+						E('th', { 'class': 'sc' }, [ _('Score') ])
 					]) ]),
 					E('tbody', {}, rows)
 				]) : E('div', { 'class': 'homeproxy-score-nodata' }, [ _('No available node data yet.') ]),
