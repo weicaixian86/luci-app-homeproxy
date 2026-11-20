@@ -263,14 +263,15 @@ build_candidates() {
 	# 而直连 github.com 实测只有 60~80 KB/s 且经常断，放前面会把预算耗光。
 	#
 	# 镜像顺序按 2026-11-20 在 237 上「停服务、真直连、-L 跟随重定向、
-	# 各取 512KB」实测排序（此前顺序是拍脑袋定的，实测证明排错了）：
-	#   ghfast.top     524KB / 6.9s  ≈ 75 KB/s   ← 最快，排第一
-	#   gh-proxy.com   376KB / 30s   ≈ 12 KB/s   （未取完，超时）
-	#   ghproxy.net    390KB / 30s   ≈ 13 KB/s   （未取完，超时）
-	# ghfast 比另两个快约 6 倍；9.5MB 面板从 ~12 分钟缩到 ~2 分钟。
+	# 各取 1MB、连测 3 轮」实测排序：
+	#   gh-proxy.com   3/3 成功  139~224 KB/s   ← 最优，排第一
+	#   ghproxy.net    3/3 慢    24~46 KB/s      （常超时）
+	#   ghfast.top     3/3 超时  0 B            ← 死源，已删
+	#   gh.llkk.cc     3/3 超时  0 B            ← 死源，已删
+	# github 原地址由下面最后的 printf 兜底追加（实测 88~149 KB/s，可用但不如
+	# gh-proxy 稳，且国内直连常被墙，故排在镜像之后）。
 	case "$direct" in
 		https://github.com/*|http://github.com/*)
-			printf 'D|%s\n' "https://ghfast.top/${direct}"
 			printf 'D|%s\n' "https://gh-proxy.com/${direct}"
 			printf 'D|%s\n' "https://ghproxy.net/${direct}"
 			;;

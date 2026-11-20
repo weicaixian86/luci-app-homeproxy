@@ -113,7 +113,7 @@ CORE_SHA256_MISSING="${CORE_SHA256_MISSING:-warn}"   # warn=放行并告警；fa
 # 两个死域名已移除。留着的代价不只是浪费一次尝试：日志里会写
 # `下载失败（返回码 6，HTTP 000）`，而返回码 6 是「域名解析不了」，
 # 用户会误以为是自己路由器 DNS 或网络坏了，实际是我们的镜像列表过期了。
-GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/ https://ghfast.top/ https://gh.llkk.cc/"
+GH_PROXY_PREFIXES="https://gh-proxy.com/ https://ghproxy.net/"
 
 # NOTE: do NOT source /lib/functions.sh here. This helper does not use any of
 # its functions, and under `set -u` sourcing it is fatal: if that library
