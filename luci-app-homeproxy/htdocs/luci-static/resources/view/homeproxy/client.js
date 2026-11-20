@@ -3607,24 +3607,6 @@ return view.extend({
 		so.depends('type', 'remote');
 		so.modalonly = true;
 
-		so = ss.option(form.ListValue, 'outbound', _('Outbound'),
-			_('Tag of the outbound to download rule set.'));
-		so.load = function(section_id) {
-			delete this.keylist;
-			delete this.vallist;
-
-			this.value('', _('Default outbound (fallback)'));
-			this.value('direct-out', _('Direct'));
-			uci.sections(data[0], 'routing_node', (res) => {
-				if (res.enabled === '1')
-					this.value(res['.name'], res.label);
-			});
-
-			return this.super('load', section_id);
-		}
-		so.default = 'direct-out';
-		so.depends('type', 'remote');
-
 		so = ss.option(form.Value, 'remote_path', _('Path'));
 		so.default = '/etc/homeproxy/ruleset/';
 		so.placeholder = '/etc/homeproxy/ruleset/';

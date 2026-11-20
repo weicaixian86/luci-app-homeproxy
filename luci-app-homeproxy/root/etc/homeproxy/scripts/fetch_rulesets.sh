@@ -284,50 +284,41 @@ strip_proxy_prefix() {
 	return 0
 }
 
-# raw.githubusercontent.com/OWNER/REPO/REF/PATH
-#   -> fastly.jsdelivr.net/gh/OWNER/REPO@REF/PATH
-raw_to_jsdelivr() {
-	local u="$1" rest owner repo ref tail
-	case "$u" in
-		http://raw.githubusercontent.com/*|https://raw.githubusercontent.com/*) ;;
-		*) return 0 ;;
-	esac
-
-	rest="${u#*raw.githubusercontent.com/}"
-
-	owner="${rest%%/*}"
-	[ "$owner" != "$rest" ] || return 0
-	rest="${rest#*/}"
-
-	repo="${rest%%/*}"
-	[ "$repo" != "$rest" ] || return 0
-	rest="${rest#*/}"
-
-	ref="${rest%%/*}"
-	[ "$ref" != "$rest" ] || return 0
-	tail="${rest#*/}"
-	[ -n "$tail" ] || return 0
-
-	printf 'https://fastly.jsdelivr.net/gh/%s/%s@%s/%s\n' "$owner" "$repo" "$ref" "$tail"
-	return 0
+# 本地 mixed 代理端点（服务运行中可用）。读不到端口返回 1。
+proxy_endpoint() {
+	local port
+	port="$(uci -q get homeproxy.infra.mixed_port 2>/dev/null)"
+	[ -n "$port" ] || return 1
+	printf 'http://127.0.0.1:%s' "$port"
 }
 
-# Ordered, de-duplicated candidate URLs for one rule-set.
+# 候选 URL，每条「模式|URL」：P = 经本地代理，D = 直连。
+#
+# 分两种场景（与内核/面板下载一致）：
+#   ① 内核起来前（mode=offline，启动时）——代理端口没起，只能直连：只出 D 链。
+#   ② 内核运行中（mode=online，定时/手动立即更新）——mixed 端口可用，先走
+#      代理（原地址经代理最快最完整），失败再降级直连镜像链。
+# 直连镜像链顺序按 2026-11-20 在 237 上 3 轮直连实测：gh-proxy.com 最优、
+# ghproxy.net 次之、github 原地址兜底；ghfast.top / gh.llkk.cc 均 3/3 超时，
+# 已删除。jsdelivr 也一并去掉（历史遗留的第一优先，实测不如 gh-proxy）。
 build_candidates() {
-	local url="$1" direct jsd
+	local url="$1" mode="${2:-offline}" direct
 	direct="$(strip_proxy_prefix "$url")"
-	jsd="$(raw_to_jsdelivr "$direct")"
 
-	# jsdelivr first: it is a real CDN and is reachable from CN lines far more
-	# reliably than gh-proxy, which is what makes start-up slow in the first
-	# place.
-	[ -n "$jsd" ] && printf '%s\n' "$jsd"
-	printf '%s\n' "$direct"
+	# 运行中：先给经代理的原地址（P）
+	if [ "$mode" = "online" ]; then
+		printf 'P|%s\n' "$url"
+	fi
+
+	# 直连镜像链（D）：gh-proxy -> ghproxy -> github 原地址兜底
 	case "$direct" in
 		https://github.com/*|https://raw.githubusercontent.com/*)
-			printf 'https://gh-proxy.com/%s\n' "$direct" ;;
+			printf 'D|https://gh-proxy.com/%s\n' "$direct"
+			printf 'D|https://ghproxy.net/%s\n' "$direct" ;;
 	esac
-	[ "$url" != "$direct" ] && printf '%s\n' "$url"
+	printf 'D|%s\n' "$direct"
+	# 用户原始 URL（若与剥壳后的直连不同，例如本来就用别的前缀）
+	[ "$url" != "$direct" ] && printf 'D|%s\n' "$url"
 	return 0
 }
 
@@ -376,15 +367,21 @@ recently_unavailable() {
 }
 
 download_to() {
-	local url="$1" out="$2" max="$3"
+	local url="$1" out="$2" max="$3" via_proxy="${4:-}"
 	LAST_HTTP=""
 	if command -v curl >/dev/null 2>&1; then
 		# -f makes HTTP 4xx/5xx a failure instead of saving the error page.
 		# -w still prints the status code on failure, which is what lets the
 		# caller tell "mirror is down" (000) from "this file does not exist"
 		# (404) — the latter is a config mistake, not a network problem.
-		LAST_HTTP="$(curl -fsSL --http1.1 --connect-timeout 20 --max-time "$max" \
-			-w '%{http_code}' -o "$out" "$url" 2>/dev/null)"
+		# via_proxy 非空时经本地 mixed 代理（仅「内核运行中」的在线轮会传）。
+		if [ -n "$via_proxy" ]; then
+			LAST_HTTP="$(curl -fsSL --http1.1 --proxy "$via_proxy" --connect-timeout 20 --max-time "$max" \
+				-w '%{http_code}' -o "$out" "$url" 2>/dev/null)"
+		else
+			LAST_HTTP="$(curl -fsSL --http1.1 --connect-timeout 20 --max-time "$max" \
+				-w '%{http_code}' -o "$out" "$url" 2>/dev/null)"
+		fi
 		return $?
 	fi
 	wget -q -T "$max" -O "$out" "$url" >/dev/null 2>&1
@@ -805,9 +802,20 @@ for sec in $sections; do
 	bad_content=0
 	bad_sample=""
 
-	for u in $(build_candidates "$url" | awk '!seen[$0]++'); do
+	# 内核运行中才走「经代理优先」的在线轮；启动前置（内核没起）只直连。
+	dl_mode="offline"
+	dl_proxy=""
+	if hp_service_running; then
+		dl_proxy="$(proxy_endpoint)" && dl_mode="online" || dl_proxy=""
+	fi
+	for cand in $(build_candidates "$url" "$dl_mode" | awk '!seen[$0]++'); do
+		cand_mode="${cand%%|*}"
+		u="${cand#*|}"
+		cand_proxy=""
+		[ "$cand_mode" = "P" ] && cand_proxy="$dl_proxy"
+		[ "$cand_mode" = "P" ] && [ -z "$cand_proxy" ] && continue
 		rm -f "$tmp" 2>/dev/null
-		if download_to "$u" "$tmp" "$left"; then
+		if download_to "$u" "$tmp" "$left" "$cand_proxy"; then
 			if valid_ruleset "$tmp" "$fmt"; then
 				if mv -f "$tmp" "$path" 2>/dev/null; then
 					ok=$((ok + 1))
