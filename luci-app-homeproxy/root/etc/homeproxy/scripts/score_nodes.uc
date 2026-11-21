@@ -599,16 +599,43 @@ function quick_check() {
 		const now = score_proxy.now ?? '';
 		if (isEmpty(now))
 			continue;
-		const delay = probe_member(now);   /* 只探当前节点：1 个请求 */
 		const st = state.members?.[now] ?? null;
+		/* 冷却：该组上次 quick 触发全量评分后 5 分钟内不再触发。避免「节点抖动
+		   （时通时不通）→ quick 探到失败 → 全量评分又探到成功 keep → 下一秒
+		   再探到失败」的每分钟空转。5 分钟足够让全量评分的结论生效，也不至于
+		   真的持续故障时切太慢。 */
+		const cd_until = (state.quick_cd?.[tag] ?? 0);
+		if (cd_until > now_ts)
+			continue;
+		let delay = probe_member(now);   /* 只探当前节点：1 个请求 */
 		let bad = false;
 		if (delay == null) {
-			bad = true;   /* 当前节点探测失败（不通）→ 立即换 */
+			/* 单次失败做二次确认，过滤瞬时抖动。两测皆失败才算真故障。 */
+			system('sleep 1');
+			delay = probe_member(now);
+			if (delay == null)
+				bad = true;
 		} else if (st && st.base != null && delay > st.base * QUICK_FACTOR) {
-			bad = true;   /* 当前节点延迟劣化超过基线 1.5 倍（含退化阈值）→ 立即换 */
+			bad = true;
 		}
 		if (bad) {
-			log(sprintf('[quick] %s 当前节点 %s 异常（delay=%s base=%s），触发即时评分切换',
+			/* ⚠ 关键：把探测结果【写回 state】再触发全量评分。否则全量评分
+			   看到 incumbent 的 state 还是「样本新鲜、ok=true」（上次成功的旧
+			   值，10 分钟内不重探），会判定 keep 不切 —— quick 每分钟报故障、
+			   全量每分钟 keep，永远切不掉（237 现场：香港高速05 delay 端点
+			   3/3 超时，但全量 keep 用旧样本 0.03）。写回 ok=false/fail_cnt++
+			   后，全量评分就会把它当失败样本（999）并切到真正可用的节点。 */
+			const bad_st = state.members?.[now] ?? { ok_cnt: 0, fail_cnt: 0 };
+			bad_st.ok = false;
+			bad_st.delay = null;
+			bad_st.fail_cnt = (bad_st.fail_cnt ?? 0) + 1;
+			bad_st.ts = now_ts;
+			state.members[now] = bad_st;
+			if (type(state.quick_cd) !== 'object')
+				state.quick_cd = {};
+			state.quick_cd[tag] = now_ts + 300;   /* 5 分钟冷却，防每分钟空转 */
+			save_state(state);   /* 落盘，供随后触发的全量评分读取 */
+			log(sprintf('[quick] %s 当前节点 %s 异常（delay=%s base=%s），已标记失败并触发即时评分切换',
 				tag, now, delay == null ? '失败' : sprintf('%d', delay),
 				st && st.base != null ? sprintf('%d', int(st.base)) : '-'));
 			need_full = true;
