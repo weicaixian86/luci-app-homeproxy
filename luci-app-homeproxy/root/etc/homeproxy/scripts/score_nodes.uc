@@ -434,7 +434,13 @@ function run() {
 
 		const members = expand_score_members(score_proxy.all, proxies.proxies, score_groups, 0);
 		const n = length(members);
-		const budget = (n <= 4) ? (n + 1) : (int(sqrt(n)) + 1);
+		/* 探测预算：原来 sqrt(n)+1（82 → 10）太小，每轮只测 10 个、其余用
+		   十几分钟前的旧样本，导致「98 分现任 vs 99 分挑战者」这种接近的候选
+		   分数在轮间反复翻转、now 抖动。实测完整一轮仅 6 秒，扩预算代价很小。
+		   现改为 ~2*sqrt(n)+6 且至少 20、至多全量（82 → 22）。 */
+		let budget = int(sqrt(n)) * 2 + 6;
+		if (budget < 20 && n > 20) budget = 20;
+		if (budget > n) budget = n;
 		let probe_count = 0;
 
 		const incumbent = score_proxy.now ?? '';
@@ -447,6 +453,24 @@ function run() {
 		let probe_list = [];
 		if (incumbent && !incumbent_fresh)
 			push(probe_list, incumbent);
+		/* 优先重探「当前算法分最好」的候选：保证竞争最优的几个（如 98 vs 99
+		   分）每轮都是刚测过的，避免用旧样本比较导致排名翻转。取现有 state
+		   里 score 有效且最小的前 ceil(budget/2) 个强制纳入。 */
+		let cands = [];
+		for (let m in members) {
+			const st = state.members?.[m];
+			if (st && st.ok && st.score != null) {
+				/* 退化节点仍受分阶段恢复间隔约束，不在此强制重探 */
+				if (st.deg) continue;
+				push(cands, { m: m, sc: st.score });
+			}
+		}
+		sort(cands, (a, b) => (a.sc - b.sc));
+		const force_n = int((budget + 1) / 2);
+		for (let c in cands) {
+			if (length(probe_list) >= force_n) break;
+			if (!~index(probe_list, c.m)) push(probe_list, c.m);
+		}
 		for (let m in members)
 			if (state.members?.[m] == null && !~index(probe_list, m))
 				push(probe_list, m);
