@@ -1332,19 +1332,17 @@ start_service() {
 
 	if [ "$outbound_node" != "nil" ]; then
 		# 方案 B（provider 过滤镜像）：内核 provider 无节点过滤字段，原始订阅会让
-		# 机场的「如果/客户端太旧/请到网站…」提示节点直达面板。
-		#
-		# ⚠️ 必须先删旧缓存：内核 stop 时会把内存里的 provider 状态写回
-		# initial_path（旧内容 = 未过滤的原始订阅），且 start 时优先读缓存而非
-		# 重新拉 url。只写过滤后的缓存会被内核的写回竞态覆盖（237 实测：
-		# reload 后垃圾节点复活）。删掉缓存后内核只能从镜像 url（127.0.0.1:8595）
-		# 全新拉取——那条路已验证返回的是过滤后内容。
-		rm -f "$HP_DIR/providers/"*.sub 2>/dev/null
+		# 机场的「如果/客户端太旧/请到网站…」提示节点直达面板。这里刷新镜像并
+		# 把过滤后内容写入 provider 的 initial_path 缓存（生成器依赖缓存存在才
+		# 生成 provider，故不能删缓存）；provider 的 url 指向 127.0.0.1 镜像，
+		# 内核从镜像拉到的内容天然无垃圾节点。流量/到期由订阅响应头透传。
 		if [ -f "$HP_DIR/scripts/update_provider_mirror.sh" ]; then
 			mkdir -p "$HP_DIR/providers-mirror" "$HP_DIR/providers"
 			# 同步调用（非后台派生），不需要 exec 1000>&-：子进程随本语句
 			# 结束即退出，不会持有 rc.common 的 procd 锁 fd（1000）。
-			/bin/sh "$HP_DIR/scripts/update_provider_mirror.sh" >/dev/null 2>&1 || true
+			# 必须 --force：旧缓存刚被删，若脚本按 1h 缓存跳过就不写缓存，
+			# 生成器找不到缓存 → provider 消失（237 现场）。
+			/bin/sh "$HP_DIR/scripts/update_provider_mirror.sh" --force >/dev/null 2>&1 || true
 		fi
 		# Generate/Validate client config
 		# Capture ucode's stderr to the log with ANSI escapes stripped.

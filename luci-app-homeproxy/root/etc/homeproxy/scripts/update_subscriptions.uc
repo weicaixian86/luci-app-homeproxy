@@ -111,10 +111,16 @@ function filter_check(name) {
 	if (isEmpty(name) || filter_mode === 'disabled' || isEmpty(filter_keywords))
 		return false;
 
+	/* 订阅里的节点名在 URL #fragment 中是百分号编码的（如「如果」=
+	   %E5%A6%82%E6%9E%9C），直接拿中文关键词 regexp 匹配永远对不上——
+	   机场的「❗如果只显示此节点|0.1x」等提示节点因此漏过过滤器。
+	   先 urldecode 再匹配，中文关键词才能真正生效。 */
+	let decoded = urldecode(name);
+
 	let ret = false;
 	for (let i in filter_keywords) {
 		const patten = regexp(i);
-		if (match(name, patten))
+		if (match(decoded, patten) || match(name, patten))
 			ret = true;
 	}
 	if (filter_mode === 'whitelist')

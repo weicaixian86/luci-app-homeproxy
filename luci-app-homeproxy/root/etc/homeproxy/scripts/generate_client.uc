@@ -1039,7 +1039,9 @@ function provider_mirror_exists(group_hash) {
 
 /* 方案 B：内核 provider 无节点过滤能力，让 provider 改从本机回环镜像
    （init.d 起的 uhttpd 实例，仅 127.0.0.1 可达）拉取「已按导入同一套关键词
-   过滤」的订阅内容；镜像缺失时退回原始 URL（行为同旧版）。 */
+   过滤」的订阅内容；镜像缺失时退回原始 URL（行为同旧版）。
+   路径用根级 /<hash>.sub：镜像脚本会把过滤内容写到 uhttpd docroot 根
+   （/etc/homeproxy/<hash>.sub），与 procd 实际使用的 docroot 匹配。 */
 function provider_mirror_url(group_hash) {
 	return sprintf('http://127.0.0.1:8595/%s.sub', group_hash);
 }

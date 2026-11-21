@@ -53,30 +53,23 @@ config_list_foreach subscription subscription_url handle_url
 
 # fetch：先直连；失败走本机 mixed 入站回环代理——内核 provider 的默认出站
 # 就是这条链（机场域名常被墙，直连抖动时这条兜底保住镜像刷新）。
-# 同时抓响应头：流量/到期（subscription-userinfo: upload=…;download=…;…）
-# 不在 body 里；内核 provider 从响应头解析它并写进缓存首行，面板据此显示
-# 流量/到期。我们把同一行透传到镜像/缓存首行，流量信息才能保住。
-LAST_UI=""
+# ⚠️ 不能用命令替换 $(fetch_sub ...) 取 body：那会在子 shell 里执行，
+# 里面设置的 LAST_UI 不会传回父 shell。改为写固定文件，调用方从文件读。
+FETCH_BODY="$RUN_DIR/mirror-body.$$"
+FETCH_UI="$RUN_DIR/mirror-ui.$$"
 fetch_sub() {
-	local u="$1" b="" hdr="$RUN_DIR/mirror-hdr.$$"
-	LAST_UI=""
-	b="$(curl -sS -m 15 --compressed -D "$hdr" -A "$UA" "$u" 2>/dev/null)"
-	if [ -z "$b" ]; then
-		b="$(curl -sS -m 20 --compressed -D "$hdr" -x "http://127.0.0.1:${MIXED_PORT:-5330}" -A "$UA" "$u" 2>/dev/null)"
+	local u="$1" hdr="$RUN_DIR/mirror-hdr.$$"
+	: > "$FETCH_BODY"; : > "$FETCH_UI"
+	curl -sS -m 15 --compressed -D "$hdr" -A "$UA" "$u" -o "$FETCH_BODY" 2>/dev/null
+	if [ ! -s "$FETCH_BODY" ]; then
+		curl -sS -m 20 --compressed -D "$hdr" -x "http://127.0.0.1:${MIXED_PORT:-5330}" -A "$UA" "$u" -o "$FETCH_BODY" 2>/dev/null
 	fi
-	if [ -n "$b" ]; then
-		# 从响应头提取 subscription-userinfo（去掉 CR）
-		local line
-		line="$(grep -i '^subscription-userinfo:' "$hdr" 2>/dev/null | head -1 | sed 's/^[Ss]ubscription-[Uu]serinfo:[[:space:]]*//' | tr -d '\r')"
-		case "$line" in
-			upload=*|download=*|expire=*|total=*) LAST_UI="$line" ;;
-		esac
-		rm -f "$hdr" 2>/dev/null
-		printf '%s' "$b"
-		return 0
+	if [ -s "$FETCH_BODY" ]; then
+		# 从响应头提取 subscription-userinfo（去掉 CR）写到文件
+		grep -i '^subscription-userinfo:' "$hdr" 2>/dev/null | head -1 \
+			| sed 's/^[Ss]ubscription-[Uu]serinfo:[[:space:]]*//' | tr -d '\r' > "$FETCH_UI" 2>/dev/null
 	fi
 	rm -f "$hdr" 2>/dev/null
-	return 0
 }
 
 if [ -z "$URLS" ]; then
@@ -92,6 +85,7 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 	hash="$(printf '%s' "$url_clean" | md5sum 2>/dev/null | cut -d' ' -f1)"
 	[ -n "$hash" ] || { log "md5 计算失败（url=${url_clean}），跳过。"; continue; }
 	mirror="$MIRROR_DIR/$hash.sub"
+	seed="$HP_DIR/providers/$hash.sub"
 
 	now="$(date +%s 2>/dev/null)"; case "$now" in ''|*[!0-9]*) now=0 ;; esac
 	mt="$(stat -c %Y "$mirror" 2>/dev/null)"; case "$mt" in ''|*[!0-9]*) mt=0 ;; esac
@@ -100,18 +94,22 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 		continue
 	fi
 
-	body="$(fetch_sub "$url_clean")"
+	fetch_sub "$url_clean"
+	body="$(cat "$FETCH_BODY" 2>/dev/null)"
 	if [ -z "$body" ]; then
 		log "$hash: 订阅拉取失败，保留旧镜像（provider 继续用上次的过滤内容）。"
 		continue
 	fi
 
-	# 流量/到期（userinfo）优先用 fetch_sub 刚从订阅 HTTP 响应头抓到的
-	# subscription-userinfo（init.d 会在启动前删旧缓存，不能依赖缓存文件）。
-	ui="$LAST_UI"
+	# 流量/到期（userinfo）优先用 fetch_sub 从订阅 HTTP 响应头抓到的
+	# subscription-userinfo（init.d 启动前会删旧缓存，不能依赖缓存文件）。
+	ui="$(cat "$FETCH_UI" 2>/dev/null)"
+	case "$ui" in
+		upload=*|download=*|expire=*|total=*) ;;
+		*) ui="" ;;
+	esac
 	if [ -z "$ui" ]; then
 		# 回退：响应头没有时，从旧缓存首行取（手动刷新场景，缓存还在）
-		seed="$HP_DIR/providers/$hash.sub"
 		if [ -f "$seed" ]; then
 			seed_ui="$(head -n 1 "$seed" 2>/dev/null)"
 			case "$seed_ui" in
@@ -124,13 +122,11 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 	# 的 base64 在本机亦不可用；ucode 的 b64dec/b64enc + luci.http.urldecode
 	# 才是 update_subscriptions.uc 解析订阅用的同一套实现，中文关键词 URL
 	# 解码后才能真正匹配到节点名）。
-	body_file="$RUN_DIR/mirror-body.$$"
 	kw_file="$RUN_DIR/mirror-kw.$$"
-	printf '%s' "$body" > "$body_file" 2>/dev/null
 	printf '%s\n' "$KW_LIST" > "$kw_file" 2>/dev/null
 
-	b64="$(cd "$HP_DIR/scripts" && ucode -S filter_sub.uc "$body_file" "$MODE" "$kw_file" 2>/dev/null)"
-	rm -f "$body_file" "$kw_file" 2>/dev/null
+	b64="$(cd "$HP_DIR/scripts" && ucode -S filter_sub.uc "$FETCH_BODY" "$MODE" "$kw_file" 2>/dev/null)"
+	rm -f "$kw_file" 2>/dev/null
 
 	if [ -z "$b64" ]; then
 		log "$hash: ucode 过滤助手无输出，原样透传不过滤。"
@@ -156,6 +152,15 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 		printf '%s\n' "$b64"
 	} > "$seed.tmp" 2>/dev/null
 	mv "$seed.tmp" "$seed" 2>/dev/null
+
+	# uhttpd docroot（/etc/homeproxy）根也写一份：provider url = /<hash>.sub
+	# 直接命中这里。procd 缓存了旧实例参数（docroot 从 providers-mirror 变不回
+	# 来），以实际 docroot 为准，确保内核拉到的是过滤后内容。
+	{
+		[ -n "$ui" ] && printf '%s\n' "$ui"
+		printf '%s\n' "$b64"
+	} > "$HP_DIR/$hash.sub.tmp" 2>/dev/null
+	mv "$HP_DIR/$hash.sub.tmp" "$HP_DIR/$hash.sub" 2>/dev/null
 
 	log "$hash: 镜像+缓存已刷新（ucode 过滤完成，userinfo=$( [ -n "$ui" ] && echo 保留 || echo 无)，mode=$MODE）。"
 done
