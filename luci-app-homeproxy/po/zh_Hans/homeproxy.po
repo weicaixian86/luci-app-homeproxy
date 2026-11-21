@@ -4590,3 +4590,33 @@ msgstr "sing-box 内核未运行。"
 
 msgid "The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data."
 msgstr "下方的评分与节点数据均为历史快照，不代表当前可用性。请启动服务以获取实时数据。"
+
+msgid "DNS failed"
+msgstr "DNS 解析失败"
+
+msgid "Connection refused"
+msgstr "连接被拒"
+
+msgid "Timed out"
+msgstr "连接超时"
+
+msgid "TLS handshake failed"
+msgstr "TLS 握手失败"
+
+msgid "Certificate error"
+msgstr "证书错误"
+
+msgid "Connection reset"
+msgstr "连接被重置"
+
+msgid "Empty reply"
+msgstr "服务器无响应"
+
+msgid "Click to retry"
+msgstr "点击重试"
+
+msgid "Checked at %s"
+msgstr "检测于 %s"
+
+msgid "curl exit code: %s"
+msgstr "curl 退出码：%s"

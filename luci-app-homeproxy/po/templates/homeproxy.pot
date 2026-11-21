@@ -4415,3 +4415,33 @@ msgstr ""
 
 msgid "The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data."
 msgstr ""
+
+msgid "DNS failed"
+msgstr ""
+
+msgid "Connection refused"
+msgstr ""
+
+msgid "Timed out"
+msgstr ""
+
+msgid "TLS handshake failed"
+msgstr ""
+
+msgid "Certificate error"
+msgstr ""
+
+msgid "Connection reset"
+msgstr ""
+
+msgid "Empty reply"
+msgstr ""
+
+msgid "Click to retry"
+msgstr ""
+
+msgid "Checked at %s"
+msgstr ""
+
+msgid "curl exit code: %s"
+msgstr ""

@@ -56,6 +56,7 @@ const css = '				\
 	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
+.homeproxy-connect-time { margin-top: 1px; color: #9aa3ad; font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
 	color: #ff4d35;			\
@@ -223,8 +224,9 @@ function renderScoreCards() {
 			return E('div', { 'class': 'homeproxy-score-card' }, [
 				E('div', { 'class': 'homeproxy-score-hd' }, [
 					E('div', { 'class': 'ttl' }, [
-						E('h4', {}, [ '🌏 ' + g.tag ]),
-						E('span', { 'class': 'mode' }, [ _('Mode') + ': ' + _('Auto select (comprehensive score)') ]),
+						/* P3：去掉 emoji 噪点；工作模式收进标题 tooltip（不再挤占标题行）；
+						   保留「上次评分」与「可用/总数」两条真正有用的状态。 */
+						E('h4', { 'title': _('Auto select (comprehensive score)') }, [ g.tag ]),
 						E('span', { 'class': 'stat' }, [ _('Last scored') + ' ' + fmtScored(g.updated) ]),
 						E('span', { 'class': 'stat stat-avail' }, [ _('Available / Total') + ' ' + '%d / %d'.format(g.ok, g.total) ])
 					]),
@@ -255,7 +257,17 @@ function renderScoreCards() {
 				]) : E('div', { 'class': 'homeproxy-score-nodata' }, [ _('No available node data yet.') ]),
 				E('div', { 'class': 'homeproxy-score-ft' }, [
 					E('span', {}, [ '%d'.format(g.total) + ' ' + _('members') ]),
-					E('a', { 'click': ui.createHandlerFn(this, () => showMembers(g.tag)) }, [ _('View all') + ' ↗' ])
+					E('a', {
+						'role': 'button',
+						'tabindex': '0',
+						'click': ui.createHandlerFn(this, () => showMembers(g.tag)),
+						'keydown': ui.createHandlerFn(this, (ev) => {
+							if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+								ev.preventDefault();
+								showMembers(g.tag);
+							}
+						})
+					}, [ _('View all') + ' ↗' ])
 				])
 			]);
 		});
@@ -345,40 +357,75 @@ function renderConnCards() {
 		icon.innerHTML = connLogos[item.site] || '';
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
+			/* P2：可点击元素不能是裸 div——加 role/tabindex 与键盘处理，
+			   让纯键盘与读屏用户也能触发检测；aria-live 让结果变化被播报。 */
+			'role': 'button',
+			'tabindex': '0',
+			'aria-live': 'polite',
 			'title': _('HTTP request latency: time from sending the request to receiving the first byte. DNS, TCP and TLS handshakes are NOT included, so the value is much smaller than ping or node latency. Same metric as Passwall.'),
-			'click': ui.createHandlerFn(this, () => {
-				result.textContent = _('Checking...', 'homeproxy');
-				result.style.setProperty('color', '#f0ad4e');
-				result.title = _('Checking...', 'homeproxy');
-
-				return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
-					if (ret.result && ret.latency != null) {
-						result.style.setProperty('color', 'green');
-						/* 主数字只放 HTTP 请求延迟（与 passwall 一致），
-						   握手时间、HTTP 状态码放 tooltip —— passwall 也是
-						   这么分层显示的，两者数值可以直接对比。 */
-						result.textContent = '%s ms'.format(ret.latency);
-						result.title = _('HTTP request latency: %s ms (handshake excluded)')
-							.format(ret.latency)
-							+ '\n' + _('DNS + TCP + TLS handshake: %s ms').format(ret.handshake)
-							+ '\n' + _('Time to first byte: %s ms').format(ret.total)
-							+ '\n' + _('HTTP status code: %s').format(ret.code);
-					} else {
-						result.style.setProperty('color', '#ff4d35');
-						result.textContent = _('failed');
-						result.title = ret.error
-							? _('Failed: %s').format(ret.error)
-							: _('Failed. The target did not return a complete HTTP response.');
-					}
-				});
-			})
+			'click': ui.createHandlerFn(this, () => runConnCheck()),
+			'keydown': (ev) => {
+				if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') {
+					ev.preventDefault();
+					runConnCheck();
+				}
+			}
 		}, [ _('Click to check') ]);
+
+		/* P1：失败语义分类——把 curl 错误码映射成可操作的中文短词，
+		   用户一眼看出是 DNS/TLS/超时/被拒，而不是笼统 failed。
+		   成功时主数字仍是 HTTP 请求延迟（与 passwall 一致），细节进 tooltip。 */
+		const failLabel = (ret) => {
+			/* ret.error 已是语义码（dns/refused/timeout/tls/cert/reset/empty），
+			   兼容旧后端（直接给中文句）时原样展示。 */
+			switch (ret.error) {
+			case 'dns':     return _('DNS failed');
+			case 'refused': return _('Connection refused');
+			case 'timeout': return _('Timed out');
+			case 'tls':     return _('TLS handshake failed');
+			case 'cert':    return _('Certificate error');
+			case 'reset':   return _('Connection reset');
+			case 'empty':   return _('Empty reply');
+			default:        return ret.error ? _('Failed') : _('Failed');
+			}
+		};
+
+		const lastCheckEl = E('span', { 'class': 'homeproxy-connect-time' }, [ ]);   /* P1 上次检测时间 */
+		const runConnCheck = () => {
+			result.textContent = _('Checking...', 'homeproxy');
+			result.style.setProperty('color', '#f0ad4e');
+			result.title = _('Checking...', 'homeproxy');
+
+			return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
+				const now = new Date();
+				const p2 = (n) => (n < 10 ? '0' + n : '' + n);
+				const stamp = '%s:%s:%s'.format(p2(now.getHours()), p2(now.getMinutes()), p2(now.getSeconds()));
+				if (ret.result && ret.latency != null) {
+					result.style.setProperty('color', '#1f8a4c');
+					result.textContent = '✓ %s ms'.format(ret.latency);
+					result.title = _('HTTP request latency: %s ms (handshake excluded)')
+						.format(ret.latency)
+						+ '\n' + _('DNS + TCP + TLS handshake: %s ms').format(ret.handshake)
+						+ '\n' + _('Time to first byte: %s ms').format(ret.total)
+						+ '\n' + _('HTTP status code: %s').format(ret.code);
+				} else {
+					result.style.setProperty('color', '#a12825');
+					result.textContent = '✕ ' + failLabel(ret) + (ret.curl_rc ? ' (curl ' + ret.curl_rc + ')' : '');
+					result.title = failLabel(ret) + (ret.curl_rc ? '\n' + _('curl exit code: %s').format(ret.curl_rc) : '')
+						+ '\n' + _('Click to retry');
+				}
+				if (lastCheckEl) {
+					lastCheckEl.textContent = _('Checked at %s').format(stamp);
+				}
+			});
+		};
 
 		return E('div', { 'class': 'homeproxy-connect-card' }, [
 			icon,
 			E('div', { 'class': 'homeproxy-connect-info' }, [
 				E('div', { 'class': 'homeproxy-connect-title' }, [ item.title ]),
-				result
+				result,
+				lastCheckEl
 			])
 		]);
 	}));

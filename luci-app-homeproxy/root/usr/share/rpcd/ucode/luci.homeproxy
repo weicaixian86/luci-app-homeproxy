@@ -1044,15 +1044,26 @@ const methods = {
 			   「请求延迟」和 passwall 就不是同一个量了。
 			   命令用拼接而不是 sprintf：`-w` 的格式串里有 `%{...}`，
 			   交给 sprintf 处理会被当成格式说明符。 */
+			/* 追加 curl 退出码（RC:<n>），供失败时做语义分类：curl 的退出码
+			   天然就是错误类型——6=DNS 解析失败、7=连接被拒、28=超时、
+			   35=TLS 握手失败、60=证书错误。分离在 stderr 被禁的情况下，
+			   用 `; printf RC:%s $?` 在同一串里带出，解析时按 RC: 拆。 */
 			const cmd = curl
 				+ ' --connect-timeout 3 --max-time 5 -o /dev/null -I -sk -w \'%{http_code}:%{time_pretransfer}:%{time_starttransfer}\' '
-				+ shellquote(url) + ' 2>"/dev/null"';
+				+ shellquote(url) + ' 2>"/dev/null"; printf "RC:%s" $?';
 
 			const fd = popen(cmd);
 			if (!fd)
 				return { result: false, error: '无法执行 curl' };
 
-			const output = trim(readProcess(fd) || '');
+			let output = trim(readProcess(fd) || '');
+			/* 拆出末尾的 RC:<n>（curl 退出码） */
+			let curl_rc = 0;
+			const rc_idx = rindex(output, 'RC:');
+			if (rc_idx >= 0) {
+				curl_rc = int(substr(output, rc_idx + 3) || 0);
+				output = trim(substr(output, 0, rc_idx));
+			}
 			const parts = split(output, ':');
 			const code = int(parts[0] || 0);
 
@@ -1134,7 +1145,21 @@ const methods = {
 				};
 			}
 
-			return { result: false };
+			/* 失败时按 curl 退出码给出语义分类，交前端显示可操作的错误词，
+			   而不是笼统的 failed（critique P1：用户要知道 DNS/TLS/超时/被拒）。 */
+			/* ucode 对象字面量的键必须是字符串/标识符——数字键会被当 label
+			   报 “Expecting label”。用字符串键，取值时 `${curl_rc}` 转字符串查。 */
+			const reason_map = {
+				'6': 'dns',        /* Could not resolve host */
+				'7': 'refused',    /* Failed to connect */
+				'28': 'timeout',   /* Operation timed out */
+				'35': 'tls',       /* SSL connect error */
+				'60': 'cert',      /* SSL certificate problem */
+				'56': 'reset',     /* Recv failure / connection reset */
+				'52': 'empty'      /* Empty reply from server */
+			};
+			const reason = reason_map[curl_rc] || 'error';
+			return { result: false, error: reason, curl_rc: curl_rc };
 		}
 	},
 
