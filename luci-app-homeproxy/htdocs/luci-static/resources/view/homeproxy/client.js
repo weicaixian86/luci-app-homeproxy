@@ -931,11 +931,11 @@ return view.extend({
 						'click': ui.createHandlerFn(this, updateDashboard)
 					}, [ _('Update Panel') ]),
 					E('button', {
-						'class': 'btn cbi-button cbi-button-action',
+						'class': 'btn cbi-button',
 						'click': ui.createHandlerFn(this, (ev) => hp.uploadPanel(null, ev))
 					}, [ _('Upload Panel ZIP') ]),
 					E('button', {
-						'class': 'btn cbi-button cbi-button-action',
+						'class': 'btn cbi-button',
 						'click': ui.createHandlerFn(this, openDashboard)
 					}, [ _('Open Panel') ])
 				);
@@ -2775,7 +2775,7 @@ return view.extend({
 				renderCell: function(sid) {
 					const latSpan = E('span', { 'class': 'hp-dns-lat', 'data-sid': sid }, [ '—' ]);
 					const btn = E('button', {
-						'class': 'btn cbi-button cbi-button-action hp-dns-test-btn',
+						'class': 'btn cbi-button hp-dns-test-btn',
 						'type': 'button'
 					}, _('Test'));
 

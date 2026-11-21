@@ -305,7 +305,7 @@ const SubscriptionList = form.Value.extend({
 		   than the input columns and the second label drifts left. */
 		rows.appendChild(E('div', {
 			'class': 'homeproxy-subscription-header',
-			'style': rowStyle + ' align-items: end; color: var(--text-muted, #6b7280);'
+			'style': rowStyle + ' align-items: end; color: var(--text-muted, #6b7683);'
 		}, [
 			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription name') ]),
 			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription URL') ]),
@@ -1286,7 +1286,7 @@ function renderNodeSettings(section, data, features, main_node, routing_mode, no
 			globalThis.__hpNodeLatencySections[section_id] = s;
 
 		outputEl.appendChild(E('button', {
-			'class': 'cbi-button cbi-button-action',
+			'class': 'cbi-button',
 			'onclick': 'return globalThis.__hpNodeLatencyTrigger(%s);'.format(JSON.stringify(section_id)),
 			'disabled': (row_state.state === NODE_LATENCY_ROW_STATES.TESTING) ? true : null
 		}, [ getNodeLatencyActionTitle(row_state) ]));
@@ -2405,7 +2405,7 @@ return view.extend({
 			let bulk_testing = false;
 			let tabmenu_observer = null;
 			let bulk_button = E('button', {
-				'class': 'cbi-button cbi-button-action hp-bulk-latency-test',
+				'class': 'cbi-button hp-bulk-latency-test',
 				'click': ui.createHandlerFn(this, async () => {
 					if (bulk_testing || typeof globalThis === 'undefined' || !globalThis.__hpNodeLatencyTrigger)
 						return false;
