@@ -4445,3 +4445,9 @@ msgstr ""
 
 msgid "curl exit code: %s"
 msgstr ""
+
+msgid "Check all"
+msgstr ""
+
+msgid "Stale snapshot — core not running"
+msgstr ""

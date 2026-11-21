@@ -59,7 +59,7 @@ const css = '				\
 .homeproxy-connect-time { margin-top: 1px; color: #9aa3ad; font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
-	color: #ff4d35;			\
+	color: #9aa3ad;			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	cursor: pointer;		\
@@ -241,7 +241,7 @@ function renderScoreCards() {
 					E('div', {}, [ E('span', {}, [ _('Loss') ]), E('b', {}, [ fmtLoss({ loss: g.now_loss }) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Speed') ]), E('b', {}, [ fmtSpeed({ speed: g.now_speed }) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:#d9534f' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
-					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl' }, [ String(g.score) ]) ])
+					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl', 'style': core_running ? '' : 'color:#b0b7bf', 'title': core_running ? '' : _('Stale snapshot — core not running') }, [ String(g.score) ]) ])
 				]),
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
 				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
@@ -345,6 +345,8 @@ function renderConnCards() {
 		expect: { '': {} }
 	});
 
+	const checkFns = [];   /* P3：收集每张卡的检测函数，供「全部检测」批量触发 */
+
 	const items = [
 		{ site: 'aliyun', title: _('Aliyun Connection') },
 		{ site: 'google', title: _('Google Connection') },
@@ -352,8 +354,8 @@ function renderConnCards() {
 		{ site: 'youtube', title: _('YouTube Connection') }
 	];
 
-	return E('div', { 'class': 'homeproxy-connect-grid' }, items.map((item) => {
-		const icon = E('div', { 'class': 'homeproxy-connect-icon' });
+	const grid = E('div', { 'class': 'homeproxy-connect-grid' }, items.map((item) => {
+		const icon = E('div', { 'class': 'homeproxy-connect-icon', 'aria-hidden': 'true' });
 		icon.innerHTML = connLogos[item.site] || '';
 		let result = E('div', {
 			'class': 'homeproxy-connect-result',
@@ -410,7 +412,8 @@ function renderConnCards() {
 						+ '\n' + _('HTTP status code: %s').format(ret.code);
 				} else {
 					result.style.setProperty('color', '#a12825');
-					result.textContent = '✕ ' + failLabel(ret) + (ret.curl_rc ? ' (curl ' + ret.curl_rc + ')' : '');
+					/* 主标签只留语义词；curl 原始退出码挪进 tooltip，别推给普通用户。 */
+					result.textContent = '✕ ' + failLabel(ret);
 					result.title = failLabel(ret) + (ret.curl_rc ? '\n' + _('curl exit code: %s').format(ret.curl_rc) : '')
 						+ '\n' + _('Click to retry');
 				}
@@ -419,6 +422,8 @@ function renderConnCards() {
 				}
 			});
 		};
+
+		checkFns.push(runConnCheck);
 
 		return E('div', { 'class': 'homeproxy-connect-card' }, [
 			icon,
@@ -429,6 +434,21 @@ function renderConnCards() {
 			])
 		]);
 	}));
+
+	/* P3：「全部检测」——一次性触发所有连接卡，省去逐卡点的摩擦。
+	   并发发起，各自更新自己的结果；按钮在全部返回前 disabled 防重复。 */
+	const allBtn = E('button', {
+		'class': 'btn cbi-button cbi-button-action',
+		'style': 'margin-bottom: 10px',
+		'click': ui.createHandlerFn(this, () => {
+			allBtn.disabled = true;
+			const done = () => { allBtn.disabled = false; };
+			const ps = checkFns.map((fn) => L.resolveDefault(Promise.resolve().then(fn), {}));
+			return Promise.all(ps).then(done, done);
+		})
+	}, [ _('Check all') ]);
+
+	return E('div', { 'class': 'homeproxy-connect-wrap' }, [ allBtn, grid ]);
 }
 
 function getResVersion(o, type) {
