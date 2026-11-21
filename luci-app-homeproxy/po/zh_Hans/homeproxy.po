@@ -4640,3 +4640,6 @@ msgstr "组内排行；上方为当前选中节点"
 
 msgid "Not found"
 msgstr "未找到"
+
+msgid "Cannot reach the management API. Please retry later."
+msgstr "无法连接管理接口，请稍后重试。"

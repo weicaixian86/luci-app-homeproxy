@@ -4465,3 +4465,6 @@ msgstr ""
 
 msgid "Not found"
 msgstr ""
+
+msgid "Cannot reach the management API. Please retry later."
+msgstr ""

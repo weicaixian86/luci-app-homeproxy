@@ -15,10 +15,10 @@
 
 const css = '				\
 	/* 设计令牌（DESIGN.md）：浅色为默认，深色随系统/主题类自动覆盖。 */	\
-	:root {--hp-surface:#fff;--hp-wash:#fafbfc;--hp-panel:#f4f6f9;--hp-inset:#e9edf2;--hp-line:#eee;--hp-line-soft:#f0f0f0;--hp-line-faint:#eef0f2;--hp-line-fainter:#f4f5f6;--hp-ok-grad-a:#f7fbf5;--hp-text-strong:#2c3138;--hp-text-body:#5a6470;--hp-text-muted:#65727f;--hp-text-faint:#6b7683;--hp-ok:#1b7a43;--hp-ok-deep:#2d6d2d;--hp-ok-mint:#e8f5e9;--hp-danger:#a12825;--hp-danger-bg:#fdecec;--hp-danger-line:#f5c2c0;--hp-warn:#8a5a00;--hp-focus:#4a7dff}				\
-	html[class*="dark"] {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+	:root {--hp-surface:#fff;--hp-wash:#fafbfc;--hp-panel:#f4f6f9;--hp-inset:#e9edf2;--hp-line:#eee;--hp-line-soft:#f0f0f0;--hp-line-faint:#eef0f2;--hp-line-fainter:#f4f5f6;--hp-ok-grad-a:#f7fbf5;--hp-text-strong:#2c3138;--hp-text-body:#5a6470;--hp-text-muted:#65727f;--hp-text-faint:#6b7683;--hp-ok:#1b7a43;--hp-ok-deep:#2d6d2d;--hp-ok-mint:#e8f5e9;--hp-danger:#a12825;--hp-danger-bg:#fdecec;--hp-danger-line:#f5c2c0;--hp-warn:#8a5a00;--hp-focus:#4a7dff;--hp-shadow:0 1px 4px rgba(0,0,0,.08)}				\
+	html[class*="dark"] {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff;--hp-shadow:0 1px 5px rgba(0,0,0,.4)}				\
 	@media (prefers-color-scheme: dark) {				\
-		:root {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+		:root {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff;--hp-shadow:0 1px 5px rgba(0,0,0,.4)}				\
 	}				\
 	/* 键盘焦点环：token 化后统一补齐（audit P1） */				\
 	.homeproxy-connect-result:focus-visible, .homeproxy-score-ft a:focus-visible, .homeproxy-core-alert button:focus-visible {				\
@@ -38,7 +38,7 @@ const css = '				\
 	padding: 8px 10px;		\
 	border-radius: 6px;		\
 	background: var(--hp-surface);		\
-	box-shadow: 0 1px 4px rgba(0, 0, 0, .08);\
+	box-shadow: var(--hp-shadow);\
 }					\
 .homeproxy-connect-icon {		\
 	display: flex;			\
@@ -85,7 +85,7 @@ const css = '				\
 .homeproxy-score-card {				\
 	background: var(--hp-surface);			\
 	border-radius: 8px;			\
-	box-shadow: 0 1px 4px rgba(0,0,0,.08);	\
+	box-shadow: var(--hp-shadow);	\
 	overflow: hidden;			\
 }						\
 .homeproxy-score-hd {				\
@@ -151,8 +151,10 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 	}			\
 	.homeproxy-connect-result { min-height: 24px; display: flex; align-items: center; }	\
 	/* 触屏（粗指针）：交互目标提到 44px（adapt 基准），不依赖 hover。 */	\
+	.homeproxy-deg-yes { color: var(--hp-danger); font-weight: 700; }	\
 	@media (pointer: coarse) {	\
 		.homeproxy-connect-result { min-height: 44px; }	\
+		.homeproxy-core-alert button { min-height: 44px; }	\
 		.homeproxy-score-ft a { min-height: 44px; padding: 10px 12px; margin: -10px -12px; display: inline-flex; align-items: center; }	\
 		.homeproxy-check-all { min-height: 44px; }	\
 	}';
@@ -193,13 +195,13 @@ function renderScoreCards() {
 				E('td', { 'class': 'dl' }, [ m.ok ? '%d ms'.format(m.delay) : _('Timeout / failed') ]),
 				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
 				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
-				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:var(--hp-danger)' }, [ _('Yes') ]) : '—' ]),
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { 'class': 'homeproxy-deg-yes' }, [ _('Yes') ]) : '—' ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
 			ui.showModal(group, [
 				E('style', [ '#modal_overlay > .modal, #modal_overlay > .modal.cbi-modal' +
 					' { max-width: 90vw !important; width: 860px !important; }' ].join('')),
-				E('div', { 'style': 'max-height:60vh;overflow:auto' }, [
+				E('div', { 'style': 'max-height:60vh;overflow:auto;-webkit-overflow-scrolling:touch' }, [
 					E('table', { 'class': 'homeproxy-score-tbl' }, [
 						E('thead', {}, [ E('tr', {}, [
 							E('th', { 'class': 'rk' }, [ '#' ]),
@@ -237,7 +239,7 @@ function renderScoreCards() {
 				E('td', { 'class': 'dl' }, [ '%d ms'.format(m.delay) ]),
 				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
 				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
-				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:var(--hp-danger)' }, [ _('Yes') ]) : '—' ]),
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { 'class': 'homeproxy-deg-yes' }, [ _('Yes') ]) : '—' ]),
 				E('td', { 'class': 'sc', 'style': core_running ? '' : 'color:var(--hp-text-faint)' }, [ String(m.score) ])
 			]));
 			const hasTop = rows.length > 0;
@@ -254,7 +256,7 @@ function renderScoreCards() {
 					E('div', { 'class': 'ttl' }, [
 						/* P3：去掉 emoji 噪点；工作模式收进标题 tooltip（不再挤占标题行）；
 						   保留「上次评分」与「可用/总数」两条真正有用的状态。 */
-						E('h4', { 'title': _('Auto select (comprehensive score)') }, [ g.tag ]),
+						E('h3', { 'title': _('Auto select (comprehensive score)') }, [ g.tag ]),
 						E('span', { 'class': 'stat' }, [ _('Last scored') + ' ' + fmtScored(g.updated) ]),
 						E('span', { 'class': 'stat stat-avail' }, [ _('Available / Total') + ' ' + '%d / %d'.format(g.ok, g.total) ])
 					]),
@@ -268,7 +270,7 @@ function renderScoreCards() {
 					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Loss') ]), E('b', {}, [ fmtLoss({ loss: g.now_loss }) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Speed') ]), E('b', {}, [ fmtSpeed({ speed: g.now_speed }) ]) ]),
-					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:var(--hp-danger)' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'class': g.now_deg ? 'homeproxy-deg-yes' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl', 'style': core_running ? '' : 'color:var(--hp-text-faint)', 'title': core_running ? '' : _('Stale snapshot — core not running') }, [ String(g.score) ]) ])
 				]),
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [
@@ -478,20 +480,19 @@ function renderConnCards() {
 	return E('div', { 'class': 'homeproxy-connect-wrap' }, [ allBtn, grid ]);
 }
 
-function getResVersion(o, type) {
-	const callResVersion = rpc.declare({
-		object: 'luci.homeproxy',
-		method: 'resources_get_version',
-		params: ['type'],
-		expect: { '': {} }
-	});
+const callResVersion = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'resources_get_version',
+	params: ['type'],
+	expect: { '': {} }
+});
 
-	const callResUpdate = rpc.declare({
-		object: 'luci.homeproxy',
-		method: 'resources_update',
-		params: ['type'],
-		expect: { '': {} }
-	});
+const callResUpdate = rpc.declare({
+	object: 'luci.homeproxy',
+	method: 'resources_update',
+	params: ['type'],
+	expect: { '': {} }
+});
 
 	/* 上面那个后台任务的进度。resources_update 现在只负责启动（立即返回
 	   {started:true}，已有任务在跑时返回 {started:false, running:true}），
@@ -502,12 +503,13 @@ function getResVersion(o, type) {
 	   第二个实例会立刻写下 rc=2（抢锁失败）而第一个还在下载，只看 rc 会让
 	   界面提前两秒解锁并显示「Already in updating.」。 */
 	const callResUpdatePoll = rpc.declare({
-		object: 'luci.homeproxy',
-		method: 'resources_update_poll',
-		params: ['type'],
-		expect: { '': {} }
-	});
+	object: 'luci.homeproxy',
+	method: 'resources_update_poll',
+	params: ['type'],
+	expect: { '': {} }
+});
 
+function getResVersion(o, type) {
 	/* 只把**本次**新写入的日志行拼在错误后面：脚本每次至少写一行
 	   `[CHINA_IP4] …`，所以「增量有内容」本身就是「脚本真的跑起来了」的
 	   证据。多行压成一行 —— 这个位置是 cbi-value-field 里的一小段文字，
@@ -870,7 +872,10 @@ return view.extend({
 					   (audit P2: 无限重试 → 上限 20 次 ≈ 60s 后停止）。 */
 					tick.err_n = (tick.err_n || 0) + 1;
 					if (tick.err_n > 20) {
+						/* 上限后停止轮询：恢复按钮并明示原因，不留死锁态。 */
 						polling = false;
+						btn.disabled = false;
+						dom.content(statusEl, _('Cannot reach the management API. Please retry later.'));
 						return;
 					}
 					window.setTimeout(tick, CORE_POLL_INTERVAL);
