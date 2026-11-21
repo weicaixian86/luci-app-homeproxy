@@ -1116,38 +1116,26 @@ function build_native_providers() {
 		if (!has_nodes)
 			continue;
 
-		if (!provider_seed_exists(group_hash))
+		/* 方案 C：local provider 从 providers-local/<hash>.sub 读节点
+		   （插件已按关键词过滤的纯净订阅），不再依赖 remote 的 seed 文件。 */
+		let local_exists = false;
+		try {
+			let fp = open(sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash), 'r');
+			if (fp) { fp.close(); local_exists = true; }
+		} catch (e) { local_exists = false; }
+		if (!local_exists)
 			continue;
 
 		push(providers, {
-			type: 'remote',
+			/* 方案 C（最终）：local provider 从插件过滤后的纯净订阅文件读取，
+			   内核不再解析原始订阅——机场的「❗如果…|0.1x」等提示节点在过滤
+			   阶段就被剔除，从源头进不了内核。同时保留完整 provider 功能
+			   （Clash API「代理供应商」页、节点列表、健康检查）。
+			   注意：local 不支持 url/initial_path/update_interval/domain_resolver，
+			   path 指向纯 base64 订阅正文（userinfo 头会让解析失败）。 */
+			type: 'local',
 			tag: unique_provider_name(subscription_provider_name(subscription_name), used_names),
-			/* 方案 B：镜像存在 → provider 拉本机过滤镜像（垃圾节点进不了内核）；
-			   镜像缺失（首启动拉取失败等）→ 退回原始 URL，行为同旧版。 */
-			url: provider_mirror_exists(group_hash) ? provider_mirror_url(group_hash) : url,
-			initial_path: provider_seed_path(group_hash),
-			/* provider 更新订阅 URL 时要自己解析机场域名。sing-box 1.14 **不**
-			   让 provider 继承 route.default_domain_resolver（实测 237：
-			   default_domain_resolver=dnspod 已设仍报错），缺省时内核去找隐式
-			   "local" 解析器并报 `domain resolver not found: local`，
-			   provider 更新全部失败（订阅运行期内永不更新）。显式指向
-			   default-dns（直连 UDP 223.5.5.5）——机场域名就该直连解析。 */
-			domain_resolver: { server: 'default-dns' },
-			/* info 节点（剩余流量/到期等）导致的 provider 更新失败
-			   （`domain resolver not found: local`）见需求书 99。内核侧
-			   provider filter 无此字段（结构体仅 Outbounds/Endpoints/
-			   HealthCheck），原「留待单独一轮」的过滤已按方案 B 落地：
-			   url 指向本机过滤镜像，见 provider_mirror_url()。 */
-			/* 24h：与常见的机场流量刷新节奏相当；间隔过长会让面板的
-			   已用/到期长期不动，过短则等于每次重启都多下一遍订阅。 */
-			update_interval: '24h',
-			/* 不指定 `http_client`：内核会用「默认出站」下载（并打印一条
-			   1.14 的 deprecated 警告，功能到 1.16 前都有效）。
-			   试过 `http_client: {detour: 'direct-out'}` —— 实测被内核拒绝：
-			   `detour to an empty direct outbound makes no sense`
-			   （common/dialer/detour.go:64：显式 detour 指向「空 direct」即报错，
-			   只有 `defaultOutbound` 走的隐式路径才跳过该检查，而本项目的
-			   `direct-out` 正是空 direct）。 */
+			path: sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash),
 			health_check: {
 				enabled: true,
 				url: probe_url,
@@ -2191,14 +2179,9 @@ config.experimental = {
 /* Experimental end */
 
 /* Native providers（reF1nd 1.14.4 顶层字段）——面板「代理供应商」页的数据源。
-   ⚠️ 默认停用：原生 provider 由内核自行解析订阅正文，节点名带「机场名/」前缀、
-   无法在内核侧按关键词过滤，机场的「❗如果只显示此节点|0.1x」等提示节点会
-   绕过插件过滤器直达 /proxies（237 实测）。订阅节点已全部导入 UCI（node 段），
-   filter_check 会按关键词过滤（含 urldecode 匹配 URL 编码的中文名），走策略组
-   完全够用。如需恢复 provider 页（会重新引入未过滤节点），把
-   /etc/config/homeproxy 的 config.subscription.use_native_provider 设为 1。 */
-const use_native_provider = uci.get(uciconfig, 'subscription', 'use_native_provider') === '1';
-const native_providers = use_native_provider ? build_native_providers() : [];
+   方案 C：local provider 从插件过滤后的纯净订阅文件读取，Clash API 全部功能
+   保留（供应商页/节点列表/健康检查），垃圾节点在过滤阶段已被剔除。 */
+const native_providers = build_native_providers();
 if (length(native_providers) > 0)
 	config.providers = native_providers;
 /* Native providers end */

@@ -59,7 +59,12 @@ for (let line in split(replace(kw_raw, /\r/g, ''), '\n')) {
 	}
 }
 
-/* 逐行过滤：节点名在 URL 的 #fragment，urldecode 后匹配关键词 */
+/* 逐行过滤：节点名有三个来源，必须全部参与匹配，否则会漏过滤——
+   ① URL 的 #fragment（vless/trojan/ss/hysteria2/anytls 等）；
+   ② vmess:// 的**内部 base64-JSON 的 ps 字段**：vmess 分享链接把节点名
+      编码在链接体内（没有 #），机场的「❗如果只显示此节点|0.1x」等提示
+      节点就是这么藏的。只解 # 会全部漏掉（237 实测 4 个漏网节点）；
+   ③ 原始行本身（兜底，覆盖未编码的明文名）。 */
 let kept = [];
 for (let raw in split(replace(text, /\r/g, ''), '\n')) {
 	raw = trim(raw);
@@ -68,20 +73,42 @@ for (let raw in split(replace(text, /\r/g, ''), '\n')) {
 		continue;
 	}
 
-	let name = raw;
-	/* 分享链接的节点名在 '#' 之后，URL 编码；也可能藏在其他位置 */
+	/* 收集所有候选名称片段 */
+	let names = [ raw ];
+
+	/* ① #fragment */
 	const hash_i = index(raw, '#');
 	if (hash_i >= 0)
-		name = urldecode(substr(raw, hash_i + 1));
-	else
-		name = urldecode(raw);
+		push(names, urldecode(substr(raw, hash_i + 1)));
+
+	/* ② vmess:// 内部 base64-JSON 的 ps / remarks / name */
+	if (index(raw, 'vmess://') === 0) {
+		let inner = null;
+		try { inner = decodeBase64Str(substr(raw, 8)); } catch (e) { inner = null; }
+		if (inner) {
+			let j = null;
+			try { j = json(inner); } catch (e) { j = null; }
+			if (j) {
+				if (j.ps) push(names, j.ps);
+				if (j.remarks) push(names, j.remarks);
+				if (j.name) push(names, j.name);
+			} else {
+				/* 不是 JSON 也把解出来的明文纳入匹配 */
+				push(names, inner);
+			}
+		}
+	}
 
 	let hit = false;
 	for (let kw in keywords) {
-		if (index(name, kw) >= 0 || index(raw, kw) >= 0) {
-			hit = true;
-			break;
+		for (let nm in names) {
+			if (index(nm, kw) >= 0) {
+				hit = true;
+				break;
+			}
 		}
+		if (hit)
+			break;
 	}
 
 	if (mode === 'whitelist') {

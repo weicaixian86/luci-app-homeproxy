@@ -162,7 +162,14 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 	} > "$HP_DIR/$hash.sub.tmp" 2>/dev/null
 	mv "$HP_DIR/$hash.sub.tmp" "$HP_DIR/$hash.sub" 2>/dev/null
 
-	log "$hash: 镜像+缓存已刷新（ucode 过滤完成，userinfo=$( [ -n "$ui" ] && echo 保留 || echo 无)，mode=$MODE）。"
+	# local provider 专用：纯订阅正文（无 userinfo 头）。内核的 local provider
+	# 会把首行当 JSON/YAML/SIP008 解析，userinfo（upload=…）会导致
+	# "no servers found" 启动失败。只需 base64 payload 即可被正确解析成节点。
+	mkdir -p "$HP_DIR/providers-local" 2>/dev/null
+	printf '%s\n' "$b64" > "$HP_DIR/providers-local/$hash.sub.tmp" 2>/dev/null
+	mv "$HP_DIR/providers-local/$hash.sub.tmp" "$HP_DIR/providers-local/$hash.sub" 2>/dev/null
+
+	log "$hash: 镜像+缓存+local文件已刷新（ucode 过滤完成，userinfo=$( [ -n "$ui" ] && echo 保留 || echo 无)，mode=$MODE）。"
 done
 
 exit 0

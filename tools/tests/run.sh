@@ -2777,22 +2777,32 @@ fi
 # ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
 # 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
 # （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测
-# 200/200/204/204），且 `subscriptionInfo` 只有 `remote` 类型会填。
-# 但 provider 启动失败会**拖垮整个服务**（实测 `no servers found` / `initial_path
-# requires cache_file` 均为 FATAL），所以生成侧必须带三重护栏。
+# 200/200/204/204）。
+#
+# 方案 C（2026-11-21，237 现场根因）：原 `type: 'remote'` 由**内核自己解析订阅
+# 正文**，节点名带「机场名/」前缀，内核侧没有任何过滤字段（provider 结构体仅
+# Outbounds/Endpoints/HealthCheck），机场的「❗如果只显示此节点|0.1x」等提示
+# 节点会绕过插件过滤器直达 /proxies。更隐蔽的是 vmess 分享链接把节点名编码在
+# **链接体内 base64-JSON 的 ps 字段**（没有 #fragment），只按 # 过滤会全部漏掉。
+# 改为 `type: 'local'` + `path` 指向插件已过滤好的纯净订阅文件：
+#   · 内核不再解析原始订阅，垃圾节点在写文件阶段就被剔除；
+#   · 仍是原生 provider，Clash API 供应商页/节点列表/健康检查全部保留；
+#   · local 不支持 url/initial_path/update_interval/domain_resolver，path 必须
+#     指向**纯 base64 正文**（userinfo 首行会让内核按 JSON/YAML 解析失败）。
 UPD="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
 
-if grep -q "type: 'remote'" "$GC" && grep -q 'initial_path: provider_seed_path(group_hash)' "$GC"; then
-	ok "native providers are emitted as remote with an initial_path seed"
+if grep -q "type: 'local'" "$GC" \
+   && grep -q "path: sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash)" "$GC"; then
+	ok "native providers are emitted as local, reading the plugin-filtered subscription file"
 else
-	bad "native providers are missing or not using a seed (a start-up fetch could kill the service)"
+	bad "native providers are not local/file-backed (kernel would parse the raw subscription and leak unfiltered nodes)"
 fi
 
-# 三重护栏：cache_file 关 / 机场无节点 / 种子不存在 —— 任一情况都不下发。
+# 三重护栏：cache_file 关 / 机场无节点 / 过滤文件不存在 —— 任一情况都不下发。
 if grep -q "if (cache_file_enabled === '0')" "$GC" \
    && grep -q 'if (!has_nodes)' "$GC" \
-   && grep -q 'if (!provider_seed_exists(group_hash))' "$GC"; then
-	ok "providers are skipped when cache_file is off, the airport has no nodes, or the seed is missing"
+   && grep -q "providers-local/%s.sub', HP_DIR, group_hash), 'r'" "$GC"; then
+	ok "providers are skipped when cache_file is off, the airport has no nodes, or the filtered file is missing"
 else
 	bad "a provider can still be emitted in a state the kernel rejects fatally"
 fi
