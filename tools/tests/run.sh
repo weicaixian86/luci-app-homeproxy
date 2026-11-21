@@ -2774,35 +2774,30 @@ else
 	bad "rpcd lacks the score_group_update trigger method"
 fi
 
-# ── 原生 providers（恢复面板「代理供应商」页）──────────────────────────────
-# 现场依据（238，官方 reF1nd 1.14.4）：顶层 `providers` 被 Clash API 完整支持
-# （`/providers/proxies`、`/{name}`、`PUT /{name}`、`/{name}/healthcheck` 实测
-# 200/200/204/204）。
-#
-# 方案 C（2026-11-21，237 现场根因）：原 `type: 'remote'` 由**内核自己解析订阅
-# 正文**，节点名带「机场名/」前缀，内核侧没有任何过滤字段（provider 结构体仅
-# Outbounds/Endpoints/HealthCheck），机场的「❗如果只显示此节点|0.1x」等提示
-# 节点会绕过插件过滤器直达 /proxies。更隐蔽的是 vmess 分享链接把节点名编码在
-# **链接体内 base64-JSON 的 ps 字段**（没有 #fragment），只按 # 过滤会全部漏掉。
-# 改为 `type: 'local'` + `path` 指向插件已过滤好的纯净订阅文件：
-#   · 内核不再解析原始订阅，垃圾节点在写文件阶段就被剔除；
-#   · 仍是原生 provider，Clash API 供应商页/节点列表/健康检查全部保留；
-#   · local 不支持 url/initial_path/update_interval/domain_resolver，path 必须
-#     指向**纯 base64 正文**（userinfo 首行会让内核按 JSON/YAML 解析失败）。
+# 方案 D（2026-11-21，237 现场根因链）：
+#   ① 原 `type: 'remote'` 直连原始订阅 → 内核自解析，节点名带「机场名/」前缀，
+#      provider 结构体无任何过滤字段，机场「❗如果只显示此节点|0.1x」等提示节点
+#      直达 /proxies；且 vmess 把节点名编码在链接体内 base64-JSON 的 ps 字段
+#      （没有 #fragment），只按 # 过滤会全部漏掉（237 实测 4 个漏网）。
+#   ② 改 `type: 'local'` 能过滤干净，但 local **不解析 userinfo 首行**、
+#      不产出 subscriptionInfo → 面板流量/到期全空（237 实测）。
+#   ③ 定稿：**remote + 本机回环镜像 url**——镜像由 filter_sub.uc 过滤并保留
+#      userinfo 首行，内核既拿到过滤后节点，又能解析出完整流量信息。
 UPD="$PKG/root/etc/homeproxy/scripts/update_subscriptions.uc"
 
-if grep -q "type: 'local'" "$GC" \
-   && grep -q "path: sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash)" "$GC"; then
-	ok "native providers are emitted as local, reading the plugin-filtered subscription file"
+if grep -q "type: 'remote'" "$GC" \
+   && grep -q 'url: provider_mirror_exists(group_hash) ? provider_mirror_url(group_hash) : url' "$GC" \
+   && grep -q 'initial_path: provider_seed_path(group_hash)' "$GC"; then
+	ok "native providers are remote, pointed at the loopback filtered mirror (traffic info survives)"
 else
-	bad "native providers are not local/file-backed (kernel would parse the raw subscription and leak unfiltered nodes)"
+	bad "native providers are not mirror-backed remote (either unfiltered nodes or no traffic info)"
 fi
 
-# 三重护栏：cache_file 关 / 机场无节点 / 过滤文件不存在 —— 任一情况都不下发。
+# 三重护栏：cache_file 关 / 机场无节点 / 镜像文件不存在 —— 任一情况都不下发。
 if grep -q "if (cache_file_enabled === '0')" "$GC" \
    && grep -q 'if (!has_nodes)' "$GC" \
-   && grep -q "providers-local/%s.sub', HP_DIR, group_hash), 'r'" "$GC"; then
-	ok "providers are skipped when cache_file is off, the airport has no nodes, or the filtered file is missing"
+   && grep -q 'if (!provider_mirror_exists(group_hash))' "$GC"; then
+	ok "providers are skipped when cache_file is off, the airport has no nodes, or the mirror is missing"
 else
 	bad "a provider can still be emitted in a state the kernel rejects fatally"
 fi

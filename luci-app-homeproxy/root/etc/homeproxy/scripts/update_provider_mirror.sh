@@ -108,12 +108,34 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 		upload=*|download=*|expire=*|total=*) ;;
 		*) ui="" ;;
 	esac
+	if [ -z "$ui" ] && [ -f "$seed" ]; then
+		# 回退 1：旧缓存首行（手动刷新场景，缓存还在）
+		seed_ui="$(head -n 1 "$seed" 2>/dev/null)"
+		case "$seed_ui" in
+			upload=*|download=*|expire=*|total=*) ui="$seed_ui" ;;
+		esac
+	fi
 	if [ -z "$ui" ]; then
-		# 回退：响应头没有时，从旧缓存首行取（手动刷新场景，缓存还在）
-		if [ -f "$seed" ]; then
-			seed_ui="$(head -n 1 "$seed" 2>/dev/null)"
-			case "$seed_ui" in
-				upload=*|download=*|expire=*|total=*) ui="$seed_ui" ;;
+		# 回退 2：插件自己存的 subinfo_<hash16>（update_subscriptions.uc 抓到的
+		# 真实流量）。很多机场只有带 Clash-Meta UA 的那次请求才返回
+		# subscription-userinfo，单次抓取拿不到；UCI 里的这份是持久化的，
+		# 用它兜底可保证面板流量/到期不会因一次抓取缺失而变成 0
+		# （238 现场：PKM 首行缺失 → 供应商卡片流量显示 0）。
+		subinfo="$(uci -q get "homeproxy.subscription.subinfo_$(printf '%s' "$hash" | cut -c1-16)")"
+		if [ -n "$subinfo" ]; then
+			printf '%s' "$subinfo" > "$RUN_DIR/mirror-subinfo.$$" 2>/dev/null
+			ui="$(cd "$HP_DIR/scripts" && ucode -S -e '
+import { readfile } from "fs";
+let j = null;
+try { j = json(readfile(ARGV[0]) || ""); } catch (e) { j = null; }
+if (j && (j.total || j.download || j.expire))
+	printf("upload=%s;download=%s;total=%s;expire=%s",
+		j.upload ?? 0, j.download ?? 0, j.total ?? 0, j.expire ?? 0);
+' "$RUN_DIR/mirror-subinfo.$$" 2>/dev/null)"
+			rm -f "$RUN_DIR/mirror-subinfo.$$" 2>/dev/null
+			case "$ui" in
+				upload=*) ;;
+				*) ui="" ;;
 			esac
 		fi
 	fi

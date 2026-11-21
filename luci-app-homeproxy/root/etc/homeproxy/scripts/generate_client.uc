@@ -1116,26 +1116,38 @@ function build_native_providers() {
 		if (!has_nodes)
 			continue;
 
-		/* 方案 C：local provider 从 providers-local/<hash>.sub 读节点
-		   （插件已按关键词过滤的纯净订阅），不再依赖 remote 的 seed 文件。 */
-		let local_exists = false;
-		try {
-			let fp = open(sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash), 'r');
-			if (fp) { fp.close(); local_exists = true; }
-		} catch (e) { local_exists = false; }
-		if (!local_exists)
+		/* 方案 D：remote provider + 本机回环镜像 url（含过滤后节点 + userinfo 首行）。 */
+		if (!provider_mirror_exists(group_hash))
 			continue;
 
 		push(providers, {
-			/* 方案 C（最终）：local provider 从插件过滤后的纯净订阅文件读取，
-			   内核不再解析原始订阅——机场的「❗如果…|0.1x」等提示节点在过滤
-			   阶段就被剔除，从源头进不了内核。同时保留完整 provider 功能
-			   （Clash API「代理供应商」页、节点列表、健康检查）。
-			   注意：local 不支持 url/initial_path/update_interval/domain_resolver，
-			   path 指向纯 base64 订阅正文（userinfo 头会让解析失败）。 */
-			type: 'local',
+			/* 方案 D（最终定稿）：remote provider + 本机回环镜像 url。
+			   ── 为什么不能是 local ──
+			   local 只能读纯订阅正文，**不解析 userinfo 首行**，也不产出
+			   subscriptionInfo → 面板的流量/到期全空（237 实测）。
+			   而 remote 的 updateProviderFromContent 会从「内容首行」解析
+			   `upload=..;download=..;total=..;expire=..` 填 subscriptionInfo。
+			   ── 为什么不能直连原始订阅 ──
+			   内核自解析订阅时节点名带「机场名/」前缀，provider 结构体没有
+			   任何过滤字段，机场的「❗如果只显示此节点|0.1x」等提示节点会直达
+			   /proxies；且 vmess 把节点名编码在链接体内 base64-JSON 的 ps 字段，
+			   内核侧无法按关键词过滤。
+			   ── 本方案 ──
+			   url 指向 init.d 起的回环 uhttpd（127.0.0.1:8595，仅本机可达），
+			   内容是插件 filter_sub.uc 过滤后的订阅（含 userinfo 首行）：
+			   内核拿到的是过滤后节点 + 完整流量信息，垃圾节点从源头进不来。
+			   镜像缺失时退回原始 URL（行为同旧版，不影响可用性）。 */
+			type: 'remote',
 			tag: unique_provider_name(subscription_provider_name(subscription_name), used_names),
-			path: sprintf('%s/providers-local/%s.sub', HP_DIR, group_hash),
+			url: provider_mirror_exists(group_hash) ? provider_mirror_url(group_hash) : url,
+			initial_path: provider_seed_path(group_hash),
+			/* provider 更新时要自己解析机场域名；sing-box 1.14 不让 provider
+			   继承 route.default_domain_resolver（实测 237：已设 dnspod 仍报
+			   `domain resolver not found: local`，provider 更新全部失败）。
+			   显式指向 default-dns（直连 UDP）。镜像走 127.0.0.1 时本项无副作用。 */
+			domain_resolver: { server: 'default-dns' },
+			/* 24h：与常见机场流量刷新节奏相当。 */
+			update_interval: '24h',
 			health_check: {
 				enabled: true,
 				url: probe_url,
