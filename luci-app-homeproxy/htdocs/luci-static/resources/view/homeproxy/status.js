@@ -122,6 +122,9 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 	display: flex; justify-content: space-between; align-items: center; } \
 .homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
 .homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #9aa3ad; } \
+.homeproxy-core-alert { margin: 0 auto 12px; max-width: 860px; padding: 10px 14px; \
+	border-radius: 8px; background: #fdecec; color: #a12825; font-size: 13px; line-height: 1.5; \
+	border: 1px solid #f5c2c0; } \
 .homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: #b0b7bf; }';
 
 function renderScoreCards() {
@@ -191,6 +194,7 @@ function renderScoreCards() {
 	return L.resolveDefault(callScoreStatus(), {}).then((ret) => {
 		const groups = ret.groups || [];
 		const scoring = ret.scoring === true;   /* 是否正在评分（评分器锁存在） */
+		const core_running = ret.core_running !== false;   /* 内核是否在跑（false=未运行，数据为历史快照） */
 		if (!groups.length) {
 			dom.content(container, E('div', { 'class': 'homeproxy-score-empty' }, [
 				_('No policy group is using comprehensive score mode.')
@@ -255,7 +259,19 @@ function renderScoreCards() {
 				])
 			]);
 		});
-		dom.content(container, cards);
+		if (!core_running) {
+			/* P1 阻断式告警：内核未运行 → 下列评分/节点数据全是历史快照，不代表
+			   当前可用性。用 danger 横幅明确告诉用户，避免误读"一切正常"。 */
+			dom.content(container, [
+				E('div', { 'class': 'homeproxy-core-alert', 'role': 'alert' }, [
+					E('b', {}, [ '⚠ ' + _('sing-box core is not running.') ]),
+					' ',
+					_('The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data.')
+				])
+			].concat(cards));
+		} else {
+			dom.content(container, cards);
+		}
 		return container;
 	});
 }
@@ -600,17 +616,41 @@ return view.extend({
 			   （2026-11 现场事故）。 */
 			actions.appendChild(E('button', {
 				'class': 'cbi-button cbi-button-reset',
-				'title': _('Clear'),
+				'title': _('Clear GitHub token (cannot be undone)'),
 				'click': ui.createHandlerFn(this, () => {
 					const map = this.map;
-					map.uci.set('homeproxy', 'config', 'github_token', null);
-					return map.uci.save().then(() => {
-						if (input)
-							input.value = '';
-						return map.uci.apply().then(() => {
-							ui.addNotification(null, E('p', _('GitHub token cleared and applied.')), 'info');
+					const doClear = () => {
+						map.uci.set('homeproxy', 'config', 'github_token', null);
+						return map.uci.save().then(() => {
+							if (input)
+								input.value = '';
+							return map.uci.apply().then(() => {
+								ui.addNotification(null, E('p', _('GitHub token cleared and applied.')), 'info');
+							});
 						});
-					});
+					};
+					/* P0：清除令牌不可逆（早期误删 config 段的事故见上），点击
+					   即执行太危险。先弹确认框，用户明确确认后才清除。用 LuCI
+					   原生 showModal，不引入外来弹窗样式。 */
+					ui.showModal(_('Clear GitHub token?'), [
+						E('p', { 'class': 'cbi-section' }, [
+							_('This will permanently remove the stored GitHub token. It cannot be undone. Resource-update checks that need the token will stop working until you enter a new one.')
+						]),
+						E('div', { 'class': 'right' }, [
+							E('button', {
+								'class': 'btn cbi-button',
+								'click': ui.hideModal
+							}, [ _('Cancel', 'homeproxy') ]),
+							' ',
+							E('button', {
+								'class': 'btn cbi-button cbi-button-negative',
+								'click': ui.createHandlerFn(this, () => {
+									ui.hideModal();
+									return doClear();
+								})
+							}, [ _('Yes, clear it') ])
+						])
+					]);
 				}, this.option)
 			}, [ _('Clear') ]));
 

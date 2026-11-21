@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-21T11:20:00+08:00",
+  "title": "Design System: HomeProxy for LuCI",
+  "extensions": {
+    "colorMeta": {
+      "signal-green": { "role": "primary", "displayName": "Signal Green", "canonical": "#1f8a4c", "tonalRamp": ["#0c2b19", "#144a2b", "#1a6138", "#1f8a4c", "#3aa869", "#66c48f", "#a5ddbf", "#e6f5ec"] },
+      "signal-green-soft": { "role": "primary", "displayName": "Signal Green Soft", "canonical": "#2eb872", "tonalRamp": ["#0d3320", "#124a2e", "#18613c", "#1f7a4c", "#2eb872", "#5cd096", "#9ce3c0", "#e6f7ee"] },
+      "brand-blue": { "role": "secondary", "displayName": "Brand Blue", "canonical": "#2b5bd7", "tonalRamp": ["#0b1a44", "#132a66", "#1c3a8a", "#2b5bd7", "#5c83e6", "#93aef0", "#c4d2f7", "#eaeffd"] },
+      "brand-blue-bright": { "role": "secondary", "displayName": "Brand Blue Bright", "canonical": "#4a7dff", "tonalRamp": ["#0c1e4d", "#143070", "#1d4393", "#2f5fc4", "#4a7dff", "#7ba2ff", "#b3c9ff", "#e6eeff"] },
+      "fault-red": { "role": "tertiary", "displayName": "Fault Red", "canonical": "#d9534f", "tonalRamp": ["#3d1210", "#5c1b18", "#7d2420", "#a8342f", "#d9534f", "#e68581", "#f2b8b6", "#fceaea"] },
+      "fault-red-soft": { "role": "tertiary", "displayName": "Fault Red Soft", "canonical": "#e4574c", "tonalRamp": ["#3f120e", "#5e1c15", "#80261c", "#b23a2d", "#e4574c", "#ec8a82", "#f5c0bb", "#fdeeed"] },
+      "caution-amber": { "role": "tertiary", "displayName": "Caution Amber", "canonical": "#e08a1e", "tonalRamp": ["#3d2408", "#5c360c", "#804a10", "#b06a00", "#e08a1e", "#eeb05c", "#f6d3a0", "#fdf2e2"] },
+      "neutral-white": { "role": "neutral", "displayName": "Pure White", "canonical": "#ffffff", "tonalRamp": ["#121212", "#3a3a3a", "#6e6e6e", "#a6a6a6", "#d4d4d4", "#ececec", "#f8f8f8", "#ffffff"] },
+      "neutral-wash": { "role": "neutral", "displayName": "Wash Gray", "canonical": "#fafbfc", "tonalRamp": ["#1a1c1e", "#3a3d40", "#5c6064", "#868b90", "#b4b9be", "#d9dde1", "#eef0f2", "#fafbfc"] },
+      "neutral-panel": { "role": "neutral", "displayName": "Panel Gray", "canonical": "#f4f6f9", "tonalRamp": ["#1b1d20", "#3b3e42", "#5d6166", "#878b91", "#b5b9bf", "#d9dce1", "#eef0f4", "#f4f6f9"] },
+      "text-strong": { "role": "neutral", "displayName": "Text Strong", "canonical": "#2c3138", "tonalRamp": ["#0c0e10", "#232629", "#3a3f45", "#535a62", "#757e88", "#a0a8b1", "#cdd3d9", "#eef1f4"] },
+      "text-body": { "role": "neutral", "displayName": "Text Body", "canonical": "#5a6470", "tonalRamp": ["#12161b", "#28303a", "#414c59", "#5a6470", "#838e9a", "#b1b9c2", "#d5dae0", "#f1f3f6"] },
+      "text-muted": { "role": "neutral", "displayName": "Text Muted", "canonical": "#9aa3ad", "tonalRamp": ["#1f2327", "#3a4149", "#5a626b", "#7c848e", "#9aa3ad", "#c2c8cf", "#dfe3e7", "#f4f6f8"] },
+      "text-faint": { "role": "neutral", "displayName": "Text Faint", "canonical": "#b0b7bf", "tonalRamp": ["#23272b", "#41474d", "#626971", "#868d95", "#b0b7bf", "#ccd1d6", "#e5e8eb", "#f6f7f8"] }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Hero / current-series metrics (e.g. the score value at 20px 600)." },
+      "title": { "displayName": "Title", "purpose": "Card titles and group headers." },
+      "body": { "displayName": "Body", "purpose": "Table cells and primary content." },
+      "label": { "displayName": "Label", "purpose": "Column headers, metadata, stat lines; muted color." }
+    },
+    "shadows": [
+      { "name": "ambient-card", "value": "0 1px 4px rgba(0, 0, 0, .08)", "purpose": "The single elevation: lifts cards off the wash-gray page. No other shadow level exists." }
+    ],
+    "motion": [
+      { "name": "ease-standard", "value": "cubic-bezier(0.4, 0, 0.2, 1)", "purpose": "Calm default easing for any state transition; the console avoids bouncy or spring motion." }
+    ],
+    "breakpoints": [
+      { "name": "connect-reflow", "value": "210px-minmax", "purpose": "Connect cards use repeat(auto-fit, minmax(210px,1fr)) and reflow fluidly; score grid caps at 860px." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Score Card",
+      "kind": "card",
+      "refersTo": "score-card",
+      "description": "The console's core container: a white card with a faint green header strip holding one policy group's ranking.",
+      "html": "<div class='ds-score-card'><div class='ds-score-hd'><b>🌏 亚洲自动</b><span class='ds-badge'>Scoring</span></div><div class='ds-score-kv'><div class='ds-kv-cur'><span>当前</span><b>新加坡01</b></div><div><span>延迟</span><b>178 ms</b></div><div><span>丢包</span><b>0%</b></div><div><span>评分</span><b class='ds-hl'>98</b></div></div></div>",
+      "css": ".ds-score-card { max-width: 460px; background: #fff; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,.08); overflow: hidden; font: 14px/1.5 inherit; } .ds-score-hd { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #eee; background: linear-gradient(90deg,#f7fbf5,#fff); } .ds-score-hd b { font-size: 16px; font-weight: 700; color: #2c3138; } .ds-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; padding: 2px 10px; border-radius: 10px; font-weight: 600; } .ds-score-kv { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; align-items: end; padding: 14px 18px; gap: 8px; } .ds-score-kv > div { display: flex; flex-direction: column; gap: 3px; align-items: center; text-align: center; } .ds-kv-cur { align-items: flex-start !important; text-align: left !important; } .ds-score-kv span { color: #9aa3ad; font-size: 12px; } .ds-score-kv b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } .ds-hl { color: #1f8a4c !important; font-size: 20px !important; }"
+    },
+    {
+      "name": "Metric Row (kv strip)",
+      "kind": "custom",
+      "description": "Signature metric strip: small muted label over a large bold value, numbers centered and aligned to their columns.",
+      "html": "<div class='ds-kv'><div><span>延迟</span><b>178 ms</b></div><div><span>丢包</span><b>0%</b></div><div><span>速度</span><b>—</b></div><div><span>退化</span><b>—</b></div><div><span>评分</span><b class='ds-hl'>98</b></div></div>",
+      "css": ".ds-kv { display: grid; grid-template-columns: repeat(5, 1fr); align-items: end; background: #fff; padding: 14px 18px; } .ds-kv > div { display: flex; flex-direction: column; gap: 3px; align-items: center; text-align: center; padding: 0 8px; } .ds-kv span { color: #9aa3ad; font-size: 12px; white-space: nowrap; } .ds-kv b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } .ds-hl { color: #1f8a4c !important; font-size: 20px !important; }"
+    },
+    {
+      "name": "Score Table",
+      "kind": "card",
+      "description": "Ranked node list with fixed columns (# / Node / Latency / Loss / Speed / Degraded / Score); failed nodes sink to the bottom.",
+      "html": "<table class='ds-tbl'><thead><tr><th class='rk'>#</th><th class='nm'>节点</th><th>延迟</th><th>丢包</th><th>速度</th><th>退化</th><th class='sc'>评分</th></tr></thead><tbody><tr><td class='rk'>1</td><td class='nm'>[LX] 香港高速02</td><td>178 ms</td><td>0%</td><td>—</td><td>—</td><td class='sc'>98</td></tr><tr><td class='rk'>2</td><td class='nm'>[LX] 香港高速03</td><td>180 ms</td><td>0%</td><td>—</td><td>—</td><td class='sc'>98</td></tr></tbody></table>",
+      "css": ".ds-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; background: #fff; } .ds-tbl th { text-align: center; padding: 7px 12px; color: #9aa3ad; font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } .ds-tbl td { padding: 8px 12px; border-bottom: 1px solid #f4f5f6; color: #5a6470; text-align: center; white-space: nowrap; } .ds-tbl tbody tr:last-child td { border-bottom: 0; } .ds-tbl .rk { width: 40px; color: #b0b7bf; } .ds-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; color: #2c3138; } .ds-tbl th.nm { text-align: left; } .ds-tbl .sc { color: #1f8a4c; font-weight: 700; }"
+    },
+    {
+      "name": "Status Dot",
+      "kind": "custom",
+      "description": "8px semantic circle: green ok, red bad, gray none — used before rule-set / node state text.",
+      "html": "<span class='ds-dots'><i class='ds-dot ok'></i> 已就绪 &nbsp; <i class='ds-dot bad'></i> 失败 &nbsp; <i class='ds-dot none'></i> 未下载</span>",
+      "css": ".ds-dots { font-size: 13px; color: #5a6470; } .ds-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; } .ds-dot.ok { background: #2eb872; } .ds-dot.bad { background: #e4574c; } .ds-dot.none { background: #b0b7bf; }"
+    },
+    {
+      "name": "Semantic Chips",
+      "kind": "chip",
+      "description": "Small tag/capsule for node kind or selection mode: auto (amber), manual (blue), status pill (green).",
+      "html": "<span><span class='ds-chip auto'>自动</span> <span class='ds-chip manual'>手动</span> <span class='ds-chip status'>Scoring</span></span>",
+      "css": ".ds-chip { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 600; } .ds-chip.auto { background: rgba(176,106,0,.14); color: #b06a00; } .ds-chip.manual { background: rgba(43,91,215,.12); color: #2b5bd7; } .ds-chip.status { border-radius: 10px; background: #e8f5e9; color: #2d6d2d; }"
+    },
+    {
+      "name": "Text Link Action",
+      "kind": "custom",
+      "description": "In-card 'View all ↗' affordance — the one interactive element inside a score card, in Signal Green.",
+      "html": "<a class='ds-link'>查看全部 ↗</a>",
+      "css": ".ds-link { cursor: pointer; color: #1f8a4c; font-weight: 600; font-size: 12.5px; } .ds-link:hover { text-decoration: underline; } .ds-link:focus-visible { outline: 2px solid #1f8a4c; outline-offset: 2px; border-radius: 3px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Quiet Console",
+    "overview": "HomeProxy is an OpenWrt proxy management plugin, and its interface is a control console first: a person comes here to read status, compare latency and loss, switch a node or a policy group, and leave. The visual system therefore optimizes for scanability, legibility of numbers, and calm restraint. It is not a marketing surface and never performs. Density is high by necessity but the surface stays quiet: whitespace is structural, and color appears only when it carries meaning. The palette is a semantic instrument — green means good, red means fault, amber means caution, blue is LuCI interaction/manual. Neutrals do the structural work: white cards float on wash-gray panels, and a carefully stepped gray text ramp keeps long lists readable. Craft shows up as precision, not ornament.",
+    "keyCharacteristics": [
+      "Semantic-only color: green/red/amber/blue each mean one thing.",
+      "Flat surfaces with one soft ambient shadow; 6–8px radii; 10px pill badges.",
+      "Number-first hierarchy: values bold and centered, labels muted and small.",
+      "LuCI-native: inherits the surrounding theme's fonts and controls.",
+      "Restraint over expression — density without noise."
+    ],
+    "rules": [
+      { "name": "The Signal-Only Rule", "body": "A color appears only when it encodes state — good, fault, caution, or manual. There is no decorative tint.", "section": "colors" },
+      { "name": "The Fault Red Rule", "body": "Fault Red (#d9534f / #e4574c) is forbidden as decoration or accent. It means a failed probe, a degraded node, or a danger action, and nothing else.", "section": "colors" },
+      { "name": "The Number-First Rule", "body": "In any metric row, the value is the largest and boldest thing; its label is small and muted. A column of values must scan vertically without reading the labels.", "section": "typography" },
+      { "name": "The Single-Shadow Rule", "body": "Exactly one ambient shadow exists (0 1px 4px rgba(0,0,0,.08)). Do not add a second elevation, a colored glow, or a hover drop shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do reserve green for good, red for fault, amber for caution, blue for manual/interaction — one meaning per hue.",
+      "Do keep values bold and centered above/below their muted labels so numeric columns scan vertically.",
+      "Do keep a single ambient shadow and 6–8px radii; use hairline dividers for separation.",
+      "Do set numeric cells to white-space: nowrap and left-align only the node-name column.",
+      "Do inherit LuCI theme fonts and form controls so the plugin reads as native router UI."
+    ],
+    "donts": [
+      "Don't tint a surface, card, or region unless the tint encodes state — no decorative fills.",
+      "Don't use gradients as page or card grounds; the one green-to-white header strip is the only exception.",
+      "Don't use large blocks of saturated color or heavy drop shadows; depth is tonal + one soft shadow only.",
+      "Don't use Fault Red as an accent or brand color — it means fault and nothing else.",
+      "Don't over-weight numbers or add a second elevation on hover; state changes are color + border, not shadow."
+    ]
+  }
+}

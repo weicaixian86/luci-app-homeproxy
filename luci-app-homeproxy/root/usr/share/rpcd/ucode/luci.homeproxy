@@ -2770,9 +2770,13 @@ const methods = {
 			/* 是否正在评分：评分器运行时创建 score_nodes.lock 目录。单轮仅几秒，
 			   界面多数时候看到的是 false（不显示「评分中」），符合语义。 */
 			const scoring = !!access('/var/run/homeproxy/score_nodes.lock');
+			/* 内核是否正在运行：评分卡片在「内核未运行」时展示的数据全是历史
+			   快照（节点延迟/丢包/评分都不代表当前可用性）。UI 据此在卡片区顶部
+			   显示阻断式告警，避免用户误读假评分（critique P1）。 */
+			const core_running = (system('pgrep -f "[s]ing-box run" >/dev/null 2>&1') === 0);
 
 			if (!length(score_tags))
-				return { result: true, groups: [], non_participate: non_participate, scoring: scoring };
+				return { result: true, groups: [], non_participate: non_participate, scoring: scoring, core_running: core_running };
 
 			/* 通过 Clash API 读各组的成员与当前选中 */
 			let proxies = null;
@@ -2879,7 +2883,7 @@ const methods = {
 				});
 			}
 
-			return { result: true, groups: groups, non_participate: non_participate, scoring: scoring };
+			return { result: true, groups: groups, non_participate: non_participate, scoring: scoring, core_running: core_running };
 		}
 	},
 

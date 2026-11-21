@@ -4572,3 +4572,21 @@ msgstr "速度"
 
 msgid "Yes"
 msgstr "是"
+
+msgid "Clear GitHub token (cannot be undone)"
+msgstr "清除 GitHub 令牌（不可撤销）"
+
+msgid "Clear GitHub token?"
+msgstr "清除 GitHub 令牌？"
+
+msgid "This will permanently remove the stored GitHub token. It cannot be undone. Resource-update checks that need the token will stop working until you enter a new one."
+msgstr "这会永久删除已保存的 GitHub 令牌，且不可撤销。在重新填写前，需要令牌的资源更新检查将停止工作。"
+
+msgid "Yes, clear it"
+msgstr "确认清除"
+
+msgid "sing-box core is not running."
+msgstr "sing-box 内核未运行。"
+
+msgid "The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data."
+msgstr "下方的评分与节点数据均为历史快照，不代表当前可用性。请启动服务以获取实时数据。"

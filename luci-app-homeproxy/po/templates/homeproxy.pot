@@ -4397,3 +4397,21 @@ msgstr ""
 
 msgid "Yes"
 msgstr ""
+
+msgid "Clear GitHub token (cannot be undone)"
+msgstr ""
+
+msgid "Clear GitHub token?"
+msgstr ""
+
+msgid "This will permanently remove the stored GitHub token. It cannot be undone. Resource-update checks that need the token will stop working until you enter a new one."
+msgstr ""
+
+msgid "Yes, clear it"
+msgstr ""
+
+msgid "sing-box core is not running."
+msgstr ""
+
+msgid "The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data."
+msgstr ""
