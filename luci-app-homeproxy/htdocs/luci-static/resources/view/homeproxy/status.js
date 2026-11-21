@@ -131,12 +131,21 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 .homeproxy-score-tbl th.nm { text-align: left; } \
 .homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: var(--hp-text-muted); \
 	display: flex; justify-content: space-between; align-items: center; } \
-.homeproxy-score-ft a { cursor: pointer; color: var(--hp-ok); font-weight: 600; } \
+.homeproxy-score-ft a { cursor: pointer; color: var(--hp-ok); font-weight: 600; display: inline-block; padding: 5px 8px; margin: -5px -8px; } \
 .homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: var(--hp-text-muted); } \
 .homeproxy-core-alert { margin: 0 auto 12px; max-width: 860px; padding: 10px 14px; \
 	border-radius: 8px; background: var(--hp-danger-bg); color: var(--hp-danger); font-size: 13px; line-height: 1.5; \
 	border: 1px solid var(--hp-danger-line); } \
-.homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: var(--hp-text-faint); }';
+.homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: var(--hp-text-faint); } \
+	/* 响应式（audit P1）：窄屏时排行表横向滚动而非裁切，指标行自动换行。 */	\
+	.homeproxy-score-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }	\
+	table.homeproxy-score-tbl { min-width: 640px; }	\
+	@media (max-width: 640px) {			\
+		.homeproxy-score-kv { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }			\
+		.homeproxy-score-kv .kv-sp { display: none; }			\
+		.homeproxy-score-kv .kv-cur { grid-column: 1 / -1; }			\
+	}			\
+	.homeproxy-connect-result { min-height: 24px; display: flex; align-items: center; }';
 
 function renderScoreCards() {
 	const callScoreStatus = rpc.declare({
@@ -260,7 +269,8 @@ function renderScoreCards() {
 						'— ' + _('ranked within this group; the row above is the current pick')
 					])
 				]) : '',
-				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
+				hasTop ? E('div', { 'class': 'homeproxy-score-scroll' }, [
+					E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
 						E('th', { 'class': 'rk' }, [ '#' ]), E('th', { 'class': 'nm' }, [ _('Node') ]),
 						E('th', { 'class': 'dl' }, [ _('Latency') ]),
@@ -269,7 +279,8 @@ function renderScoreCards() {
 						E('th', { 'class': 'dg' }, [ _('Degraded') ]),
 						E('th', { 'class': 'sc' }, [ _('Score') ])
 					]) ]),
-					E('tbody', {}, rows)
+						E('tbody', {}, rows)
+					])
 				]) : E('div', { 'class': 'homeproxy-score-nodata' }, [ _('No available node data yet.') ]),
 				E('div', { 'class': 'homeproxy-score-ft' }, [
 					E('span', {}, [ '%d'.format(g.total) + ' ' + _('members') ]),
