@@ -2851,9 +2851,15 @@ const methods = {
 
 				const ok_count = length(filter(list, (x) => x.ok));
 				/* 评分：优先用评分器持久化的算法分（多维评分，分越低越好）
-				   → 转成 0-100 质量分（quality = 100 - min(100, 分×50)，越高
-				   越好，与「评分」列语义一致）。评分器没跑过/成员失败时回退
-				   延迟映射（最优=100，每慢 8ms 减 1 分），保证有内容可显示。 */
+				   → 转成 0-100 质量分（quality = 100 - min(100, 分×SCORE_QUALITY_SCALE)，
+				   越高越好，与「评分」列语义一致）。评分器没跑过/成员失败时回退
+				   延迟映射（最优=100，每慢 8ms 减 1 分），保证有内容可显示。
+
+				   ⚠ 系数取 100（不是 50）：算法分在好节点区间高度聚集
+				   （237 现场 43 个有分节点：p00=0.0925、p25=0.1096、中位=0.1563、
+				   p90=0.3290）。×50 时前 10 名全被压成 95 分，Top3 之间完全看不出
+				   差距；×100 后前 10 名落在 89-91 三档、中位 84、最差 62，既保住
+				   「好节点高分」又不丢区分度。 */
 				for (let x in list) {
 					let sc = 0;
 					/* ⚠ 失败/无样本成员一律 0 分：state.members[].score 是评分器
@@ -2866,7 +2872,7 @@ const methods = {
 					else {
 						const alg = members_state[x.name]?.score ?? null;
 						if (alg != null)
-							sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+							sc = max(0, 100 - min(100, int(alg * 100 + 0.5)));
 						else if (best != null)
 							sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
 					}
@@ -2964,13 +2970,14 @@ const methods = {
 			}
 			for (let x in list) {
 				let sc = 0;
-				/* 同上：失败成员一律 0 分，绝不读残留的 score。 */
+				/* 同上：失败成员一律 0 分，绝不读残留的 score。
+				   系数与 score_status 保持一致（×100，见该处注释）。 */
 				if (!x.ok || x.delay == null)
 					sc = 0;
 				else {
 					const alg = ms[x.name]?.score ?? null;
 					if (alg != null)
-						sc = max(0, 100 - min(100, int(alg * 50 + 0.5)));
+						sc = max(0, 100 - min(100, int(alg * 100 + 0.5)));
 					else if (best != null)
 						sc = (x.delay <= best) ? 100 : max(0, 100 - int((x.delay - best) / 8));
 				}
