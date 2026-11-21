@@ -213,6 +213,36 @@
           "#e5e8eb",
           "#f6f7f8"
         ]
+      },
+      "fault-red-ink": {
+        "role": "tertiary",
+        "displayName": "Fault Red Ink",
+        "canonical": "#a12825",
+        "tonalRamp": [
+          "#3d1210",
+          "#5c1b18",
+          "#7d2420",
+          "#a8342f",
+          "#d9534f",
+          "#e68581",
+          "#f2b8b6",
+          "#fceaea"
+        ]
+      },
+      "caution-amber-ink": {
+        "role": "tertiary",
+        "displayName": "Caution Amber Ink",
+        "canonical": "#8a5a00",
+        "tonalRamp": [
+          "#3d2408",
+          "#5c360c",
+          "#804a10",
+          "#b06a00",
+          "#e08a1e",
+          "#eeb05c",
+          "#f6d3a0",
+          "#fdf2e2"
+        ]
       }
     },
     "typographyMeta": {

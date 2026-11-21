@@ -16,9 +16,9 @@
 const css = '				\
 	/* 设计令牌（DESIGN.md）：浅色为默认，深色随系统/主题类自动覆盖。 */	\
 	:root {--hp-surface:#fff;--hp-wash:#fafbfc;--hp-panel:#f4f6f9;--hp-inset:#e9edf2;--hp-line:#eee;--hp-line-soft:#f0f0f0;--hp-line-faint:#eef0f2;--hp-line-fainter:#f4f5f6;--hp-ok-grad-a:#f7fbf5;--hp-text-strong:#2c3138;--hp-text-body:#5a6470;--hp-text-muted:#65727f;--hp-text-faint:#6b7683;--hp-ok:#1b7a43;--hp-ok-deep:#2d6d2d;--hp-ok-mint:#e8f5e9;--hp-danger:#a12825;--hp-danger-bg:#fdecec;--hp-danger-line:#f5c2c0;--hp-warn:#8a5a00;--hp-focus:#4a7dff}				\
-	html[class*="dark"] {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#818b96;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+	html[class*="dark"] {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
 	@media (prefers-color-scheme: dark) {				\
-		:root {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#818b96;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+		:root {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#8b95a1;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
 	}				\
 	/* 键盘焦点环：token 化后统一补齐（audit P1） */				\
 	.homeproxy-connect-result:focus-visible, .homeproxy-score-ft a:focus-visible, .homeproxy-core-alert button:focus-visible {				\
@@ -61,12 +61,12 @@ const css = '				\
 	background: var(--hp-inset);		\
 }					\
 .homeproxy-connect-title {		\
-	color: var(--hp-text-muted);			\
+	color: var(--hp-text-body);			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
-.homeproxy-connect-time { margin-top: 1px; color: var(--hp-text-muted); font-size: 11px; line-height: 1.2; min-height: 13px; } \
+.homeproxy-connect-time { margin-top: 1px; color: var(--hp-text-body); font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
 	color: var(--hp-text-muted);			\

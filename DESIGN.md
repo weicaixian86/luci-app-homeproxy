@@ -12,6 +12,8 @@ colors:
   fault-red-soft: "#e4574c"
   fault-red-text: "#c5221f"
   fault-red-urgency: "#ff4d35"
+  fault-red-ink: "#a12825"
+  caution-amber-ink: "#8a5a00"
   caution-amber: "#e08a1e"
   caution-amber-text: "#b06a00"
   neutral-white: "#ffffff"
@@ -118,6 +120,7 @@ A semantic signal palette on a quiet gray-and-white structural base: color is in
 - **Brand Blue** (#2b5bd7): The interaction/primary-action color. It marks interactive controls and the manual-selection semantic — "manual" chips and LuCI action buttons both draw from it. Execution-type buttons that are merely repeatable actions (check / update / download) may sit as neutral outlined buttons so that blue stays a scarce "act now" signal. **Brand Blue Bright** (#4a7dff) is its soft fallback (`var(--primary, #4a7dff)`) when a theme token is absent.
 
 ### Tertiary
+- **Calibrated Ink Tokens** (`--hp-danger` #a12825, `--hp-warn` #8a5a00): WCAG AA-calibrated text values derived from Fault Red and Caution Amber, used by the score console's inline styles (danger text on white ≈7.4:1; warn on inset ≈5:1). Dark-theme ink values ship alongside in the token block.
 - **Caution Amber** (#e08a1e): Reserved for "caution/auto" state — auto-selection tags and non-fatal warnings. **Caution Amber Text** (#b06a00) is its legible text pair.
 
 ### Neutral

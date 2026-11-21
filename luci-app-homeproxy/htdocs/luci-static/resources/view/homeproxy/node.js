@@ -305,7 +305,7 @@ const SubscriptionList = form.Value.extend({
 		   than the input columns and the second label drifts left. */
 		rows.appendChild(E('div', {
 			'class': 'homeproxy-subscription-header',
-			'style': rowStyle + ' align-items: end; color: var(--text-muted, #6b7683);'
+			'style': rowStyle + ' align-items: end; color: var(--hp-text-faint, #6b7683);'
 		}, [
 			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription name') ]),
 			E('span', { 'style': 'font-size: 90%;' }, [ _('Subscription URL') ]),
