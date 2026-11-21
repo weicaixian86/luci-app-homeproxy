@@ -53,12 +53,29 @@ config_list_foreach subscription subscription_url handle_url
 
 # fetch：先直连；失败走本机 mixed 入站回环代理——内核 provider 的默认出站
 # 就是这条链（机场域名常被墙，直连抖动时这条兜底保住镜像刷新）。
+# 同时抓响应头：流量/到期（subscription-userinfo: upload=…;download=…;…）
+# 不在 body 里；内核 provider 从响应头解析它并写进缓存首行，面板据此显示
+# 流量/到期。我们把同一行透传到镜像/缓存首行，流量信息才能保住。
+LAST_UI=""
 fetch_sub() {
-	local u="$1" b=""
-	b="$(curl -sS -m 15 --compressed -A "$UA" "$u" 2>/dev/null)"
-	[ -n "$b" ] && { printf '%s' "$b"; return 0; }
-	b="$(curl -sS -m 20 --compressed -x "http://127.0.0.1:${MIXED_PORT:-5330}" -A "$UA" "$u" 2>/dev/null)"
-	[ -n "$b" ] && printf '%s' "$b"
+	local u="$1" b="" hdr="$RUN_DIR/mirror-hdr.$$"
+	LAST_UI=""
+	b="$(curl -sS -m 15 --compressed -D "$hdr" -A "$UA" "$u" 2>/dev/null)"
+	if [ -z "$b" ]; then
+		b="$(curl -sS -m 20 --compressed -D "$hdr" -x "http://127.0.0.1:${MIXED_PORT:-5330}" -A "$UA" "$u" 2>/dev/null)"
+	fi
+	if [ -n "$b" ]; then
+		# 从响应头提取 subscription-userinfo（去掉 CR）
+		local line
+		line="$(grep -i '^subscription-userinfo:' "$hdr" 2>/dev/null | head -1 | sed 's/^[Ss]ubscription-[Uu]serinfo:[[:space:]]*//' | tr -d '\r')"
+		case "$line" in
+			upload=*|download=*|expire=*|total=*) LAST_UI="$line" ;;
+		esac
+		rm -f "$hdr" 2>/dev/null
+		printf '%s' "$b"
+		return 0
+	fi
+	rm -f "$hdr" 2>/dev/null
 	return 0
 }
 
@@ -89,13 +106,19 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 		continue
 	fi
 
-	# 首行是 userinfo（upload=…;download=…;total=…;expire=…）时单独保留：
-	# 内核 provider 靠它刷新面板的流量/到期信息，必须原样透传。
-	ui="$(printf '%s\n' "$body" | head -n 1)"
-	case "$ui" in
-		upload=*|download=*|expire=*|total=*) rest="$(printf '%s\n' "$body" | tail -n +2)" ;;
-		*) ui="" ; rest="$body" ;;
-	esac
+	# 流量/到期（userinfo）优先用 fetch_sub 刚从订阅 HTTP 响应头抓到的
+	# subscription-userinfo（init.d 会在启动前删旧缓存，不能依赖缓存文件）。
+	ui="$LAST_UI"
+	if [ -z "$ui" ]; then
+		# 回退：响应头没有时，从旧缓存首行取（手动刷新场景，缓存还在）
+		seed="$HP_DIR/providers/$hash.sub"
+		if [ -f "$seed" ]; then
+			seed_ui="$(head -n 1 "$seed" 2>/dev/null)"
+			case "$seed_ui" in
+				upload=*|download=*|expire=*|total=*) ui="$seed_ui" ;;
+			esac
+		fi
+	fi
 
 	# 解码/过滤/编码交给 ucode helper（busybox 无可用 base64 工具，openssl
 	# 的 base64 在本机亦不可用；ucode 的 b64dec/b64enc + luci.http.urldecode
@@ -116,14 +139,25 @@ printf '%s\n' "$URLS" | while IFS= read -r url; do
 		continue
 	fi
 
-	n_before=0
+	# 写两处：
+	#   ① providers-mirror/<hash>.sub —— provider url（127.0.0.1:8595）拉取用
+	#   ② providers/<hash>.sub —— provider 的 initial_path 缓存。内核启动优先
+	#      读缓存，若这里还是旧的未过滤内容，垃圾节点就会直达面板；同时缓存
+	#      首行的 userinfo 是面板流量/到期的唯一来源，必须保留。
 	{
 		[ -n "$ui" ] && printf '%s\n' "$ui"
 		printf '%s\n' "$b64"
 	} > "$mirror.tmp" 2>/dev/null
 	mv "$mirror.tmp" "$mirror" 2>/dev/null
 
-	log "$hash: 镜像已刷新（ucode 过滤完成，mode=$MODE）。"
+	mkdir -p "$HP_DIR/providers" 2>/dev/null
+	{
+		[ -n "$ui" ] && printf '%s\n' "$ui"
+		printf '%s\n' "$b64"
+	} > "$seed.tmp" 2>/dev/null
+	mv "$seed.tmp" "$seed" 2>/dev/null
+
+	log "$hash: 镜像+缓存已刷新（ucode 过滤完成，userinfo=$( [ -n "$ui" ] && echo 保留 || echo 无)，mode=$MODE）。"
 done
 
 exit 0
