@@ -4452,8 +4452,6 @@ msgstr ""
 msgid "Stale snapshot — core not running"
 msgstr ""
 
-msgid "Checking…"
-msgstr ""
 
 msgid "Start service"
 msgstr ""
@@ -4465,4 +4463,7 @@ msgid "Restarting, page will refresh…"
 msgstr ""
 
 msgid "ranked within this group; the row above is the current pick"
+msgstr ""
+
+msgid "Not found"
 msgstr ""

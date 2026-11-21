@@ -418,7 +418,7 @@ function renderConnCards() {
 			case 'cert':    return _('Certificate error');
 			case 'reset':   return _('Connection reset');
 			case 'empty':   return _('Empty reply');
-			default:        return ret.error ? _('Failed') : _('Failed');
+			default:        return _('Failed');
 			}
 		};
 
@@ -477,7 +477,7 @@ function renderConnCards() {
 		'click': ui.createHandlerFn(this, () => {
 			const label = _('Check all');
 			allBtn.disabled = true;
-			allBtn.textContent = _('Checking…');
+			allBtn.textContent = _('Checking...', 'homeproxy');
 			const done = () => { allBtn.disabled = false; allBtn.textContent = label; };
 			const ps = checkFns.map((fn) => L.resolveDefault(Promise.resolve().then(fn), {}));
 			return Promise.all(ps).then(done, done);
@@ -627,8 +627,8 @@ function getResVersion(o, type) {
 		let spanTemp = E('div', { 'style': 'cbi-value-field' }, [
 			btnEl,
 			' ',
-			E('strong', { 'style': (res.error ? 'color:red' : 'color:green') },
-				[ res.error ? 'not found' : res.version ]
+			E('strong', { 'style': (res.error ? 'color:var(--hp-danger)' : 'color:var(--hp-ok)') },
+				[ res.error ? _('Not found') : res.version ]
 			),
 		]);
 
@@ -809,7 +809,7 @@ return view.extend({
 		const self = this;
 		let polling = false;
 
-		const statusEl = E('strong', { 'style': 'color:var(--hp-text-muted)', 'aria-live': 'polite' }, [ _('loading...') ]);
+		const statusEl = E('strong', { 'style': 'color:var(--hp-text-muted)', 'aria-live': 'polite' }, [ _('Loading...') ]);
 
 		function showResult(res) {
 			polling = false;

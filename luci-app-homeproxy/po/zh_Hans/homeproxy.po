@@ -4627,8 +4627,6 @@ msgstr "全部检测"
 msgid "Stale snapshot — core not running"
 msgstr "历史快照 — 内核未运行"
 
-msgid "Checking…"
-msgstr "检测中…"
 
 msgid "Start service"
 msgstr "启动服务"
@@ -4641,3 +4639,6 @@ msgstr "正在重启，页面将自动刷新…"
 
 msgid "ranked within this group; the row above is the current pick"
 msgstr "组内排行；上方为当前选中节点"
+
+msgid "Not found"
+msgstr "未找到"
