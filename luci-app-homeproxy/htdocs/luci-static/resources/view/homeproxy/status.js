@@ -14,6 +14,16 @@
 'require homeproxy as hp';
 
 const css = '				\
+	/* 设计令牌（DESIGN.md）：浅色为默认，深色随系统/主题类自动覆盖。 */	\
+	:root {--hp-surface:#fff;--hp-wash:#fafbfc;--hp-panel:#f4f6f9;--hp-inset:#e9edf2;--hp-line:#eee;--hp-line-soft:#f0f0f0;--hp-line-faint:#eef0f2;--hp-line-fainter:#f4f5f6;--hp-ok-grad-a:#f7fbf5;--hp-text-strong:#2c3138;--hp-text-body:#5a6470;--hp-text-muted:#65727f;--hp-text-faint:#6b7683;--hp-ok:#1b7a43;--hp-ok-deep:#2d6d2d;--hp-ok-mint:#e8f5e9;--hp-danger:#a12825;--hp-danger-bg:#fdecec;--hp-danger-line:#f5c2c0;--hp-warn:#8a5a00;--hp-focus:#4a7dff}				\
+	html[class*="dark"] {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#818b96;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+	@media (prefers-color-scheme: dark) {				\
+		:root {--hp-surface:#242930;--hp-wash:#1d2126;--hp-panel:#2b3138;--hp-inset:#2e343b;--hp-line:#3a4149;--hp-line-soft:#333a41;--hp-line-faint:#3d434b;--hp-line-fainter:#30363d;--hp-ok-grad-a:#222b24;--hp-text-strong:#e6e9ed;--hp-text-body:#b6bec7;--hp-text-muted:#97a1ac;--hp-text-faint:#818b96;--hp-ok:#4cc487;--hp-ok-deep:#82d4a8;--hp-ok-mint:#1e3428;--hp-danger:#e0706c;--hp-danger-bg:#3a2325;--hp-danger-line:#5c3234;--hp-warn:#d9a441;--hp-focus:#7ba2ff}				\
+	}				\
+	/* 键盘焦点环：token 化后统一补齐（audit P1） */				\
+	.homeproxy-connect-result:focus-visible, .homeproxy-score-ft a:focus-visible, .homeproxy-core-alert button:focus-visible {				\
+		outline: 2px solid var(--hp-focus); outline-offset: 2px;				\
+	}				\
 .homeproxy-connect-grid {		\
 	display: grid;			\
 	grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));\
@@ -27,7 +37,7 @@ const css = '				\
 	min-height: 64px;		\
 	padding: 8px 10px;		\
 	border-radius: 6px;		\
-	background: #fff;		\
+	background: var(--hp-surface);		\
 	box-shadow: 0 1px 4px rgba(0, 0, 0, .08);\
 }					\
 .homeproxy-connect-icon {		\
@@ -37,7 +47,7 @@ const css = '				\
 	width: 38px;			\
 	height: 38px;			\
 	border-radius: 50%;		\
-	background: #f4f6f9;		\
+	background: var(--hp-panel);		\
 }					\
 .homeproxy-connect-icon svg {		\
 	display: block;			\
@@ -48,18 +58,18 @@ const css = '				\
 	min-height: 42px;		\
 	padding: 7px 12px;		\
 	border-radius: 8px;		\
-	background: #e9edf2;		\
+	background: var(--hp-inset);		\
 }					\
 .homeproxy-connect-title {		\
-	color: #6b7683;			\
+	color: var(--hp-text-muted);			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
-.homeproxy-connect-time { margin-top: 1px; color: #6b7683; font-size: 11px; line-height: 1.2; min-height: 13px; } \
+.homeproxy-connect-time { margin-top: 1px; color: var(--hp-text-muted); font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
-	color: #6b7683;			\
+	color: var(--hp-text-muted);			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	cursor: pointer;		\
@@ -74,7 +84,7 @@ const css = '				\
 	margin: 0 auto;			\
 }						\
 .homeproxy-score-card {				\
-	background: #fff;			\
+	background: var(--hp-surface);			\
 	border-radius: 8px;			\
 	box-shadow: 0 1px 4px rgba(0,0,0,.08);	\
 	overflow: hidden;			\
@@ -82,51 +92,51 @@ const css = '				\
 .homeproxy-score-hd {				\
 	display: flex; align-items: center; justify-content: space-between; \
 	padding: 12px 16px;			\
-	border-bottom: 1px solid #eee;		\
-	background: linear-gradient(90deg,#f7fbf5,#fff); \
+	border-bottom: 1px solid var(--hp-line);		\
+	background: linear-gradient(90deg,var(--hp-ok-grad-a),var(--hp-surface)); \
 }						\
 .homeproxy-score-hd .ttl { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } \
 .homeproxy-score-hd h4 { margin: 0; font-size: 16px; font-weight: 700; } \
-.homeproxy-score-hd .mode { font-size: 12.5px; color: #6b7683; } \
-.homeproxy-score-hd .stat { font-size: 12.5px; color: #6b7683; white-space: nowrap; } \
-.homeproxy-score-hd .stat-avail { color: #2d6d2d; font-weight: 600; } \
-.homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
+.homeproxy-score-hd .mode { font-size: 12.5px; color: var(--hp-text-muted); } \
+.homeproxy-score-hd .stat { font-size: 12.5px; color: var(--hp-text-muted); white-space: nowrap; } \
+.homeproxy-score-hd .stat-avail { color: var(--hp-ok-deep); font-weight: 600; } \
+.homeproxy-score-badge { font-size: 12px; background: var(--hp-ok-mint); color: var(--hp-ok-deep); \
 	padding: 2px 10px; border-radius: 10px; font-weight: 600; white-space: nowrap; } \
  .homeproxy-score-kv { display: grid; \
 	grid-template-columns: 40px minmax(0, 1fr) 116px 68px 112px 74px 64px; \
 	align-items: end; box-sizing: border-box; \
-	border-bottom: 1px solid #f0f0f0; } \
+	border-bottom: 1px solid var(--hp-line-soft); } \
 .homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \
 	align-items: center; text-align: center; padding: 14px 18px; box-sizing: border-box; } \
-.homeproxy-score-kv > div > span { color: #6b7683; font-size: 12px; white-space: nowrap; } \
-.homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } \
-.homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
+.homeproxy-score-kv > div > span { color: var(--hp-text-muted); font-size: 12px; white-space: nowrap; } \
+.homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: var(--hp-text-strong); white-space: nowrap; } \
+.homeproxy-score-kv b.hl { color: var(--hp-ok); font-size: 20px; } \
  .homeproxy-score-kv .kv-cur { min-width: 0; max-width: 100%; align-items: flex-start; text-align: left; } \
 .homeproxy-score-kv .kv-cur > b { font-size: 15px; font-weight: 600; overflow: hidden; \
 	text-overflow: ellipsis; white-space: nowrap; max-width: 100%; } \
-.homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #6b7683; font-weight: 600; letter-spacing: .3px; } \
+.homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: var(--hp-text-muted); font-weight: 600; letter-spacing: .3px; } \
 table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; } \
-.homeproxy-score-tbl th { text-align: center; padding: 7px 18px; color: #6b7683; \
-	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
-.homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid #f4f5f6; } \
+.homeproxy-score-tbl th { text-align: center; padding: 7px 18px; color: var(--hp-text-muted); \
+	font-weight: 600; font-size: 12.5px; background: var(--hp-wash); border-bottom: 1px solid var(--hp-line-faint); } \
+.homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid var(--hp-line-fainter); } \
 .homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
-.homeproxy-score-tbl .rk { width: 40px; color: #b0b7bf; text-align: center; } \
-.homeproxy-score-tbl .dl { width: 116px; white-space: nowrap; text-align: center; color: #5a6470; } \
-.homeproxy-score-tbl .sc { width: 64px; text-align: center; color: #1f8a4c; font-weight: 700; } \
-.homeproxy-score-tbl .ls { width: 68px; white-space: nowrap; text-align: center; color: #5a6470; } \
-.homeproxy-score-tbl .sp { width: 112px; white-space: nowrap; text-align: center; color: #5a6470; } \
+.homeproxy-score-tbl .rk { width: 40px; color: var(--hp-text-faint); text-align: center; } \
+.homeproxy-score-tbl .dl { width: 116px; white-space: nowrap; text-align: center; color: var(--hp-text-body); } \
+.homeproxy-score-tbl .sc { width: 64px; text-align: center; color: var(--hp-ok); font-weight: 700; } \
+.homeproxy-score-tbl .ls { width: 68px; white-space: nowrap; text-align: center; color: var(--hp-text-body); } \
+.homeproxy-score-tbl .sp { width: 112px; white-space: nowrap; text-align: center; color: var(--hp-text-body); } \
 .homeproxy-score-tbl .dg { width: 74px; text-align: center; } \
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
 /* 表头与数据上下对齐：序号/延迟/评分表头居中，节点列表头左对齐（与数据一致） */ \
 .homeproxy-score-tbl th.nm { text-align: left; } \
-.homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #6b7683; \
+.homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: var(--hp-text-muted); \
 	display: flex; justify-content: space-between; align-items: center; } \
-.homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
-.homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #6b7683; } \
+.homeproxy-score-ft a { cursor: pointer; color: var(--hp-ok); font-weight: 600; } \
+.homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: var(--hp-text-muted); } \
 .homeproxy-core-alert { margin: 0 auto 12px; max-width: 860px; padding: 10px 14px; \
-	border-radius: 8px; background: #fdecec; color: #a12825; font-size: 13px; line-height: 1.5; \
-	border: 1px solid #f5c2c0; } \
-.homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: #b0b7bf; }';
+	border-radius: 8px; background: var(--hp-danger-bg); color: var(--hp-danger); font-size: 13px; line-height: 1.5; \
+	border: 1px solid var(--hp-danger-line); } \
+.homeproxy-score-nodata { padding: 10px 18px 14px; font-size: 13px; color: var(--hp-text-faint); }';
 
 function renderScoreCards() {
 	const callScoreStatus = rpc.declare({
@@ -164,7 +174,7 @@ function renderScoreCards() {
 				E('td', { 'class': 'dl' }, [ m.ok ? '%d ms'.format(m.delay) : _('Timeout / failed') ]),
 				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
 				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
-				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:#d9534f' }, [ _('Yes') ]) : '—' ]),
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:var(--hp-danger)' }, [ _('Yes') ]) : '—' ]),
 				E('td', { 'class': 'sc' }, [ String(m.score) ])
 			]));
 			ui.showModal(group, [
@@ -208,8 +218,8 @@ function renderScoreCards() {
 				E('td', { 'class': 'dl' }, [ '%d ms'.format(m.delay) ]),
 				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
 				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
-				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:#d9534f' }, [ _('Yes') ]) : '—' ]),
-				E('td', { 'class': 'sc', 'style': core_running ? '' : 'color:#b0b7bf' }, [ String(m.score) ])
+				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:var(--hp-danger)' }, [ _('Yes') ]) : '—' ]),
+				E('td', { 'class': 'sc', 'style': core_running ? '' : 'color:var(--hp-text-faint)' }, [ String(m.score) ])
 			]));
 			const hasTop = rows.length > 0;
 			/* 上次评分时间：年月日 + 时:分（秒不显示） */
@@ -239,8 +249,8 @@ function renderScoreCards() {
 					E('div', {}, [ E('span', {}, [ _('Latency') ]), E('b', {}, [ g.now_delay != null ? '%d ms'.format(g.now_delay) : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Loss') ]), E('b', {}, [ fmtLoss({ loss: g.now_loss }) ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Speed') ]), E('b', {}, [ fmtSpeed({ speed: g.now_speed }) ]) ]),
-					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:#d9534f' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
-					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl', 'style': core_running ? '' : 'color:#b0b7bf', 'title': core_running ? '' : _('Stale snapshot — core not running') }, [ String(g.score) ]) ])
+					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:var(--hp-danger)' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
+					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl', 'style': core_running ? '' : 'color:var(--hp-text-faint)', 'title': core_running ? '' : _('Stale snapshot — core not running') }, [ String(g.score) ]) ])
 				]),
 				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [
 					_('Top 3 by score'),
@@ -393,7 +403,7 @@ function renderConnCards() {
 		const lastCheckEl = E('span', { 'class': 'homeproxy-connect-time' }, [ ]);   /* P1 上次检测时间 */
 		const runConnCheck = () => {
 			result.textContent = _('Checking...', 'homeproxy');
-			result.style.setProperty('color', '#f0ad4e');
+			result.style.setProperty('color', 'var(--hp-warn)');
 			result.title = _('Checking...', 'homeproxy');
 
 			return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
@@ -403,7 +413,7 @@ function renderConnCards() {
 				if (ret.result && ret.latency != null) {
 					/* 成功态用中性深灰（配 ✓ 图标已足够表达"通"），把 Signal Green
 					   独占给「最佳得分」——修复绿语义被拉伸成 3 义。 */
-					result.style.setProperty('color', '#2c3138');
+					result.style.setProperty('color', 'var(--hp-text-strong)');
 					result.textContent = '✓ %s ms'.format(ret.latency);
 					result.title = _('HTTP request latency: %s ms (handshake excluded)')
 						.format(ret.latency)
@@ -411,7 +421,7 @@ function renderConnCards() {
 						+ '\n' + _('Time to first byte: %s ms').format(ret.total)
 						+ '\n' + _('HTTP status code: %s').format(ret.code);
 				} else {
-					result.style.setProperty('color', '#a12825');
+					result.style.setProperty('color', 'var(--hp-danger)');
 					/* 主标签只留语义词；curl 原始退出码挪进 tooltip，别推给普通用户。 */
 					result.textContent = '✕ ' + failLabel(ret);
 					result.title = failLabel(ret) + (ret.curl_rc ? '\n' + _('curl exit code: %s').format(ret.curl_rc) : '')
@@ -545,6 +555,10 @@ function getResVersion(o, type) {
 				};
 
 				const poll = function() {
+					/* 卸载守卫：页面已离开就停止轮询（对照 core 轮询的
+					   document.body.contains 做法，audit P2）。 */
+					if (!document.body.contains(btnEl))
+						return finish(null, null);
 					if (Date.now() - started_at > DEADLINE_MS)
 						return finish(null, null);
 
@@ -773,7 +787,7 @@ return view.extend({
 		const self = this;
 		let polling = false;
 
-		const statusEl = E('strong', { 'style': 'color:#6b7683' }, [ _('loading...') ]);
+		const statusEl = E('strong', { 'style': 'color:var(--hp-text-muted)', 'aria-live': 'polite' }, [ _('loading...') ]);
 
 		function showResult(res) {
 			polling = false;
@@ -826,6 +840,7 @@ return view.extend({
 				}
 
 				L.resolveDefault(callCoreProgress(), {}).then((res) => {
+					tick.err_n = 0;   /* 成功响应即清零重试计数 */
 					if (res.running) {
 						const line = coreLastLogLine(res.log);
 						if (line)
@@ -837,7 +852,14 @@ return view.extend({
 				}).catch(() => {
 					/* A transient rpc error (rpcd restart, page reload race)
 					   must not orphan a download that is still running on the
-					   router: keep polling instead of declaring failure. */
+					   router: keep polling instead of declaring failure —
+					   but cap retries so a dead rpcd doesn't spin forever
+					   (audit P2: 无限重试 → 上限 20 次 ≈ 60s 后停止）。 */
+					tick.err_n = (tick.err_n || 0) + 1;
+					if (tick.err_n > 20) {
+						polling = false;
+						return;
+					}
 					window.setTimeout(tick, CORE_POLL_INTERVAL);
 				});
 			};

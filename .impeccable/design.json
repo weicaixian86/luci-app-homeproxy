@@ -7,7 +7,7 @@
       "signal-green": {
         "role": "primary",
         "displayName": "Signal Green",
-        "canonical": "#1f8a4c",
+        "canonical": "#1b7a43",
         "tonalRamp": [
           "#0c2b19",
           "#144a2b",
@@ -187,7 +187,7 @@
       "text-muted": {
         "role": "neutral",
         "displayName": "Text Muted",
-        "canonical": "#6b7683",
+        "canonical": "#65727f",
         "tonalRamp": [
           "#1f2327",
           "#3a4149",
@@ -202,7 +202,7 @@
       "text-faint": {
         "role": "neutral",
         "displayName": "Text Faint",
-        "canonical": "#b0b7bf",
+        "canonical": "#6b7683",
         "tonalRamp": [
           "#23272b",
           "#41474d",

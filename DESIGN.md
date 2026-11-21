@@ -2,7 +2,7 @@
 name: HomeProxy for LuCI
 description: Sing-box proxy management for OpenWrt — a quiet, precise control console.
 colors:
-  signal-green: "#1f8a4c"
+  signal-green: "#1b7a43"
   signal-green-soft: "#2eb872"
   signal-green-mint: "#e8f5e9"
   signal-green-deep: "#2d6d2d"
@@ -22,8 +22,8 @@ colors:
   neutral-line-soft: "#f0f0f0"
   text-strong: "#2c3138"
   text-body: "#5a6470"
-  text-muted: "#6b7683"
-  text-faint: "#b0b7bf"
+  text-muted: "#65727f"
+  text-faint: "#6b7683"
   text-dim: "#8a949e"
 typography:
   display:
@@ -112,7 +112,7 @@ Craft shows up as precision, not ornament. Cards sit on a single soft ambient sh
 A semantic signal palette on a quiet gray-and-white structural base: color is instrumentation, never decoration.
 
 ### Primary
-- **Signal Green** (#1f8a4c): The dominant meaning color. Used for the best score, healthy state, success text, the score column, and the "View all" affordance. Its mint companion **Signal Green Mint** (#e8f5e9) fills the "Scoring"/status pill background, and **Signal Green Deep** (#2d6d2d) is its readable text pair. **Signal Green Soft** (#2eb872) is the live "ok" status dot.
+- **Signal Green** (#1b7a43, deepened from #1f8a4c for WCAG AA at 14px): The dominant meaning color. Used for the best score, healthy state, success text, the score column, and the "View all" affordance. Its mint companion **Signal Green Mint** (#e8f5e9) fills the "Scoring"/status pill background, and **Signal Green Deep** (#2d6d2d) is its readable text pair. **Signal Green Soft** (#2eb872) is the live "ok" status dot.
 
 ### Secondary
 - **Brand Blue** (#2b5bd7): The interaction/primary-action color. It marks interactive controls and the manual-selection semantic — "manual" chips and LuCI action buttons both draw from it. Execution-type buttons that are merely repeatable actions (check / update / download) may sit as neutral outlined buttons so that blue stays a scarce "act now" signal. **Brand Blue Bright** (#4a7dff) is its soft fallback (`var(--primary, #4a7dff)`) when a theme token is absent.
@@ -127,8 +127,8 @@ A semantic signal palette on a quiet gray-and-white structural base: color is in
 - **Hairline** (#eee, #f0f0f0): 1px dividers and card borders; the only borders in the system.
 - **Text Strong** (#2c3138): metric values and headings.
 - **Text Body** (#5a6470): table cell content (latency, loss, speed).
-- **Text Muted** (#6b7683): labels, column headers, secondary metadata — darkened from #9aa3ad to reach WCAG AA 4.5:1 on white.
-- **Text Faint** (#b0b7bf) and **Text Dim** (#8a949e): rank numbers, footer, least-important hints.
+- **Text Muted** (#65727f): labels, column headers, secondary metadata — calibrated for WCAG AA 4.5:1 on both white and #fafbfc surfaces.
+- **Text Faint** (#6b7683): rank numbers, nodata hints, stale-snapshot graying (all calibrated to ≥4.6:1 on white; the old #b0b7bf/#8a949e/#999/#7d8aa0 grays were collapsed into this one AA-safe value).
 
 ### Named Rules
 **The Signal-Only Rule.** A color appears only when it encodes state — good, fault, caution, or manual. There is no decorative tint. If a region is colored, it is saying something.
@@ -159,7 +159,7 @@ Spacing rhythm is tight and structural: 3px inside stacked label/value pairs, 8p
 
 ## Elevation & Depth
 
-Flat by default, one ambient layer. Surfaces are flat at rest; a single soft shadow (`0 1px 4px rgba(0, 0, 0, .08)`) lifts cards off the wash-gray page, and depth beyond that is conveyed tonally through the neutral steps (#fafbfc → #f4f6f9 → #e9edf2) rather than by stacking shadows. There are no raised buttons, no inset shadows, no multi-layer elevation.
+Flat by default, one ambient layer. **Implementation note:** all of the above ships as CSS custom properties (`--hp-surface`, `--hp-text-muted`, `--hp-ok`, `--hp-danger`, `--hp-warn`, …) defined in the view's injected stylesheet, with a full dark-theme override set under both `@media (prefers-color-scheme: dark)` and `html[class*="dark"]` — so dark LuCI themes (argon/bootstrap-dark) render correctly instead of showing white blocks. Surfaces are flat at rest; a single soft shadow (`0 1px 4px rgba(0, 0, 0, .08)`) lifts cards off the wash-gray page, and depth beyond that is conveyed tonally through the neutral steps (#fafbfc → #f4f6f9 → #e9edf2) rather than by stacking shadows. There are no raised buttons, no inset shadows, no multi-layer elevation.
 
 ### Named Rules
 **The Single-Shadow Rule.** Exactly one ambient shadow exists (`0 1px 4px rgba(0,0,0,.08)`). Do not add a second elevation level, a colored glow, or a drop shadow on hover — state changes are expressed with color and border, not with elevation.
