@@ -73,4 +73,10 @@ fi
 
 [ "$rc" = "0" ] || log "订阅更新脚本以非 0 退出（rc=$rc），明细见上面的 [SUBSCRIBE] 行"
 
+# 方案 B：订阅内容可能变了，刷新 provider 过滤镜像（内核 provider 从
+# 127.0.0.1 镜像拉订阅，不过滤的原始内容进不了内核）。--force 同步最新。
+if [ -f "$SCRIPTS_DIR/update_provider_mirror.sh" ]; then
+	/bin/sh "$SCRIPTS_DIR/update_provider_mirror.sh" --force >>"$LOG_FILE" 2>&1
+fi
+
 log "==== 定时任务结束：用时 $(( $(date +%s) - started )) 秒 ===="

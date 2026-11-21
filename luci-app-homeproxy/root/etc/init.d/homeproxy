@@ -1331,6 +1331,17 @@ start_service() {
 	tz_setup_core
 
 	if [ "$outbound_node" != "nil" ]; then
+		# 方案 B（provider 过滤镜像）：内核 provider 无节点过滤字段，原始订阅会让
+		# 机场的「如果/客户端太旧/请到网站…」提示节点直达面板。这里先刷新镜像
+		# （脚本内有 1h 缓存：频繁 reload 不会反复拉订阅；拉取失败保留旧镜像），
+		# 生成器随后把 provider 的 url 指向镜像（见 generate_client.uc 的
+		# provider_mirror_url）——镜像缺失时生成器自动退回原始 URL。
+		if [ -f "$HP_DIR/scripts/update_provider_mirror.sh" ]; then
+			mkdir -p "$HP_DIR/providers-mirror"
+			# 同步调用（非后台派生），不需要 exec 1000>&-：子进程随本语句
+			# 结束即退出，不会持有 rc.common 的 procd 锁 fd（1000）。
+			/bin/sh "$HP_DIR/scripts/update_provider_mirror.sh" >/dev/null 2>&1 || true
+		fi
 		# Generate/Validate client config
 		# Capture ucode's stderr to the log with ANSI escapes stripped.
 		append_err_stripped ucode -S "$HP_DIR/scripts/generate_client.uc"
@@ -1546,6 +1557,17 @@ start_service() {
 	procd_set_param command /bin/sh "$HP_DIR/scripts/clean_log.sh"
 	procd_set_param respawn
 	procd_close_instance
+
+	# 方案 B：回环 uhttpd——向内核 provider 提供「已过滤订阅」镜像。仅绑定
+	# 127.0.0.1:8595，局域网不可达，订阅内容（含机场 token）不出本机。内核
+	# 侧拉取发生在服务启动之后，procd 同批拉起不存在竞态；镜像缺失时生成器
+	# 会让 provider 退回原始 URL，此实例空转无害。
+	if [ -d "$HP_DIR/providers-mirror" ]; then
+		procd_open_instance "provider-mirror"
+		procd_set_param command /usr/sbin/uhttpd -p 127.0.0.1:8595 -h "$HP_DIR/providers-mirror" -f
+		procd_set_param respawn
+		procd_close_instance
+	fi
 
 	case "$routing_mode" in
 	"custom")

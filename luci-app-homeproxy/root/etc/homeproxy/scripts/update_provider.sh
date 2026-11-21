@@ -151,6 +151,10 @@ else
 fi
 
 if [ "$rc" -eq 0 ]; then
+	# 方案 B：该机场的订阅内容可能已变，强制刷新过滤镜像（内核 provider 从
+	# 本机镜像拉取，见 update_provider_mirror.sh 头注）。
+	[ -f "$HP_DIR/scripts/update_provider_mirror.sh" ] && \
+		/bin/sh "$HP_DIR/scripts/update_provider_mirror.sh" --force >/dev/null 2>&1
 	log "机场更新完成（${PROVIDER_ID}）。"
 else
 	log "机场更新失败（${PROVIDER_ID}），更新脚本返回码 ${rc}，详见上方日志。"

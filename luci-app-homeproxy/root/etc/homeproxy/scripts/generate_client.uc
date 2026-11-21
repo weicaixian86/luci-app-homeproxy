@@ -1020,6 +1020,30 @@ function provider_seed_path(group_hash) {
 	return sprintf('%s/providers/%s.sub', HP_DIR, group_hash);
 }
 
+function provider_mirror_path(group_hash) {
+	return sprintf('%s/providers-mirror/%s.sub', HP_DIR, group_hash);
+}
+
+function provider_mirror_exists(group_hash) {
+	let fp = null;
+	try {
+		fp = open(provider_mirror_path(group_hash), 'r');
+	} catch (e) {
+		return false;
+	}
+	if (!fp)
+		return false;
+	try { fp.close(); } catch (e) {}
+	return true;
+}
+
+/* 方案 B：内核 provider 无节点过滤能力，让 provider 改从本机回环镜像
+   （init.d 起的 uhttpd 实例，仅 127.0.0.1 可达）拉取「已按导入同一套关键词
+   过滤」的订阅内容；镜像缺失时退回原始 URL（行为同旧版）。 */
+function provider_mirror_url(group_hash) {
+	return sprintf('http://127.0.0.1:8595/%s.sub', group_hash);
+}
+
 function provider_seed_exists(group_hash) {
 	let fp = null;
 	try {
@@ -1096,7 +1120,9 @@ function build_native_providers() {
 		push(providers, {
 			type: 'remote',
 			tag: unique_provider_name(subscription_provider_name(subscription_name), used_names),
-			url: url,
+			/* 方案 B：镜像存在 → provider 拉本机过滤镜像（垃圾节点进不了内核）；
+			   镜像缺失（首启动拉取失败等）→ 退回原始 URL，行为同旧版。 */
+			url: provider_mirror_exists(group_hash) ? provider_mirror_url(group_hash) : url,
 			initial_path: provider_seed_path(group_hash),
 			/* provider 更新订阅 URL 时要自己解析机场域名。sing-box 1.14 **不**
 			   让 provider 继承 route.default_domain_resolver（实测 237：
@@ -1105,10 +1131,11 @@ function build_native_providers() {
 			   provider 更新全部失败（订阅运行期内永不更新）。显式指向
 			   default-dns（直连 UDP 223.5.5.5）——机场域名就该直连解析。 */
 			domain_resolver: { server: 'default-dns' },
-			/* info 节点（剩余流量/到期等）导致的 provider 更新失败（
-			   `domain resolver not found: local`）见需求书 99 —— 内核侧
-			   provider filter 实测不生效（invert 语义未确认），插件 seed
-			   过滤需 base64 解码重编码，均留待单独一轮。 */
+			/* info 节点（剩余流量/到期等）导致的 provider 更新失败
+			   （`domain resolver not found: local`）见需求书 99。内核侧
+			   provider filter 无此字段（结构体仅 Outbounds/Endpoints/
+			   HealthCheck），原「留待单独一轮」的过滤已按方案 B 落地：
+			   url 指向本机过滤镜像，见 provider_mirror_url()。 */
 			/* 24h：与常见的机场流量刷新节奏相当；间隔过长会让面板的
 			   已用/到期长期不动，过短则等于每次重启都多下一遍订阅。 */
 			update_interval: '24h',
