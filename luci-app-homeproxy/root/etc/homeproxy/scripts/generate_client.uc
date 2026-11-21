@@ -2191,8 +2191,14 @@ config.experimental = {
 /* Experimental end */
 
 /* Native providers（reF1nd 1.14.4 顶层字段）——面板「代理供应商」页的数据源。
-   条件不满足时返回空数组，removeBlankAttrs 会把空字段删掉，等于不下发。 */
-const native_providers = build_native_providers();
+   ⚠️ 默认停用：原生 provider 由内核自行解析订阅正文，节点名带「机场名/」前缀、
+   无法在内核侧按关键词过滤，机场的「❗如果只显示此节点|0.1x」等提示节点会
+   绕过插件过滤器直达 /proxies（237 实测）。订阅节点已全部导入 UCI（node 段），
+   filter_check 会按关键词过滤（含 urldecode 匹配 URL 编码的中文名），走策略组
+   完全够用。如需恢复 provider 页（会重新引入未过滤节点），把
+   /etc/config/homeproxy 的 config.subscription.use_native_provider 设为 1。 */
+const use_native_provider = uci.get(uciconfig, 'subscription', 'use_native_provider') === '1';
+const native_providers = use_native_provider ? build_native_providers() : [];
 if (length(native_providers) > 0)
 	config.providers = native_providers;
 /* Native providers end */
