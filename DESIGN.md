@@ -115,7 +115,7 @@ A semantic signal palette on a quiet gray-and-white structural base: color is in
 - **Signal Green** (#1f8a4c): The dominant meaning color. Used for the best score, healthy state, success text, the score column, and the "View all" affordance. Its mint companion **Signal Green Mint** (#e8f5e9) fills the "Scoring"/status pill background, and **Signal Green Deep** (#2d6d2d) is its readable text pair. **Signal Green Soft** (#2eb872) is the live "ok" status dot.
 
 ### Secondary
-- **Brand Blue** (#2b5bd7): The LuCI interaction color and the semantic for manual selection. Fills "manual" chips and echoes the theme's primary. **Brand Blue Bright** (#4a7dff) is its soft fallback (`var(--primary, #4a7dff)`) when a theme token is absent.
+- **Brand Blue** (#2b5bd7): The interaction/primary-action color. It marks interactive controls and the manual-selection semantic — "manual" chips and LuCI action buttons both draw from it. Execution-type buttons that are merely repeatable actions (check / update / download) may sit as neutral outlined buttons so that blue stays a scarce "act now" signal. **Brand Blue Bright** (#4a7dff) is its soft fallback (`var(--primary, #4a7dff)`) when a theme token is absent.
 
 ### Tertiary
 - **Caution Amber** (#e08a1e): Reserved for "caution/auto" state — auto-selection tags and non-fatal warnings. **Caution Amber Text** (#b06a00) is its legible text pair.

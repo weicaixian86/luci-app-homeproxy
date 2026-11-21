@@ -51,7 +51,7 @@ const css = '				\
 	background: #e9edf2;		\
 }					\
 .homeproxy-connect-title {		\
-	color: #7d8aa0;			\
+	color: #6b7683;			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	line-height: 1.2;		\
@@ -87,7 +87,7 @@ const css = '				\
 }						\
 .homeproxy-score-hd .ttl { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } \
 .homeproxy-score-hd h4 { margin: 0; font-size: 16px; font-weight: 700; } \
-.homeproxy-score-hd .mode { font-size: 12.5px; color: #999; } \
+.homeproxy-score-hd .mode { font-size: 12.5px; color: #6b7683; } \
 .homeproxy-score-hd .stat { font-size: 12.5px; color: #6b7683; white-space: nowrap; } \
 .homeproxy-score-hd .stat-avail { color: #2d6d2d; font-weight: 600; } \
 .homeproxy-score-badge { font-size: 12px; background: #e8f5e9; color: #2d6d2d; \
@@ -119,7 +119,7 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 .homeproxy-score-tbl .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } \
 /* 表头与数据上下对齐：序号/延迟/评分表头居中，节点列表头左对齐（与数据一致） */ \
 .homeproxy-score-tbl th.nm { text-align: left; } \
-.homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #8a949e; \
+.homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #6b7683; \
 	display: flex; justify-content: space-between; align-items: center; } \
 .homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
 .homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #6b7683; } \
@@ -274,11 +274,28 @@ function renderScoreCards() {
 		if (!core_running) {
 			/* P1 阻断式告警：内核未运行 → 下列评分/节点数据全是历史快照，不代表
 			   当前可用性。用 danger 横幅明确告诉用户，避免误读"一切正常"。 */
+			/* 内核未运行的横幅里给一个「启动服务」直达按钮，省得用户再去找入口
+			   （critique P3）。用 LuCI 标准 rc.init 调用启动 homeproxy。 */
+			const callStartService = rpc.declare({
+				object: 'rc', method: 'init',
+				params: ['name', 'action']
+			});
+			const startBtn = E('button', {
+				'class': 'btn cbi-button cbi-button-positive',
+				'style': 'margin-left: 8px',
+				'click': ui.createHandlerFn(this, () => {
+					startBtn.disabled = true;
+					startBtn.textContent = _('Starting…');
+					return L.resolveDefault(callStartService('homeproxy', 'start'), {})
+						.then(() => { window.setTimeout(() => window.location.reload(), 3000); })
+						.catch(() => { startBtn.disabled = false; startBtn.textContent = _('Start service'); });
+				})
+			}, [ _('Start service') ]);
 			dom.content(container, [
 				E('div', { 'class': 'homeproxy-core-alert', 'role': 'alert' }, [
-					E('b', {}, [ '⚠ ' + _('sing-box core is not running.') ]),
-					' ',
-					_('The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data.')
+					E('div', {}, [ E('b', {}, [ '⚠ ' + _('sing-box core is not running.') ]), ' ',
+						_('The scores and node data below are historical snapshots and do not reflect current availability. Please start the service to get live data.') ]),
+					E('div', { 'style': 'margin-top:8px' }, [ startBtn ])
 				])
 			].concat(cards));
 		} else {
@@ -298,7 +315,7 @@ function getConnStat(o, site) {
 
 	o.default = E('div', { 'style': 'cbi-value-field' }, [
 		E('button', {
-			'class': 'btn cbi-button cbi-button-action',
+			'class': 'btn cbi-button',
 			'click': ui.createHandlerFn(this, () => {
 				return L.resolveDefault(callConnStat(site), {}).then((ret) => {
 					let ele = o.default.firstElementChild.nextElementSibling;
@@ -526,7 +543,7 @@ function getResVersion(o, type) {
 		   ui.createHandlerFn 传进来的 ctx（LuCI 是 `fn.call(ctx, ev)`），
 		   不是按钮元素 —— 用 `this` 当 btnEl 会拿到 undefined。 */
 		const btnEl = E('button', {
-			'class': 'btn cbi-button cbi-button-action',
+			'class': 'btn cbi-button',
 			'click': ui.createHandlerFn(this, function() {
 				/* 后台任务：rpcd 的 resources_update 只负责启动，立即返回
 				   {started:true}；结果靠 resources_update_poll 轮询。
@@ -775,7 +792,7 @@ return view.extend({
 		const self = this;
 		let polling = false;
 
-		const statusEl = E('strong', { 'style': 'color:#7d8aa0' }, [ _('loading...') ]);
+		const statusEl = E('strong', { 'style': 'color:#6b7683' }, [ _('loading...') ]);
 
 		function showResult(res) {
 			polling = false;
@@ -849,7 +866,7 @@ return view.extend({
 		}
 
 		const btn = E('button', {
-			'class': 'btn cbi-button cbi-button-action',
+			'class': 'btn cbi-button',
 			'click': ui.createHandlerFn(this, () => {
 				if (polling)
 					return;

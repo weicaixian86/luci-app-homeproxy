@@ -4454,3 +4454,9 @@ msgstr ""
 
 msgid "Checking…"
 msgstr ""
+
+msgid "Start service"
+msgstr ""
+
+msgid "Starting…"
+msgstr ""
