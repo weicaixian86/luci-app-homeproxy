@@ -70,7 +70,6 @@ fi
 CACHE_PATH="$(uci -q get homeproxy.cache.path)"
 [ -n "$CACHE_PATH" ] || CACHE_PATH="/etc/homeproxy/cache.db"
 
-rm -f "$CACHE_PATH"
 
 # 让新规则生效需要重启内核（sing-box 只在启动时读 local rule-set，没有运行期
 # 热重载；remote 模式虽能在线更新但 URL 不可达时内核 FATAL，见变更清单 74）。
@@ -89,6 +88,11 @@ if [ -n "$RULESET_SECTION" ]; then
 	/etc/init.d/homeproxy reload </dev/null >/dev/null 2>&1
 	log "==== 规则集定时更新结束（reload rc=$?）===="
 else
+	# cache.db（DNS/选择缓存，含 store_selected 的手动选择）只在全量模式清：
+	# 单条 .srs 更新与它无关——清掉会让 reload 后的内核丢缓存，用户的手动
+	# 选择（store_selected）也随之被抹（237/238 现场：每周 13 条错峰更新会
+	# 逐一抹掉「全球手动」的手动节点）。
+	rm -f "$CACHE_PATH"
 	log "规则集定时更新：已清除缓存 $CACHE_PATH，正在重启服务让新规则生效…"
 	/etc/init.d/homeproxy restart
 	log "==== 规则集定时更新结束（restart rc=$?）===="
