@@ -4626,3 +4626,6 @@ msgstr "全部检测"
 
 msgid "Stale snapshot — core not running"
 msgstr "历史快照 — 内核未运行"
+
+msgid "Checking…"
+msgstr "检测中…"

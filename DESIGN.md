@@ -22,7 +22,7 @@ colors:
   neutral-line-soft: "#f0f0f0"
   text-strong: "#2c3138"
   text-body: "#5a6470"
-  text-muted: "#9aa3ad"
+  text-muted: "#6b7683"
   text-faint: "#b0b7bf"
   text-dim: "#8a949e"
 typography:
@@ -127,7 +127,7 @@ A semantic signal palette on a quiet gray-and-white structural base: color is in
 - **Hairline** (#eee, #f0f0f0): 1px dividers and card borders; the only borders in the system.
 - **Text Strong** (#2c3138): metric values and headings.
 - **Text Body** (#5a6470): table cell content (latency, loss, speed).
-- **Text Muted** (#9aa3ad): labels, column headers, secondary metadata.
+- **Text Muted** (#6b7683): labels, column headers, secondary metadata — darkened from #9aa3ad to reach WCAG AA 4.5:1 on white.
 - **Text Faint** (#b0b7bf) and **Text Dim** (#8a949e): rank numbers, footer, least-important hints.
 
 ### Named Rules

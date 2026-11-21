@@ -4451,3 +4451,6 @@ msgstr ""
 
 msgid "Stale snapshot — core not running"
 msgstr ""
+
+msgid "Checking…"
+msgstr ""

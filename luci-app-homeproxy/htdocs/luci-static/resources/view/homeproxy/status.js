@@ -56,10 +56,10 @@ const css = '				\
 	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
-.homeproxy-connect-time { margin-top: 1px; color: #9aa3ad; font-size: 11px; line-height: 1.2; min-height: 13px; } \
+.homeproxy-connect-time { margin-top: 1px; color: #6b7683; font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
-	color: #9aa3ad;			\
+	color: #6b7683;			\
 	font-weight: 700;		\
 	font-size: 13px;		\
 	cursor: pointer;		\
@@ -98,15 +98,15 @@ const css = '				\
 	border-bottom: 1px solid #f0f0f0; } \
 .homeproxy-score-kv > div { display: flex; flex-direction: column; gap: 3px; \
 	align-items: center; text-align: center; padding: 14px 18px; box-sizing: border-box; } \
-.homeproxy-score-kv > div > span { color: #9aa3ad; font-size: 12px; white-space: nowrap; } \
+.homeproxy-score-kv > div > span { color: #6b7683; font-size: 12px; white-space: nowrap; } \
 .homeproxy-score-kv > div > b { font-size: 18px; font-weight: 600; color: #2c3138; white-space: nowrap; } \
 .homeproxy-score-kv b.hl { color: #1f8a4c; font-size: 20px; } \
  .homeproxy-score-kv .kv-cur { min-width: 0; max-width: 100%; align-items: flex-start; text-align: left; } \
 .homeproxy-score-kv .kv-cur > b { font-size: 15px; font-weight: 600; overflow: hidden; \
 	text-overflow: ellipsis; white-space: nowrap; max-width: 100%; } \
-.homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #9aa3ad; font-weight: 600; letter-spacing: .3px; } \
+.homeproxy-score-title { padding: 12px 18px 6px; font-size: 12.5px; color: #6b7683; font-weight: 600; letter-spacing: .3px; } \
 table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 14px; table-layout: fixed; } \
-.homeproxy-score-tbl th { text-align: center; padding: 7px 18px; color: #9aa3ad; \
+.homeproxy-score-tbl th { text-align: center; padding: 7px 18px; color: #6b7683; \
 	font-weight: 600; font-size: 12.5px; background: #fafbfc; border-bottom: 1px solid #eef0f2; } \
 .homeproxy-score-tbl td { padding: 8px 18px; border-bottom: 1px solid #f4f5f6; } \
 .homeproxy-score-tbl tbody tr:last-child td { border-bottom: 0; } \
@@ -122,7 +122,7 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 .homeproxy-score-ft { padding: 10px 18px; font-size: 12.5px; color: #8a949e; \
 	display: flex; justify-content: space-between; align-items: center; } \
 .homeproxy-score-ft a { cursor: pointer; color: #1f8a4c; font-weight: 600; } \
-.homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #9aa3ad; } \
+.homeproxy-score-empty { padding: 16px 18px; font-size: 14px; color: #6b7683; } \
 .homeproxy-core-alert { margin: 0 auto 12px; max-width: 860px; padding: 10px 14px; \
 	border-radius: 8px; background: #fdecec; color: #a12825; font-size: 13px; line-height: 1.5; \
 	border: 1px solid #f5c2c0; } \
@@ -210,7 +210,7 @@ function renderScoreCards() {
 				E('td', { 'class': 'ls' }, [ fmtLoss(m) ]),
 				E('td', { 'class': 'sp' }, [ fmtSpeed(m) ]),
 				E('td', { 'class': 'dg' }, [ m.deg ? E('b', { style: 'color:#d9534f' }, [ _('Yes') ]) : '—' ]),
-				E('td', { 'class': 'sc' }, [ String(m.score) ])
+				E('td', { 'class': 'sc', 'style': core_running ? '' : 'color:#b0b7bf' }, [ String(m.score) ])
 			]));
 			const hasTop = rows.length > 0;
 			/* 上次评分时间：年月日 + 时:分（秒不显示） */
@@ -403,7 +403,9 @@ function renderConnCards() {
 				const p2 = (n) => (n < 10 ? '0' + n : '' + n);
 				const stamp = '%s:%s:%s'.format(p2(now.getHours()), p2(now.getMinutes()), p2(now.getSeconds()));
 				if (ret.result && ret.latency != null) {
-					result.style.setProperty('color', '#1f8a4c');
+					/* 成功态用中性深灰（配 ✓ 图标已足够表达"通"），把 Signal Green
+					   独占给「最佳得分」——修复绿语义被拉伸成 3 义。 */
+					result.style.setProperty('color', '#2c3138');
 					result.textContent = '✓ %s ms'.format(ret.latency);
 					result.title = _('HTTP request latency: %s ms (handshake excluded)')
 						.format(ret.latency)
@@ -437,12 +439,16 @@ function renderConnCards() {
 
 	/* P3：「全部检测」——一次性触发所有连接卡，省去逐卡点的摩擦。
 	   并发发起，各自更新自己的结果；按钮在全部返回前 disabled 防重复。 */
+	/* 检测是中性"操作"，不用 action 蓝——蓝色在系统里专属「手动选择」语义，
+	   避免一色二义（critique H4）。用普通按钮 + 检测中文案与恢复。 */
 	const allBtn = E('button', {
-		'class': 'btn cbi-button cbi-button-action',
+		'class': 'btn cbi-button',
 		'style': 'margin-bottom: 10px',
 		'click': ui.createHandlerFn(this, () => {
+			const label = _('Check all');
 			allBtn.disabled = true;
-			const done = () => { allBtn.disabled = false; };
+			allBtn.textContent = _('Checking…');
+			const done = () => { allBtn.disabled = false; allBtn.textContent = label; };
 			const ps = checkFns.map((fn) => L.resolveDefault(Promise.resolve().then(fn), {}));
 			return Promise.all(ps).then(done, done);
 		})
