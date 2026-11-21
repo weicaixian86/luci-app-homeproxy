@@ -3629,7 +3629,7 @@ return view.extend({
 		so.modalonly = true;
 
 		so = ss.option(form.Value, 'update_interval', _('Update time'),
-			_('At the scheduled time this rule-set is downloaded and the service reloaded to apply it (a 2-3 second reconnect). Only one rule-set updates at a time; leave 1-3 minutes between rule-sets and prefer off-peak hours such as the early morning.'));
+			_('At the scheduled time this rule-set is downloaded to disk only — the core is NOT reloaded, so there is no network interruption. New rules take effect the next time you click Reload Service or restart the service. Only one rule-set updates at a time; leave 1-3 minutes between rule-sets and prefer off-peak hours such as the early morning.'));
 		so.renderWidget = function() {
 			return hp.renderCronSelector.apply(this, arguments);
 		};

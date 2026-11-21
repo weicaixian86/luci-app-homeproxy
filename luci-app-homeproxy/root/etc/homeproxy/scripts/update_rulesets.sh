@@ -1,13 +1,9 @@
-# 让新规则生效需要重启内核（sing-box 只在启动时读 local rule-set，没有运行期
-# 热重载；remote 模式虽能在线更新但 URL 不可达时内核 FATAL，见变更清单 74）。
-# 用 reload 而不是 restart：内核重启 0.1 秒、nftables/dnsmasq 规则不重建
-# （237 实测 reload 全链路 ≈3 秒，restart 要数秒），断流窗口小得多。
-# ⚠️ reload 有「重载风暴」判定：caller 不在 force 名单（cron 的 caller=crond
-# 就不在）且 /etc/config 的 mtime <= last-start 时，这次 reload 会被**静默跳过**
-# —— 而 .srs 更新不改 /etc/config，mtime 永远是旧的，cron 场景必中。所以单条
-# 模式在 reload 前 touch 一次配置文件（内容不变，只刷新 mtime），让判定走「有
-# 新配置」分支。这比往 init.d 的 force 名单里加 crond 影响面小：改名单会让
-# crond 的所有 reload 都绕过风暴保护。
+# 生效时机（2026-11-21 用户决定）：**单条定时更新只落盘、不重载内核**——
+# sing-box 只在启动时读 local rule-set，新 .srs 待下次「重载服务」或重启服务
+# 时生效，定时更新全程零断流。手动「重载服务」走 rpcd caller → init.d 风暴
+# 守卫 force=1 永远执行（「用户在界面点按钮 → 永远执行」），不会被「配置没变」
+# 判定跳过；cron/触发器 caller 才受 mtime 判定——那正是旧 touch+reload 方案
+# 的由来，现已废弃。
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-only
 #
@@ -71,22 +67,18 @@ CACHE_PATH="$(uci -q get homeproxy.cache.path)"
 [ -n "$CACHE_PATH" ] || CACHE_PATH="/etc/homeproxy/cache.db"
 
 
-# 让新规则生效需要重启内核（sing-box 只在启动时读 local rule-set，没有运行期
-# 热重载；remote 模式虽能在线更新但 URL 不可达时内核 FATAL，见变更清单 74）。
-# 用 reload 而不是 restart：内核重启 0.1 秒、nftables/dnsmasq 规则不重建
-# （237 实测 reload 全链路 ≈3 秒，restart 要数秒），断流窗口小得多。
-# ⚠️ cron 场景必踩的坑：reload 有「重载风暴」判定 —— caller 不在 force 名单
-# （cron 的 caller=crond 就不在）且 /etc/config 的 mtime <= last-start 时，这次
-# reload 会被**静默跳过**。而 .srs 更新不改 /etc/config，mtime 永远是旧的，
-# cron 场景必然命中跳过 → 单条更新完服务纹丝不动。解法：reload 前 touch 一次
-# 配置文件（内容不变、只刷 mtime），让判定走「有新配置」分支。不改 init.d 的
-# force 名单——那会让 crond 的所有 reload 都绕过风暴保护。
+# 生效时机（2026-11-21 用户决定）：**单条定时更新只落盘、不重载内核**——
+# sing-box 只在启动时读 local rule-set，新 .srs 待下次「重载服务」或重启服务
+# 时生效，定时更新全程零断流。手动「重载服务」走 rpcd caller → init.d 风暴
+# 守卫 force=1 永远执行（「用户在界面点按钮 → 永远执行」），不会被「配置没变」
+# 判定跳过；cron/触发器 caller 才受 mtime 判定——那正是旧 touch+reload 方案
+# 的由来，现已废弃。
 # cache.db 只在全量模式清：它是 DNS/选择缓存，与规则集内容无关；旧行为保留。
 if [ -n "$RULESET_SECTION" ]; then
-	log "规则集定时更新：已更新 ${RULESET_SECTION}，重载服务使新规则生效…"
-	touch /etc/config/homeproxy
-	/etc/init.d/homeproxy reload </dev/null >/dev/null 2>&1
-	log "==== 规则集定时更新结束（reload rc=$?）===="
+	# 只下载落盘、不重载内核（不断网）：新 .srs 待下次手动「重载服务」（界面
+	# 按钮 force=1 必执行）或重启服务时生效。
+	log "规则集定时更新：已更新 ${RULESET_SECTION}（不重载内核、不断网）；新规则将在下次手动「重载服务」或重启服务时生效。"
+	log "==== 规则集定时更新结束 ===="
 else
 	# cache.db（DNS/选择缓存，含 store_selected 的手动选择）只在全量模式清：
 	# 单条 .srs 更新与它无关——清掉会让 reload 后的内核丢缓存，用户的手动

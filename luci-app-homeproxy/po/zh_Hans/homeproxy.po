@@ -272,14 +272,8 @@ msgid "Are you sure to allow insecure?"
 msgstr "确定要允许不安全连接吗？"
 
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3509
-msgid ""
-"At the scheduled time this rule-set is downloaded and the service reloaded "
-"to apply it (a 2-3 second reconnect). Only one rule-set updates at a time; "
-"leave 1-3 minutes between rule-sets and prefer off-peak hours such as the "
-"early morning."
-msgstr ""
-"到点自动下载本规则集并重载服务使其生效（2~3 秒的瞬时重连），同一时间只执行一"
-"条更新，相邻规则集建议间隔 1~3 分钟，建议设置为闲时如凌晨。"
+msgid "At the scheduled time this rule-set is downloaded to disk only — the core is NOT reloaded, so there is no network interruption. New rules take effect the next time you click Reload Service or restart the service. Only one rule-set updates at a time; leave 1-3 minutes between rule-sets and prefer off-peak hours such as the early morning."
+msgstr "到点仅自动下载本规则集到磁盘——不重载内核、不断网；新规则将在你手动点击「重载服务」或重启服务时生效。同一时间只执行一条更新；相邻规则集建议间隔 1-3 分钟，建议设置为闲时（如凌晨）以叠加。"
 
 #: htdocs/luci-static/resources/view/homeproxy/server.js:371
 msgid "Auth timeout"

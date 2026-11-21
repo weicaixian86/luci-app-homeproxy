@@ -3944,21 +3944,22 @@ else
 	bad "the cron selector split-row layout or its old labels came back"
 fi
 
-# ── 规则集定时更新必须「单条 + reload」，不许全量 + restart ────────────
-# 21 条各配各的时刻时，每行 cron 若仍全量重下 21 条并 restart（stop+start），
-# 周一凌晨就是 441 次下载 + 21 次断流（2026-10-31 现场）。登记行必须带段名，
-# 脚本单条模式必须走 --only 与 reload；reload 前必须 touch 配置文件，否则
-# 「重载风暴」判定（cfg_mtime <= last-start 且 caller=crond 不在 force 名单）
-# 会把这次 reload 静默跳过。旧格式（不带段名）保留全量 + restart 兼容行为。
+# ── 规则集定时更新必须「单条 + 只落盘、零断网」───────────────────────
+# 21 条各配各的时刻时，每条更新完都重载内核 = 21 次断流。2026-11-21 用户
+# 决定改为零断网：单条模式只下载落盘（--only），不 touch、不 reload——新
+# .srs 待下次手动「重载服务」（界面按钮走 rpcd caller → force=1 永远执行，
+# 不怕配置没变被跳过）或重启服务时生效。旧格式（不带段名）保留全量 +
+# restart 兼容行为。
 URS="$PKG/root/etc/homeproxy/scripts/update_rulesets.sh"
 if grep -q "'\$update_time' '\$section'" "$INIT" \
    && grep -q '\--only "\$RULESET_SECTION"' "$URS" \
-   && grep -q 'touch /etc/config/homeproxy' "$URS" \
-   && grep -q 'reload </dev/null' "$URS" \
+   && grep -q '不重载内核、不断网' "$URS" \
+   && ! grep -q 'touch /etc/config/homeproxy' "$URS" \
+   && ! grep -q 'reload </dev/null' "$URS" \
    && grep -q 'restart' "$URS"; then
-	ok "the rule-set cron updates one rule-set per slot and applies it with a reload"
+	ok "the rule-set cron updates one rule-set per slot to disk only (zero downtime)"
 else
-	bad "the rule-set cron still re-downloads everything and restarts the service on every slot"
+	bad "the rule-set cron single-slot update regressed to reload/restart (network interruption)"
 fi
 
 # ── autostart 不能自指 / 不能在失败时启动 ──────────────────────────────
