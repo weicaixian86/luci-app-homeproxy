@@ -155,7 +155,6 @@ function renderScoreCards() {
 		const kb = m.speed / 1024.0;
 		return (kb >= 1024) ? '%.1f MB/s'.format(kb / 1024.0) : '%d KB/s'.format(Math.round(kb));
 	}
-	function fmtDeg(m) { return m.deg ? _('Yes') : '—'; }
 
 	function showMembers(group) {
 		return L.resolveDefault(callMembers(group), {}).then((ret) => {
@@ -243,7 +242,14 @@ function renderScoreCards() {
 					E('div', {}, [ E('span', {}, [ _('Degraded') ]), E('b', { 'style': g.now_deg ? 'color:#d9534f' : '' }, [ g.now_deg ? _('Yes') : '—' ]) ]),
 					E('div', {}, [ E('span', {}, [ _('Score') ]), E('b', { 'class': 'hl', 'style': core_running ? '' : 'color:#b0b7bf', 'title': core_running ? '' : _('Stale snapshot — core not running') }, [ String(g.score) ]) ])
 				]),
-				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [ _('Top 3 by score') ]) : '',
+				hasTop ? E('div', { 'class': 'homeproxy-score-title' }, [
+					_('Top 3 by score'),
+					/* P3 bridging：一句说明「上方 kv 是当前选中节点、这里是组内按综合分的前三名」，
+					   让新用户不被两段数字搞混。 */
+					E('span', { 'class': 'score-hint', 'style': 'font-weight:400;margin-left:8px' }, [
+						'— ' + _('ranked within this group; the row above is the current pick')
+					])
+				]) : '',
 				hasTop ? E('table', { 'class': 'homeproxy-score-tbl' }, [
 					E('thead', {}, [ E('tr', {}, [
 						E('th', { 'class': 'rk' }, [ '#' ]), E('th', { 'class': 'nm' }, [ _('Node') ]),
@@ -281,13 +287,17 @@ function renderScoreCards() {
 				params: ['name', 'action']
 			});
 			const startBtn = E('button', {
-				'class': 'btn cbi-button cbi-button-positive',
+				'class': 'btn cbi-button',
 				'style': 'margin-left: 8px',
 				'click': ui.createHandlerFn(this, () => {
 					startBtn.disabled = true;
 					startBtn.textContent = _('Starting…');
 					return L.resolveDefault(callStartService('homeproxy', 'start'), {})
-						.then(() => { window.setTimeout(() => window.location.reload(), 3000); })
+						.then(() => {
+							/* 明确告知即将自动刷新，避免"点了页面空白=点坏了"的焦虑。 */
+							startBtn.textContent = _('Restarting, page will refresh…');
+							window.setTimeout(() => window.location.reload(), 3000);
+						})
 						.catch(() => { startBtn.disabled = false; startBtn.textContent = _('Start service'); });
 				})
 			}, [ _('Start service') ]);
@@ -303,35 +313,6 @@ function renderScoreCards() {
 		}
 		return container;
 	});
-}
-
-function getConnStat(o, site) {
-	const callConnStat = rpc.declare({
-		object: 'luci.homeproxy',
-		method: 'connection_check',
-		params: ['site'],
-		expect: { '': {} }
-	});
-
-	o.default = E('div', { 'style': 'cbi-value-field' }, [
-		E('button', {
-			'class': 'btn cbi-button',
-			'click': ui.createHandlerFn(this, () => {
-				return L.resolveDefault(callConnStat(site), {}).then((ret) => {
-					let ele = o.default.firstElementChild.nextElementSibling;
-					if (ret.result) {
-						ele.style.setProperty('color', 'green');
-						ele.innerHTML = _('passed');
-					} else {
-						ele.style.setProperty('color', 'red');
-						ele.innerHTML = _('failed');
-					}
-				});
-			})
-		}, [ _('Check') ]),
-		' ',
-		E('strong', { 'style': 'color:gray' }, _('unchecked')),
-	]);
 }
 
 /* Brand logos are inlined so the cards render without external assets and

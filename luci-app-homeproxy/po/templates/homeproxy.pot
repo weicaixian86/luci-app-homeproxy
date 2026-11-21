@@ -4460,3 +4460,9 @@ msgstr ""
 
 msgid "Starting…"
 msgstr ""
+
+msgid "Restarting, page will refresh…"
+msgstr ""
+
+msgid "ranked within this group; the row above is the current pick"
+msgstr ""
