@@ -1664,14 +1664,17 @@ start_service() {
 stop_service() {
 	hp_event "服务停止" "${1:-}"
 
-	# 开机自启跟随用户意图：用户主动「停止」时取消开机自启，重启/关机后
-	# 保持停止（而不是下次开机又被 rc.d 拉起来）。只在 action=='stop' 时
-	# 生效——reload/restart 内部同样走 stop_service，不能误伤。
-	# 动作在 $action（rc.common 已 shift 过 $1，见文件头说明）。
-	if [ "$action" = "stop" ]; then
-		( /etc/init.d/homeproxy disable >/dev/null 2>&1 || true )
-		log "用户主动停止服务：已取消开机自启（下次开机保持停止）。"
-	fi
+	# ── 关于「停止服务」与「开机自启」的关系（2026-11-21 修正）─────────
+	# 之前试过「用户主动 stop 就自动 disable 开机自启、重启后保持停止」。
+	# 但**关机/重启流程本身也会调 stop_service（action 同样是 'stop'）**，
+	# 无法可靠区分「用户手动 stop」和「关机 stop」（SSH 交互式 stop 的父进程
+	# 是登录 shell、关机是 procd，hp_caller 都识别不到稳定信号），结果是
+	# **每次关机都把开机自启关掉，重启后插件不自启**（237/238 现场均复现）。
+	# 因此改为最简单可靠的语义：
+	#   · stop / 关机 / 重启 —— 一律【不动】开机自启（下次开机照常启动）；
+	#   · 用户若想「永久停用、开机也不启动」，请显式执行
+	#     /etc/init.d/homeproxy disable  （或 LuCI「系统-启动项」里禁用）。
+	# 这符合 OpenWrt 服务的一般直觉：stop 是一次性动作，disable 才是持久意图。
 
 	# 让 core_health_check 知道「这次是用户停的」，别把正常停止当成启动失败。
 	touch "$RUN_DIR/.stopping" 2>"/dev/null"
