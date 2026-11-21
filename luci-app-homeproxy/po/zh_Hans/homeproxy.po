@@ -4615,8 +4615,6 @@ msgstr "服务器无响应"
 msgid "Click to retry"
 msgstr "点击重试"
 
-msgid "Checked at %s"
-msgstr "检测于 %s"
 
 msgid "curl exit code: %s"
 msgstr "curl 退出码：%s"

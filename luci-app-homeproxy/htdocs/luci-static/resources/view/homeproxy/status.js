@@ -66,7 +66,6 @@ const css = '				\
 	font-size: 13px;		\
 	line-height: 1.2;		\
 }					\
-.homeproxy-connect-time { margin-top: 1px; color: var(--hp-text-body); font-size: 11px; line-height: 1.2; min-height: 13px; } \
 .homeproxy-connect-result {		\
 	margin-top: 2px;		\
 	color: var(--hp-text-muted);			\
@@ -422,20 +421,16 @@ function renderConnCards() {
 			}
 		};
 
-		const lastCheckEl = E('span', { 'class': 'homeproxy-connect-time' }, [ ]);   /* P1 上次检测时间 */
 		const runConnCheck = () => {
 			result.textContent = _('Checking...', 'homeproxy');
 			result.style.setProperty('color', 'var(--hp-warn)');
 			result.title = _('Checking...', 'homeproxy');
 
 			return L.resolveDefault(callConnStat(item.site), {}).then((ret) => {
-				const now = new Date();
-				const p2 = (n) => (n < 10 ? '0' + n : '' + n);
-				const stamp = '%s:%s:%s'.format(p2(now.getHours()), p2(now.getMinutes()), p2(now.getSeconds()));
 				if (ret.result && ret.latency != null) {
-					/* 成功态用中性深灰（配 ✓ 图标已足够表达"通"），把 Signal Green
-					   独占给「最佳得分」——修复绿语义被拉伸成 3 义。 */
-					result.style.setProperty('color', 'var(--hp-text-strong)');
+					/* 成功态绿色（用户明确要求：✓ 绿=通、✕ 红=失败，与排行表
+					   评分列同色系）。 */
+					result.style.setProperty('color', 'var(--hp-ok)');
 					result.textContent = '✓ %s ms'.format(ret.latency);
 					result.title = _('HTTP request latency: %s ms (handshake excluded)')
 						.format(ret.latency)
@@ -449,9 +444,6 @@ function renderConnCards() {
 					result.title = failLabel(ret) + (ret.curl_rc ? '\n' + _('curl exit code: %s').format(ret.curl_rc) : '')
 						+ '\n' + _('Click to retry');
 				}
-				if (lastCheckEl) {
-					lastCheckEl.textContent = _('Checked at %s').format(stamp);
-				}
 			});
 		};
 
@@ -461,8 +453,7 @@ function renderConnCards() {
 			icon,
 			E('div', { 'class': 'homeproxy-connect-info' }, [
 				E('div', { 'class': 'homeproxy-connect-title' }, [ item.title ]),
-				result,
-				lastCheckEl
+				result
 			])
 		]);
 	}));

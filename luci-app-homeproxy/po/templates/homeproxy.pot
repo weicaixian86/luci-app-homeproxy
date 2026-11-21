@@ -4440,8 +4440,6 @@ msgstr ""
 msgid "Click to retry"
 msgstr ""
 
-msgid "Checked at %s"
-msgstr ""
 
 msgid "curl exit code: %s"
 msgstr ""
