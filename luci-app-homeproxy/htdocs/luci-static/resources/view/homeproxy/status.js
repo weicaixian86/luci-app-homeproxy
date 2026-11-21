@@ -144,8 +144,19 @@ table.homeproxy-score-tbl { width: 100%; border-collapse: collapse; font-size: 1
 		.homeproxy-score-kv { grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); }			\
 		.homeproxy-score-kv .kv-sp { display: none; }			\
 		.homeproxy-score-kv .kv-cur { grid-column: 1 / -1; }			\
+		.homeproxy-score-kv > div { padding: 10px 12px; }			\
+		.homeproxy-score-hd { padding: 10px 12px; }			\
+		.homeproxy-score-title, .homeproxy-score-ft { padding-left: 12px; padding-right: 12px; }			\
+		.homeproxy-score-tbl th, .homeproxy-score-tbl td { padding: 6px 12px; }			\
+		.homeproxy-check-all { width: 100%; min-height: 44px; }			\
 	}			\
-	.homeproxy-connect-result { min-height: 24px; display: flex; align-items: center; }';
+	.homeproxy-connect-result { min-height: 24px; display: flex; align-items: center; }	\
+	/* 触屏（粗指针）：交互目标提到 44px（adapt 基准），不依赖 hover。 */	\
+	@media (pointer: coarse) {	\
+		.homeproxy-connect-result { min-height: 44px; }	\
+		.homeproxy-score-ft a { min-height: 44px; padding: 10px 12px; margin: -10px -12px; display: inline-flex; align-items: center; }	\
+		.homeproxy-check-all { min-height: 44px; }	\
+	}';
 
 function renderScoreCards() {
 	const callScoreStatus = rpc.declare({
@@ -461,7 +472,7 @@ function renderConnCards() {
 	/* 检测是中性"操作"，不用 action 蓝——蓝色在系统里专属「手动选择」语义，
 	   避免一色二义（critique H4）。用普通按钮 + 检测中文案与恢复。 */
 	const allBtn = E('button', {
-		'class': 'btn cbi-button',
+		'class': 'btn cbi-button homeproxy-check-all',
 		'style': 'margin-bottom: 10px',
 		'click': ui.createHandlerFn(this, () => {
 			const label = _('Check all');
