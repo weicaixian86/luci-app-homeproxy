@@ -2802,6 +2802,18 @@ else
 	bad "a provider can still be emitted in a state the kernel rejects fatally"
 fi
 
+# 防回归：get_outbound() 的策略组类型枚举必须包含 score。
+# 漏掉 'score' 的现场后果（238，2026-11-22）：routing_node node='score' 的组
+# （如「亚洲自动」）作为 routing_rule.outbound 时，get_outbound 会把 'score'
+# 当段名去找 tag、取不到、最终被 dangling 兜底改成 direct-out —— 规则明明选了
+# 代理组，实际却走直连，且没有任何报错。这类「枚举漏一项 → 静默降级」的 bug
+# 极难从 UI 发现，必须有断言守着。
+if grep -q "node in \['urltest', 'selector', 'score'\]" "$GC"; then
+	ok "get_outbound resolves score policy groups (no silent direct-out downgrade)"
+else
+	bad "get_outbound's policy-group type list omits 'score': rules targeting score groups silently become direct-out"
+fi
+
 # 种子路径必须两边逐字一致，否则内核找不到种子 → 启动同步拉取 → 机场不可达即 FATAL。
 if grep -q "sprintf('%s/providers/%s.sub', HP_DIR, group_hash)" "$GC" \
    && grep -q "sprintf('%s/%s.sub', dir, group_hash)" "$UPD" \
