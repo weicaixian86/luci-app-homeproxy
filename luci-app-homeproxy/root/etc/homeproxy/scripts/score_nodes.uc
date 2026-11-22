@@ -577,7 +577,7 @@ function run() {
 	return { result: true, changes: length(summary), summary: summary };
 }
 
-/* ① 实时故障切换的快速检测（--quick，由 cron 每分钟调用，开销极小）：
+/* ① 实时故障切换的快速检测（--quick，由 cron 每 3 分钟调用，开销极小）：
    只探每个 score 组「当前选中的 now 节点」，正常则立即退出（只发 1 个延迟请求/组）；
    一旦发现当前节点探测失败（不通）或延迟 > 基线×QUICK_FACTOR（明显劣化），
    立即触发一次完整评分把流量切走——不必等 30 分钟一轮的 cron。
