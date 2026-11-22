@@ -1962,15 +1962,19 @@ return view.extend({
 					if (res['.name'] !== section_id) {
 						if (res.outbound === section_id && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && normalizeFormList(res.urltest_nodes).includes(node) && res['.name'] == value)
+						/* 三种策略组（urltest/selector/**score**）都可能通过
+						   subscription_nodes / selected_nodes 引用别的组；score
+						   也要查，否则「综合评分组引用自身」这类环检测不到
+						   （生成器 expand_policy_sections 有 depth<4 兜底，
+						   但 UI 侧应尽早拦下并提示，之前漏了 score）。 */
+						else if (['urltest', 'selector', 'score'].includes(res.node) &&
+						         normalizeFormList(res.urltest_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && normalizeFormList(res.subscription_nodes).includes(node) && res['.name'] == value)
+						else if (['urltest', 'selector', 'score'].includes(res.node) &&
+						         normalizeFormList(res.subscription_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
-						else if (res.node === 'urltest' && normalizeFormList(res.selected_nodes).includes(node) && res['.name'] == value)
-							conflict = true;
-						else if (res.node === 'selector' && normalizeFormList(res.selected_nodes).includes(node) && res['.name'] == value)
-							conflict = true;
-						else if (res.node === 'selector' && normalizeFormList(res.subscription_nodes).includes(node) && res['.name'] == value)
+						else if (['urltest', 'selector', 'score'].includes(res.node) &&
+						         normalizeFormList(res.selected_nodes).includes(node) && res['.name'] == value)
 							conflict = true;
 					}
 				});
@@ -2100,8 +2104,10 @@ return view.extend({
 		so.rmempty = true;
 		so.modalonly = true;
 
-		/* 「默认成员」：手动选择/综合评分组的初始选中项；为空时 sing-box 用
-		   成员列表的第一个。评分器的 PUT 切换运行期会覆盖它。 */
+		/* 「默认成员」：**只对手动选择组（selector）有意义**——综合评分组
+		   不设 default，初始选中由评分器第一轮实测后 PUT 写入；urltest 由
+		   内核自选。所以下面的 depends 只挂在 'selector' 上（L2140），别
+		   因为「综合评分组也能看到这个框」而误加 'score'。 */
 		so = ss.option(form.ListValue, 'selector_default', _('Default member'),
 			_('The initial member for manual select; empty means the first member.'));
 		so.load = function(section_id) {
