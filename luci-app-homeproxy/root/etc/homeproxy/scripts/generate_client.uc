@@ -926,7 +926,14 @@ function get_outbound(cfg) {
 			const node = uci.get(uciconfig, cfg, 'node');
 			if (isEmpty(node))
 				die(sprintf("%s's node is missing, please check your configuration.", cfg));
-			else if (node in ['urltest', 'selector'])
+			/* 策略组（urltest/selector/**score**）的 tag 要按**段名**取
+			   （get_section_outbound_tag(cfg) → label）；只有单节点段才用
+			   node 段名。漏掉 'score' 时的现场后果（238，2026-11-22）：
+			   路由规则「workbuddy.ai代理 → 亚洲自动」生成成 outbound=direct-out
+			   —— 因为 get_section_outbound_tag('score') 去找名为 score 的段，
+			   取不到 tag，最终被下面 dangling() 兜底改成直连。面板上表现为
+			   「规则明明选了亚洲自动，实际却走直连」，且没有任何报错。 */
+			else if (node in ['urltest', 'selector', 'score'])
 				return get_section_outbound_tag(cfg);
 			else
 				return get_section_outbound_tag(node);

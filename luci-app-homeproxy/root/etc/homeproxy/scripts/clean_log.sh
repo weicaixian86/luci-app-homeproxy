@@ -82,16 +82,21 @@ resolve_limit() {
 }
 
 rotate_log() {
-	local f="$1" limit="$2" size
+	local f="$1" limit="$2" size real
 	[ -s "$f" ] || return 0
-	size="$(wc -c < "$f" 2>/dev/null | tr -d ' ')"
+	# /var/run/homeproxy/<file>.log 现在是指向 $LOG_DIR 的符号链接（init.d
+	# 的 init_logs 建立，让日志跨重启保留）。轮转必须对**真实文件**操作，
+	# 否则 `$f.1` 会落在 tmpfs 上、重启即丢——那正是排障最需要的那一份。
+	real="$(readlink -f "$f" 2>/dev/null)"
+	[ -n "$real" ] && [ -e "$real" ] || real="$f"
+	size="$(wc -c < "$real" 2>/dev/null | tr -d ' ')"
 	case "$size" in
 		''|*[!0-9]*) return 0 ;;
 	esac
 	[ "$size" -ge "$limit" ] || return 0
 	# 保留一代历史：先复制再截断，写者即便正好在写也只会丢最后一行
-	cp -f "$f" "$f.1" 2>/dev/null
-	: > "$f" 2>/dev/null
+	cp -f "$real" "$real.1" 2>/dev/null
+	: > "$real" 2>/dev/null
 	return 0
 }
 

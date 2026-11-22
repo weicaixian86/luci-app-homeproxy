@@ -33,6 +33,12 @@ CORE_SCRIPT="/etc/homeproxy/scripts/update_core.sh"
 HP_DIR="/etc/homeproxy"
 RUN_DIR="/var/run/homeproxy"
 LOG_PATH="$RUN_DIR/homeproxy.log"
+# 日志持久化目录：/var/run 是 tmpfs，重启即丢；排障（尤其死机后）必须能看到
+# 上一次运行的日志。六个日志文件都做成 $RUN_DIR 下的符号链接指向这里，
+# overlay 上的真实文件跨重启保留。运行时状态（.pid/.lock/last-start 等）
+# 仍留在 tmpfs —— 那些重启后本就该清空。
+# 注意：clean_log.sh 按大小轮转产生的 <file>.1 也写在这个目录，同样保留。
+LOG_DIR="/etc/homeproxy/logs"
 # 主日志去重状态（见 log()）：同一行连续重复时只写一条并计数。
 LOG_DEDUPE="$RUN_DIR/.log-last"
 
@@ -726,9 +732,29 @@ prefetch_panel() {
 init_logs() {
 	mkdir -p "$RUN_DIR"
 	mkdir -p "$HP_DIR/run/ui"
-	touch "$LOG_PATH" "$RUN_DIR/sing-box-c.log" "$RUN_DIR/sing-box-s.log" \
-	      "$RUN_DIR/core_download.log" "$RUN_DIR/panel_download.log"
+	mkdir -p "$LOG_DIR"
+
+	# 日志持久化：把六个日志文件换成指向 $LOG_DIR 的符号链接。
+	# 所有调用方（init.d 自身、fetch_*/update_*/score_nodes.uc 等 20 多处）
+	# 都仍按 $RUN_DIR/<name>.log 读写，路径不用动 —— 符号链接对
+	# append/truncate/wc/cp 全部透明。
+	# 旧启动遗留的真实文件（升级前的第一次运行）先把内容并入持久文件再删，
+	# 否则它会被下次启动的写入覆盖，丢失上次死机前的最后一段。
+	local f
+	for f in homeproxy.log sing-box-c.log sing-box-s.log \
+	         core_download.log panel_download.log ruleset_download.log; do
+		if [ -f "$RUN_DIR/$f" ] && [ ! -L "$RUN_DIR/$f" ]; then
+			cat "$RUN_DIR/$f" >>"$LOG_DIR/$f" 2>"/dev/null"
+			rm -f "$RUN_DIR/$f"
+		fi
+		[ -e "$LOG_DIR/$f" ] || : >"$LOG_DIR/$f"
+		ln -sfn "$LOG_DIR/$f" "$RUN_DIR/$f"
+	done
+
 	chown -R sing-box:sing-box "$RUN_DIR" 2>"/dev/null"
+	# jail 降权运行时 sing-box 要能写自己的两个日志（真实文件在 overlay 上，
+	# 不是 tmpfs 里那份，所以必须单独授权；不跟随符号链接用 -h 逐个点）。
+	chown sing-box:sing-box "$LOG_DIR/sing-box-c.log" "$LOG_DIR/sing-box-s.log" 2>"/dev/null"
 	chown -R sing-box:sing-box "$HP_DIR/run" 2>"/dev/null"
 }
 
