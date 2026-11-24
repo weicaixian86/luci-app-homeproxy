@@ -34,6 +34,11 @@ on:
         required: false
         type: string
         default: ""
+      prerelease:
+        description: "发布为预发布（Pre-release）"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -477,6 +482,8 @@ jobs:
           tag_name: ${{ inputs.tag }}
           name: ${{ inputs.tag }}
           body_path: release_body.md
+          # 手动触发时勾选「发布为预发布」则标记为 prerelease（不设为 latest）。
+          prerelease: ${{ inputs.prerelease }}
           files: |
             homeproxy-deploy*.zip
             luci-app-homeproxy_*-all.apk
