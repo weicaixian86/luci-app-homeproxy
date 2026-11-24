@@ -404,6 +404,10 @@ function renderConnCards() {
 				}
 			}
 		}, [ _('Click to check') ]);
+		/* 初始「点我检测」用橙色（用户要求），醒目提示可点击。检测开始后
+		   runConnCheck 会用 setProperty 覆盖成各自的态色（黄/绿/红），
+		   所以这里只影响初始待检测态。 */
+		result.style.setProperty('color', '#f57c00');
 
 		/* P1：失败语义分类——把 curl 错误码映射成可操作的中文短词，
 		   用户一眼看出是 DNS/TLS/超时/被拒，而不是笼统 failed。
