@@ -34,10 +34,14 @@ fi
 
 rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>"/dev/null"
 
-mkdir -p /var/run/homeproxy
+mkdir -p /var/run/homeproxy 2>"/dev/null"
+# 安装/首次启动早期，/var/run（→ tmpfs）里的 homeproxy 子目录可能尚未就绪，
+# 直接 touch 会打「touch: ... No such file or directory」。真正的日志目录与
+# 符号链接由服务首次启动时的 init_logs() 建立，这里的 touch 只是提前占位，
+# 失败无害 —— 统一静默，避免 apk 安装输出里出现吓人的报错（用户已反馈）。
 touch /var/run/homeproxy/homeproxy.log \
 	/var/run/homeproxy/sing-box-c.log \
-	/var/run/homeproxy/sing-box-s.log
+	/var/run/homeproxy/sing-box-s.log 2>"/dev/null" || true
 chown -R sing-box:sing-box /var/run/homeproxy 2>"/dev/null"
 
 uci -q batch <<-EOF >"/dev/null"
