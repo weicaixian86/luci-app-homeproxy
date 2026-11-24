@@ -930,12 +930,15 @@ return view.extend({
 						'class': 'btn cbi-button cbi-button-positive',
 						'click': ui.createHandlerFn(this, updateDashboard)
 					}, [ _('Update Panel') ]),
+					/* 「上传面板 ZIP」「打开面板」用 cbi-button-action（与「重载服务」
+					   同一套蓝色），原先只挂裸 cbi-button 显示成灰白底，和左侧两个
+					   蓝色按钮并排时视觉不统一（用户要求统一为蓝色）。 */
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'btn cbi-button cbi-button-action',
 						'click': ui.createHandlerFn(this, (ev) => hp.uploadPanel(null, ev))
 					}, [ _('Upload Panel ZIP') ]),
 					E('button', {
-						'class': 'btn cbi-button',
+						'class': 'btn cbi-button cbi-button-action',
 						'click': ui.createHandlerFn(this, openDashboard)
 					}, [ _('Open Panel') ])
 				);
