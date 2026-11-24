@@ -42,6 +42,11 @@ const LOG_FILE = RUN_DIR + '/homeproxy.log';
 const HALF_LIFE = 30 * 60;
 const DELAY_FRESH = 10 * 60;
 const PROBE_TIMEOUT_MS = 4000;
+/* quick 快速检测专用超时：2s。quick 语义是「尽快发现当前节点故障」，
+   而卡死的坏节点会白占满分超时。238 实测：正常节点真实延迟仅 140~480ms
+   （远小于 2s，零误判）；卡住的坏节点 4s 超时白等 4 秒、双确认最坏 9 秒，
+   2s 后最坏仅 5 秒（快 44%）。全量评分仍用 4s（给慢节点留余量）。 */
+const QUICK_PROBE_TIMEOUT_MS = 2000;
 
 /* ===== 第一档（借鉴 mihomo Smart Group）：多维评分 + 防抖 + 退化检测 ===== */
 const TOLERANCE = 0.10;          // 评分容差：最优分要优于现任 10% 才切换
@@ -222,10 +227,13 @@ function compute_speed_ref(speeds) {
 	return ref;
 }
 
-function probe_member(tag) {
+/* 探测一个节点。timeout_ms 可选（默认全量用的 4s）：quick 传 2s，
+   见 QUICK_PROBE_TIMEOUT_MS 注释——quick 是「快速发现故障」，卡住的坏节点
+   用 4s 超时会白等满分，2s 足够（238 实测正常节点真实延迟仅 140~480ms）。 */
+function probe_member(tag, timeout_ms) {
 	const enc = uri_escape(tag);
 	const resp = api_get(sprintf('/proxies/%s/delay?timeout=%d&url=%s',
-		enc, PROBE_TIMEOUT_MS, PROBE_URL_ENC));
+		enc, timeout_ms ?? PROBE_TIMEOUT_MS, PROBE_URL_ENC));
 	if (isEmpty(resp))
 		return null;
 	const d = json(resp);
@@ -578,9 +586,15 @@ function run() {
 }
 
 /* ① 实时故障切换的快速检测（--quick，由 cron 每 3 分钟调用，开销极小）：
-   只探每个 score 组「当前选中的 now 节点」，正常则立即退出（只发 1 个延迟请求/组）；
-   一旦发现当前节点探测失败（不通）或延迟 > 基线×QUICK_FACTOR（明显劣化），
-   立即触发一次完整评分把流量切走——不必等 30 分钟一轮的 cron。
+   探每个 score 组「当前选中的 now 节点」，正常则立即退出；一旦发现当前节点
+   探测失败（不通）或延迟 > 基线×QUICK_FACTOR（明显劣化），立即触发一次完整
+   评分把流量切走——不必等 30 分钟一轮的 cron。
+
+   实现为两阶段（多个组常指向同一节点，如香港高速01 被 3 组共用）：
+     阶段0：收集各冷却已过的组的 now，按节点去重；
+     阶段1：对去重后的节点各探一次（2s 超时 + 双确认），结果缓存按节点复用；
+     阶段2：按组判定，分摊阶段1 的探测结果。
+   故障节点卡满超时时，去重把「N 组各探一次」压成「1 次」。
    借鉴 mihomo Smart「握手超历史平均 1.5 倍即怀疑 → 立即切换」。 */
 function quick_check() {
 	const raw = api_get('/proxies');
@@ -592,31 +606,49 @@ function quick_check() {
 	const now_ts = time();
 	let need_full = false;
 
+	/* 阶段 0：先收集「冷却已过」的组各自的当前节点 now，按节点去重。
+	   多个组常指向同一节点（238 实测：香港高速01 被香港/全球/亚洲 3 组共用），
+	   每个节点只探一次即可——探测结果被引用的所有组共享。故障节点卡 2s 超时时，
+	   这能把「3 组各探一次=6s」压成「1 次=2s」。 */
+	let group_now = {};          /* group tag -> now 节点名 */
+	let uniq_nodes = [];         /* 去重后的待探节点 */
 	for (let tag in score_groups) {
-		const score_proxy = proxies.proxies[tag];
-		if (type(score_proxy) !== 'object')
+		const sp = proxies.proxies[tag];
+		if (type(sp) !== 'object')
 			continue;
-		const now = score_proxy.now ?? '';
+		const now = sp.now ?? '';
 		if (isEmpty(now))
 			continue;
-		const st = state.members?.[now] ?? null;
-		/* 冷却：该组上次 quick 触发全量评分后 5 分钟内不再触发。避免「节点抖动
-		   （时通时不通）→ quick 探到失败 → 全量评分又探到成功 keep → 下一秒
-		   再探到失败」的每分钟空转。5 分钟足够让全量评分的结论生效，也不至于
-		   真的持续故障时切太慢。 */
-		const cd_until = (state.quick_cd?.[tag] ?? 0);
-		if (cd_until > now_ts)
+		if ((state.quick_cd?.[tag] ?? 0) > now_ts)   /* 冷却中：不探 */
 			continue;
-		let delay = probe_member(now);   /* 只探当前节点：1 个请求 */
-		let bad = false;
+		group_now[tag] = now;
+		if (!~index(uniq_nodes, now))
+			push(uniq_nodes, now);
+	}
+
+	/* 阶段 1：对去重后的节点各探一次（QUICK 用 2s 超时）。缓存 delay 供各组分摊。
+	   探测失败做二次确认（sleep 1 再探），两次都失败才算该节点故障。 */
+	let node_delay = {};         /* node -> delay 或 null(故障) */
+	for (let node in uniq_nodes) {
+		let delay = probe_member(node, QUICK_PROBE_TIMEOUT_MS);
 		if (delay == null) {
 			/* 单次失败做二次确认，过滤瞬时抖动。两测皆失败才算真故障。 */
 			system('sleep 1');
-			delay = probe_member(now);
-			if (delay == null)
-				bad = true;
+			delay = probe_member(node, QUICK_PROBE_TIMEOUT_MS);
+		}
+		node_delay[node] = delay;   /* null 表示确认故障 */
+	}
+
+	/* 阶段 2：按组判定。故障 = 探测确认失败(null)，或延迟 > 基线×QUICK_FACTOR。 */
+	for (let tag in group_now) {
+		const now = group_now[tag];
+		const delay = node_delay[now];
+		const st = state.members?.[now] ?? null;
+		let bad = false;
+		if (delay == null) {
+			bad = true;                                  /* 双确认后仍失败 */
 		} else if (st && st.base != null && delay > st.base * QUICK_FACTOR) {
-			bad = true;
+			bad = true;                                  /* 明显劣化 */
 		}
 		if (bad) {
 			/* ⚠ 关键：把探测结果【写回 state】再触发全量评分。否则全量评分
