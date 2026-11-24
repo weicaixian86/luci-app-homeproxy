@@ -1018,8 +1018,34 @@ sync_rulesets() {
 # /etc/uci-defaults）已经写过一次，这里再兜一层 —— postinst 被跳过、
 # ucitrack 被后来的固件覆盖或清空、或用户自己删了这一段时，只要服务启动过
 # 一次就能补回来。幂等：段存在就直接返回，不写盘。
+#
+# ⚠️ 只用 `option init`，**绝不写 `list affects homeproxy`**：
+#   ucitrack 的 affects 语义是「当本配置 config.change 时，再向 affects 里
+#   的包广播一条 config.change」。把 affects 指回自己（homeproxy→homeproxy）
+#   会形成「自己给自己无限广播」的自激死循环：procd/ubusd 每秒收发上百次
+#   config.change，CPU 长期 30~40%（issue #6，237 现场 ubus monitor 每秒刷屏
+#   {@type:config.change,data:{package:homeproxy}}）。而 `option init` 本身
+#   已经让「改配置 → /etc/init.d/homeproxy reload」成立（ucitrack 的
+#   register_init），根本不依赖 affects。
 hp_ucitrack_register() {
 	command -v uci >/dev/null 2>&1 || return 0
+
+	# 老版本遗留的自指 affects 清理（覆盖升级后必须清，否则一直死循环）：
+	# 只要 @homeproxy[0].affects 里还有 homeproxy，就 del_list 掉并重载 ucitrack。
+	local a list
+	list="$(uci -q get ucitrack.@homeproxy[0].affects 2>/dev/null)"
+	case " $list " in
+		*" homeproxy "*)
+			uci -q del_list "ucitrack.@homeproxy[0].affects=homeproxy"
+			uci -q commit ucitrack
+			# ucitrack 只会按新配置重建自己的 procd 触发器；不重载它的话，
+			# 旧的自激 trigger 还挂在 procd 上，CPU 不会降下来。
+			/etc/init.d/ucitrack reload >/dev/null 2>&1 || true
+			log "已清理 ucitrack 自指 affects（修复 config.change 自激死循环，issue #6）。"
+		;;
+	esac
+
+	# 段已存在（含上面刚清理完的）→ 不动 init，直接返回。
 	uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1 && return 0
 
 	local t
@@ -1027,7 +1053,6 @@ hp_ucitrack_register() {
 	[ -n "$t" ] || return 0
 
 	uci -q set "ucitrack.$t.init=homeproxy"
-	uci -q add_list "ucitrack.$t.affects=homeproxy"
 	uci -q commit ucitrack
 	log "已登记 ucitrack：/etc/config/homeproxy 变更后由 LuCI 自动执行 /etc/init.d/homeproxy reload。"
 	return 0

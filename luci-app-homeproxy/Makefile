@@ -89,11 +89,16 @@ if [ -z "$${IPKG_INSTROOT}" ]; then
 	# reload 触发器只对已有实例的服务生效，而本插件没配节点时会早退、
 	# 不创建实例，所以必须靠 ucitrack。这里装包即登记，不必等下次
 	# 启动再跑 /etc/uci-defaults（同一个段，幂等）。
+	#
+	# ⚠️ 只写 `option init`，绝不写 `list affects homeproxy`：affects 是
+	#   「配置变化 → 再向 affects 里的包广播 config.change」，指回自己会
+	#   形成无限自激（procd/ubusd CPU 30~40%，issue #6）。option init 已经
+	#   足够让「改配置 → reload」成立。覆盖升级的老用户若残留自指 affects，
+	#   由 init.d 的 hp_ucitrack_register() 在服务启动时自动清理。
 	if ! uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1; then
 		hp_track="$$(uci -q add ucitrack homeproxy)"
 		if [ -n "$$hp_track" ]; then
 			uci -q set "ucitrack.$$hp_track.init=homeproxy"
-			uci -q add_list "ucitrack.$$hp_track.affects=homeproxy"
 			uci -q commit ucitrack
 		fi
 	fi

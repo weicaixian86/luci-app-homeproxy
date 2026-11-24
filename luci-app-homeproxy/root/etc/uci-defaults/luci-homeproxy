@@ -78,13 +78,26 @@ EOF
 # 幂等：已有段就不重复添加（重装、升级、恢复出厂后再次执行都安全）。
 # 主路径仍是前端 apply 成功后直接调 rpcd ruleset_sync（见 client.js 的
 # armRulesetSync），ucitrack 只是让「改了配置就重启服务」这条语义成立。
+#
+# ⚠️ 只写 `option init`，绝不写 `list affects homeproxy`：affects 是
+#   「配置变化 → 再向 affects 里的包广播 config.change」，指回自己会
+#   形成无限自激（procd/ubusd CPU 30~40%，issue #6）。
 if ! uci -q get ucitrack.@homeproxy[0] >/dev/null 2>&1; then
 	hp_track="$(uci -q add ucitrack homeproxy)"
 	if [ -n "$hp_track" ]; then
 		uci -q set "ucitrack.$hp_track.init=homeproxy"
-		uci -q add_list "ucitrack.$hp_track.affects=homeproxy"
 		uci -q commit ucitrack
 	fi
 fi
+
+# 覆盖升级兼容：老版本可能在 ucitrack 里留了自指 affects=homeproxy，造成
+# config.change 自激死循环。发现即清掉并重载 ucitrack（issue #6）。
+case " $(uci -q get ucitrack.@homeproxy[0].affects 2>/dev/null) " in
+	*" homeproxy "*)
+		uci -q del_list "ucitrack.@homeproxy[0].affects=homeproxy"
+		uci -q commit ucitrack
+		/etc/init.d/ucitrack reload >/dev/null 2>&1 || true
+	;;
+esac
 
 exit 0
