@@ -462,10 +462,10 @@ function renderConnCards() {
 
 	/* P3：「全部检测」——一次性触发所有连接卡，省去逐卡点的摩擦。
 	   并发发起，各自更新自己的结果；按钮在全部返回前 disabled 防重复。 */
-	/* 检测是中性"操作"，不用 action 蓝——蓝色在系统里专属「手动选择」语义，
-	   避免一色二义（critique H4）。用普通按钮 + 检测中文案与恢复。 */
+	/* 用户明确要求这些操作按钮统一为蓝色（与页面其它蓝色操作按钮一致），
+	   故加 cbi-button-action。 */
 	const allBtn = E('button', {
-		'class': 'btn cbi-button homeproxy-check-all',
+		'class': 'btn cbi-button cbi-button-action homeproxy-check-all',
 		'style': 'margin-bottom: 10px',
 		'click': ui.createHandlerFn(this, () => {
 			const label = _('Check all');
@@ -549,7 +549,7 @@ function getResVersion(o, type) {
 		   ui.createHandlerFn 传进来的 ctx（LuCI 是 `fn.call(ctx, ev)`），
 		   不是按钮元素 —— 用 `this` 当 btnEl 会拿到 undefined。 */
 		const btnEl = E('button', {
-			'class': 'btn cbi-button',
+			'class': 'btn cbi-button cbi-button-action',
 			'click': ui.createHandlerFn(this, function() {
 				/* 后台任务：rpcd 的 resources_update 只负责启动，立即返回
 				   {started:true}；结果靠 resources_update_poll 轮询。
@@ -887,7 +887,7 @@ return view.extend({
 		}
 
 		const btn = E('button', {
-			'class': 'btn cbi-button',
+			'class': 'btn cbi-button cbi-button-action',
 			'click': ui.createHandlerFn(this, () => {
 				if (polling)
 					return;
