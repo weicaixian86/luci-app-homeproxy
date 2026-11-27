@@ -585,9 +585,42 @@ function run() {
 
 	const score_groups = find_score_groups(proxies);
 
-	/* ① 业务失败观测：内核日志尾只读一次（各行多组共享），每组再按自己的
-	   成员标签集合归因（tag 是节点显示名，用 `[tag]` 精确锚定，见上）。 */
+	/* ① 业务失败观测：内核日志尾只读一次（各行多组共享）。
+	   biz_n 按「节点」跨组共享存储，必须**每节点每轮只累加一次**——否则一个
+	   属于多个评分组的节点，同一批日志会被重复计 N 次（实测 3 组节点 3 条
+	   日志被记成 biz_n=9）。故先对全部评分组成员取并集、用并集归因统计一次，
+	   在组循环前写入 state；组循环内只读该值参与评分，不再累加。 */
 	const biz_lines = read_core_log_tail();
+	if (type(state.members) !== 'object')
+		state.members = {};
+	let _all_members = [], _mseen = {};
+	for (let _g in score_groups) {
+		const _sp = proxies.proxies[_g];
+		if (type(_sp) !== 'object' || isEmpty(_sp.all))
+			continue;
+		for (let _m in expand_score_members(_sp.all, proxies.proxies, score_groups, 0)) {
+			if (_mseen[_m])
+				continue;
+			_mseen[_m] = true;
+			push(_all_members, _m);
+		}
+	}
+	const biz_fail_global = count_business_failures(biz_lines, _all_members);
+	if (length(_all_members) > 0) {
+		let _gb = 0;
+		for (let _t in biz_fail_global)
+			_gb += biz_fail_global[_t];
+		if (_gb > 0)
+			log(sprintf('业务失败观测：日志尾 %d 条点名 %d 个评分节点', _gb, length(biz_fail_global)));
+		for (let _m in biz_fail_global) {
+			let _st = state.members[_m] ?? null;
+			if (!_st)
+				_st = { ok_cnt: 0, fail_cnt: 0 };
+			_st.biz_n = (_st.biz_n ?? 0) + biz_fail_global[_m];
+			_st.biz_ts = now_ts;
+			state.members[_m] = _st;
+		}
+	}
 
 	/* 被动速度采样（轮内一次，所有组共享）；无流量时几乎零成本 */
 	const speeds = sample_speeds();
@@ -605,12 +638,12 @@ function run() {
 
 		const members = expand_score_members(score_proxy.all, proxies.proxies, score_groups, 0);
 		const n = length(members);
-		/* ① 本组各成员在日志尾里被点名失败的次数（按 `[tag]` 精确归因）。 */
-		const biz_fail = count_business_failures(biz_lines, members);
-		let _bt = 0;
-		for (let _tt in biz_fail) _bt += biz_fail[_tt];
+		/* ① 本组业务观测日志：读组循环前的并集统计（biz_fail_global），只读不累加。 */
+		let _bt = 0, _bn = 0;
+		for (let _m in members)
+			if ((biz_fail_global[_m] ?? 0) > 0) { _bt += biz_fail_global[_m]; _bn++; }
 		if (_bt > 0)
-			log(sprintf('业务失败观测[%s]：日志尾 %d 条点名本组节点(%d 个)', tag, _bt, length(biz_fail)));
+			log(sprintf('业务失败观测[%s]：日志尾 %d 条点名本组节点(%d 个)', tag, _bt, _bn));
 		/* 探测预算：原来 sqrt(n)+1（82 → 10）太小，每轮只测 10 个、其余用
 		   十几分钟前的旧样本，导致「98 分现任 vs 99 分挑战者」这种接近的候选
 		   分数在轮间反复翻转、now 抖动。实测完整一轮仅 6 秒，扩预算代价很小。
@@ -681,15 +714,8 @@ function run() {
 		let best_tag = '', best_score = 9999;
 		for (let m in members) {
 			let st = state.members?.[m] ?? null;
-			/* ① 把本轮业务失败观测累加进该成员 state：累计次数 + 刷新观测时间。
-			   只在确有新失败时写，否则保留上次 biz_n/biz_ts 让其按半衰期自然衰减
-			   （不会因为「本轮没扫到」就清零——旧失败该按时间淡出，而不是瞬间洗白）。 */
-			if ((biz_fail[m] ?? 0) > 0) {
-				if (!st) st = { ok_cnt: 0, fail_cnt: 0 };
-				st.biz_n = (st.biz_n ?? 0) + biz_fail[m];
-				st.biz_ts = now_ts;
-				state.members[m] = st;
-			}
+			/* ① biz_n 已在组循环前按「节点并集」每节点只累加一次（biz_fail_global），
+			   这里不再写，避免一个属于多个组的节点被重复计 N 次。 */
 			/* 需要探测时更新样本与基线 */
 			if (!(st && st.ok && (now_ts - st.ts) < DELAY_FRESH) &&
 			    (~index(probe_list, m) && probe_count < budget)) {
@@ -748,9 +774,14 @@ function run() {
 			}
 		}
 
-		for (let k in (state.members ?? {}))
-			if (now_ts - (state.members[k].ts ?? 0) > 2 * HALF_LIFE)
+		for (let k in (state.members ?? {})) {
+			const _ts = state.members[k].ts ?? 0;
+			const _bts = state.members[k].biz_ts ?? 0;
+			/* 保留有近期业务失败观测的节点（即使本轮未探到），否则 biz-only
+			   记录会被探测时间 GC 误删，导致刚记下的失败当场丢失。 */
+			if (now_ts - _ts > 2 * HALF_LIFE && now_ts - _bts > 2 * HALF_LIFE)
 				delete state.members[k];
+		}
 
 		if (!best_tag) {
 			/* 全组无可用成员样本 = 所有节点都探测失败/无数据。按显式兜底处理：
