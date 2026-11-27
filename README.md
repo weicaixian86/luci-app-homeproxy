@@ -38,7 +38,7 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
    - OpenWrt **25.12** → `luci-app-homeproxy_<版本>-all.apk`
 2. 上传到路由器 `/tmp` 后安装：
    ```sh
-   apk --update-cache add --allow-untrusted /tmp/luci-app-homeproxy_<版本>-all.apk
+   apk add --allow-untrusted /tmp/luci-app-homeproxy_*-all.apk
    ```
 3. 首次启动服务时，插件会按架构自动下载并安装 reF1nd sing-box 内核（`1.14.4-reF1nd`，含 clash proxy-providers 与 Linux 内核 eBPF 支持）；也可以在 LuCI 状态页「sing-box 内核管理」中手动点「下载 / 更新内核」。
 ### 方式二：下载 ZIP 离线安装（含内核，无需额外下载）
@@ -48,7 +48,7 @@ homeproxy-deploy_<版本>-amd64.zip Amd64离线安装包（含LUCI、带补丁�
    - `aarch64` → `homeproxy-deploy_<版本>-arm64.zip`
 2. 上传ZIP包到路由器 `/tmp`，安装：
    ```sh
-   cd /tmp && unzip -o homeproxy-deploy_<版本>-amd64.zip && cd homeproxy-deploy_<版本>-amd64 && sh install.sh
+   cd /tmp && unzip -o homeproxy-deploy_*-amd64.zip && cd homeproxy-deploy_*-amd64 && sh install.sh
    ```
 3. `install.sh` 会自动执行：停服务 → 安装 luci（apk 自动解决依赖，需联网或已配源）→ 铺设 `/usr/bin/sing-box` 内核 → 启动服务 → 刷新 LuCI。升级时重新跑本脚本即可（会再次覆盖内核并重装 luci）。
 > 两种方式下内核版本都钉死为 `1.14.4-reF1nd_<插件版本>`（打过补丁），因此 `ensure_core` 会判定「已是最新」并跳过下载，从而保留补丁。
