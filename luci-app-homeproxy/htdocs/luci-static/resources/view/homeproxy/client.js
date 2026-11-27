@@ -2154,6 +2154,30 @@ return view.extend({
 		so.depends('node', 'selector');
 		so.modalonly = true;
 
+		/* ① 显式故障兜底（对齐 honk 的 final）：综合评分组**全部成员**都探测
+		   不可用时怎么办。默认 keep = 维持现状、绝不偷偷直连（避免流量泄漏，
+		   honk 的 final 默认也是「不兜底」）。direct = 切直连；block = 全阻断；
+		   也可选另一个策略组兜底。选中后生成器会把该目标作为 selector 成员下发，
+		   评分器在全组故障时 PUT 过去。 */
+		so = ss.option(form.ListValue, 'score_fallback', _('Fallback when all nodes fail'),
+			_('What a score-based group should do when every member is unreachable. "Keep current" never falls back to direct (no traffic leak).'));
+		so.load = function(section_id) {
+			delete this.keylist;
+			delete this.vallist;
+			this.value('keep', _('Keep current (no fallback)'));
+			this.value('direct', _('Direct connection'));
+			this.value('block', _('Block traffic'));
+			uci.sections(data[0], 'routing_node', (res) => {
+				if (res['.name'] !== section_id && res.enabled === '1' && ['urltest', 'score', 'selector'].includes(res.node))
+					this.value(res['.name'], res.label || res['.name']);
+			});
+			return this.super('load', section_id);
+		}
+		so.default = 'keep';
+		so.rmempty = false;
+		so.depends('node', 'score');
+		so.modalonly = true;
+
 		so = ss.option(form.Value, 'urltest_url', _('Test URL'),
 			_('The URL to test.'));
 		/* 默认探测地址用 google.com 的 generate_204，不用 gstatic：

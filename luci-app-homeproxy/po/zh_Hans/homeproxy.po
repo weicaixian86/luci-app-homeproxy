@@ -749,6 +749,21 @@ msgstr "默认成员"
 msgid "The initial member for manual select; empty means the first member."
 msgstr "手动选择的初始成员；无表示使用第一个成员。"
 
+msgid "Fallback when all nodes fail"
+msgstr "全部节点故障时的兜底"
+
+msgid "What a score-based group should do when every member is unreachable. \"Keep current\" never falls back to direct (no traffic leak)."
+msgstr "综合评分组的全部成员都不可达时如何处理。“保持现状”绝不回退直连（不泄漏流量）。"
+
+msgid "Keep current (no fallback)"
+msgstr "保持现状（不兜底）"
+
+msgid "Direct connection"
+msgstr "直连"
+
+msgid "Block traffic"
+msgstr "阻断流量"
+
 #: htdocs/luci-static/resources/view/homeproxy/client.js:1257
 #: htdocs/luci-static/resources/view/homeproxy/client.js:3475
 msgid "Default outbound (fallback)"

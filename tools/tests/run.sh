@@ -2814,6 +2814,83 @@ else
 	bad "get_outbound's policy-group type list omits 'score': rules targeting score groups silently become direct-out"
 fi
 
+# ── 综合评分：业务失败观测（可用性 ≠ 可达性）─────────────────────────────────
+# 204 探测只能判「能连」，看不出「连上但目标跑不通」的假活节点。honk 的 Score
+# 靠真实业务观测识别这类节点；本插件用内核日志里点名 outbound 的 WARN/ERROR 补
+# 这一维。两处必须同时成立，否则要么读错文件（读到插件日志恒空）、要么没有罚分：
+#   ① 数据源必须是内核日志 sing-box-c.log（不是插件日志 homeproxy.log）；
+#   ② 归因必须用 `[tag]` 精确锚定成员标签（238 实测：真实日志是
+#      `outbound/<协议>[<节点tag>]`，抓 outbound/ 后第一段只会拿到协议名
+#      hysteria2 —— 旧写法实测命中 0 个真实节点，等于功能不存在）；
+#   ③ compute_score 里要有 biz_n/biz_ts 驱动的、按 BIZ_FAIL_MAX_COUNT 封顶 +
+#      BIZ_FAIL_DECAY 时间衰减的惩罚项。三处缺一即“看着有、实际不工作”。
+if grep -q "const CORE_LOG_FILE = RUN_DIR + '/sing-box-c.log'" "$SN" \
+   && grep -q 'function read_core_log_tail' "$SN" \
+   && grep -q 'function count_business_failures' "$SN" \
+   && grep -qF "index(line, '[' + tag + ']')" "$SN"; then
+	ok "scorer observes business failures from the core log, attributing by [tag] (real outbound/<proto>[<tag>] format)"
+else
+	bad "business-failure observation missing / wrong log / parses protocol name instead of node tag (238: hits 0 real nodes)"
+fi
+
+if grep -q 'st.biz_n' "$SN" && grep -q 'st.biz_ts' "$SN" \
+   && grep -q 'BIZ_FAIL_MAX_COUNT' "$SN" && grep -q 'BIZ_FAIL_DECAY' "$SN"; then
+	ok "business failures are capped (BIZ_FAIL_MAX_COUNT) and time-decayed (BIZ_FAIL_DECAY), never a single-ERROR veto"
+else
+	bad "business-failure penalty is missing its cap/decay (one unrelated ERROR could veto a good node)"
+fi
+
+# ── 综合评分：显式故障兜底（对齐 honk 的 final，默认不偷偷直连）─────────────
+# 全组成员都不可用时，默认 keep 维持现状、绝不自动直连（避免流量泄漏）；
+# 配了 score_fallback 才切 direct/block/指定组，且兜底 tag 必须作为 selector
+# 成员下发（否则 PUT 被静默忽略）。三处缺一不可：生成器追加成员、评分器 PUT、
+# 客户端 UI 选项。
+if grep -q "score_fallback" "$GC" \
+   && grep -q "score_fb === 'direct'" "$GC" \
+   && grep -q 'function score_fallback_outbound' "$SN" \
+   && grep -q "\[fallback\]" "$SN"; then
+	ok "score groups fall back explicitly (keep/direct/block/group); keep never auto-connects direct"
+else
+	bad "explicit score fallback missing: a dead group could silently leak to direct, or never falls back"
+fi
+
+if grep -q "option(form.ListValue, 'score_fallback'" "$PKG/htdocs/luci-static/resources/view/homeproxy/client.js"; then
+	ok "client exposes the score fallback selector (keep/direct/block/groups)"
+else
+	bad "client has no score_fallback field: the generator/scorer option is unreachable from the UI"
+fi
+
+# ── 综合评分：切换回切统计（对齐 honk 的 switchFlap）────────────────────────
+# 防抖不止 tolerance：还要统计「A→B→A」往返，回切 ≥2 次时告警，便于发现阈值/
+# 权重需要调整。state.flap 持久化，日志里同时打出 switches/flap 计数。
+if grep -q 'state.flap' "$SN" && grep -q 'fg.flap' "$SN" && grep -q 'flap-warn' "$SN"; then
+	ok "scorer tracks switch-flap (A→B→A) per group and warns after repeated flapping"
+else
+	bad "switch-flap tracking missing: repeated A↔B switching goes unnoticed"
+fi
+
+# ── 综合评分：业务可靠性 = 30 分钟半衰期的近期加权失败率（非瞬时延迟）─────────
+# 旧口径 loss = fail_cnt/(ok_cnt+fail_cnt) 是全生命周期等权比：两个月前的一串
+# 失败会永远拖累早已好转的节点，也体现不出「最近是否稳定」。新口径用
+# reliability_loss()：rel_ok/rel_fail 按 HALF_LIFE(30min) 半衰期衰减后再比，
+# 近期成败占主导、旧战绩自然淡出；有效样本不足时退回全期计数比（冷启动平滑）。
+# 三处必须同时成立，否则要么函数没接进 compute_score、要么累计没在探测时更新。
+if grep -q 'function reliability_loss' "$SN" \
+   && grep -q 'loss = reliability_loss(st, now_ts)' "$SN" \
+   && grep -q 'st.rel_ok' "$SN" && grep -q 'st.rel_fail' "$SN" \
+   && grep -q 'math_pow(0.5, (now_ts - rls) / HALF_LIFE)' "$SN"; then
+	ok "loss is a 30-min half-life weighted business reliability (recency, not lifetime counts)"
+else
+	bad "business reliability still lifetime-count loss: an old recovered failure penalizes forever"
+fi
+
+if grep -q 'compute_score(st, speeds\[m\] ?? null, speed_ref, now_ts)' "$SN" \
+   && grep -q 'compute_score(inc_st, speeds\[incumbent\] ?? null, speed_ref, now_ts)' "$SN"; then
+	ok "both compute_score call sites pass now_ts (reliability decay is time-aware)"
+else
+	bad "a compute_score call site omits now_ts: reliability decay would use a wrong age"
+fi
+
 # 种子路径必须两边逐字一致，否则内核找不到种子 → 启动同步拉取 → 机场不可达即 FATAL。
 if grep -q "sprintf('%s/providers/%s.sub', HP_DIR, group_hash)" "$GC" \
    && grep -q "sprintf('%s/%s.sub', dir, group_hash)" "$UPD" \

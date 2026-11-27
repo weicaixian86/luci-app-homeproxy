@@ -1834,7 +1834,29 @@ if (!isEmpty(main_node)) {
 			   expand_policy_sections）；urltest/selector 子组保持组引用。 */
 			const score_policy = expand_policy_sections(cfg.policy_nodes, cfg['.name'], 0);
 			const score_node_list = [...score_base, ...filter(score_policy, (l) => !~index(score_base, l))];
-			const score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
+			let score_tags = map(score_node_list, (k) => get_section_outbound_tag(k));
+			/* ① 显式故障兜底（对齐 honk 的 final，默认不兜底 = 不偷偷直连）：
+			   score_fallback 可为 keep（默认，无可用成员时评分器保持现状）、
+			   direct（全部成员宕机时切 direct-out）、或某个策略组段名（切到该组）。
+			   兜底目标必须**作为 selector 成员下发**——sing-box 的
+			   PUT /proxies/{tag} 只接受成员名，不在成员里的值会被静默忽略。
+			   故这里把兜底 tag 追加进 outbounds（仅当不是 keep 且非空且确实存在）。 */
+			const score_fb = trim(cfg.score_fallback ?? '');
+			if (!isEmpty(score_fb) && score_fb !== 'keep') {
+				let fb_tag = null;
+				if (score_fb === 'direct')
+					fb_tag = 'direct-out';
+				else if (score_fb === 'block')
+					fb_tag = 'block-out';
+				else {
+					/* 指向另一个策略组：确认它存在且启用，取其 tag。 */
+					const fbn = uci.get_all(uciconfig, score_fb) || {};
+					if (!isEmpty(fbn) && fbn['.type'] === uciroutingnode && isSectionEnabled(fbn.enabled))
+						fb_tag = get_section_outbound_tag(score_fb);
+				}
+				if (!isEmpty(fb_tag) && !~index(score_tags, fb_tag))
+					push(score_tags, fb_tag);
+			}
 			/* 综合评分组**不设 default**：初始选中由评分器第一轮实测后 PUT 写入
 			   （评分语义 = 评分器全权，UI 也不提供默认成员选项 —— 用户确认）。 */
 			push(config.outbounds, {

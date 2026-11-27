@@ -39,6 +39,16 @@ import { isEmpty, shellQuote, HP_DIR, RUN_DIR } from 'homeproxy';
 const STATE_FILE = HP_DIR + '/score_state.json';
 const LOCK_DIR = RUN_DIR + '/score_nodes.lock';
 const LOG_FILE = RUN_DIR + '/homeproxy.log';
+/* ⚠ 业务失败观测读的是**内核**日志 sing-box-c.log（generate_client.uc 的
+   `config.log.output`），不是插件日志 homeproxy.log —— `using outbound/<tag>`
+   这类路由/拨号明细只有内核会写。上一版把数据源写成 homeproxy.log 是笔误：
+   tail 它永远读不到任何 outbound 归因，业务失败观测等于没实现（236 复核）。 */
+const CORE_LOG_FILE = RUN_DIR + '/sing-box-c.log';
+/* 业务可靠性的时间常数：30 分钟半衰期（对齐 honk 的 business reliability）。
+   与 DEGRADE_TIME_DECAY / BIZ_FAIL_DECAY（15 分钟）不同——那两个是「惩罚随
+   时间淡出」，这里是「近期真实成败的加权窗口」：半衰期越长越看重长期稳定，
+   越短越接近瞬时。30 分钟 = 既不因一次偶发失败就翻转，也不会被几个月前的
+   老战绩长期绑架。HALF_LIFE 原来只用于状态 GC，现复用为可靠性衰减常数。 */
 const HALF_LIFE = 30 * 60;
 const DELAY_FRESH = 10 * 60;
 const PROBE_TIMEOUT_MS = 4000;
@@ -68,6 +78,20 @@ const LATENCY_CURVE_K = 0.3;
 const JITTER_MIN_SAMPLES = 3;    // 抖动样本不足不计惩罚（中性）
 const HIST_MAX = 10;             // 每成员保留最近 10 次成功延迟
 const DEGRADE_PENALTY = 0.5;     // 退化节点基础惩罚分
+/* ① 业务失败观测（对齐 honk：可用性 ≠ 可达性）。内核日志里一条 WARN/ERROR
+   若点名某 outbound（`using outbound/<tag>` 或错误行含 `outbound/<tag>`），
+   记为一次「业务失败」——它代表「能连上、但真实目标没跑通」，是 204 探测
+   看不出的「假活」节点。惩罚**封顶且按时间衰减**，避免一次无关 ERROR
+   （目标服务器拒绝）否决一个好节点（237 现场：1 次失败被 +500 罚分，
+   导致 2% 改善也被切换）。
+   量纲对齐现有 score（0~1.5 区间，不是旧版的 683 量级）：
+   penalty = BIZ_FAIL_PENALTY × min(失败次数, BIZ_FAIL_MAX_COUNT)，再按
+   BIZ_FAIL_DECAY 半衰期衰减；单节点最多 +1.5（与 DEGRADE_PENALTY_MAX 同顶）。 */
+const BIZ_FAIL_PENALTY = 0.5;    // 每次业务失败的惩罚步长
+const BIZ_FAIL_MAX_COUNT = 3;    // 计入惩罚的失败次数上限（3 → 最多 3×0.5）
+const BIZ_FAIL_DECAY = 15 * 60;  // 业务失败惩罚的时间衰减半衰期（15 分钟减半）
+const BIZ_LOG_TAIL_BYTES = 64 * 1024; // 只看内核日志尾部 64KB，避免整文件读
+const BIZ_LOG_TAIL_LINES = 400;  // 或最近 400 行，二者取较小的工作量
 const BASE_ALPHA = 0.20;         // EMA 基线系数（新样本权重 20%）
 const BASE_MIN_SAMPLES = 3;      // 建立基线的最少成功样本
 const SPIKE_FACTOR = 3.0;        // 延迟 > 基线×3 视为 spike，不更新基线
@@ -175,6 +199,75 @@ function load_state() {
 
 function save_state(st) {
 	writefile(STATE_FILE, sprintf('%.J\n', st));
+}
+
+/* ===== ① 业务失败观测（可用性 ≠ 可达性，零增量流量）=====
+   从内核日志尾部扫出「点名 outbound 的 WARN/ERROR」行，按节点累计失败次数。
+   为什么读内核日志而不是流量状态：sing-box 的 `/connections` 只反映**存活**
+   连接，一条「连上了但目标被拒/超时」的连接在统计里和成功无法区分；只有内核
+   日志会明确把那一次失败挂到具体 outbound 上。默认内核日志级别是 warn，
+   WARN/ERROR 行一定会落盘（INFO 的路由明细不会，故不能靠 `using outbound`
+   单独判失败——它在成功连接上也会出现）。
+
+   ⚠ 真实日志格式（238 裸机实测，务必照这个来，别想当然）：
+     `ERROR [... ] connection: open connection to ….  using outbound/hysteria2[[LX] 🇸🇬新加坡专线03|BGP|流媒体]: …`
+   `outbound/` 之后**先是协议名**（hysteria2/trojan/vless…），`[` 之后才是**节点
+   tag**，且 tag 自身可能以 `[LX]` 这种方括号开头（栈里还有 `]`）。所以**绝不能**
+   用 `outbound/([^\[]+)` 抓——那抓到的是协议名 `hysteria2`，归因全错（旧版正是
+   这么错的：实测命中 0 个真实节点）。
+   正法：遍历当前组成员 tag，在行内用 `index(line, "[" + tag + "]")` **精确锚定**
+   节点标签边界（`[tag]` 这个整体子串在 `outbound/…[tag]` 里唯一），既避开协议名
+   又容忍 tag 内的空格 / `|` / emoji / 中文。
+
+   只认 WARN / ERROR 级别行（`WARN `/`ERROR ` 前缀或 `[WARN]`/`[ERROR]` 标记）。
+   返回 { tag: 本轮新增失败次数 }；任何异常都返回空 map（不罚分）。 */
+/* 读一次内核日志尾部，返回行数组（多组共享，避免每组各 spawn 一次 tail）。 */
+function read_core_log_tail() {
+	let data = '';
+	const fd = popen(sprintf('tail -c %d %s 2>/dev/null',
+		BIZ_LOG_TAIL_BYTES, shellQuote(CORE_LOG_FILE)));
+	if (!fd)
+		return [];
+	try {
+		let chunk = fd.read('all');
+		if (type(chunk) === 'string')
+			data = chunk;
+	} catch (e) {
+		data = '';
+	}
+	fd.close();
+	if (isEmpty(data))
+		return [];
+	let lines = split(data, /[\r\n]+/);
+	if (length(lines) > BIZ_LOG_TAIL_LINES)
+		lines = slice(lines, length(lines) - BIZ_LOG_TAIL_LINES);
+	return lines;
+}
+
+/* 对给定成员标签集合，从已读好的日志行里统计本轮新增业务失败次数。 */
+function count_business_failures(lines, members) {
+	const out = {};
+	if (type(members) !== 'array' || length(members) === 0)
+		return out;
+	for (let ln in lines) {
+		const line = ln;
+		/* 级别过滤：内核日志首行形如 `+0800 2026-… ERROR [id 15.2s] connection: …` */
+		if (!(match(line, /(^|[^A-Za-z])(WARN|ERROR)([^A-Za-z]|$)/) ||
+		      match(line, /\[(WARN|ERROR)\]/)))
+			continue;
+		/* 必须是一条点名 outbound 的连接行 */
+		if (!match(line, /outbound\//))
+			continue;
+		/* 遍历成员，用 `[tag]` 精确锚定（真实格式 outbound/<proto>[<tag>]）。
+		   tag 名字是另一个前缀时，`[tag]` 的闭括号能避免误配（abc vs abcd）。 */
+		for (let tag in members) {
+			if (index(line, '[' + tag + ']') >= 0) {
+				out[tag] = (out[tag] ?? 0) + 1;
+				break;   /* 一行只归因一个节点，避免共享 carrier 重复计 */
+			}
+		}
+	}
+	return out;
 }
 
 /* 被动速度采样（mihomo SpeedObserver 模式，适配本内核）：
@@ -291,9 +384,32 @@ function update_baseline(st, success, delay) {
 	}
 }
 
+/* 业务可靠性：半衰期加权的近期失败率（0..1，越低越好）。
+   这是本项建议的核心——用「近期加权」取代「全生命周期原始计数比」：
+     · 旧口径 loss = fail_cnt/(ok_cnt+fail_cnt)，两个月前的一串失败会永远拖累
+       一个早已好转的节点，也体现不出「最近稳定性」；
+     · 新口径把 rel_ok / rel_fail 在**每次探测时**按 HALF_LIFE(30min) 半衰期
+       先衰减旧值、再给本次结果 +1（见 run() 探测块）。于是最近 30 分钟的成败
+       权重最高、更早的战绩逐半衰期淡出，等价于一个 30 分钟半衰期的 EWMA。
+       比值只随新样本变化（这是对的：可靠性就是对已观测结果的统计）。
+   这里只做「读取并算出当前失败率」的纯计算，**不在计算时再乘共享衰减**——
+   两个计数用同一个 rel_ts 同倍缩放，比值不变，反而会引入整数除法陷阱
+   （238 复核：age==0 时 w=1 为 int，30/33 被截断成 0）。故强制浮点、且只在
+   更新路径做时间衰减。证据不足时退回全期计数比，保证冷启动平滑、不突变。 */
+function reliability_loss(st, now_ts) {
+	let eff_ok = (st.rel_ok ?? 0) * 1.0;
+	let eff_fail = (st.rel_fail ?? 0) * 1.0;
+	const eff_total = eff_ok + eff_fail;
+	if (eff_total >= LOSS_MIN_SAMPLES)
+		return eff_fail / (eff_total * 1.0);
+	/* 有效样本不足：退回全期计数比（与旧口径一致，冷启动平滑）。 */
+	const total = (st.ok_cnt ?? 0) + (st.fail_cnt ?? 0);
+	return (total >= LOSS_MIN_SAMPLES) ? ((st.fail_cnt ?? 0) / (total * 1.0)) : 0;
+}
+
 /* 计算单个成员的评分（分数越低越好，与 mihomo Smart 同构）：
    score = delay/2000(归一上限1) + W_LOSS*失败率 + (退化?DEGRADE_PENALTY:0) */
-function compute_score(st, speed, speed_ref) {
+function compute_score(st, speed, speed_ref, now_ts) {
 	if (!st || !st.ok || st.delay == null)
 		return 999;      /* 无样本/失败：极高，仅当全部如此才用 */
 	let nd = st.delay / 2000.0;   /* /2000 会被 ucode 当整数除法截断成 0，必须用浮点 */
@@ -302,10 +418,8 @@ function compute_score(st, speed, speed_ref) {
 	   500ms→0.285、1000ms→0.533、2000ms→1.0——与线性接近但高延迟区
 	   增长放缓，低延迟节点之间的差距不再主导评分。 */
 	nd = math_log(1 + LATENCY_CURVE_K * nd) / math_log(1 + LATENCY_CURVE_K);
-	let loss = 0;
-	const total = (st.ok_cnt ?? 0) + (st.fail_cnt ?? 0);
-	if (total >= LOSS_MIN_SAMPLES)
-		loss = (st.fail_cnt ?? 0) / (total * 1.0);
+	/* 失败率：改为 30 分钟半衰期的近期加权口径（见 reliability_loss）。 */
+	let loss = reliability_loss(st, now_ts);
 	let sc = W_DELAY * nd + W_LOSS * loss;
 
 	/* 抖动维度：最近 N 次成功延迟的极差 / 基线（归一上限 1）。
@@ -367,6 +481,22 @@ function compute_score(st, speed, speed_ref) {
 		}
 	}
 
+	/* ① 业务失败惩罚（可用性 ≠ 可达性）：st.biz_n 是最近累计的、点名本节点的
+	   内核 WARN/ERROR 次数（见 observe_business_failures），st.biz_ts 是最近
+	   一次观测时间。惩罚按次数封顶 + 时间半衰期衰减，**直接加在分上、不再随
+	   样本新鲜度回摆**——它是真实流量的负证据，不该被「样本陈旧」稀释掉。
+	   ★ 与「退化」是两条独立证据：退化看的是探测延迟劣化，业务失败看的是
+	     真实连接是否跑通。一个「延迟极低但连上就失败」的假活节点，只有这一项
+	     能把它压下去（238 现场：204 探测全绿、真实访问 000 的节点）。 */
+	if ((st.biz_n ?? 0) > 0 && (st.biz_ts ?? 0) > 0) {
+		let bn = min(st.biz_n, BIZ_FAIL_MAX_COUNT);
+		let bpen = BIZ_FAIL_PENALTY * bn;
+		const bage = time() - st.biz_ts;
+		if (bage > 0)
+			bpen = bpen * math_pow(0.5, bage / BIZ_FAIL_DECAY);
+		sc += bpen;
+	}
+
 	return sc;
 }
 
@@ -409,6 +539,35 @@ function find_score_groups(proxies) {
 	return groups;
 }
 
+/* ① 显式故障兜底：把组的显示标签（= selector tag）映射回 UCI 段，读其
+   score_fallback，解析成真实 outbound tag。返回：
+     · ''(空串) → keep（默认，全部成员不可用时维持现状，绝不偷偷直连）；
+     · 'direct-out' / 'block-out' / 某策略组 tag → 全组故障时切到该目标。
+   目标 tag 已在生成器里作为 selector 成员下发（否则 PUT 会被静默忽略）。 */
+function score_fallback_outbound(group_tag) {
+	const uci = cursor();
+	uci.load('homeproxy');
+	let fb = null;
+	uci.foreach('homeproxy', 'routing_node', (cfg) => {
+		if (cfg.node !== 'score' || isEmpty(cfg.label) || cfg.label !== group_tag)
+			return;
+		const v = trim(cfg.score_fallback ?? '');
+		if (isEmpty(v) || v === 'keep')
+			return;
+		if (v === 'direct')
+			fb = 'direct-out';
+		else if (v === 'block')
+			fb = 'block-out';
+		else {
+			/* 指向另一策略组：取该组的显示标签作为 tag */
+			const t = uci.get_all('homeproxy', v) || {};
+			if (!isEmpty(t) && t['.type'] === 'routing_node' && !isEmpty(t.label))
+				fb = t.label;
+		}
+	});
+	return fb;
+}
+
 function run() {
 	if (!lock_acquire())
 		return { result: false, error: 'already_running' };
@@ -426,6 +585,10 @@ function run() {
 
 	const score_groups = find_score_groups(proxies);
 
+	/* ① 业务失败观测：内核日志尾只读一次（各行多组共享），每组再按自己的
+	   成员标签集合归因（tag 是节点显示名，用 `[tag]` 精确锚定，见上）。 */
+	const biz_lines = read_core_log_tail();
+
 	/* 被动速度采样（轮内一次，所有组共享）；无流量时几乎零成本 */
 	const speeds = sample_speeds();
 	let speed_vals = [];
@@ -442,6 +605,12 @@ function run() {
 
 		const members = expand_score_members(score_proxy.all, proxies.proxies, score_groups, 0);
 		const n = length(members);
+		/* ① 本组各成员在日志尾里被点名失败的次数（按 `[tag]` 精确归因）。 */
+		const biz_fail = count_business_failures(biz_lines, members);
+		let _bt = 0;
+		for (let _tt in biz_fail) _bt += biz_fail[_tt];
+		if (_bt > 0)
+			log(sprintf('业务失败观测[%s]：日志尾 %d 条点名本组节点(%d 个)', tag, _bt, length(biz_fail)));
 		/* 探测预算：原来 sqrt(n)+1（82 → 10）太小，每轮只测 10 个、其余用
 		   十几分钟前的旧样本，导致「98 分现任 vs 99 分挑战者」这种接近的候选
 		   分数在轮间反复翻转、now 抖动。实测完整一轮仅 6 秒，扩预算代价很小。
@@ -512,6 +681,15 @@ function run() {
 		let best_tag = '', best_score = 9999;
 		for (let m in members) {
 			let st = state.members?.[m] ?? null;
+			/* ① 把本轮业务失败观测累加进该成员 state：累计次数 + 刷新观测时间。
+			   只在确有新失败时写，否则保留上次 biz_n/biz_ts 让其按半衰期自然衰减
+			   （不会因为「本轮没扫到」就清零——旧失败该按时间淡出，而不是瞬间洗白）。 */
+			if ((biz_fail[m] ?? 0) > 0) {
+				if (!st) st = { ok_cnt: 0, fail_cnt: 0 };
+				st.biz_n = (st.biz_n ?? 0) + biz_fail[m];
+				st.biz_ts = now_ts;
+				state.members[m] = st;
+			}
 			/* 需要探测时更新样本与基线 */
 			if (!(st && st.ok && (now_ts - st.ts) < DELAY_FRESH) &&
 			    (~index(probe_list, m) && probe_count < budget)) {
@@ -522,6 +700,24 @@ function run() {
 				st.delay = delay;
 				st.ok = success;
 				st.ts = now_ts;
+				/* 业务可靠性累计（半衰期加权）：先把上次的 rel_ok/rel_fail
+				   按自 rel_ts 起的实际间隔衰减，再给本次结果 +1，然后把 rel_ts
+				   推到 now。这样「近 30 分钟」的成败占主导，旧战绩自然淡出，
+				   而不是像 ok_cnt/fail_cnt 那样把全生命周期等权累加。 */
+				{
+					let rok = (st.rel_ok ?? 0), rfail = (st.rel_fail ?? 0);
+					const rls = (st.rel_ts ?? 0);
+					if (rls > 0) {
+						const w = math_pow(0.5, (now_ts - rls) / HALF_LIFE);
+						rok = rok * w;
+						rfail = rfail * w;
+					}
+					if (success) rok = rok + 1;
+					else rfail = rfail + 1;
+					st.rel_ok = rok;
+					st.rel_fail = rfail;
+					st.rel_ts = now_ts;
+				}
 				if (success) {
 					st.ok_cnt = (st.ok_cnt ?? 0) + 1;
 					/* 记录最近 HIST_MAX 次成功延迟，供抖动维度使用。
@@ -542,7 +738,7 @@ function run() {
 			}
 			if (!st || !st.ok || st.delay == null)
 				continue;
-			const sc = compute_score(st, speeds[m] ?? null, speed_ref);
+			const sc = compute_score(st, speeds[m] ?? null, speed_ref, now_ts);
 			/* 持久化算法分（分越低越好），供状态页统一显示：
 			   质量分 = 100 - min(100, 分×50)，越高越好。 */
 			st.score = sc;
@@ -557,13 +753,23 @@ function run() {
 				delete state.members[k];
 
 		if (!best_tag) {
-			log(sprintf('组「%s」无可用成员样本，维持现状。', tag));
+			/* 全组无可用成员样本 = 所有节点都探测失败/无数据。按显式兜底处理：
+			   配了 score_fallback 就切到兜底出站（真实流量不至于全断在死节点上）；
+			   默认 keep 维持现状（不偷偷直连，避免流量泄漏）。 */
+			const fb_tag = score_fallback_outbound(tag);
+			if (!isEmpty(fb_tag)) {
+				const rc = api_put(sprintf('/proxies/%s', uri_escape(tag)), { name: fb_tag });
+				log(sprintf('[fallback] %s 无可用成员，切到兜底出站 %s rc=%d', tag, fb_tag, rc));
+				push(summary, sprintf('%s: (no alive) -> %s', tag, fb_tag));
+			} else {
+				log(sprintf('组「%s」无可用成员样本，维持现状（未配置兜底，不自动直连）。', tag));
+			}
 			continue;
 		}
 
 		/* 现任评分（用于容差防抖） */
 		const inc_st = state.members?.[incumbent] ?? null;
-		const incumbent_score = (inc_st && inc_st.ok) ? compute_score(inc_st, speeds[incumbent] ?? null, speed_ref) : 9999;
+		const incumbent_score = (inc_st && inc_st.ok) ? compute_score(inc_st, speeds[incumbent] ?? null, speed_ref, now_ts) : 9999;
 
 		if (best_tag === incumbent) {
 			log(sprintf('[keep] %s: incumbent %s score=%.2f', tag, incumbent, best_score));
@@ -572,8 +778,25 @@ function run() {
 				tag, best_tag, best_score, incumbent, incumbent_score, TOLERANCE * 100));
 		} else {
 			const rc = api_put(sprintf('/proxies/%s', uri_escape(tag)), { name: best_tag });
-			log(sprintf('[switch] %s: %s -> %s score=%.2f incumbent_score=%.2f rc=%d',
-				tag, incumbent, best_tag, best_score, incumbent_score, rc));
+			/* ④ 切换回切统计（对齐 honk 的 switchFlap）：记录本组「上一次切换的
+			   来源节点」——若本次切回的对象正好是上一次切换的**来源**，说明是
+			   来回横跳，flap 计数 +1。配合上面的 tolerance（在位保护）一起看：
+			   偶发一次 switch 正常；同一组连续多次 flap 说明阈值/权重需调。 */
+			if (type(state.flap) !== 'object')
+				state.flap = {};
+			let fg = state.flap[tag];
+			if (type(fg) !== 'object')
+				fg = { prev_incumbent: '', flap: 0, switches: 0 };
+			fg.switches = (fg.switches ?? 0) + 1;
+			if (fg.prev_incumbent === best_tag)
+				fg.flap = (fg.flap ?? 0) + 1;
+			fg.prev_incumbent = incumbent;
+			fg.last_ts = now_ts;
+			state.flap[tag] = fg;
+			log(sprintf('[switch] %s: %s -> %s score=%.2f incumbent_score=%.2f rc=%d (switches=%d flap=%d)',
+				tag, incumbent, best_tag, best_score, incumbent_score, rc, fg.switches, fg.flap));
+			if (fg.flap >= 2)
+				log(sprintf('[flap-warn] %s 已回切 %d 次（A→B→A 往返），切换阈值或权重可能需调整', tag, fg.flap));
 			push(summary, sprintf('%s: %s -> %s', tag, incumbent, best_tag));
 		}
 	}
@@ -661,6 +884,20 @@ function quick_check() {
 			bad_st.ok = false;
 			bad_st.delay = null;
 			bad_st.fail_cnt = (bad_st.fail_cnt ?? 0) + 1;
+			/* quick 判故障同样计入业务可靠性的「近期失败」：先按半衰期衰减，再 +1。
+			   与全量评分同口径，避免「quick 报故障但可靠性样本不动」两套账。 */
+			{
+				let rok = (bad_st.rel_ok ?? 0), rfail = (bad_st.rel_fail ?? 0);
+				const rls = (bad_st.rel_ts ?? 0);
+				if (rls > 0) {
+					const w = math_pow(0.5, (now_ts - rls) / HALF_LIFE);
+					rok = rok * w;
+					rfail = rfail * w;
+				}
+				bad_st.rel_ok = rok;
+				bad_st.rel_fail = rfail + 1;
+				bad_st.rel_ts = now_ts;
+			}
 			bad_st.ts = now_ts;
 			state.members[now] = bad_st;
 			if (type(state.quick_cd) !== 'object')
