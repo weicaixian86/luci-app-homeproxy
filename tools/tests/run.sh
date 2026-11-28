@@ -2774,6 +2774,30 @@ else
 	bad "rpcd lacks the score_group_update trigger method"
 fi
 
+# 0.4.41（238 现场：OOM 杀 sing-box → 出站未就绪 → 评分器 --quick 检出大批失败
+# → 触发全量 run 自激 → 单轮 3+ 分钟、crond 报 process already running 堆积 →
+# CPU/磁盘打满 17 分钟 → uhttpd/sshd 抢不到调度、WebUI/SSH 应用层超时）。
+# 两道防线：① 评分器系统性故障退避（run() 退避窗内直接返回 + quick_check 检出
+# 高故障比时不触发全量、设 backoff_until）；② core_guard 给内核设 oom_score_adj。
+if grep -q 'BACKOFF_SECS' "$SN" \
+   && grep -q 'BACKOFF_FAIL_RATIO' "$SN" \
+   && grep -q 'backoff_until' "$SN" \
+   && grep -q '\[backoff\]' "$SN" \
+   && grep -q 'return false;' "$SN"; then
+	ok "scorer backs off on systematic-outage (stops the OOM-then-full-score self-amplification)"
+else
+	bad "scorer lacks systematic-outage backoff: a mass failure still triggers a full scoring storm"
+fi
+
+CG="$PKG/root/etc/homeproxy/scripts/core_guard.sh"
+if grep -q 'oom_score_adj' "$CG" \
+   && grep -q 'protect_core_from_oom' "$CG" \
+   && grep -q 'OOM_ADJUST' "$CG"; then
+	ok "core_guard protects the core with a negative oom_score_adj (survives OOM on low-RAM boxes)"
+else
+	bad "core_guard does not lower the core's oom_score_adj: OOM still kills sing-box first"
+fi
+
 # 方案 D（2026-11-21，237 现场根因链）：
 #   ① 原 `type: 'remote'` 直连原始订阅 → 内核自解析，节点名带「机场名/」前缀，
 #      provider 结构体无任何过滤字段，机场「❗如果只显示此节点|0.1x」等提示节点

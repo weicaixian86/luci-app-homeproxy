@@ -47,13 +47,39 @@ log_line() {
 
 # 在 WINDOW 秒内轮询内核进程是否出现；出现返回 0，超时返回 1。
 # 若检测到 .stopping（用户/系统主动停），以特殊码 2 返回，让调用方立即退出。
+#
+# ── 0.4.41：OOM 保护 ───────────────────────────────────────────────
+# 238 现场（2026-11-28 20:03）：1GB 内存上同时跑着 dockerd/containerd/homebox/
+# opencode2api 等重服务，内存临界时内核 OOM 直接挑中 sing-box（anon-rss 713MB）
+# 杀掉 → 出站中断 → 评分器自激 → WebUI/SSH 卡死。procd 不支持 oom_score_adj
+# （/lib/functions/procd.sh 的 limits 只映射 rlimit），故在这里对刚起来的内核
+# 进程写 /proc/<pid>/oom_score_adj = -500：OOM killer 会优先杀别的进程、尽量保
+# 住核心。之所以放在本脚本：内核每次被 OOM/respawn 后都会重新走 start_service
+# → 拉起 core_guard，于是每次都能对新 pid 重新设置（pid 变了也不影响）。
+OOM_ADJUST=-500
+
+protect_core_from_oom() {
+	local pid
+	pid=$(pgrep -f "sing-box run --config $RUN_DIR/sing-box-c.json" 2>/dev/null | head -1)
+	[ -z "$pid" ] && return 0
+	# 写失败不致命（只读 fs / 权限不足时静默跳过，退化到默认行为）
+	if [ -w "/proc/$pid/oom_score_adj" ]; then
+		printf '%s' "$OOM_ADJUST" > "/proc/$pid/oom_score_adj" 2>/dev/null \
+			&& log_line "已给内核进程 pid=$pid 设置 oom_score_adj=$OOM_ADJUST（OOM 时优先保住核心）。"
+	fi
+	return 0
+}
+
 wait_core() {
 	local i=0
 	while [ "$i" -lt "$WINDOW" ]; do
 		sleep 1
 		i=$((i + 1))
 		[ -f "$RUN_DIR/.stopping" ] && return 2
-		pgrep -f "sing-box run --config $RUN_DIR/sing-box-c.json" >/dev/null 2>&1 && return 0
+		if pgrep -f "sing-box run --config $RUN_DIR/sing-box-c.json" >/dev/null 2>&1; then
+			protect_core_from_oom
+			return 0
+		fi
 	done
 	return 1
 }

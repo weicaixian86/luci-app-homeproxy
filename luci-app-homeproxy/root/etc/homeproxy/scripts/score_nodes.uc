@@ -120,6 +120,24 @@ const QUICK_FACTOR = 1.5;
    237 现场：台湾高速01 gstatic 158ms 最优，google.com 却 000。 */
 const PROBE_URL_ENC = 'https%3A%2F%2Fwww.google.com%2Fgenerate_204';
 
+/* ===== 系统性故障退避（0.4.41，238 现场教训）=====
+   238 现场（2026-11-28 20:03）：sing-box 被 OOM 杀掉 → procd 重启后出站尚未就绪
+   → 评分器 `--quick` 立刻检出大批节点「探测失败」→ 触发全量 run()（每组 budget≈22
+   次 × 4s 探测 × 多组）→ 单轮 3~5 分钟跑不完，cron 每 3 分钟又调，crond 报
+   `process already running` 堆积；更糟的是全量里 incumbent 失败→切换→下一轮 quick
+   又报坏→再全量，**自激循环**，把单核 CPU 打满 + 持续读盘约 17 分钟，uhttpd/sshd
+   抢不到调度 → WebUI/SSH 应用层超时（TCP 能连上但无响应）。
+   根因不是「节点真的坏」，而是「整条出站链刚崩/正在恢复」这种**系统性故障**：
+   此时逐个全量探测毫无意义（全部会失败），只会放大负载。
+   对策：当一次 quick 检出「参与节点足够多、且故障比例超过阈值」时，判定为系统性
+   故障，**不再触发全量评分**，改为进入一段退避窗（BACKOFF_SECS）：窗内 run() 直接
+   返回、不做任何探测，等出站自行恢复（sing-box 重启/网络恢复通常十几秒到几分钟）。
+   退避窗到期自动解除；期间若 quick 发现故障比例回落到阈值以下，说明已恢复，照常
+   工作。这样既阻断自激、又不影响「单节点偶发故障→正常即时切换」的日常路径。 */
+const BACKOFF_SECS = 600;        // 系统性故障退避窗（10 分钟，覆盖 238 那次 ~17 分钟的自激前段）
+const BACKOFF_FAIL_RATIO = 0.6;  // 故障比例 ≥60% 且样本 ≥BACKOFF_MIN_NODES 判为系统性故障
+const BACKOFF_MIN_NODES = 5;     // 至少 5 个参与节点才做比例判定（少节点时比例噪声大）
+
 function log(msg) {
 	system(sprintf('printf "%%s %%s\n" "$(date +%%Y-%%m-%%dT%%H:%%M:%%S)" %s >> %s 2>/dev/null',
 		shellQuote('[SCORE] ' + msg), shellQuote(LOG_FILE)));
@@ -574,6 +592,16 @@ function run() {
 
 	const now_ts = time();
 	const state = load_state();
+
+	/* 系统性故障退避：上一次 quick 判定整条出站链故障（见 BACKOFF_SECS 注释）后，
+	   退避窗内不做任何探测，直接返回。避免全量评分在出站未就绪时自激打满 CPU。 */
+	if ((state.backoff_until ?? 0) > now_ts) {
+		const left = int((state.backoff_until - now_ts));
+		log(sprintf('系统性故障退避中（还剩 %d 秒），跳过本轮全量评分，等出站恢复。', left));
+		lock_release();
+		return { result: true, backoff: true, changes: 0, summary: [] };
+	}
+
 	let summary = [];
 
 	const raw = api_get('/proxies');
@@ -894,10 +922,13 @@ function quick_check() {
 	}
 
 	/* 阶段 2：按组判定。故障 = 探测确认失败(null)，或延迟 > 基线×QUICK_FACTOR。 */
+	let bad_nodes = {};          /* 去重后的故障节点（按 node 名），用于系统性故障比例判定 */
+	let checked_nodes = {};      /* 去重后的已探测节点 */
 	for (let tag in group_now) {
 		const now = group_now[tag];
 		const delay = node_delay[now];
 		const st = state.members?.[now] ?? null;
+		checked_nodes[now] = true;
 		let bad = false;
 		if (delay == null) {
 			bad = true;                                  /* 双确认后仍失败 */
@@ -905,6 +936,7 @@ function quick_check() {
 			bad = true;                                  /* 明显劣化 */
 		}
 		if (bad) {
+			bad_nodes[now] = true;
 			/* ⚠ 关键：把探测结果【写回 state】再触发全量评分。否则全量评分
 			   看到 incumbent 的 state 还是「样本新鲜、ok=true」（上次成功的旧
 			   值，10 分钟内不重探），会判定 keep 不切 —— quick 每分钟报故障、
@@ -940,6 +972,27 @@ function quick_check() {
 				st && st.base != null ? sprintf('%d', int(st.base)) : '-'));
 			need_full = true;
 		}
+	}
+
+	/* 系统性故障判定（见 BACKOFF_SECS 注释）：统计本轮 quick 实际探测过的去重节点里
+	   有多少判定为故障。若参与节点 ≥BACKOFF_MIN_NODES 且故障比例 ≥BACKOFF_FAIL_RATIO，
+	   说明不是「某个节点偶发坏」，而是「整条出站链刚崩/正在恢复」（sing-box 被 OOM
+	   杀掉重启、上游断网等）——此时逐个全量探测毫无意义，只会自激打满 CPU。改为：
+	   进入退避窗、**不触发全量评分**，等出站自行恢复。已在上面写回的 state（ok=false）
+	   保留即可，退避到期后正常评分会重探恢复。 */
+	let _checked_n = 0, _bad_n = 0;
+	for (let _k in checked_nodes) {
+		_checked_n++;
+		if (bad_nodes[_k]) _bad_n++;
+	}
+	if (_bad_n > 0 && _checked_n >= BACKOFF_MIN_NODES &&
+	    (_bad_n * 1.0 / _checked_n) >= BACKOFF_FAIL_RATIO) {
+		state.backoff_until = now_ts + BACKOFF_SECS;
+		save_state(state);
+		log(sprintf('[backoff] 检出系统性故障（%d/%d 节点故障，≥%d%%），判定出站链异常，进入 %d 秒退避、暂不触发全量评分（防自激）。',
+			_bad_n, _checked_n, int(BACKOFF_FAIL_RATIO * 100), BACKOFF_SECS));
+		/* 关键：不返回 need_full —— 阻断「全量评分」这次放大动作。 */
+		return false;
 	}
 	return need_full;
 }
