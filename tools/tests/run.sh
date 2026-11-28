@@ -2802,6 +2802,18 @@ else
 	bad "a provider can still be emitted in a state the kernel rejects fatally"
 fi
 
+# 0.4.40（238 现场根因）：只有「uci 有节点 + 镜像文件存在」还不够——
+# 订阅抓取失败时旧节点被 kept（uci 仍有节点），而镜像/种子文件可能已被
+# 写坏/清空，内核加载 provider 报 `no servers found` 后**整个 sing-box 退出**，
+# core_guard 再 stop 掉服务 → 整夜宕机。故下发前必须校验文件内容本身含节点。
+if grep -q 'function provider_content_has_nodes' "$GC" \
+   && grep -q 'provider_content_has_nodes(provider_mirror_path(group_hash))' "$GC" \
+   && grep -q 'provider_content_has_nodes(provider_seed_path(group_hash))' "$GC"; then
+	ok "a provider is only emitted when its seed/mirror file actually contains parseable nodes"
+else
+	bad "a broken/empty seed can still be emitted, killing the whole core with 'no servers found'"
+fi
+
 # 防回归：get_outbound() 的策略组类型枚举必须包含 score。
 # 漏掉 'score' 的现场后果（238，2026-11-22）：routing_node node='score' 的组
 # （如「亚洲自动」）作为 routing_rule.outbound 时，get_outbound 会把 'score'
@@ -3113,9 +3125,11 @@ if grep -q "outbounds: length(urltest_tags) ? urltest_tags : \[ 'direct-out' \]"
    && [ "$(grep -c 'firewall_teardown' "$INIT_SH")" -ge 2 ] \
    && grep -q 'setsid /bin/sh "$HP_DIR/scripts/core_guard.sh"' "$INIT_SH" \
    && [ -x "$PKG/root/etc/homeproxy/scripts/core_guard.sh" ] \
-   && grep -q '内核启动 15 秒后仍未运行' "$PKG/root/etc/homeproxy/scripts/core_guard.sh" \
+   && grep -q '自动恢复' "$PKG/root/etc/homeproxy/scripts/core_guard.sh" \
+   && grep -q 'MAX_RETRY' "$PKG/root/etc/homeproxy/scripts/core_guard.sh" \
+   && grep -q '/etc/init.d/homeproxy restart' "$PKG/root/etc/homeproxy/scripts/core_guard.sh" \
    && grep -q 'homeproxy stop' "$PKG/root/etc/homeproxy/scripts/core_guard.sh"; then
-	ok "an empty group falls back to direct, and a core that dies right after start tears the hijack down"
+	ok "an empty group falls back to direct, and a core that dies right after start is auto-recovered then torn down"
 else
 	bad "empty groups can still kill the core, or a dead core leaves the LAN without DNS"
 fi

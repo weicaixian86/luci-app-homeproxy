@@ -15,7 +15,7 @@ import { cursor } from 'uci';
 
 import {
 	isEmpty, isSectionEnabled, parseURL, shellQuote, strToBool, strToInt, strToTime,
-	removeBlankAttrs, validation, HP_DIR, RUN_DIR
+	removeBlankAttrs, validation, decodeBase64Str, HP_DIR, RUN_DIR
 } from 'homeproxy';
 
 const ubus = connect();
@@ -1066,6 +1066,56 @@ function provider_seed_exists(group_hash) {
 	return true;
 }
 
+/* 校验一个 provider 种子/镜像文件里**是否真有可解析的节点**（0.4.40）。
+   为什么需要：build_native_providers() 原先只按「uci 里该机场 grouphash
+   有没有节点」决定是否下发 provider。但订阅抓取失败时旧节点会被 kept
+   （uci 仍有节点），而种子/镜像文件可能已被写坏/清空 —— 此时内核加载
+   provider 报 `start provider/...: no servers found` 后**整个 sing-box 退出**
+   （0.4.39 现场，238：PKM 机场 404 → 种子坏 → 内核崩 → core_guard 停服务
+   → 整夜宕机）。故下发前必须校验文件内容本身含节点。
+   判定口径与 filter_sub.uc 完全一致：跳过 userinfo 首行（upload=/download=
+   等 `key=value` 形式），剩余内容要么是明文链接列表（含 `://`），要么是
+   base64 链接列表（decodeBase64Str 后含 `://`）——任一成立才算「有节点」。
+   `path` 为文件绝对路径；文件不存在/不可读/无节点一律返回 false。 */
+function provider_content_has_nodes(path) {
+	if (isEmpty(path))
+		return false;
+
+	let body = null;
+	try { body = readfile(path); } catch (e) { return false; }
+	if (isEmpty(body))
+		return false;
+
+	/* 去 userinfo 首行：update_subscriptions.uc 写种子时把
+	   `upload=..;download=..;total=..;expire=..` 放在第一行；镜像同理。
+	   首行若形如 `xxx=yyy;...`（含 '=' 且无 '://'）视为 userinfo 头跳过。 */
+	let lines = split(replace(body, /\r/g, ''), '\n');
+	let start = 0;
+	if (length(lines) > 0) {
+		const first = trim(lines[0]);
+		if (!isEmpty(first) && index(first, '://') < 0 && index(first, '=') >= 0)
+			start = 1;
+	}
+	let rest = [];
+	for (let i = start; i < length(lines); i++)
+		push(rest, lines[i]);
+	const content = trim(join('\n', rest));
+	if (isEmpty(content))
+		return false;
+
+	/* ① 明文链接列表 */
+	if (index(content, '://') >= 0)
+		return true;
+
+	/* ② base64 链接列表：尝试解码，解出含 '://' 即算有节点。 */
+	let decoded = null;
+	try { decoded = decodeBase64Str(content); } catch (e) { decoded = null; }
+	if (decoded != null && type(decoded) === 'string' && index(decoded, '://') >= 0)
+		return true;
+
+	return false;
+}
+
 /* 全局面板测速地址：取第一个配了 urltest_url 的分组，兜底 google
    generate_204（与 urltest 出站的默认值保持同一口径，别用 gstatic ——
    它在 china_list 里且实测会把可用节点判成不可用）。 */
@@ -1125,6 +1175,15 @@ function build_native_providers() {
 
 		/* 方案 D：remote provider + 本机回环镜像 url（含过滤后节点 + userinfo 首行）。 */
 		if (!provider_mirror_exists(group_hash))
+			continue;
+
+		/* 0.4.40：下发前必须校验「镜像/种子文件里真有可解析节点」。否则
+		   订阅抓取失败 kept 旧节点、但文件已被写坏/清空时，内核 provider
+		   加载失败会**整个退出**（238：PKM 404 → no servers found → 内核崩
+		   → core_guard 停服务 → 整夜宕机）。镜像优先校验镜像，镜像缺失
+		   退回原始 URL 时校验种子（initial_path）。任一含节点才下发。 */
+		if (!provider_content_has_nodes(provider_mirror_path(group_hash)) &&
+		    !provider_content_has_nodes(provider_seed_path(group_hash)))
 			continue;
 
 		push(providers, {
